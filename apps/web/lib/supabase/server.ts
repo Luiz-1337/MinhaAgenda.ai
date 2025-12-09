@@ -16,7 +16,7 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll()
         },
-// apps/web/lib/supabase/server.ts
+          // apps/web/lib/supabase/server.ts
         setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>

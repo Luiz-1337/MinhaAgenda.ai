@@ -87,21 +87,21 @@ export async function upsertService(input: UpsertServiceInput): Promise<{ succes
   if ("error" in owner) return { error: owner.error as string }
 
   try {
-    const payload = {
-      name: parsed.data.name.trim(),
-      description: (parsed.data.description || "").trim() || null,
-      duration: parsed.data.duration,
-      price: parsed.data.price.toFixed(2),
+  const payload = {
+    name: parsed.data.name.trim(),
+    description: (parsed.data.description || "").trim() || null,
+    duration: parsed.data.duration,
+    price: parsed.data.price.toFixed(2),
       isActive: parsed.data.isActive,
-    }
+  }
 
-    let serviceId = parsed.data.id
+  let serviceId = parsed.data.id
     if (serviceId) {
       await db
         .update(services)
         .set(payload)
         .where(and(eq(services.id, serviceId), eq(services.salonId, owner.salonId)))
-    } else {
+  } else {
       const inserted = await db
         .insert(services)
         .values({ ...payload, salonId: owner.salonId })
@@ -113,7 +113,7 @@ export async function upsertService(input: UpsertServiceInput): Promise<{ succes
 
     await db.delete(professionalServices).where(eq(professionalServices.serviceId, serviceId))
 
-    const selected = parsed.data.professionalIds
+  const selected = parsed.data.professionalIds
     if (selected.length) {
       const validPros = await db.query.professionals.findMany({
         where: and(eq(professionals.salonId, owner.salonId), inArray(professionals.id, selected)),
@@ -121,7 +121,7 @@ export async function upsertService(input: UpsertServiceInput): Promise<{ succes
       })
 
       const ids = validPros.map((p: { id: string }) => p.id)
-      if (ids.length) {
+    if (ids.length) {
         await db
           .insert(professionalServices)
           .values(ids.map((pid: string) => ({ professionalId: pid, serviceId })))
