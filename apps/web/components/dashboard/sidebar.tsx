@@ -46,21 +46,19 @@ export function SidebarNav() {
             key={href}
             href={href}
             className={cn(
-              "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition hover:bg-accent hover:text-foreground",
-              "ring-1 ring-transparent hover:ring-border/70",
+              "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-200 transition hover:bg-white/5 hover:text-white",
+              "ring-1 ring-transparent hover:ring-white/10",
               active &&
-                "bg-primary/15 text-foreground shadow-md ring-1 ring-primary/60"
+                "bg-white/10 text-white shadow-[0_1px_20px_rgba(94,234,212,0.12)] ring-1 ring-cyan-400/40"
             )}
           >
             <span
               className={cn(
                 "absolute inset-y-1 left-1 w-[3px] rounded-full bg-transparent transition",
-                active
-                  ? "bg-gradient-to-b from-primary via-secondary to-primary"
-                  : "group-hover:bg-foreground/20"
+                active ? "bg-gradient-to-b from-cyan-400 via-indigo-400 to-fuchsia-400" : "group-hover:bg-white/30"
               )}
             />
-            <Icon className={cn("size-4 text-muted-foreground transition", active && "text-primary")} />
+            <Icon className={cn("size-4 text-slate-400 transition", active && "text-cyan-300")} />
             <span className="text-sm font-medium">{label}</span>
           </Link>
         )
@@ -73,12 +71,7 @@ export function MobileSidebar() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label="Abrir menu"
-          className="border-border bg-card text-foreground hover:border-primary/60 hover:text-primary"
-        >
+        <Button variant="outline" size="icon" aria-label="Abrir menu" className="border-white/20 bg-white/5 text-white hover:border-cyan-400/50 hover:text-cyan-100">
           <Menu className="size-4" />
         </Button>
       </SheetTrigger>

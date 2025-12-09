@@ -24,6 +24,9 @@ export const profiles = pgTable('profiles', {
   email: text('email').notNull(),
   fullName: text('full_name'),
   phone: text('phone'),
+  googleAccessToken: text('google_access_token'),
+  googleRefreshToken: text('google_refresh_token'),
+  calendarSyncEnabled: boolean('calendar_sync_enabled').default(false).notNull(),
   systemRole: systemRoleEnum('system_role').default('user').notNull(),
   userTier: userTierEnum('user_tier'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -41,6 +44,7 @@ export const salons = pgTable(
     phone: text('phone'),
     description: text('description'),
     settings: jsonb('settings'),
+    workHours: jsonb('work_hours'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },

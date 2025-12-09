@@ -32,19 +32,16 @@ export function UserNav() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="gap-2 border-border bg-card text-foreground hover:border-primary/60 hover:text-primary"
+          className="gap-2 border-white/20 bg-white/5 text-white hover:border-cyan-400/60 hover:text-cyan-50"
         >
           <Avatar>
             <AvatarImage src="" alt="Usuário" />
-            <AvatarFallback className="bg-muted text-foreground ring-1 ring-border">UA</AvatarFallback>
+            <AvatarFallback>UA</AvatarFallback>
           </Avatar>
-          <span className="hidden text-sm md:inline text-foreground">Conta</span>
+          <span className="hidden text-sm md:inline">Conta</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="border border-border bg-popover text-popover-foreground backdrop-blur-xl"
-      >
+      <DropdownMenuContent align="end" className="border-white/10 bg-slate-900/90 text-slate-100 backdrop-blur-xl">
         <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} variant="destructive">
