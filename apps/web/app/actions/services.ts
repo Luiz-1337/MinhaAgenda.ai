@@ -86,45 +86,50 @@ export async function upsertService(input: UpsertServiceInput): Promise<{ succes
   const owner = await getOwnerSalonId()
   if ("error" in owner) return { error: owner.error as string }
 
-  const payload = {
-    name: parsed.data.name.trim(),
-    description: (parsed.data.description || "").trim() || null,
-    duration: parsed.data.duration,
-    price: parsed.data.price.toFixed(2),
-    isActive: parsed.data.isActive,
-  }
-
-  let serviceId = parsed.data.id
-  if (serviceId) {
-    await db
-      .update(services)
-      .set(payload)
-      .where(and(eq(services.id, serviceId), eq(services.salonId, owner.salonId)))
-  } else {
-    const inserted = await db
-      .insert(services)
-      .values({ ...payload, salonId: owner.salonId })
-      .returning({ id: services.id })
-    serviceId = inserted[0]?.id
-  }
-
-  if (!serviceId) return { error: "Não foi possível salvar o serviço" }
-
-  await db.delete(professionalServices).where(eq(professionalServices.serviceId, serviceId))
-
-  const selected = parsed.data.professionalIds
-  if (selected.length) {
-    const validPros = await db.query.professionals.findMany({
-      where: and(eq(professionals.salonId, owner.salonId), inArray(professionals.id, selected)),
-      columns: { id: true },
-    })
-
-    const ids = validPros.map((p: { id: string }) => p.id)
-    if (ids.length) {
-      await db
-        .insert(professionalServices)
-        .values(ids.map((pid: string) => ({ professionalId: pid, serviceId })))
+  try {
+    const payload = {
+      name: parsed.data.name.trim(),
+      description: (parsed.data.description || "").trim() || null,
+      duration: parsed.data.duration,
+      price: parsed.data.price.toFixed(2),
+      isActive: parsed.data.isActive,
     }
+
+    let serviceId = parsed.data.id
+    if (serviceId) {
+      await db
+        .update(services)
+        .set(payload)
+        .where(and(eq(services.id, serviceId), eq(services.salonId, owner.salonId)))
+    } else {
+      const inserted = await db
+        .insert(services)
+        .values({ ...payload, salonId: owner.salonId })
+        .returning({ id: services.id })
+      serviceId = inserted[0]?.id
+    }
+
+    if (!serviceId) return { error: "Não foi possível salvar o serviço" }
+
+    await db.delete(professionalServices).where(eq(professionalServices.serviceId, serviceId))
+
+    const selected = parsed.data.professionalIds
+    if (selected.length) {
+      const validPros = await db.query.professionals.findMany({
+        where: and(eq(professionals.salonId, owner.salonId), inArray(professionals.id, selected)),
+        columns: { id: true },
+      })
+
+      const ids = validPros.map((p: { id: string }) => p.id)
+      if (ids.length) {
+        await db
+          .insert(professionalServices)
+          .values(ids.map((pid: string) => ({ professionalId: pid, serviceId })))
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao salvar serviço"
+    return { error: message }
   }
 
   revalidatePath("/dashboard/services")
@@ -135,10 +140,15 @@ export async function deleteService(id: string): Promise<{ success: true } | { e
   const owner = await getOwnerSalonId()
   if ("error" in owner) return { error: owner.error as string }
 
-  await db
-    .update(services)
-    .set({ isActive: false })
-    .where(and(eq(services.id, id), eq(services.salonId, owner.salonId)))
+  try {
+    await db
+      .update(services)
+      .set({ isActive: false })
+      .where(and(eq(services.id, id), eq(services.salonId, owner.salonId)))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro ao remover serviço"
+    return { error: message }
+  }
 
   revalidatePath("/dashboard/services")
   return { success: true }
