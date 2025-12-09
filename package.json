@@ -1,0 +1,18 @@
+{
+  "name": "minhaagendaai_v2",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter @repo/db run generate",
+    "db:push": "pnpm --filter @repo/db run push",
+    "db:smoke": "pnpm --filter @repo/db run smoke",
+    "db:seed": "pnpm --filter @repo/db run seed",
+    "db:migrate:manual": "pnpm --filter @repo/db run migrate:manual",
+    "db:migrate:manual:002": "pnpm --filter @repo/db run migrate:manual:002",
+    "db:migrate:manual:003": "pnpm --filter @repo/db run migrate:manual:003",
+    "db:reset": "pnpm --filter @repo/db run reset"
+  }
+}

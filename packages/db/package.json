@@ -1,0 +1,29 @@
+{
+  "name": "@repo/db",
+  "private": true,
+  "version": "0.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "push": "drizzle-kit push",
+    "studio": "drizzle-kit studio",
+    "smoke": "node scripts/smoke.mjs",
+    "seed": "node scripts/seed.mjs",
+    "migrate:manual": "node scripts/migrate.mjs",
+    "migrate:manual:002": "node scripts/migrate_002.mjs",
+    "migrate:manual:003": "node scripts/migrate_003.mjs",
+    "reset": "node scripts/reset.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.0",
+    "pg": "^8.12.0",
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.31.8",
+    "typescript": "^5.3.3"
+  }
+}

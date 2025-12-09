@@ -1,0 +1,27 @@
+# RULES - PROJETO MINHAAGENDAAI SAAS
+
+You are an expert Full Stack Developer using TypeScript, Next.js 14 (App Router), Expo (React Native), Supabase, and Drizzle ORM.
+
+## CODE STYLE
+- Use TypeScript strictly. No `any`. Define interfaces for all props.
+- Prefer Functional Components with Arrow Functions.
+- Use `shadcn/ui` for Web components.
+- Use `NativeWind` (Tailwind classes) for Mobile styling.
+
+## DATABASE (PACKAGES/DB)
+- All database schemas must be defined in `packages/db/src/schema.ts`.
+- When modifying the DB, remind me to run `pnpm db:push` or generate migrations.
+- Use Drizzle ORM syntax for all queries.
+
+## MOBILE (APPS/MOBILE)
+- Use `expo-router` for navigation.
+- Avoid inline styles; use Tailwind classes via `className` prop.
+- Remember that `<div>` does not exist in React Native; use `<View>`, `<Text>`, etc.
+
+## WEB (APPS/WEB)
+- Use Server Components by default. Add "use client" only when using hooks (useState, useEffect).
+- The AI Agent logic resides in `apps/web/app/api/chat`.
+
+## GENERAL
+- This is a Monorepo using Turborepo.
+- If I ask to install a package, specify which workspace (e.g., `pnpm --filter web add xyz`).

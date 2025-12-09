@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+out/
+.expo/
+.turbo/
+.DS_Store
+.env
+.env.*
+build/
+android/
+ios/
+expo-packager-cache/
+web-build/
+"node_modules" 
+".turbo" 
+".env" 

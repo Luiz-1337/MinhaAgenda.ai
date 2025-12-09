@@ -1,0 +1,19 @@
+# Dependências e Builds (Obrigatório ignorar)
+**/node_modules
+**/.next
+**/.expo
+**/dist
+**/buildw
+**/.git
+
+# Arquivos de Lock (Gigantes e confundem a IA)
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Arquivos de Mídia (Não ajudam no código)
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.svg
+**/*.ico
