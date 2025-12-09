@@ -1,8 +1,10 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { and, asc, eq, inArray } from "drizzle-orm"
+import { createClient } from "@/lib/supabase/server"
+import { db, professionalServices, professionals, salons, services } from "@repo/db"
 
 const upsertServiceSchema = z.object({
   id: z.string().uuid().optional(),
@@ -24,8 +26,12 @@ export type ServiceRow = {
   duration: number
   price: string
   is_active: boolean
-  created_at: string
 }
+
+type ServiceSelect = Pick<
+  typeof services.$inferSelect,
+  "id" | "salonId" | "name" | "description" | "duration" | "price" | "isActive"
+>
 
 async function getOwnerSalonId() {
   const supabase = await createClient()
@@ -33,26 +39,47 @@ async function getOwnerSalonId() {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return { error: "Não autenticado" as const }
-  const salon = await supabase.from("salons").select("id").eq("owner_id", user.id).single()
-  if (salon.error || !salon.data) return { error: "Salão não encontrado" as const }
-  return { salonId: salon.data.id }
+
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.ownerId, user.id),
+    columns: { id: true },
+  })
+
+  if (!salon) return { error: "Salão não encontrado" as const }
+  return { salonId: salon.id }
 }
 
-export async function getServices(): Promise<ServiceRow[] | { error: string }> {
-  const supabase = await createClient()
-  const owner = await getOwnerSalonId()
-  if ("error" in owner) return { error: owner.error as string }
-  const list = await supabase
-    .from("services")
-    .select("id,salon_id,name,description,duration,price,is_active,created_at")
-    .eq("salon_id", owner.salonId)
-    .order("name", { ascending: true })
-  if (list.error) return { error: list.error.message }
-  return (list.data || []) as ServiceRow[]
+export async function getServices(salonId: string): Promise<ServiceRow[]> {
+  if (!salonId) {
+    throw new Error("salonId é obrigatório")
+  }
+
+  const rows: ServiceSelect[] = await db.query.services.findMany({
+    where: eq(services.salonId, salonId),
+    columns: {
+      id: true,
+      salonId: true,
+      name: true,
+      description: true,
+      duration: true,
+      price: true,
+      isActive: true,
+    },
+    orderBy: asc(services.name),
+  })
+
+  return rows.map((row) => ({
+    id: row.id,
+    salon_id: row.salonId,
+    name: row.name,
+    description: row.description ?? null,
+    duration: row.duration,
+    price: row.price ?? "0",
+    is_active: row.isActive,
+  }))
 }
 
 export async function upsertService(input: UpsertServiceInput): Promise<{ success: true } | { error: string }> {
-  const supabase = await createClient()
   const parsed = upsertServiceSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues.map((e) => e.message).join("; ") }
 
@@ -60,43 +87,43 @@ export async function upsertService(input: UpsertServiceInput): Promise<{ succes
   if ("error" in owner) return { error: owner.error as string }
 
   const payload = {
-    salon_id: owner.salonId,
     name: parsed.data.name.trim(),
     description: (parsed.data.description || "").trim() || null,
     duration: parsed.data.duration,
     price: parsed.data.price.toFixed(2),
-    is_active: parsed.data.isActive,
+    isActive: parsed.data.isActive,
   }
 
   let serviceId = parsed.data.id
-  if (parsed.data.id) {
-    const update = await supabase
-      .from("services")
-      .update(payload)
-      .eq("id", parsed.data.id)
-      .eq("salon_id", owner.salonId)
-    if (update.error) return { error: update.error.message }
+  if (serviceId) {
+    await db
+      .update(services)
+      .set(payload)
+      .where(and(eq(services.id, serviceId), eq(services.salonId, owner.salonId)))
   } else {
-    const insert = await supabase.from("services").insert(payload).select("id").single()
-    if (insert.error) return { error: insert.error.message }
-    serviceId = insert.data.id as string
+    const inserted = await db
+      .insert(services)
+      .values({ ...payload, salonId: owner.salonId })
+      .returning({ id: services.id })
+    serviceId = inserted[0]?.id
   }
 
-  const selected = parsed.data.professionalIds
-  if (serviceId) {
-    const validPros = await supabase
-      .from("professionals")
-      .select("id")
-      .in("id", selected.length ? selected : ["00000000-0000-0000-0000-000000000000"]) // guard for empty IN
-      .eq("salon_id", owner.salonId)
-    if (validPros.error) return { error: validPros.error.message }
-    const ids = (validPros.data || []).map((r: { id: string }) => r.id)
+  if (!serviceId) return { error: "Não foi possível salvar o serviço" }
 
-    await supabase.from("professional_services").delete().eq("service_id", serviceId)
+  await db.delete(professionalServices).where(eq(professionalServices.serviceId, serviceId))
+
+  const selected = parsed.data.professionalIds
+  if (selected.length) {
+    const validPros = await db.query.professionals.findMany({
+      where: and(eq(professionals.salonId, owner.salonId), inArray(professionals.id, selected)),
+      columns: { id: true },
+    })
+
+    const ids = validPros.map((p: { id: string }) => p.id)
     if (ids.length) {
-      const rows = ids.map((pid) => ({ professional_id: pid, service_id: serviceId }))
-      const ins = await supabase.from("professional_services").insert(rows)
-      if (ins.error) return { error: ins.error.message }
+      await db
+        .insert(professionalServices)
+        .values(ids.map((pid: string) => ({ professionalId: pid, serviceId })))
     }
   }
 
@@ -105,29 +132,26 @@ export async function upsertService(input: UpsertServiceInput): Promise<{ succes
 }
 
 export async function deleteService(id: string): Promise<{ success: true } | { error: string }> {
-  const supabase = await createClient()
   const owner = await getOwnerSalonId()
   if ("error" in owner) return { error: owner.error as string }
 
-  const update = await supabase
-    .from("services")
-    .update({ is_active: false })
-    .eq("id", id)
-    .eq("salon_id", owner.salonId)
-  if (update.error) return { error: update.error.message }
+  await db
+    .update(services)
+    .set({ isActive: false })
+    .where(and(eq(services.id, id), eq(services.salonId, owner.salonId)))
 
   revalidatePath("/dashboard/services")
   return { success: true }
 }
 
 export async function getServiceLinkedProfessionals(serviceId: string): Promise<string[] | { error: string }> {
-  const supabase = await createClient()
   const owner = await getOwnerSalonId()
   if ("error" in owner) return { error: owner.error as string }
-  const list = await supabase
-    .from("professional_services")
-    .select("professional_id")
-    .eq("service_id", serviceId)
-  if (list.error) return { error: list.error.message }
-  return (list.data || []).map((r: { professional_id: string }) => r.professional_id)
+
+  const links = await db.query.professionalServices.findMany({
+    where: eq(professionalServices.serviceId, serviceId),
+    columns: { professionalId: true },
+  })
+
+  return links.map((row: { professionalId: string }) => row.professionalId)
 }
