@@ -113,6 +113,9 @@ importers:
       '@radix-ui/react-tabs':
         specifier: ^1.1.13
         version: 1.1.13(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@supabase/ssr':
         specifier: ^0.5.2
         version: 0.5.2(@supabase/supabase-js@2.87.0)
@@ -128,6 +131,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      drizzle-orm:
+        specifier: ^0.45.0
+        version: 0.45.0(pg@8.16.3)(postgres@3.4.7)
       lucide-react:
         specifier: ^0.556.0
         version: 0.556.0(react@19.2.0)
