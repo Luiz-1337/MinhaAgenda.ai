@@ -1,8 +1,13 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
+import { createClient } from "@/lib/supabase/server"
+import { getOwnerSalonId, isSalonOwnerError } from "@/lib/services/salon.service"
+import { formatZodError } from "@/lib/services/validation.service"
+import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
+import type { ProfessionalRow, UpsertProfessionalInput } from "@/lib/types/professional"
+import type { ActionResult } from "@/lib/types/common"
 
 const upsertProfessionalSchema = z.object({
   id: z.string().uuid().optional(),
@@ -12,87 +17,105 @@ const upsertProfessionalSchema = z.object({
   isActive: z.boolean().default(true),
 })
 
-export type UpsertProfessionalInput = z.infer<typeof upsertProfessionalSchema>
+export type { UpsertProfessionalInput }
 
-export type ProfessionalRow = {
-  id: string
-  salon_id: string
-  name: string
-  email: string
-  phone: string | null
-  is_active: boolean
-  created_at: string
-}
-
-async function getOwnerSalonId() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Não autenticado" as const }
-  const salon = await supabase.from("salons").select("id").eq("owner_id", user.id).single()
-  if (salon.error || !salon.data) return { error: "Salão não encontrado" as const }
-  return { salonId: salon.data.id }
-}
-
+/**
+ * Obtém todos os profissionais do salão do usuário autenticado
+ */
 export async function getProfessionals(): Promise<ProfessionalRow[] | { error: string }> {
   const supabase = await createClient()
-  const owner = await getOwnerSalonId()
-  if ("error" in owner) return { error: owner.error as string }
-  const list = await supabase
+  const ownerResult = await getOwnerSalonId()
+
+  if (isSalonOwnerError(ownerResult)) {
+    return { error: ownerResult.error }
+  }
+
+  const result = await supabase
     .from("professionals")
     .select("id,salon_id,name,email,phone,is_active,created_at")
-    .eq("salon_id", owner.salonId)
+    .eq("salon_id", ownerResult.salonId)
     .order("name", { ascending: true })
-  if (list.error) return { error: list.error.message as string}
-  return (list.data || []) as ProfessionalRow[]
+
+  if (result.error) {
+    return { error: result.error.message }
+  }
+
+  return (result.data || []) as ProfessionalRow[]
 }
 
-export async function upsertProfessional(input: UpsertProfessionalInput): Promise<{ success: true } | { error: string }> {
+/**
+ * Cria ou atualiza um profissional
+ */
+export async function upsertProfessional(
+  input: UpsertProfessionalInput
+): Promise<ActionResult> {
   const supabase = await createClient()
+
+  // Validação
   const parsed = upsertProfessionalSchema.safeParse(input)
-  if (!parsed.success) return { error: parsed.error.issues.map((i) => i.message).join("; ") }
+  if (!parsed.success) {
+    return { error: formatZodError(parsed.error) }
+  }
 
-  const owner = await getOwnerSalonId()
-  if ("error" in owner) return { error: owner.error as string }
+  // Verifica autenticação e propriedade do salão
+  const ownerResult = await getOwnerSalonId()
+  if (isSalonOwnerError(ownerResult)) {
+    return { error: ownerResult.error }
+  }
 
+  // Prepara dados para inserção/atualização
   const payload = {
-    salon_id: owner.salonId,
-    name: parsed.data.name.trim(),
-    email: parsed.data.email.trim().toLowerCase(),
-    phone: (parsed.data.phone || "").trim() || null,
+    salon_id: ownerResult.salonId,
+    name: normalizeString(parsed.data.name),
+    email: normalizeEmail(parsed.data.email),
+    phone: emptyStringToNull(parsed.data.phone),
     is_active: parsed.data.isActive,
   }
 
+  // Atualiza profissional existente
   if (parsed.data.id) {
-    const update = await supabase
+    const updateResult = await supabase
       .from("professionals")
       .update(payload)
       .eq("id", parsed.data.id)
-      .eq("salon_id", owner.salonId)
-    if (update.error) return { error: update.error.message }
+      .eq("salon_id", ownerResult.salonId)
+
+    if (updateResult.error) {
+      return { error: updateResult.error.message }
+    }
   } else {
-    const insert = await supabase.from("professionals").insert(payload)
-    if (insert.error) return { error: insert.error.message }
+    // Cria novo profissional
+    const insertResult = await supabase.from("professionals").insert(payload)
+    if (insertResult.error) {
+      return { error: insertResult.error.message }
+    }
   }
 
   revalidatePath("/dashboard/team")
   return { success: true }
 }
 
-export async function deleteProfessional(id: string): Promise<{ success: true } | { error: string }> {
+/**
+ * Remove um profissional (soft delete)
+ */
+export async function deleteProfessional(id: string): Promise<ActionResult> {
   const supabase = await createClient()
-  const owner = await getOwnerSalonId()
-  if ("error" in owner) return { error: owner.error as string }
+  const ownerResult = await getOwnerSalonId()
 
-  const update = await supabase
+  if (isSalonOwnerError(ownerResult)) {
+    return { error: ownerResult.error }
+  }
+
+  const updateResult = await supabase
     .from("professionals")
     .update({ is_active: false })
     .eq("id", id)
-    .eq("salon_id", owner.salonId)
-  if (update.error) return { error: update.error.message as string }
+    .eq("salon_id", ownerResult.salonId)
+
+  if (updateResult.error) {
+    return { error: updateResult.error.message }
+  }
 
   revalidatePath("/dashboard/team")
   return { success: true }
 }
-

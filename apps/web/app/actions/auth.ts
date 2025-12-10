@@ -2,26 +2,34 @@
 
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import type { ActionState } from "@/lib/types/common"
+import { formatAuthError } from "@/lib/services/error.service"
+import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
 
-type ActionState = { error?: string }
-
-export async function login(prevState: ActionState, formData: FormData) {
-  const email = String(formData.get("email") || "").trim().toLowerCase()
-  const password = String(formData.get("password") || "").trim()
+/**
+ * Realiza login do usuário
+ */
+export async function login(prevState: ActionState, formData: FormData): Promise<ActionState> {
+  const email = normalizeEmail(String(formData.get("email") || ""))
+  const password = normalizeString(String(formData.get("password") || ""))
 
   const supabase = await createClient()
   const { error } = await supabase.auth.signInWithPassword({ email, password })
+
   if (error) {
-    return { error: `${error.message}${(error as { status?: number }).status ? ` (status ${(error as { status?: number }).status})` : ""}` }
+    return { error: formatAuthError(error) }
   }
 
   redirect("/")
 }
 
-export async function signup(prevState: ActionState, formData: FormData) {
-  const full_name = String(formData.get("full_name") || "").trim()
-  const email = String(formData.get("email") || "").trim().toLowerCase()
-  const password = String(formData.get("password") || "").trim()
+/**
+ * Realiza cadastro de novo usuário
+ */
+export async function signup(prevState: ActionState, formData: FormData): Promise<ActionState> {
+  const full_name = normalizeString(String(formData.get("full_name") || ""))
+  const email = normalizeEmail(String(formData.get("email") || ""))
+  const password = normalizeString(String(formData.get("password") || ""))
 
   const supabase = await createClient()
   const { error } = await supabase.auth.signUp({
@@ -31,8 +39,9 @@ export async function signup(prevState: ActionState, formData: FormData) {
       data: { full_name },
     },
   })
+
   if (error) {
-    return { error: `${error.message}${(error as { status?: number }).status ? ` (status ${(error as { status?: number }).status})` : ""}` }
+    return { error: formatAuthError(error) }
   }
 
   redirect("/")

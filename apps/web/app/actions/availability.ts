@@ -1,51 +1,12 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
-
-type AvailabilityItem = {
-  dayOfWeek: number
-  startTime: string
-  endTime: string
-}
-
-async function getOwnerSalonId() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Não autenticado" as const }
-  const salon = await supabase.from("salons").select("id").eq("owner_id", user.id).single()
-  if (salon.error || !salon.data) return { error: "Salão não encontrado" as const }
-  return { salonId: salon.data.id }
-}
-
-export async function getAvailability(
-  professionalId: string
-): Promise<AvailabilityItem[] | { error: string }> {
-  const supabase = await createClient()
-  const owner = await getOwnerSalonId()
-  if ("error" in owner) return { error: owner.error as string }
-
-  const prof = await supabase
-    .from("professionals")
-    .select("id")
-    .eq("id", professionalId)
-    .eq("salon_id", owner.salonId)
-    .single()
-  if (prof.error || !prof.data) return { error: "Profissional inválido" }
-
-  const rows = await supabase
-    .from("availability")
-    .select("day_of_week,start_time,end_time,is_break")
-    .eq("professional_id", professionalId)
-    .eq("is_break", false)
-    .order("day_of_week", { ascending: true })
-  if (rows.error) return { error: rows.error.message }
-  const list = (rows.data || []) as Array<{ day_of_week: number; start_time: string; end_time: string }>
-  return list.map((r) => ({ dayOfWeek: r.day_of_week, startTime: r.start_time, endTime: r.end_time }))
-}
+import { createClient } from "@/lib/supabase/server"
+import { getOwnerSalonId, isSalonOwnerError } from "@/lib/services/salon.service"
+import { formatZodError, isValidTimeRange } from "@/lib/services/validation.service"
+import type { AvailabilityItem, ScheduleItem } from "@/lib/types/availability"
+import type { ActionResult } from "@/lib/types/common"
 
 const scheduleItemSchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
@@ -54,52 +15,123 @@ const scheduleItemSchema = z.object({
   isActive: z.boolean(),
 })
 
-export async function updateAvailability(
-  professionalId: string,
-  schedule: Array<{ dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }>
-): Promise<{ success: true } | { error: string }> {
+/**
+ * Obtém a disponibilidade de um profissional
+ */
+export async function getAvailability(
+  professionalId: string
+): Promise<AvailabilityItem[] | { error: string }> {
   const supabase = await createClient()
-  const parsed = z.array(scheduleItemSchema).safeParse(schedule)
-  if (!parsed.success) return { error: parsed.error.issues.map((i) => i.message).join("; ") }
+  const ownerResult = await getOwnerSalonId()
 
-  for (const s of parsed.data) {
-    const a = s.startTime.split(":").map((n) => Number(n))
-    const b = s.endTime.split(":").map((n) => Number(n))
-    const ta = a[0] * 60 + a[1]
-    const tb = b[0] * 60 + b[1]
-    if (s.isActive && !(ta < tb)) return { error: "Horário inválido" }
+  if (isSalonOwnerError(ownerResult)) {
+    return { error: ownerResult.error }
   }
 
-  const owner = await getOwnerSalonId()
-  if ("error" in owner) return { error: owner.error as string }
-
-  const prof = await supabase
+  // Verifica se o profissional pertence ao salão do dono
+  const profResult = await supabase
     .from("professionals")
     .select("id")
     .eq("id", professionalId)
-    .eq("salon_id", owner.salonId)
+    .eq("salon_id", ownerResult.salonId)
     .single()
-  if (prof.error || !prof.data) return { error: "Profissional inválido" }
 
-  const del = await supabase.from("availability").delete().eq("professional_id", professionalId)
-  if (del.error) return { error: del.error.message }
+  if (profResult.error || !profResult.data) {
+    return { error: "Profissional inválido" }
+  }
 
-  const toInsert = parsed.data
-    .filter((s) => s.isActive)
-    .map((s) => ({
+  // Busca horários de disponibilidade
+  const availabilityResult = await supabase
+    .from("availability")
+    .select("day_of_week,start_time,end_time,is_break")
+    .eq("professional_id", professionalId)
+    .eq("is_break", false)
+    .order("day_of_week", { ascending: true })
+
+  if (availabilityResult.error) {
+    return { error: availabilityResult.error.message }
+  }
+
+  const availabilityData = (availabilityResult.data || []) as Array<{
+    day_of_week: number
+    start_time: string
+    end_time: string
+  }>
+
+  return availabilityData.map((item) => ({
+    dayOfWeek: item.day_of_week,
+    startTime: item.start_time,
+    endTime: item.end_time,
+  }))
+}
+
+/**
+ * Atualiza a disponibilidade de um profissional
+ */
+export async function updateAvailability(
+  professionalId: string,
+  schedule: ScheduleItem[]
+): Promise<ActionResult> {
+  const supabase = await createClient()
+
+  // Validação dos dados de entrada
+  const parsed = z.array(scheduleItemSchema).safeParse(schedule)
+  if (!parsed.success) {
+    return { error: formatZodError(parsed.error) }
+  }
+
+  // Validação de horários
+  for (const item of parsed.data) {
+    if (item.isActive && !isValidTimeRange(item.startTime, item.endTime)) {
+      return { error: "Horário inválido: início deve ser anterior ao fim" }
+    }
+  }
+
+  // Verifica autenticação e propriedade do salão
+  const ownerResult = await getOwnerSalonId()
+  if (isSalonOwnerError(ownerResult)) {
+    return { error: ownerResult.error }
+  }
+
+  // Verifica se o profissional pertence ao salão
+  const profResult = await supabase
+    .from("professionals")
+    .select("id")
+    .eq("id", professionalId)
+    .eq("salon_id", ownerResult.salonId)
+    .single()
+
+  if (profResult.error || !profResult.data) {
+    return { error: "Profissional inválido" }
+  }
+
+  // Remove disponibilidade existente
+  const deleteResult = await supabase
+    .from("availability")
+    .delete()
+    .eq("professional_id", professionalId)
+
+  if (deleteResult.error) {
+    return { error: deleteResult.error.message }
+  }
+
+  // Insere novos horários ativos
+  const activeSchedules = parsed.data.filter((item) => item.isActive)
+  if (activeSchedules.length > 0) {
+    const toInsert = activeSchedules.map((item) => ({
       professional_id: professionalId,
-      day_of_week: s.dayOfWeek,
-      start_time: s.startTime,
-      end_time: s.endTime,
+      day_of_week: item.dayOfWeek,
+      start_time: item.startTime,
+      end_time: item.endTime,
       is_break: false,
     }))
 
-  if (toInsert.length) {
-    const ins = await supabase.from("availability").insert(toInsert)
-    if (ins.error) return { error: ins.error.message }
+    const insertResult = await supabase.from("availability").insert(toInsert)
+    if (insertResult.error) {
+      return { error: insertResult.error.message }
+    }
   }
 
   revalidatePath("/dashboard/team")
   return { success: true }
 }
-

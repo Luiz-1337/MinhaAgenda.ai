@@ -3,19 +3,24 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { type CreateSalonSchema } from "@/lib/schemas"
+import type { ActionResult } from "@/lib/types/common"
 
-export type CreateSalonResult = { error: string } | { success: true; salonId: string }
+export type CreateSalonResult = ActionResult<{ salonId: string }>
 
+/**
+ * Cria um novo salão para o usuário autenticado
+ */
 export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonResult> {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
   if (!user) {
     return { error: "Não autenticado" }
   }
 
-  const insert = await supabase
+  const insertResult = await supabase
     .from("salons")
     .insert({
       owner_id: user.id,
@@ -27,12 +32,13 @@ export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonR
     .select("id")
     .single()
 
-  if (insert.error) {
-    return { error: insert.error.message }
+  if (insertResult.error) {
+    return { error: insertResult.error.message }
   }
 
+  // Atualiza o perfil do usuário para admin
   await supabase.from("profiles").update({ system_role: "admin" }).eq("id", user.id)
 
   revalidatePath("/")
-  return { success: true, salonId: insert.data.id }
+  return { success: true, data: { salonId: insertResult.data.id } }
 }
