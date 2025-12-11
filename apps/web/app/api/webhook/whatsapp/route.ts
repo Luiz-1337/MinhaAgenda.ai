@@ -119,15 +119,21 @@ export async function POST(req: Request) {
         console.warn("⚠️ AI retornou resposta vazia após todas as tentativas")
         return new Response("OK", { status: 200 })
       }
+    }
 
-      // Salva mensagem do assistente
-      await saveMessage(chat.id, "assistant", aiResponse)
-
-      // Envia resposta via WhatsApp
-      await sendWhatsAppMessage(from, aiResponse)
-
+    // Caso tenhamos uma resposta, mesmo sem tool results, seguimos o fluxo normal
+    if (!aiResponse || aiResponse.trim().length === 0) {
+      console.warn("⚠️ AI retornou resposta vazia sem uso de ferramentas")
       return new Response("OK", { status: 200 })
     }
+
+    // Salva mensagem do assistente
+    await saveMessage(chat.id, "assistant", aiResponse)
+
+    // Envia resposta via WhatsApp
+    await sendWhatsAppMessage(from, aiResponse)
+
+    return new Response("OK", { status: 200 })
   } catch (error) {
     console.error("Error processing WhatsApp webhook:", error)
     const errorMessage = extractErrorMessage(error)
