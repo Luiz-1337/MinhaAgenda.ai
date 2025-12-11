@@ -323,4 +323,3 @@ export async function initializeDashboardData(salonId: string): Promise<{ succes
 
   return { success: true }
 }
-

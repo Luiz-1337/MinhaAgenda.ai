@@ -3,7 +3,7 @@
  */
 
 import { and, eq, gt, asc } from "drizzle-orm"
-import { db, appointments, services, professionals, profiles } from "@repo/db"
+import { db, appointments, services, professionals, profiles, salonIntegrations } from "@repo/db"
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import {
   createAppointmentSchema,
@@ -18,6 +18,141 @@ import {
   type GetMyFutureAppointmentsInput,
 } from "../schemas/tools.schema.js"
 import { checkAvailabilityTool } from "./availability.tool.js"
+
+/**
+ * Cria evento no Google Calendar para um agendamento
+ * Função auxiliar para sincronização
+ */
+async function createGoogleEventForAppointment(
+  appointmentId: string,
+  salonId: string
+): Promise<void> {
+  // Verifica se há integração Google configurada
+  const integration = await db.query.salonIntegrations.findFirst({
+    where: eq(salonIntegrations.salonId, salonId),
+  })
+
+  if (!integration || !integration.refreshToken) {
+    // Salão não tem integração - não é erro, apenas não sincroniza
+    return
+  }
+
+  // Importa dinamicamente para evitar dependência obrigatória
+  try {
+    const { google } = await import("googleapis")
+    const { OAuth2Client } = await import("google-auth-library")
+
+    // Configura cliente OAuth
+    const clientId = process.env.GOOGLE_CLIENT_ID
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI
+
+    if (!clientId || !clientSecret) {
+      return // Configuração não disponível
+    }
+
+    const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri)
+    oauth2Client.setCredentials({
+      refresh_token: integration.refreshToken,
+      access_token: integration.accessToken || undefined,
+      expiry_date: integration.expiresAt ? integration.expiresAt * 1000 : undefined,
+    })
+
+    // Verifica se precisa fazer refresh do token
+    const now = Date.now()
+    const expiresAt = integration.expiresAt ? integration.expiresAt * 1000 : 0
+    const fiveMinutes = 5 * 60 * 1000
+
+    if (!integration.accessToken || (expiresAt && expiresAt - now < fiveMinutes)) {
+      const { credentials } = await oauth2Client.refreshAccessToken()
+      await db
+        .update(salonIntegrations)
+        .set({
+          accessToken: credentials.access_token || null,
+          expiresAt: credentials.expiry_date ? Math.floor(credentials.expiry_date / 1000) : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(salonIntegrations.id, integration.id))
+      oauth2Client.setCredentials(credentials)
+    }
+
+    // Busca dados do agendamento
+    const appointmentData = await db
+      .select({
+        id: appointments.id,
+        date: appointments.date,
+        endTime: appointments.endTime,
+        notes: appointments.notes,
+        professionalName: professionals.name,
+        professionalEmail: professionals.email,
+        serviceName: services.name,
+        clientName: profiles.fullName,
+      })
+      .from(appointments)
+      .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
+      .innerJoin(services, eq(appointments.serviceId, services.id))
+      .innerJoin(profiles, eq(appointments.clientId, profiles.id))
+      .where(eq(appointments.id, appointmentId))
+      .limit(1)
+
+    const apt = appointmentData[0]
+    if (!apt) {
+      return
+    }
+
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client })
+    const timeZone = process.env.GOOGLE_TIMEZONE || "America/Sao_Paulo"
+
+    // Formata título: "[Profissional] Serviço - Cliente"
+    const summary = `[${apt.professionalName}] ${apt.serviceName} - ${apt.clientName || "Cliente"}`
+
+    let description = `Serviço: ${apt.serviceName}\n`
+    description += `Cliente: ${apt.clientName || "Cliente"}\n`
+    if (apt.notes) {
+      description += `\nObservações: ${apt.notes}`
+    }
+
+    const attendees = apt.professionalEmail ? [{ email: apt.professionalEmail }] : undefined
+
+    const event = {
+      summary,
+      description,
+      start: {
+        dateTime: apt.date.toISOString(),
+        timeZone,
+      },
+      end: {
+        dateTime: apt.endTime.toISOString(),
+        timeZone,
+      },
+      attendees,
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: "email", minutes: 24 * 60 },
+          { method: "popup", minutes: 30 },
+        ],
+      },
+    }
+
+    const response = await calendar.events.insert({
+      calendarId: "primary",
+      requestBody: event,
+    })
+
+    // Atualiza agendamento com ID do evento Google
+    if (response.data.id) {
+      await db
+        .update(appointments)
+        .set({ googleEventId: response.data.id })
+        .where(eq(appointments.id, appointmentId))
+    }
+  } catch (error) {
+    // Se googleapis não estiver instalado ou houver erro, apenas loga
+    console.error("Erro ao criar evento Google Calendar:", error)
+    throw error
+  }
+}
 
 /**
  * Cria um novo agendamento
@@ -76,7 +211,13 @@ export async function createAppointmentTool(
     })
     .returning({ id: appointments.id })
 
-  // TODO: Criar evento no Google Calendar se houver integração
+  // Sincroniza com Google Calendar (não bloqueia se falhar)
+  try {
+    await createGoogleEventForAppointment(appointment.id, params.salonId)
+  } catch (error) {
+    // Loga erro mas não falha o agendamento - nosso banco é a fonte da verdade
+    console.error('Erro ao sincronizar agendamento com Google Calendar:', error)
+  }
 
   return {
     appointmentId: appointment.id,
@@ -206,7 +347,12 @@ export async function rescheduleAppointmentTool(
     })
     .returning({ id: appointments.id })
 
-  // TODO: Atualizar Google Calendar se houver integração
+  // Sincroniza com Google Calendar (não bloqueia se falhar)
+  try {
+    await createGoogleEventForAppointment(newAppointment.id, appointment.salonId)
+  } catch (error) {
+    console.error('Erro ao sincronizar reagendamento com Google Calendar:', error)
+  }
 
   return {
     appointmentId: newAppointment.id,

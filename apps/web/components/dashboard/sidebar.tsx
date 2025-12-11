@@ -22,11 +22,13 @@ import {
   User,
   Scissors,
   Plus,
+  Calendar,
 } from "lucide-react"
 import { useSalon } from "@/contexts/salon-context"
 
 const navItems = [
   { href: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "schedule", label: "Agenda", icon: Calendar },
   { href: "chat", label: "Conversas", icon: MessageSquare },
   { href: "agents", label: "Agentes", icon: Bot },
   { href: "contacts", label: "Contatos", icon: User },

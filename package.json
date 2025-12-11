@@ -13,12 +13,15 @@
     "db:migrate:manual": "pnpm --filter @repo/db run migrate:manual",
     "db:migrate:manual:002": "pnpm --filter @repo/db run migrate:manual:002",
     "db:migrate:manual:003": "pnpm --filter @repo/db run migrate:manual:003",
+    "db:migrate:manual:006": "pnpm --filter @repo/db run migrate:manual:006",
     "db:reset": "pnpm --filter @repo/db run reset",
     "mcp:build": "pnpm --filter @repo/mcp-server run build",
     "mcp:dev": "pnpm --filter @repo/mcp-server run dev",
     "mcp:start": "pnpm --filter @repo/mcp-server run start",
     "mcp:debug": "tsx scripts/mcp-client.ts",
-    "mcp:chat": "tsx scripts/mcp-chat.ts"
+    "mcp:chat": "tsx scripts/mcp-chat.ts",
+    "test:google": "tsx scripts/test-google-calendar.ts",
+    "diagnose:google": "tsx scripts/diagnose-google-integration.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

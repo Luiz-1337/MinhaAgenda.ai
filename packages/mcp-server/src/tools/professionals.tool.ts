@@ -3,7 +3,7 @@
  */
 
 import { and, eq } from "drizzle-orm"
-import { db, professionals } from "@repo/db"
+import { db, professionals, professionalServices, services } from "@repo/db"
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { getProfessionalsSchema, type GetProfessionalsInput } from "../schemas/tools.schema.js"
 
@@ -17,29 +17,54 @@ export async function getProfessionalsTool(
   professionals: Array<{
     id: string
     name: string
-    email: string
-    phone: string | null
+    services: string[]
     isActive: boolean
   }>
   message: string
 }> {
   const params = getProfessionalsSchema.parse(args)
 
-  const professionalsList = await db
+  // Busca profissionais com seus serviços
+  const professionalsWithServices = await db
     .select({
       id: professionals.id,
       name: professionals.name,
-      email: professionals.email,
-      phone: professionals.phone,
       isActive: professionals.isActive,
+      serviceName: services.name,
     })
     .from(professionals)
+    .leftJoin(professionalServices, eq(professionals.id, professionalServices.professionalId))
+    .leftJoin(services, eq(professionalServices.serviceId, services.id))
     .where(
       and(
         eq(professionals.salonId, params.salonId),
         params.includeInactive ? undefined : eq(professionals.isActive, true)
       )
     )
+
+  // Agrupa serviços por profissional
+  const professionalsMap = new Map<
+    string,
+    { id: string; name: string; services: string[]; isActive: boolean }
+  >()
+
+  for (const row of professionalsWithServices) {
+    if (!professionalsMap.has(row.id)) {
+      professionalsMap.set(row.id, {
+        id: row.id,
+        name: row.name,
+        services: [],
+        isActive: row.isActive,
+      })
+    }
+
+    const professional = professionalsMap.get(row.id)!
+    if (row.serviceName) {
+      professional.services.push(row.serviceName)
+    }
+  }
+
+  const professionalsList = Array.from(professionalsMap.values())
 
   return {
     professionals: professionalsList,

@@ -208,6 +208,15 @@ export function createBookAppointmentTool(
         status: 'pending'
       }).returning({ id: appointments.id })
 
+      // Sincroniza com Google Calendar (não bloqueia se falhar)
+      try {
+        const { createGoogleEvent } = await import('@/lib/google')
+        await createGoogleEvent(appointment.id)
+      } catch (error) {
+        // Loga erro mas não falha o agendamento - nosso banco é a fonte da verdade
+        console.error('Erro ao sincronizar agendamento com Google Calendar:', error)
+      }
+
       return {
         success: true,
         appointmentId: appointment.id,
@@ -458,10 +467,14 @@ CONTEXTO TEMPORAL:
 
 REGRAS CRÍTICAS:
 1. O cliente NÃO sabe IDs de serviço ou profissional. Nunca peça IDs.
-2. Se houver ambiguidade em nomes, peça esclarecimento listando as opções encontradas pela tool (ela retornará erro com sugestões).
-3. Quando usar getServices ou getProfessionals, apresente a lista de forma formatada e amigável.
-4. Antes de agendar (bookAppointment), SEMPRE verifique disponibilidade (checkAvailability).
-5. Seja educado, conciso e use português brasileiro.
+2. NUNCA invente ou assuma informações sobre profissionais, serviços ou disponibilidade.
+3. SEMPRE use as tools disponíveis antes de responder sobre profissionais, serviços ou horários.
+4. Se uma tool retornar vazia ou erro, diga claramente que não encontrou a informação solicitada.
+5. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas tools.
+6. Se houver ambiguidade em nomes, peça esclarecimento listando as opções encontradas pela tool (ela retornará erro com sugestões).
+7. Quando usar getServices ou getProfessionals, apresente a lista de forma formatada e amigável.
+8. Antes de agendar (bookAppointment), SEMPRE verifique disponibilidade (checkAvailability).
+9. Seja educado, conciso e use português brasileiro.
 
 MEMÓRIA DE PREFERÊNCIAS:
 - Quando o cliente mencionar uma preferência (ex: "Só corto com o João", "Tenho alergia a lâmina", "Prefiro corte tradicional"), use a tool saveUserPreferences PROATIVAMENTE em background para salvar essa informação.

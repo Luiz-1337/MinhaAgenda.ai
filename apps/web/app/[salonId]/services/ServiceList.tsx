@@ -52,13 +52,17 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     
     setIsLoading(true)
     startTransition(async () => {
-      const res = await getServices(salonId)
-      if (Array.isArray(res)) {
+      try {
+        const res = await getServices(salonId)
+        // getServices agora retorna sempre um array ou lança um erro
         setList(res)
-      } else {
-        toast.error("Erro ao carregar serviços")
+      } catch (error) {
+        console.error("Erro ao carregar serviços:", error)
+        toast.error(error instanceof Error ? error.message : "Erro ao carregar serviços")
+        setList([])
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     })
   }, [salonId])
 
@@ -102,8 +106,12 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       toast.success(editing ? "Serviço atualizado" : "Serviço criado")
       setOpen(false)
       setEditing(null)
-      const again = await getServices(salonId)
-      if (Array.isArray(again)) setList(again)
+      try {
+        const again = await getServices(salonId)
+        setList(again)
+      } catch (error) {
+        console.error("Erro ao recarregar serviços:", error)
+      }
     })
   }
 
@@ -120,8 +128,12 @@ export default function ServiceList({ salonId }: ServiceListProps) {
         return
       }
       toast.success("Serviço desativado")
-      const again = await getServices(salonId)
-      if (Array.isArray(again)) setList(again)
+      try {
+        const again = await getServices(salonId)
+        setList(again)
+      } catch (error) {
+        console.error("Erro ao recarregar serviços:", error)
+      }
     })
   }
 

@@ -15,7 +15,8 @@ import {
   index,
   date,
   jsonb,
-  uniqueIndex
+  uniqueIndex,
+  bigint
 } from 'drizzle-orm/pg-core'
 
 // ============================================================================
@@ -100,6 +101,7 @@ export const professionals = pgTable(
     name: text('name').notNull(),
     email: text('email').notNull(),
     phone: text('phone'),
+    serviceIds: jsonb('service_ids'), // IDs dos serviços que o profissional executa
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
@@ -211,6 +213,26 @@ export const integrations = pgTable('integrations', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 
+export const salonIntegrations = pgTable(
+  'salon_integrations',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).unique().notNull(),
+    provider: text('provider').default('google').notNull(),
+    refreshToken: text('refresh_token').notNull(),
+    accessToken: text('access_token'),
+    expiresAt: bigint('expires_at', { mode: 'number' }),
+    email: text('email'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonIdx: index('salon_integrations_salon_idx').on(table.salonId)
+    }
+  }
+)
+
 // ============================================================================
 // TABLES - Chat/CRM
 // ============================================================================
@@ -304,6 +326,26 @@ export const leads = pgTable(
   }
 )
 
+export const customers = pgTable(
+  'customers',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    phone: text('phone').notNull(),
+    aiPreferences: text('ai_preferences'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonPhoneIdx: uniqueIndex('customers_salon_phone_unique').on(table.salonId, table.phone),
+      salonIdx: index('customers_salon_idx').on(table.salonId),
+      phoneIdx: index('customers_phone_idx').on(table.phone)
+    }
+  }
+)
+
 export const campaigns = pgTable('campaigns', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
   salonId: uuid('salon_id').references(() => salons.id).notNull(),
@@ -378,7 +420,13 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   services: many(services),
   professionals: many(professionals),
   appointments: many(appointments),
-  chats: many(chats)
+  chats: many(chats),
+  customers: many(customers),
+  integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] })
+}))
+
+export const salonIntegrationsRelations = relations(salonIntegrations, ({ one }) => ({
+  salon: one(salons, { fields: [salonIntegrations.salonId], references: [salons.id] })
 }))
 
 export const servicesRelations = relations(services, ({ one, many }) => ({
@@ -429,4 +477,8 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
   salon: one(salons, { fields: [chatMessages.salonId], references: [salons.id] }),
   client: one(profiles, { fields: [chatMessages.clientId], references: [profiles.id] })
+}))
+
+export const customersRelations = relations(customers, ({ one }) => ({
+  salon: one(salons, { fields: [customers.salonId], references: [salons.id] })
 }))

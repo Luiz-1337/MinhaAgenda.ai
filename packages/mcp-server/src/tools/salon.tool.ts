@@ -28,15 +28,20 @@ export async function getSalonDetailsTool(
   const params = getSalonInfoSchema.parse(args)
   
   // Se salonId não foi fornecido, tenta obter do contexto
-  let salonId = params.salonId
+  let salonId: string = params.salonId || ""
   if (!salonId) {
     // Tenta obter do contexto do servidor (se disponível)
     const contextSalonId = (server as any).context?.salonId
-    if (contextSalonId) {
+    if (contextSalonId && typeof contextSalonId === "string") {
       salonId = contextSalonId
     } else {
       throw new Error("salonId é obrigatório. Forneça como parâmetro ou configure no contexto.")
     }
+  }
+
+  // Garante que salonId é uma string válida
+  if (!salonId || typeof salonId !== "string") {
+    throw new Error("salonId inválido")
   }
 
   const salon = await db.query.salons.findFirst({

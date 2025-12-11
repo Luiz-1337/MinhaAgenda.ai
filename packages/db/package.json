@@ -11,10 +11,12 @@
     "studio": "drizzle-kit studio",
     "smoke": "node scripts/smoke.mjs",
     "seed": "node scripts/seed.mjs",
+    "seed:salon": "node scripts/seed-salon.mjs",
     "migrate:manual": "node scripts/migrate.mjs",
     "migrate:manual:002": "node scripts/migrate_002.mjs",
     "migrate:manual:003": "node scripts/migrate_003.mjs",
     "migrate:manual:005": "node scripts/migrate_005.mjs",
+    "migrate:manual:006": "node scripts/migrate_006.mjs",
     "reset": "node scripts/reset.mjs"
   },
   "dependencies": {
