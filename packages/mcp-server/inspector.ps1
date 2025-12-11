@@ -12,3 +12,4 @@ npx @modelcontextprotocol/inspector npx -y tsx "$PSScriptRoot/src/index.ts"
 
 
 
+

@@ -14,3 +14,4 @@ npx @modelcontextprotocol/inspector npx -y tsx "$(dirname "$0")/src/index.ts"
 
 
 
+
