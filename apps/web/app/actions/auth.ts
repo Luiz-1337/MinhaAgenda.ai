@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import type { ActionState } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
+import { getOwnerSalonId, isSalonOwnerError } from "@/lib/services/salon.service"
 
 /**
  * Realiza login do usuário
@@ -20,6 +21,15 @@ export async function login(prevState: ActionState, formData: FormData): Promise
     return { error: formatAuthError(error) }
   }
 
+  // Verifica se o usuário tem um salão
+  const salonResult = await getOwnerSalonId()
+  
+  // Se não tiver salão, redireciona para onboarding
+  if (isSalonOwnerError(salonResult)) {
+    redirect("/onboarding")
+  }
+
+  // Se tiver salão, redireciona para o dashboard
   redirect("/")
 }
 
@@ -44,5 +54,6 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
     return { error: formatAuthError(error) }
   }
 
-  redirect("/")
+  // Novos usuários sempre precisam fazer onboarding
+  redirect("/onboarding")
 }

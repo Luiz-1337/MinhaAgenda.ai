@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Send, MoreHorizontal } from "lucide-react"
+import { toast } from "sonner"
 
 type ConversationStatus = "Ativo" | "Finalizado" | "Aguardando humano"
 type Conversation = {
@@ -76,6 +77,8 @@ export default function ChatPage() {
   const [tab, setTab] = useState("todos")
   const [query, setQuery] = useState("")
   const [activeId, setActiveId] = useState(conversations[0].id)
+  const [messageText, setMessageText] = useState("")
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -98,6 +101,37 @@ export default function ChatPage() {
 
   const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
   const messages = useMemo(() => (active ? chatByConversation[active.id] ?? [] : []), [active])
+
+  function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!messageText.trim()) return
+    
+    // TODO: Implementar envio de mensagem via API
+    toast.success("Mensagem enviada")
+    setMessageText("")
+    if (textareaRef.current) {
+      textareaRef.current.focus()
+    }
+  }
+
+  function handleTransferConversation(conversationId: string) {
+    toast.info("Transferindo conversa...")
+    // TODO: Implementar lógica de transferência
+  }
+
+  function handleFinishConversation(conversationId: string) {
+    if (confirm("Tem certeza que deseja finalizar esta conversa?")) {
+      toast.success("Conversa finalizada")
+      // TODO: Implementar lógica de finalização
+    }
+  }
+
+  function handleBlockConversation(conversationId: string) {
+    if (confirm("Tem certeza que deseja bloquear este contato?")) {
+      toast.success("Contato bloqueado")
+      // TODO: Implementar lógica de bloqueio
+    }
+  }
 
   return (
     <div className="h-[calc(100vh-3.5rem)]">
@@ -177,9 +211,9 @@ export default function ChatPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Transferir</DropdownMenuItem>
-                      <DropdownMenuItem>Finalizar</DropdownMenuItem>
-                      <DropdownMenuItem variant="destructive">Bloquear</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleTransferConversation(active.id)}>Transferir</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleFinishConversation(active.id)}>Finalizar</DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onClick={() => handleBlockConversation(active.id)}>Bloquear</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -222,17 +256,18 @@ export default function ChatPage() {
 
           <div className="border-t p-3">
             <form
-              onSubmit={(e) => {
-                e.preventDefault()
-              }}
+              onSubmit={handleSendMessage}
               className="flex items-end gap-2"
             >
               <textarea
+                ref={textareaRef}
                 placeholder="Digite sua mensagem..."
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
                 className="bg-background focus-visible:ring-ring/50 min-h-12 w-full resize-none rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:outline-1"
                 rows={3}
               />
-              <Button type="submit" className="bg-violet-600 text-white hover:bg-violet-700" aria-label="Enviar">
+              <Button type="submit" disabled={!messageText.trim()} className="bg-violet-600 text-white hover:bg-violet-700" aria-label="Enviar">
                 <Send className="size-4" />
               </Button>
             </form>

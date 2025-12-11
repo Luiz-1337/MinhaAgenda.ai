@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
 import { MoreHorizontal } from "lucide-react"
+import { toast } from "sonner"
 
 type AgentStatus = "Ativo" | "Inativo"
 type AgentRole = "SUPPORT" | "SALES" | "TRAINER"
@@ -74,13 +75,40 @@ export default function AgentsPage() {
     )
   }
 
+  function handleCreateAgent() {
+    toast.info("Funcionalidade de criação de agente em desenvolvimento")
+    // TODO: Implementar modal/dialog para criar novo agente
+  }
+
+  function handleEditAgent(agent: Agent) {
+    toast.info(`Editando agente: ${agent.name}`)
+    // TODO: Implementar modal/dialog para editar agente
+  }
+
+  function handleDuplicateAgent(agent: Agent) {
+    const newAgent: Agent = {
+      ...agent,
+      id: Date.now().toString(),
+      name: `${agent.name} (cópia)`,
+    }
+    setAgents((prev) => [...prev, newAgent])
+    toast.success("Agente duplicado com sucesso")
+  }
+
+  function handleRemoveAgent(agent: Agent) {
+    if (confirm(`Tem certeza que deseja remover o agente "${agent.name}"?`)) {
+      setAgents((prev) => prev.filter((a) => a.id !== agent.id))
+      toast.success("Agente removido")
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Agentes</h1>
         </div>
-        <Button className="bg-teal-600 text-white hover:bg-teal-700">Criar agente</Button>
+        <Button onClick={handleCreateAgent} className="bg-teal-600 text-white hover:bg-teal-700">Criar agente</Button>
       </div>
 
       <Card className="p-4">
@@ -130,9 +158,9 @@ export default function AgentsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Editar</DropdownMenuItem>
-                    <DropdownMenuItem>Duplicar</DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive">Remover</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleEditAgent(a)}>Editar</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDuplicateAgent(a)}>Duplicar</DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onClick={() => handleRemoveAgent(a)}>Remover</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
 

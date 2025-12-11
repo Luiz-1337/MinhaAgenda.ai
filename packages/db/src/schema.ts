@@ -55,6 +55,7 @@ export const salons = pgTable(
     ownerId: uuid('owner_id').references(() => profiles.id).notNull(),
     name: text('name').notNull(),
     slug: text('slug').unique().notNull(),
+    whatsapp: text('whatsapp').unique(),
     address: text('address'),
     phone: text('phone'),
     description: text('description'),
@@ -65,32 +66,50 @@ export const salons = pgTable(
   },
   (table) => {
     return {
-      slugIdx: index('salon_slug_idx').on(table.slug)
+      slugIdx: index('salon_slug_idx').on(table.slug),
+      ownerIdx: index('salon_owner_idx').on(table.ownerId)
     }
   }
 )
 
-export const services = pgTable('services', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-  name: text('name').notNull(),
-  description: text('description'),
-  duration: integer('duration').notNull(),
-  price: numeric('price', { precision: 10, scale: 2 }).notNull(),
-  isActive: boolean('is_active').default(true).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull()
-})
+export const services = pgTable(
+  'services',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    duration: integer('duration').notNull(),
+    price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonIdx: index('services_salon_idx').on(table.salonId)
+    }
+  }
+)
 
-export const professionals = pgTable('professionals', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-  userId: uuid('user_id').references(() => profiles.id),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
-  phone: text('phone'),
-  isActive: boolean('is_active').default(true).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull()
-})
+export const professionals = pgTable(
+  'professionals',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    userId: uuid('user_id').references(() => profiles.id),
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    phone: text('phone'),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonIdx: index('professionals_salon_idx').on(table.salonId),
+      userIdx: index('professionals_user_idx').on(table.userId)
+    }
+  }
+)
 
 export const professionalServices = pgTable(
   'professional_services',
@@ -107,33 +126,27 @@ export const professionalServices = pgTable(
   }
 )
 
-export const salonMemberships = pgTable(
-  'salon_memberships',
-  {
-    id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-    profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull()
-  },
-  (table) => {
-    return {
-      membershipIdx: index('membership_profile_salon_idx').on(table.profileId, table.salonId)
-    }
-  }
-)
 
 // ============================================================================
 // TABLES - Scheduling
 // ============================================================================
-export const availability = pgTable('availability', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }).notNull(),
-  dayOfWeek: integer('day_of_week').notNull(),
-  startTime: time('start_time').notNull(),
-  endTime: time('end_time').notNull(),
-  isBreak: boolean('is_break').default(false).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull()
-})
+export const availability = pgTable(
+  'availability',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }).notNull(),
+    dayOfWeek: integer('day_of_week').notNull(),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    isBreak: boolean('is_break').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      profDayIdx: index('availability_prof_day_idx').on(table.professionalId, table.dayOfWeek)
+    }
+  }
+)
 
 export const scheduleOverrides = pgTable(
   'schedule_overrides',
@@ -174,7 +187,8 @@ export const appointments = pgTable(
       salonDateIdx: index('appt_salon_date_idx').on(table.salonId, table.date),
       clientIdx: index('appt_client_idx').on(table.clientId),
       googleEventIdx: index('appt_google_event_idx').on(table.googleEventId),
-      profTimeIdx: index('appt_prof_time_idx').on(table.professionalId, table.date, table.endTime)
+      profTimeIdx: index('appt_prof_time_idx').on(table.professionalId, table.date, table.endTime),
+      serviceIdx: index('appt_service_idx').on(table.serviceId)
     }
   }
 )
@@ -200,14 +214,22 @@ export const integrations = pgTable('integrations', {
 // ============================================================================
 // TABLES - Chat/CRM
 // ============================================================================
-export const chats = pgTable('chats', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  salonId: uuid('salon_id').references(() => salons.id).notNull(),
-  clientPhone: text('client_phone').notNull(),
-  status: chatStatusEnum('status').default('active').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-})
+export const chats = pgTable(
+  'chats',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id).notNull(),
+    clientPhone: text('client_phone').notNull(),
+    status: chatStatusEnum('status').default('active').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonStatusIdx: index('chats_salon_status_idx').on(table.salonId, table.status)
+    }
+  }
+)
 
 export const messages = pgTable('messages', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
@@ -218,18 +240,45 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at').defaultNow().notNull()
 })
 
-export const salonCustomers = pgTable('salon_customers', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-  profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
-  notes: text('notes'),
-  birthday: date('birthday'),
-  marketingOptIn: boolean('marketing_opt_in').default(false).notNull(),
-  interactionStatus: leadStatusEnum('interaction_status').default('new').notNull(),
-  preferences: jsonb('preferences'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-})
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    clientId: uuid('client_id').references(() => profiles.id, { onDelete: 'set null' }),
+    role: text('role').notNull(), // 'user' | 'assistant'
+    content: text('content').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonClientIdx: index('chat_messages_salon_client_idx').on(table.salonId, table.clientId),
+      salonCreatedIdx: index('chat_messages_salon_created_idx').on(table.salonId, table.createdAt)
+    }
+  }
+)
+
+export const salonCustomers = pgTable(
+  'salon_customers',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+    notes: text('notes'),
+    birthday: date('birthday'),
+    marketingOptIn: boolean('marketing_opt_in').default(false).notNull(),
+    interactionStatus: leadStatusEnum('interaction_status').default('new').notNull(),
+    preferences: jsonb('preferences'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonProfileIdx: index('salon_customers_salon_profile_idx').on(table.salonId, table.profileId),
+      salonIdx: index('salon_customers_salon_idx').on(table.salonId)
+    }
+  }
+)
 
 export const leads = pgTable(
   'leads',
@@ -275,6 +324,46 @@ export const campaignRecipients = pgTable('campaign_recipients', {
   profileId: uuid('profile_id').references(() => profiles.id),
   addedAt: timestamp('added_at').defaultNow().notNull()
 })
+
+// ============================================================================
+// TABLES - Dashboard Statistics
+// ============================================================================
+export const aiUsageStats = pgTable(
+  'ai_usage_stats',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    date: date('date').notNull(),
+    model: text('model').notNull(), // 'gpt-4o-mini', 'gpt-4.1', 'gpt-4o'
+    credits: integer('credits').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonDateIdx: index('ai_usage_salon_date_idx').on(table.salonId, table.date),
+      uniqueSalonDateModel: uniqueIndex('ai_usage_salon_date_model_unique').on(table.salonId, table.date, table.model)
+    }
+  }
+)
+
+export const agentStats = pgTable(
+  'agent_stats',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    agentName: text('agent_name').notNull(), // Nome do agente/IA
+    totalCredits: integer('total_credits').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonAgentIdx: index('agent_stats_salon_agent_idx').on(table.salonId, table.agentName),
+      uniqueSalonAgent: uniqueIndex('agent_stats_salon_agent_unique').on(table.salonId, table.agentName)
+    }
+  }
+)
 
 // ============================================================================
 // RELATIONS
@@ -328,11 +417,6 @@ export const professionalServicesRelations = relations(professionalServices, ({ 
   service: one(services, { fields: [professionalServices.serviceId], references: [services.id] })
 }))
 
-export const salonMembershipsRelations = relations(salonMemberships, ({ one }) => ({
-  salon: one(salons, { fields: [salonMemberships.salonId], references: [salons.id] }),
-  user: one(profiles, { fields: [salonMemberships.profileId], references: [profiles.id] })
-}))
-
 export const chatsRelations = relations(chats, ({ one, many }) => ({
   salon: one(salons, { fields: [chats.salonId], references: [salons.id] }),
   messages: many(messages)
@@ -340,4 +424,9 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
 
 export const messagesRelations = relations(messages, ({ one }) => ({
   chat: one(chats, { fields: [messages.chatId], references: [chats.id] })
+}))
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  salon: one(salons, { fields: [chatMessages.salonId], references: [salons.id] }),
+  client: one(profiles, { fields: [chatMessages.clientId], references: [profiles.id] })
 }))

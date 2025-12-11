@@ -15,6 +15,7 @@ export const coreMessageSchema: z.ZodType<CoreMessage> = z.object({
 
 export const chatRequestSchema = z.object({
   messages: z.array(coreMessageSchema),
+  salonId: z.string().uuid().optional(),
 })
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>

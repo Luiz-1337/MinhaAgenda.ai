@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { getAvailability, updateAvailability } from "@/app/actions/availability"
+import { useSalon } from "@/contexts/salon-context"
 
 type Props = {
   open: boolean
@@ -28,13 +29,14 @@ const dayNames = [
 ]
 
 export default function AvailabilitySheet({ open, onOpenChange, professional }: Props) {
+  const { activeSalon } = useSalon()
   const [isPending, startTransition] = useTransition()
   const [items, setItems] = useState<Item[]>(() => Array.from({ length: 7 }, (_, i) => ({ dayOfWeek: i, isActive: false, startTime: "09:00", endTime: "18:00" })))
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !activeSalon) return
     startTransition(async () => {
-      const res = await getAvailability(professional.id)
+      const res = await getAvailability(professional.id, activeSalon.id)
       if (Array.isArray(res)) {
         const map = new Map<number, { startTime: string; endTime: string }>()
         for (const r of res) map.set(r.dayOfWeek, { startTime: r.startTime, endTime: r.endTime })
@@ -47,7 +49,7 @@ export default function AvailabilitySheet({ open, onOpenChange, professional }: 
         toast.error(res.error)
       }
     })
-  }, [open, professional.id])
+  }, [open, professional.id, activeSalon?.id])
 
   const canSave = useMemo(() => {
     for (const it of items) {
@@ -64,9 +66,14 @@ export default function AvailabilitySheet({ open, onOpenChange, professional }: 
   }
 
   async function onSave() {
+    if (!activeSalon) {
+      toast.error("Selecione um salão")
+      return
+    }
+
     startTransition(async () => {
       const payload = items.map((it) => ({ dayOfWeek: it.dayOfWeek, startTime: it.startTime, endTime: it.endTime, isActive: it.isActive }))
-      const res = await updateAvailability(professional.id, payload)
+      const res = await updateAvailability(professional.id, payload, activeSalon.id)
       if ("error" in res) {
         toast.error(res.error)
         return

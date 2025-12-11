@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server"
 import { db, salons } from "@repo/db"
 import ServiceList from "./ServiceList"
 
-export default async function ServicesPage() {
+export default async function ServicesPage({
+  searchParams,
+}: {
+  searchParams: { salonId?: string }
+}) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -14,14 +18,32 @@ export default async function ServicesPage() {
     redirect("/login")
   }
 
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.ownerId, user.id),
-    columns: { id: true },
-  })
+  // Busca o salão ativo (da URL ou o primeiro do usuário)
+  let salonId = searchParams.salonId
 
-  if (!salon) {
+  if (!salonId) {
+    const firstSalon = await db.query.salons.findFirst({
+      where: eq(salons.ownerId, user.id),
+      columns: { id: true },
+    })
+    if (firstSalon) {
+      salonId = firstSalon.id
+    }
+  }
+
+  if (!salonId) {
     return <div className="text-sm text-muted-foreground">Salão não encontrado.</div>
   }
 
-  return <ServiceList salonId={salon.id} />
+  // Verifica acesso ao salão (pode ser otimizado se não precisar buscar novamente)
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { ownerId: true },
+  })
+
+  if (!salon || salon.ownerId !== user.id) {
+    redirect("/dashboard/services")
+  }
+
+  return <ServiceList salonId={salonId} />
 }

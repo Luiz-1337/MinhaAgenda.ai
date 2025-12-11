@@ -59,10 +59,6 @@ async function main() {
       returning id
     `
 
-    await tx`
-      insert into salon_memberships (salon_id, profile_id)
-      values (${salonId}, ${ownerId}), (${salonId}, ${proUserId})
-    `
 
     await tx`
       insert into availability (professional_id, day_of_week, start_time, end_time, is_break)
@@ -99,16 +95,25 @@ async function main() {
       values ('google', ${salonId}, ${professionalId}, 'seed-access-token', 'Bearer', 'calendar.readonly')
     `
 
-    const [{ id: conversationId }] = await tx`
-      insert into conversations (salon_id, professional_id, client_id, external_id, phone_number, channel, status, interaction_status)
-      values (${salonId}, ${professionalId}, ${clientId}, 'ext-001', '+5511977770000', 'whatsapp', 'active', 'new')
+    // Cria chat usando a tabela chats atual
+    const [{ id: chatId }] = await tx`
+      insert into chats (salon_id, client_phone, status)
+      values (${salonId}, '+5511977770000', 'active')
       returning id
     `
 
+    // Cria mensagens usando chatMessages (tabela atual para mensagens do salão)
     await tx`
-      insert into messages (conversation_id, role, sender_profile_id, content, metadata)
-      values (${conversationId}, 'user', ${clientId}, 'Olá, gostaria de agendar um corte.', '{"source":"seed"}'::jsonb),
-             (${conversationId}, 'assistant', ${proUserId}, 'Claro! Tenho horário amanhã às 10h.', '{"source":"seed"}'::jsonb)
+      insert into chat_messages (salon_id, client_id, role, content)
+      values (${salonId}, ${clientId}, 'user', 'Olá, gostaria de agendar um corte.'),
+             (${salonId}, ${clientId}, 'assistant', 'Claro! Tenho horário amanhã às 10h.')
+    `
+
+    // Também cria mensagens na tabela messages (relacionada ao chat)
+    await tx`
+      insert into messages (chat_id, role, content)
+      values (${chatId}, 'user', 'Olá, gostaria de agendar um corte.'),
+             (${chatId}, 'assistant', 'Claro! Tenho horário amanhã às 10h.')
     `
 
     const [{ id: salonCustomerId }] = await tx`
@@ -134,7 +139,7 @@ async function main() {
       values (${campaignId}, ${salonCustomerId}, ${leadId}, ${clientId})
     `
 
-    console.log('seed-ok', { ownerId, proUserId, clientId, salonId, professionalId, serviceCorteId, appointmentId, conversationId, salonCustomerId, leadId, campaignId })
+    console.log('seed-ok', { ownerId, proUserId, clientId, salonId, professionalId, serviceCorteId, appointmentId, chatId, salonCustomerId, leadId, campaignId })
   })
 
   await sql.end({ timeout: 0 })

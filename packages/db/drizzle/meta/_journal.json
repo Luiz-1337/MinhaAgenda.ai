@@ -22,6 +22,20 @@
       "when": 1765231663740,
       "tag": "0002_magenta_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765401251708,
+      "tag": "0003_skinny_warbound",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1765415174026,
+      "tag": "0004_tiny_avengers",
+      "breakpoints": true
     }
   ]
 }

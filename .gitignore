@@ -1,17 +1,68 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Build outputs
 dist/
+build/
 .next/
 out/
-.expo/
 .turbo/
-.DS_Store
-.env
-.env.*
-build/
-android/
-ios/
+
+# Expo
+.expo/
 expo-packager-cache/
 web-build/
-"node_modules" 
-".turbo" 
-".env" 
+expo-env.d.ts
+
+# React Native / Expo Native
+android/
+ios/
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Testing
+coverage/
+
+# Environment variables
+.env
+.env.*
+.env*.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS
+.DS_Store
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts

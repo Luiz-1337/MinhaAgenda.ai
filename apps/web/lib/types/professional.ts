@@ -10,6 +10,7 @@ export interface ProfessionalRow {
   phone: string | null
   is_active: boolean
   created_at: string
+  working_days?: number[] // Dias da semana que trabalha (0=domingo, 1=segunda, etc)
 }
 
 export interface UpsertProfessionalInput {

@@ -13,6 +13,21 @@
     "db:migrate:manual": "pnpm --filter @repo/db run migrate:manual",
     "db:migrate:manual:002": "pnpm --filter @repo/db run migrate:manual:002",
     "db:migrate:manual:003": "pnpm --filter @repo/db run migrate:manual:003",
-    "db:reset": "pnpm --filter @repo/db run reset"
+    "db:reset": "pnpm --filter @repo/db run reset",
+    "mcp:build": "pnpm --filter @repo/mcp-server run build",
+    "mcp:dev": "pnpm --filter @repo/mcp-server run dev",
+    "mcp:start": "pnpm --filter @repo/mcp-server run start",
+    "mcp:debug": "tsx scripts/mcp-client.ts",
+    "mcp:chat": "tsx scripts/mcp-chat.ts"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "@types/node": "^24.10.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "openai": "^6.10.0"
   }
 }

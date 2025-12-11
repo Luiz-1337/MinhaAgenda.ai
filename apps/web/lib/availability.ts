@@ -10,6 +10,7 @@ export async function getAvailableSlots({
   date,
   salonId,
   serviceDuration,
+  professionalId,
 }: GetAvailableSlotsInput): Promise<string[]> {
   validateInputs(salonId, serviceDuration)
 
@@ -38,7 +39,7 @@ export async function getAvailableSlots({
   }
 
   // Busca agendamentos existentes
-  const busySlots = await getBusyTimeSlots(salonId, dayStart, dayEnd)
+  const busySlots = await getBusyTimeSlots(salonId, dayStart, dayEnd, professionalId)
 
   // Gera slots disponíveis
   return generateAvailableSlots(dayStart, dayEnd, serviceDuration, busySlots)
@@ -73,21 +74,26 @@ function normalizeDate(date: Date | string): Date {
 async function getBusyTimeSlots(
   salonId: string,
   dayStart: Date,
-  dayEnd: Date
+  dayEnd: Date,
+  professionalId?: string
 ): Promise<Array<{ start: Date; end: Date }>> {
+  const whereConditions = [
+    eq(appointments.salonId, salonId),
+    lt(appointments.date, dayEnd),
+    gt(appointments.endTime, dayStart),
+  ]
+
+  if (professionalId) {
+    whereConditions.push(eq(appointments.professionalId, professionalId))
+  }
+
   const existingAppointments = await db
     .select({
       start: appointments.date,
       end: appointments.endTime,
     })
     .from(appointments)
-    .where(
-      and(
-        eq(appointments.salonId, salonId),
-        lt(appointments.date, dayEnd),
-        gt(appointments.endTime, dayStart)
-      )
-    )
+    .where(and(...whereConditions))
 
   return existingAppointments
     .map(({ start, end }) => ({

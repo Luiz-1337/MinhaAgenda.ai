@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "minhaagendaai": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "tsx",
+        "E:/minhaagendaai_v2/packages/mcp-server/src/index.ts"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql://usuario:senha@host:porta/database"
+      }
+    }
+  }
+}
+
+
+

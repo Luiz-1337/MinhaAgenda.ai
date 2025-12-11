@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
 
 export default function BillingPage() {
   const credits = "∞"
@@ -13,6 +14,12 @@ export default function BillingPage() {
     "Fila de espera inteligente",
     "Relatórios e métricas",
   ]
+
+  function handleManageSubscription() {
+    toast.info("Redirecionando para portal de assinatura...")
+    // TODO: Implementar redirecionamento para portal de pagamento/assinatura
+    // Exemplo: window.open("https://portal.assinatura.com", "_blank")
+  }
 
   return (
     <div className="space-y-6">
@@ -28,7 +35,7 @@ export default function BillingPage() {
               <div className="text-violet-600 text-lg font-semibold">Sua assinatura está Ativa</div>
               <p className="text-muted-foreground text-sm">Plano atual: Profissional</p>
             </div>
-            <Button className="bg-violet-600 text-white hover:bg-violet-700">Gerenciar Assinatura</Button>
+            <Button onClick={handleManageSubscription} className="bg-violet-600 text-white hover:bg-violet-700">Gerenciar Assinatura</Button>
           </div>
           <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
             <div>

@@ -25,7 +25,6 @@ async function truncateAll() {
       integrations,
       leads,
       salon_customers,
-      salon_memberships,
       professionals,
       services,
       salons,

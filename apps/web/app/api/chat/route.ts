@@ -2,33 +2,110 @@ import { openai } from "@ai-sdk/openai"
 import { streamText } from "ai"
 import { getAvailableSlots } from "@/lib/availability"
 import { chatRequestSchema } from "@/lib/schemas/chat.schema"
-import { createAvailabilityTool } from "@/lib/services/ai.service"
-
-const SYSTEM_PROMPT =
-  "You are a helpful salon assistant. Always check availability using the tool before suggesting times."
-
-const DEFAULT_SERVICE_DURATION_MINUTES = 60
+import { 
+  createAvailabilityTool, 
+  createBookAppointmentTool, 
+  createGetServicesTool, 
+  createGetProfessionalsTool,
+  createSaveUserPreferencesTool,
+  createSalonAssistantPrompt 
+} from "@/lib/services/ai.service"
+import { createClient } from "@/lib/supabase/server"
+import { db, salons, salonCustomers, chatMessages } from "@repo/db"
+import { and, eq } from "drizzle-orm"
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { messages } = chatRequestSchema.parse(body)
+  const { messages, salonId } = chatRequestSchema.parse(body)
 
-  const checkAvailability = createAvailabilityTool(async ({ date, salonId }) => {
-    return await getAvailableSlots({
-      date,
-      salonId,
-      serviceDuration: DEFAULT_SERVICE_DURATION_MINUTES,
-    })
+  if (!salonId) {
+    return new Response("salonId é obrigatório", { status: 400 })
+  }
+
+  // Busca dados do salão para o prompt
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { name: true }
   })
+  
+  const salonName = salon?.name || "nosso salão"
+
+  // Busca usuário logado
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  // Usa ID do usuário logado ou undefined se não houver login
+  const clientId = user?.id
+
+  // Busca preferências do cliente no CRM
+  let preferences: Record<string, unknown> | undefined = undefined
+  if (clientId) {
+    const customer = await db.query.salonCustomers.findFirst({
+      where: and(
+        eq(salonCustomers.salonId, salonId),
+        eq(salonCustomers.profileId, clientId)
+      ),
+      columns: { preferences: true },
+    })
+    preferences = (customer?.preferences as Record<string, unknown>) || undefined
+  }
+
+  const systemPrompt = createSalonAssistantPrompt(salonName, preferences)
+
+  const checkAvailability = createAvailabilityTool(
+    salonId,
+    async ({ date, salonId: toolSalonId, serviceDuration, professionalId }) => {
+      return await getAvailableSlots({
+        date,
+        salonId: toolSalonId,
+        serviceDuration,
+        professionalId
+      })
+    }
+  )
+
+  const bookAppointment = createBookAppointmentTool(salonId, clientId)
+  const getServices = createGetServicesTool(salonId)
+  const getProfessionals = createGetProfessionalsTool(salonId)
+  const saveUserPreferences = createSaveUserPreferencesTool(salonId, clientId)
+
+  // Salva a última mensagem do usuário antes de iniciar o stream
+  const lastUserMessage = messages[messages.length - 1]
+  if (lastUserMessage && lastUserMessage.role === 'user' && typeof lastUserMessage.content === 'string') {
+    await db.insert(chatMessages).values({
+      salonId,
+      clientId: clientId || null,
+      role: 'user',
+      content: lastUserMessage.content,
+    }).catch((err) => {
+      // Log erro mas não interrompe o fluxo
+      console.error('Erro ao salvar mensagem do usuário:', err)
+    })
+  }
 
   const result = streamText({
     model: openai("gpt-4o-mini"),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages,
     tools: {
       checkAvailability,
+      bookAppointment,
+      getServices,
+      getProfessionals,
+      saveUserPreferences
+    },
+    onFinish: async ({ text }) => {
+      // Salva a resposta da IA após o stream terminar
+      await db.insert(chatMessages).values({
+        salonId,
+        clientId: clientId || null,
+        role: 'assistant',
+        content: text,
+      }).catch((err) => {
+        // Log erro mas não interrompe o fluxo
+        console.error('Erro ao salvar mensagem da IA:', err)
+      })
     },
   })
 
-  return result.toDataStreamResponse()
+  return result.toTextStreamResponse()
 }

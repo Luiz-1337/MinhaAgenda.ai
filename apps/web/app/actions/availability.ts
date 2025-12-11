@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { getOwnerSalonId, isSalonOwnerError } from "@/lib/services/salon.service"
+import { db, salons } from "@repo/db"
+import { eq } from "drizzle-orm"
 import { formatZodError, isValidTimeRange } from "@/lib/services/validation.service"
 import type { AvailabilityItem, ScheduleItem } from "@/lib/types/availability"
 import type { ActionResult } from "@/lib/types/common"
@@ -19,21 +20,38 @@ const scheduleItemSchema = z.object({
  * Obtém a disponibilidade de um profissional
  */
 export async function getAvailability(
-  professionalId: string
+  professionalId: string,
+  salonId: string
 ): Promise<AvailabilityItem[] | { error: string }> {
-  const supabase = await createClient()
-  const ownerResult = await getOwnerSalonId()
-
-  if (isSalonOwnerError(ownerResult)) {
-    return { error: ownerResult.error }
+  if (!salonId) {
+    return { error: "salonId é obrigatório" }
   }
 
-  // Verifica se o profissional pertence ao salão do dono
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  // Verifica se o usuário tem acesso ao salão
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { ownerId: true },
+  })
+
+  if (!salon || salon.ownerId !== user.id) {
+    return { error: "Acesso negado a este salão" }
+  }
+
+  // Verifica se o profissional pertence ao salão
   const profResult = await supabase
     .from("professionals")
     .select("id")
     .eq("id", professionalId)
-    .eq("salon_id", ownerResult.salonId)
+    .eq("salon_id", salonId)
     .single()
 
   if (profResult.error || !profResult.data) {
@@ -70,9 +88,21 @@ export async function getAvailability(
  */
 export async function updateAvailability(
   professionalId: string,
-  schedule: ScheduleItem[]
+  schedule: ScheduleItem[],
+  salonId: string
 ): Promise<ActionResult> {
+  if (!salonId) {
+    return { error: "salonId é obrigatório" }
+  }
+
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
 
   // Validação dos dados de entrada
   const parsed = z.array(scheduleItemSchema).safeParse(schedule)
@@ -87,10 +117,14 @@ export async function updateAvailability(
     }
   }
 
-  // Verifica autenticação e propriedade do salão
-  const ownerResult = await getOwnerSalonId()
-  if (isSalonOwnerError(ownerResult)) {
-    return { error: ownerResult.error }
+  // Verifica se o usuário tem acesso ao salão
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { ownerId: true },
+  })
+
+  if (!salon || salon.ownerId !== user.id) {
+    return { error: "Acesso negado a este salão" }
   }
 
   // Verifica se o profissional pertence ao salão
@@ -98,7 +132,7 @@ export async function updateAvailability(
     .from("professionals")
     .select("id")
     .eq("id", professionalId)
-    .eq("salon_id", ownerResult.salonId)
+    .eq("salon_id", salonId)
     .single()
 
   if (profResult.error || !profResult.data) {

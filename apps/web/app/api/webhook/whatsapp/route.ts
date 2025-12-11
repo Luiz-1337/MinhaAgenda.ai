@@ -1,4 +1,3 @@
-import { generateText } from "ai"
 import { db, services } from "@repo/db"
 import { eq } from "drizzle-orm"
 import { chatRequestSchema } from "@/lib/schemas/chat.schema"
@@ -56,7 +55,7 @@ export async function POST(req: Request) {
       })
 
       const servicesList = salonServices.map(
-        (s) => `${s.name}: R$${Number(s.price).toFixed(2)}`
+        (s: { name: string; price: string }) => `${s.name}: R$${Number(s.price).toFixed(2)}`
       )
 
       return { services: servicesList }
@@ -68,9 +67,6 @@ export async function POST(req: Request) {
     let result = await generateAIResponse({
       systemPrompt,
       messages: historyMessages,
-      tools: {
-        getServices: getServicesTool,
-      },
     })
 
     let aiResponse = result.text
@@ -98,30 +94,40 @@ export async function POST(req: Request) {
 
       // Fallback manual se ainda estiver vazia
       if (!aiResponse || aiResponse.trim().length === 0) {
-        const firstToolResult = toolResults[0]
-        if (firstToolResult && "output" in firstToolResult) {
-          const output = firstToolResult.output as { services?: string[] }
-          const servicesList = output?.services || []
+        const firstToolResult = toolResults[0];
+        // Fix: handle case where firstToolResult may not be an object
+        if (
+          firstToolResult &&
+          typeof firstToolResult === "object" &&
+          firstToolResult !== null &&
+          "output" in firstToolResult &&
+          typeof firstToolResult.output === "object" &&
+          firstToolResult.output !== null
+        ) {
+          const output = firstToolResult.output as { services?: string[] };
+          const servicesList = Array.isArray(output?.services) ? output.services : [];
           if (servicesList.length > 0) {
-            aiResponse = `Aqui estão os serviços disponíveis:\n\n${servicesList.join("\n")}\n\nComo posso ajudá-lo hoje?`
+            aiResponse = `Aqui estão os serviços disponíveis:\n\n${servicesList.join(
+              "\n"
+            )}\n\nComo posso ajudá-lo hoje?`;
           }
         }
       }
-    }
 
-    // Verifica se temos uma resposta válida
-    if (!aiResponse || aiResponse.trim().length === 0) {
-      console.warn("⚠️ AI retornou resposta vazia após todas as tentativas")
+      // Verifica se temos uma resposta válida
+      if (!aiResponse || aiResponse.trim().length === 0) {
+        console.warn("⚠️ AI retornou resposta vazia após todas as tentativas")
+        return new Response("OK", { status: 200 })
+      }
+
+      // Salva mensagem do assistente
+      await saveMessage(chat.id, "assistant", aiResponse)
+
+      // Envia resposta via WhatsApp
+      await sendWhatsAppMessage(from, aiResponse)
+
       return new Response("OK", { status: 200 })
     }
-
-    // Salva mensagem do assistente
-    await saveMessage(chat.id, "assistant", aiResponse)
-
-    // Envia resposta via WhatsApp
-    await sendWhatsAppMessage(from, aiResponse)
-
-    return new Response("OK", { status: 200 })
   } catch (error) {
     console.error("Error processing WhatsApp webhook:", error)
     const errorMessage = extractErrorMessage(error)

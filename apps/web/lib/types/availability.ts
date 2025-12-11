@@ -26,10 +26,10 @@ export interface GetAvailableSlotsInput {
   date: Date | string
   salonId: string
   serviceDuration: number
+  professionalId?: string
 }
 
 export interface TimeSlot {
   start: Date
   end: Date
 }
-
