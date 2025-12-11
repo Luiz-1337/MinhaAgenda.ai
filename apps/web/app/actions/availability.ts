@@ -39,7 +39,10 @@ export async function getAvailability(
   // Verifica se o usuário tem acesso ao salão
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {
@@ -120,7 +123,10 @@ export async function updateAvailability(
   // Verifica se o usuário tem acesso ao salão
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {

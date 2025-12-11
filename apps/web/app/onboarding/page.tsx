@@ -27,6 +27,7 @@ const DAYS_OF_WEEK = [
 export default function OnboardingPage() {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  
   const form = useForm<CreateSalonSchema>({
     resolver: zodResolver(createSalonSchema),
     defaultValues: {
@@ -80,13 +81,17 @@ export default function OnboardingPage() {
         workHours: workHoursObj && Object.keys(workHoursObj).length > 0 ? workHoursObj : undefined,
         settings: settingsObj && Object.keys(settingsObj).length > 0 ? settingsObj : undefined,
       })
+
       if ("error" in res) {
         toast.error(res.error)
         return
       }
+      
       toast.success("Salão criado com sucesso")
-      router.replace("/")
-      router.refresh()
+      if (res.data?.salonId) {
+        router.replace(`/${res.data.salonId}/dashboard`)
+        router.refresh()
+      }
     })
   }
 
@@ -155,27 +160,33 @@ export default function OnboardingPage() {
             <div className="space-y-3">
               {DAYS_OF_WEEK.map((day) => {
                 const workHours = form.watch("workHours") || {}
-                const dayHours = workHours[day.value as keyof typeof workHours]
+                // @ts-ignore - Ignore type safety here just for reading, assuming structure matches
+                const dayHours = workHours[day.value]
                 const isActive = !!dayHours
 
                 return (
                   <div key={day.value} className="flex items-center gap-4 rounded-md border p-3">
                     <div className="flex items-center gap-2 min-w-[140px]">
-                      <Switch
-                        checked={isActive}
-                        onCheckedChange={(checked) => {
-                          const currentWorkHours = form.getValues("workHours") || {}
-                          if (checked) {
-                            form.setValue("workHours", {
-                              ...currentWorkHours,
-                              [day.value]: { start: "09:00", end: "18:00" },
-                            })
-                          } else {
-                            const { [day.value]: _, ...rest } = currentWorkHours
-                            form.setValue("workHours", Object.keys(rest).length > 0 ? rest : undefined)
-                          }
-                        }}
-                      />
+                    <Switch
+                      checked={isActive}
+                      onCheckedChange={(checked) => {
+                        const rawWorkHours = form.getValues("workHours") || {}
+                        const updatedWorkHours = { ...rawWorkHours } as Record<string, any>
+                        if (checked) {
+                          updatedWorkHours[day.value] = { start: "09:00", end: "18:00" }
+                        } else {
+                          delete updatedWorkHours[day.value]
+                        }
+                        const valueToSet = Object.keys(updatedWorkHours).length > 0 
+                          ? updatedWorkHours 
+                          : undefined
+                        form.setValue("workHours", valueToSet as any, {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: true,
+                        })
+                      }}
+                    />
                       <Label className="font-normal">{day.label}</Label>
                     </div>
                     {isActive && (
@@ -214,7 +225,8 @@ export default function OnboardingPage() {
                 </div>
                 <Switch
                   id="accepts_card"
-                  {...form.register("settings.accepts_card")}
+                  onCheckedChange={(checked) => form.setValue("settings.accepts_card", checked)}
+                  checked={form.watch("settings.accepts_card")}
                 />
               </div>
 
@@ -225,7 +237,8 @@ export default function OnboardingPage() {
                 </div>
                 <Switch
                   id="parking"
-                  {...form.register("settings.parking")}
+                  onCheckedChange={(checked) => form.setValue("settings.parking", checked)}
+                  checked={form.watch("settings.parking")}
                 />
               </div>
 
@@ -269,4 +282,3 @@ export default function OnboardingPage() {
     </div>
   )
 }
-

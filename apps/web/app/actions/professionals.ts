@@ -40,7 +40,10 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
   // Verifica se o usuário tem acesso ao salão (é dono ou tem permissão)
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {
@@ -125,7 +128,10 @@ export async function upsertProfessional(
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, input.salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {
@@ -183,7 +189,10 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {

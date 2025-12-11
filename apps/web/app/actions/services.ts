@@ -99,7 +99,10 @@ export async function upsertService(input: UpsertServiceInput & { salonId: strin
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, input.salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {
@@ -181,7 +184,10 @@ export async function deleteService(id: string, salonId: string): Promise<Action
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {
@@ -223,7 +229,10 @@ export async function getServiceLinkedProfessionals(
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {

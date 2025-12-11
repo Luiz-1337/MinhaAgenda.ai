@@ -15,7 +15,8 @@ import { Pencil, Trash2, Users, Clock } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { getProfessionals, upsertProfessional, deleteProfessional, type ProfessionalRow } from "@/app/actions/professionals"
+import { getProfessionals, upsertProfessional, deleteProfessional } from "@/app/actions/professionals"
+import type { ProfessionalRow } from "@/lib/types/professional"
 import { useSalon } from "@/contexts/salon-context"
 import AvailabilitySheet from "@/components/team/availability-sheet"
 
@@ -276,9 +277,7 @@ export default function TeamPage() {
           professional={{ id: selectedProfessional.id, name: selectedProfessional.name }}
         />
       )}
-      {selectedProfessional && (
-        null
-      )}
     </div>
   )
 }
+

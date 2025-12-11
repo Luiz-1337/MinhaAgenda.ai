@@ -26,14 +26,14 @@ import {
 import { useSalon } from "@/contexts/salon-context"
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/chat", label: "Conversas", icon: MessageSquare },
-  { href: "/dashboard/agents", label: "Agentes", icon: Bot },
-  { href: "/dashboard/contacts", label: "Contatos", icon: User },
-  { href: "/dashboard/team", label: "Equipe", icon: Users },
-  { href: "/dashboard/billing", label: "Faturamento", icon: CreditCard },
-  { href: "/dashboard/services", label: "Serviços", icon: Scissors },
-  { href: "/dashboard/settings", label: "Configurações", icon: Settings },
+  { href: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "chat", label: "Conversas", icon: MessageSquare },
+  { href: "agents", label: "Agentes", icon: Bot },
+  { href: "contacts", label: "Contatos", icon: User },
+  { href: "team", label: "Equipe", icon: Users },
+  { href: "billing", label: "Faturamento", icon: CreditCard },
+  { href: "services", label: "Serviços", icon: Scissors },
+  { href: "settings", label: "Configurações", icon: Settings },
 ] as const
 
 export function SidebarNav() {
@@ -47,9 +47,12 @@ export function SidebarNav() {
 
   // Função para construir href com salonId
   const buildHref = (baseHref: string) => {
-    if (!activeSalon) return baseHref
-    const separator = baseHref.includes("?") ? "&" : "?"
-    return `${baseHref}${separator}salonId=${activeSalon.id}`
+    if (!activeSalon) return `/${baseHref}`
+    // Se for "dashboard", usa apenas o salonId, caso contrário adiciona a rota
+    if (baseHref === "dashboard") {
+      return `/${activeSalon.id}/dashboard`
+    }
+    return `/${activeSalon.id}/${baseHref}`
   }
 
   return (
@@ -64,7 +67,10 @@ export function SidebarNav() {
       </Button>
       {navItems.map(({ href, label, icon: Icon }) => {
         const hrefWithSalon = buildHref(href)
-        const active = pathname === href || (href !== "/" && pathname.startsWith(href))
+        // Verifica se a rota atual corresponde ao item do menu
+        const active = pathname === hrefWithSalon || 
+          (href !== "dashboard" && pathname?.startsWith(`/${activeSalon?.id}/${href}`)) ||
+          (href === "dashboard" && pathname?.startsWith(`/${activeSalon?.id}/dashboard`))
         return (
           <Link
             key={href}

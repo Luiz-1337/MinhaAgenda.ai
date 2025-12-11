@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react"
-import { useRouter, useSearchParams, usePathname } from "next/navigation"
+import { useRouter, usePathname, useParams } from "next/navigation"
 import type { SalonListItem } from "@/app/actions/salon"
 import { getUserSalons } from "@/app/actions/salon"
 
@@ -20,38 +20,41 @@ export function SalonProvider({ children, initialSalons }: { children: ReactNode
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const params = useParams()
 
-  // Lê o salão ativo da URL
-  const salonIdFromUrl = searchParams.get("salonId")
+  // Lê o salão ativo do pathname (formato: /[salonId]/dashboard/...)
+  const salonIdFromPath = params?.salonId as string | undefined
   
-  // Encontra o salão ativo baseado na URL
-  const activeSalon = salonIdFromUrl 
-    ? salons.find((s) => s.id === salonIdFromUrl) || (salons.length > 0 ? salons[0] : null)
+  // Encontra o salão ativo baseado no pathname
+  const activeSalon = salonIdFromPath 
+    ? salons.find((s) => s.id === salonIdFromPath) || (salons.length > 0 ? salons[0] : null)
     : (salons.length > 0 ? salons[0] : null)
 
   // Atualiza a URL quando o salão muda
   const setActiveSalon = useCallback((salon: SalonListItem | null) => {
     if (salon && pathname) {
-      const params = new URLSearchParams(searchParams.toString())
-      params.set("salonId", salon.id)
-      // Usa replace para não adicionar ao histórico e forçar atualização
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
-    } else if (pathname) {
-      const params = new URLSearchParams(searchParams.toString())
-      params.delete("salonId")
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+      // Extrai a rota atual sem o salonId (ex: /[salonId]/dashboard/chat -> /dashboard/chat)
+      const routeMatch = pathname.match(/^\/[^/]+(\/.*)?$/)
+      const currentRoute = routeMatch ? (routeMatch[1] || "/dashboard") : "/dashboard"
+      
+      // Navega para a nova URL com o novo salonId
+      router.replace(`/${salon.id}${currentRoute}`, { scroll: false })
+    } else if (salons.length > 0 && pathname) {
+      // Se não há salão selecionado, redireciona para o primeiro
+      const routeMatch = pathname.match(/^\/[^/]+(\/.*)?$/)
+      const currentRoute = routeMatch ? (routeMatch[1] || "/dashboard") : "/dashboard"
+      router.replace(`/${salons[0].id}${currentRoute}`, { scroll: false })
     }
-  }, [router, pathname, searchParams])
+  }, [router, pathname, salons])
 
-  // Se não há salonId na URL mas há salões, adiciona o primeiro
+  // Se não há salonId no path mas há salões, redireciona para o primeiro
   useEffect(() => {
-    if (!salonIdFromUrl && salons.length > 0 && pathname) {
-      const params = new URLSearchParams(searchParams.toString())
-      params.set("salonId", salons[0].id)
-      router.replace(`${pathname}?${params.toString()}`)
+    if (!salonIdFromPath && salons.length > 0 && pathname && !pathname.startsWith("/login") && !pathname.startsWith("/register") && !pathname.startsWith("/onboarding")) {
+      const routeMatch = pathname.match(/^\/[^/]+(\/.*)?$/)
+      const currentRoute = routeMatch ? (routeMatch[1] || "/dashboard") : "/dashboard"
+      router.replace(`/${salons[0].id}${currentRoute}`)
     }
-  }, [salonIdFromUrl, salons, pathname, searchParams, router])
+  }, [salonIdFromPath, salons, pathname, router])
 
   const refreshSalons = useCallback(async () => {
     setIsLoading(true)
@@ -59,28 +62,28 @@ export function SalonProvider({ children, initialSalons }: { children: ReactNode
       const updatedSalons = await getUserSalons()
       setSalons(updatedSalons)
       
-      // Mantém o salão ativo da URL se ele ainda existir
-      const currentSalonId = searchParams.get("salonId")
+      // Mantém o salão ativo do path se ele ainda existir
+      const currentSalonId = params?.salonId as string | undefined
       if (currentSalonId && updatedSalons.length > 0) {
         const currentSalon = updatedSalons.find((s) => s.id === currentSalonId)
         if (!currentSalon && pathname) {
-          // Se o salão não existe mais, atualiza para o primeiro
-          const params = new URLSearchParams(searchParams.toString())
-          params.set("salonId", updatedSalons[0].id)
-          router.replace(`${pathname}?${params.toString()}`)
+          // Se o salão não existe mais, redireciona para o primeiro
+          const routeMatch = pathname.match(/^\/[^/]+(\/.*)?$/)
+          const currentRoute = routeMatch ? (routeMatch[1] || "/dashboard") : "/dashboard"
+          router.replace(`/${updatedSalons[0].id}${currentRoute}`)
         }
-      } else if (updatedSalons.length > 0 && pathname) {
-        // Se não há salão na URL, adiciona o primeiro
-        const params = new URLSearchParams(searchParams.toString())
-        params.set("salonId", updatedSalons[0].id)
-        router.replace(`${pathname}?${params.toString()}`)
+      } else if (updatedSalons.length > 0 && pathname && !pathname.startsWith("/login") && !pathname.startsWith("/register") && !pathname.startsWith("/onboarding")) {
+        // Se não há salão no path, redireciona para o primeiro
+        const routeMatch = pathname.match(/^\/[^/]+(\/.*)?$/)
+        const currentRoute = routeMatch ? (routeMatch[1] || "/dashboard") : "/dashboard"
+        router.replace(`/${updatedSalons[0].id}${currentRoute}`)
       }
     } catch (error) {
       console.error("Erro ao atualizar salões:", error)
     } finally {
       setIsLoading(false)
     }
-  }, [searchParams, pathname, router])
+  }, [params, pathname, router])
 
   return (
     <SalonContext.Provider value={{ salons, activeSalon, setActiveSalon, isLoading, refreshSalons }}>

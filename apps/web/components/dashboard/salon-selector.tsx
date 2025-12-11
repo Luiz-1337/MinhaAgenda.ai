@@ -27,7 +27,11 @@ export function SalonSelector() {
 
   const handleSelectSalon = (salon: typeof salons[0]) => {
     setIsOpen(false)
-    setActiveSalon(salon)
+    // Navega diretamente para a nova URL com o salonId
+    const currentPath = window.location.pathname
+    const routeMatch = currentPath.match(/^\/[^/]+(\/.*)?$/)
+    const currentRoute = routeMatch ? (routeMatch[1] || "/dashboard") : "/dashboard"
+    router.push(`/${salon.id}${currentRoute}`)
   }
 
   return (

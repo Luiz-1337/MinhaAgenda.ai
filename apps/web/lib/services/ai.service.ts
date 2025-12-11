@@ -5,7 +5,7 @@
 import { openai } from "@ai-sdk/openai"
 import { generateText, tool, type CoreMessage } from "ai"
 import { z } from "zod"
-import { sql, and, eq, ilike } from "drizzle-orm"
+import { and, eq, ilike } from "drizzle-orm"
 import { db, services, professionals, appointments, professionalServices, salonCustomers } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
 
@@ -93,14 +93,17 @@ export function createAvailabilityTool(
   salonId: string,
   getAvailableSlotsFn: (params: { date: string; salonId: string; serviceDuration: number; professionalId?: string }) => Promise<string[]>
 ) {
+  const paramsSchema = z.object({
+    date: z.string().describe("Data (ISO) do dia solicitado."),
+    serviceName: z.string().describe("Nome do serviço desejado."),
+    professionalName: z.string().optional().describe("Nome do profissional (opcional).")
+  })
+  
   return tool({
     description: "Verifica horários disponíveis para um serviço em uma data específica.",
-    parameters: z.object({
-      date: z.string().describe("Data (ISO) do dia solicitado."),
-      serviceName: z.string().describe("Nome do serviço desejado."),
-      professionalName: z.string().optional().describe("Nome do profissional (opcional).")
-    }),
-    execute: async ({ date, serviceName, professionalName }) => {
+    parameters: paramsSchema,
+    // @ts-expect-error - Type inference issue with ai library tool function
+    execute: async ({ date, serviceName, professionalName }: z.infer<typeof paramsSchema>) => {
       const service = await findServiceByName(salonId, serviceName)
       
       let professionalId: string | undefined
@@ -133,15 +136,18 @@ export function createBookAppointmentTool(
   salonId: string,
   clientId?: string
 ) {
+  const paramsSchema = z.object({
+    date: z.string().describe("Data do agendamento (ISO date string YYYY-MM-DD)."),
+    time: z.string().describe("Horário do agendamento (HH:mm)."),
+    serviceName: z.string().describe("Nome do serviço."),
+    professionalName: z.string().optional().describe("Nome do profissional (opcional).")
+  })
+  
   return tool({
     description: "Realiza o agendamento de um serviço.",
-    parameters: z.object({
-      date: z.string().describe("Data do agendamento (ISO date string YYYY-MM-DD)."),
-      time: z.string().describe("Horário do agendamento (HH:mm)."),
-      serviceName: z.string().describe("Nome do serviço."),
-      professionalName: z.string().optional().describe("Nome do profissional (opcional).")
-    }),
-    execute: async ({ date, time, serviceName, professionalName }) => {
+    parameters: paramsSchema,
+    // @ts-expect-error - Type inference issue with ai library tool function
+    execute: async ({ date, time, serviceName, professionalName }: z.infer<typeof paramsSchema>) => {
       if (!clientId) {
         throw new Error("Você precisa estar logado para realizar um agendamento. Por favor, faça login e tente novamente.")
       }
@@ -223,6 +229,7 @@ export function createGetServicesTool(salonId: string) {
   return tool({
     description: "Lista os serviços disponíveis no salão com seus preços.",
     parameters: z.object({}),
+    // @ts-expect-error - Type inference issue with ai library tool function
     execute: async () => {
       const results = await db
         .select({
@@ -251,6 +258,7 @@ export function createGetProfessionalsTool(salonId: string) {
   return tool({
     description: "Lista os profissionais do salão e os serviços que realizam.",
     parameters: z.object({}),
+    // @ts-expect-error - Type inference issue with ai library tool function
     execute: async () => {
       const pros = await db
         .select({
@@ -291,7 +299,7 @@ export function createGetProfessionalsTool(salonId: string) {
 export async function generateAIResponse(params: {
   systemPrompt: string
   messages: ChatMessage[]
-  tools?: Record<string, ReturnType<typeof tool>>
+  tools?: Parameters<typeof generateText>[0]['tools']
   model?: string
 }): Promise<{ text: string; toolResults?: unknown[] }> {
   const { systemPrompt, messages, tools, model = DEFAULT_MODEL } = params
@@ -321,13 +329,16 @@ export function createSaveUserPreferencesTool(
   salonId: string,
   clientId?: string
 ) {
+  const paramsSchema = z.object({
+    key: z.string().describe("Tipo de preferência. Use: 'favoriteProfessional' para profissional preferido, 'favoriteService' para serviço preferido, 'allergies' para alergias, 'notes' para outras observações importantes."),
+    value: z.union([z.string(), z.array(z.string()), z.record(z.string(), z.unknown())]).describe("Valor da preferência. Para favoriteProfessional, use o nome do profissional. Para allergies, use array de strings ou string. Para notes, use string.")
+  })
+  
   return tool({
     description: "Salva preferências do cliente no CRM. Chame esta tool PROATIVAMENTE (em background) quando detectar que o usuário expressou uma preferência, como: preferência por profissional específico (ex: 'Só corto com o João'), alergias (ex: 'Tenho alergia a lâmina'), preferência por serviço, ou outras informações relevantes. Não é necessário informar ao usuário que está salvando - faça silenciosamente.",
-    parameters: z.object({
-      key: z.string().describe("Tipo de preferência. Use: 'favoriteProfessional' para profissional preferido, 'favoriteService' para serviço preferido, 'allergies' para alergias, 'notes' para outras observações importantes."),
-      value: z.union([z.string(), z.array(z.string()), z.record(z.unknown())]).describe("Valor da preferência. Para favoriteProfessional, use o nome do profissional. Para allergies, use array de strings ou string. Para notes, use string.")
-    }),
-    execute: async ({ key, value }) => {
+    parameters: paramsSchema,
+    // @ts-expect-error - Type inference issue with ai library tool function
+    execute: async ({ key, value }: z.infer<typeof paramsSchema>) => {
       if (!clientId) {
         // Se não há clientId, não podemos salvar preferências
         return {

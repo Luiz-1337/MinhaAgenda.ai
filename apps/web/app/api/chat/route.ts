@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai"
-import { streamText } from "ai"
+import { streamText, type CoreMessage } from "ai"
 import { getAvailableSlots } from "@/lib/availability"
 import { chatRequestSchema } from "@/lib/schemas/chat.schema"
 import { 
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: openai("gpt-4o-mini"),
     system: systemPrompt,
-    messages,
+    messages: messages as CoreMessage[],
     tools: {
       checkAvailability,
       bookAppointment,

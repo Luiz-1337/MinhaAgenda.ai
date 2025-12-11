@@ -74,7 +74,16 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
       const workHoursObj: Record<string, { start: string; end: string }> | undefined = 
         values.workHours && typeof values.workHours === 'object'
           ? Object.entries(values.workHours).reduce((acc, [day, hours]) => {
-              if (hours && typeof hours === 'object' && 'start' in hours && 'end' in hours && hours.start && hours.end) {
+              if (
+                hours && 
+                typeof hours === 'object' && 
+                'start' in hours && 
+                'end' in hours && 
+                typeof hours.start === 'string' && 
+                typeof hours.end === 'string' &&
+                hours.start && 
+                hours.end
+              ) {
                 acc[day] = { start: hours.start, end: hours.end }
               }
               return acc
@@ -174,15 +183,27 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
                   <Switch
                     checked={isActive}
                     onCheckedChange={(checked) => {
-                      const currentWorkHours = form.getValues("workHours") || {}
+                      const currentWorkHours = (form.getValues("workHours") || {}) as Record<string, { start: string; end: string }>
                       if (checked) {
                         form.setValue("workHours", {
                           ...currentWorkHours,
                           [day.value]: { start: "09:00", end: "18:00" },
-                        })
+                        } as UpdateSalonSchema["workHours"])
                       } else {
-                        const { [day.value]: _, ...rest } = currentWorkHours
-                        form.setValue("workHours", Object.keys(rest).length > 0 ? rest : undefined)
+                        // Remove the day from the workHours
+                        const { [day.value]: _, ...rest } = currentWorkHours;
+                        // Only keep keys that are valid days ("0"-"6") and cast to correct type
+                        const validRest = Object.fromEntries(
+                          Object.entries(rest as Record<string, { start: string; end: string }>).filter(([k]) =>
+                            ["0", "1", "2", "3", "4", "5", "6"].includes(k)
+                          )
+                        ) as Partial<Record<"0" | "1" | "2" | "3" | "4" | "5" | "6", { start: string; end: string }>>;
+                        form.setValue(
+                          "workHours",
+                          Object.keys(validRest).length > 0 
+                            ? (validRest as UpdateSalonSchema["workHours"]) 
+                            : undefined
+                        );
                       }
                     }}
                   />

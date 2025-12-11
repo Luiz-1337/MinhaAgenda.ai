@@ -1,6 +1,3 @@
-import { db, services } from "@repo/db"
-import { eq } from "drizzle-orm"
-import { chatRequestSchema } from "@/lib/schemas/chat.schema"
 import {
   findOrCreateChat,
   saveMessage,
@@ -25,7 +22,6 @@ export async function POST(req: Request) {
     const formData = await req.formData()
     const from = formData.get("From") as string
     const body = formData.get("Body") as string
-    const to = formData.get("To") as string
 
     if (!from || !body) {
       console.error("Missing required fields: From or Body")
@@ -48,18 +44,7 @@ export async function POST(req: Request) {
     const historyMessages = await getChatHistory(chat.id, 10)
 
     // Cria tool para buscar serviços
-    const getServicesTool = createGetServicesTool(async () => {
-      const salonServices = await db.query.services.findMany({
-        where: eq(services.salonId, salonId),
-        columns: { name: true, price: true },
-      })
-
-      const servicesList = salonServices.map(
-        (s: { name: string; price: string }) => `${s.name}: R$${Number(s.price).toFixed(2)}`
-      )
-
-      return { services: servicesList }
-    })
+    const getServicesTool = createGetServicesTool(salonId)
 
     // Gera resposta da IA
     const systemPrompt = createSalonAssistantPrompt(salonName)
@@ -67,6 +52,9 @@ export async function POST(req: Request) {
     let result = await generateAIResponse({
       systemPrompt,
       messages: historyMessages,
+      tools: {
+        getServices: getServicesTool,
+      },
     })
 
     let aiResponse = result.text
@@ -88,6 +76,9 @@ export async function POST(req: Request) {
       result = await generateAIResponse({
         systemPrompt: `${systemPrompt}\n\nIMPORTANTE: Você acabou de executar uma ferramenta. Você DEVE responder ao usuário em texto explicando os resultados de forma clara, amigável e em português brasileiro.`,
         messages: enhancedMessages,
+        tools: {
+          getServices: getServicesTool,
+        },
       })
 
       aiResponse = result.text
@@ -119,15 +110,15 @@ export async function POST(req: Request) {
         console.warn("⚠️ AI retornou resposta vazia após todas as tentativas")
         return new Response("OK", { status: 200 })
       }
-
-      // Salva mensagem do assistente
-      await saveMessage(chat.id, "assistant", aiResponse)
-
-      // Envia resposta via WhatsApp
-      await sendWhatsAppMessage(from, aiResponse)
-
-      return new Response("OK", { status: 200 })
     }
+
+    // Salva mensagem do assistente
+    await saveMessage(chat.id, "assistant", aiResponse)
+
+    // Envia resposta via WhatsApp
+    await sendWhatsAppMessage(from, aiResponse)
+
+    return new Response("OK", { status: 200 })
   } catch (error) {
     console.error("Error processing WhatsApp webhook:", error)
     const errorMessage = extractErrorMessage(error)

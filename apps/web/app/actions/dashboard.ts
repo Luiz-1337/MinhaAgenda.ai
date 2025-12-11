@@ -45,7 +45,10 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   ] = await Promise.all([
     db.query.salons.findFirst({
       where: eq(salons.id, salonId),
-      columns: { ownerId: true },
+      columns: {
+      id: true,
+      ownerId: true,
+    },
     }),
     supabase
       .from("appointments")
@@ -245,7 +248,10 @@ export async function initializeDashboardData(salonId: string): Promise<{ succes
   // Verifica se o usuário tem acesso ao salão
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { ownerId: true },
+    columns: {
+      id: true,
+      ownerId: true,
+    },
   })
 
   if (!salon || salon.ownerId !== user.id) {
