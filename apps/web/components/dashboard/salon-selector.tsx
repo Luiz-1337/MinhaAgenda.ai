@@ -37,26 +37,22 @@ export function SalonSelector() {
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          className="gap-2 min-w-[200px] justify-between"
+        <button
+          className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:border-indigo-500/50 hover:text-indigo-600 dark:hover:text-white transition-colors shadow-sm dark:shadow-none disabled:opacity-50"
           aria-label="Selecionar salão"
           aria-expanded={isOpen}
           aria-haspopup="true"
           disabled={isLoading}
         >
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Building2 className="size-4 shrink-0" />
-            <span className="truncate text-sm font-medium">
-              {activeSalon?.name || "Selecione um salão"}
-            </span>
-          </div>
-          <ChevronDown className="size-4 shrink-0 opacity-50" />
-        </Button>
+          <Building2 size={16} className="text-indigo-500 dark:text-indigo-400" />
+          <span className="font-semibold">
+            {activeSalon?.name || "Selecione um salão"}
+          </span>
+        </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
-        <DropdownMenuLabel>Meus Salões</DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10">
+        <DropdownMenuLabel className="text-slate-700 dark:text-slate-200">Meus Salões</DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-slate-200 dark:bg-white/10" />
         {salons.map((salon) => {
           const isActive = activeSalon?.id === salon.id
           return (
@@ -64,8 +60,8 @@ export function SalonSelector() {
               key={salon.id}
               onClick={() => handleSelectSalon(salon)}
               className={cn(
-                "flex items-center justify-between cursor-pointer",
-                isActive && "bg-accent"
+                "flex items-center justify-between cursor-pointer text-slate-700 dark:text-slate-200",
+                isActive && "bg-indigo-50 dark:bg-indigo-500/10"
               )}
               aria-selected={isActive}
             >
@@ -73,12 +69,12 @@ export function SalonSelector() {
                 <Building2 className="size-4 shrink-0 opacity-50" />
                 <span className="truncate">{salon.name}</span>
               </div>
-              {isActive && <Check className="size-4 shrink-0 text-primary" />}
+              {isActive && <Check className="size-4 shrink-0 text-indigo-600 dark:text-indigo-400" />}
             </DropdownMenuItem>
           )
         })}
         {salons.length === 0 && (
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+          <div className="px-2 py-1.5 text-sm text-slate-500 dark:text-slate-400">
             Nenhum salão encontrado
           </div>
         )}

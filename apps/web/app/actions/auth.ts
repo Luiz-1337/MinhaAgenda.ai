@@ -29,8 +29,8 @@ export async function login(prevState: ActionState, formData: FormData): Promise
     redirect("/onboarding")
   }
 
-  // Se tiver salão, redireciona para o dashboard
-  redirect("/")
+  // Se tiver salão, redireciona para o dashboard do salão
+  redirect(`/${salonResult.salonId}/dashboard`)
 }
 
 /**

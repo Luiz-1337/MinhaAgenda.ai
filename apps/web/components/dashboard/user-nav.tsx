@@ -1,7 +1,7 @@
 "use client"
 
 import { createBrowserClient } from "@supabase/ssr"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +12,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { LogOut } from "lucide-react"
+import { LogOut, Search, Bell, Sun, Moon } from "lucide-react"
+import { useTheme } from "next-themes"
 
 export function UserNav() {
+  const { theme, setTheme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+    setIsDark(resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
+  }, [theme, resolvedTheme])
+
   async function handleLogout() {
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,29 +37,72 @@ export function UserNav() {
       return
     }
     
-    // Força redirecionamento completo para a página de login
-    // Usa window.location.href para garantir que o estado seja limpo
     window.location.href = "/login"
   }
 
+  const toggleTheme = () => {
+    const newTheme = isDark ? 'light' : 'dark'
+    setTheme(newTheme)
+    setIsDark(!isDark)
+  }
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center gap-4">
+        <button className="p-2 rounded-full bg-slate-200/50 dark:bg-white/5 text-slate-600 dark:text-slate-400">
+          <Sun size={18} />
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      <ThemeToggle />
+    <div className="flex items-center gap-4">
+      {/* Theme Toggle */}
+      <button 
+        onClick={toggleTheme}
+        className="p-2 rounded-full bg-slate-200/50 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-300/50 dark:hover:text-white transition-colors"
+        title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      >
+        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
+      {/* Search */}
+      <div className="relative group">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search size={16} className="text-slate-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+        </div>
+        <input 
+          type="text" 
+          placeholder="Buscar..." 
+          className="pl-10 pr-4 py-1.5 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 rounded-full text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 focus:bg-white dark:focus:bg-slate-900 transition-all w-64 placeholder-slate-400 shadow-sm dark:shadow-none"
+        />
+      </div>
+
+      {/* Notifications */}
+      <button className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors">
+        <Bell size={20} />
+        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-indigo-500 rounded-full border-2 border-slate-50 dark:border-slate-900"></span>
+      </button>
+
+      {/* User Menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="gap-2">
-            <Avatar className="size-6">
+          <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+            <Avatar className="size-7">
               <AvatarImage src="" alt="Usuário" />
-              <AvatarFallback className="text-xs">UA</AvatarFallback>
+              <AvatarFallback className="text-xs bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">U</AvatarFallback>
             </Avatar>
-            <span className="hidden text-sm md:inline">Conta</span>
-          </Button>
+          </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout} variant="destructive">
-            <LogOut className="size-4" />
+        <DropdownMenuContent align="end" className="bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10">
+          <DropdownMenuLabel className="text-slate-700 dark:text-slate-200">Minha Conta</DropdownMenuLabel>
+          <DropdownMenuSeparator className="bg-slate-200 dark:bg-white/10" />
+          <DropdownMenuItem 
+            onClick={handleLogout} 
+            className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 cursor-pointer"
+          >
+            <LogOut className="size-4 mr-2" />
             Sair
           </DropdownMenuItem>
         </DropdownMenuContent>
