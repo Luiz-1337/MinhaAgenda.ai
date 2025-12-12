@@ -23,7 +23,7 @@ export type CheckAvailabilityInput = z.infer<typeof checkAvailabilitySchema>
 export const createAppointmentSchema = z.object({
   salonId: z.string().uuid("salonId deve ser um UUID válido"),
   professionalId: z.string().uuid("professionalId deve ser um UUID válido"),
-  clientId: z.string().uuid("clientId deve ser um UUID válido"),
+  phone: z.string().min(1, "phone é obrigatório"),
   serviceId: z.string().uuid("serviceId deve ser um UUID válido"),
   date: z.string().datetime("date deve ser uma data ISO válida"),
   notes: z.string().optional(),

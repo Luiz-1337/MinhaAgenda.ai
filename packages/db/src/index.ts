@@ -15,3 +15,5 @@ export const db = drizzle(client, { schema })
 export * from './schema'
 // Re-export drizzle-orm helpers for convenience
 export { and, eq, gt, lt, gte, lte, ne, like, ilike, inArray, notInArray, isNull, isNotNull, desc, asc, sql } from 'drizzle-orm'
+export * as domainServices from './services'
+

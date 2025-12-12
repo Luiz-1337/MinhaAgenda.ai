@@ -91,32 +91,27 @@ async function findProfessionalByName(salonId: string, name: string) {
  */
 export function createAvailabilityTool(
   salonId: string,
-  getAvailableSlotsFn: (params: { date: string; salonId: string; serviceDuration: number; professionalId?: string }) => Promise<string[]>
+  getAvailableSlotsFn: (params: { date: string; salonId: string; serviceDuration: number; professionalId: string }) => Promise<string[]>
 ) {
   const paramsSchema = z.object({
     date: z.string().describe("Data (ISO) do dia solicitado."),
     serviceName: z.string().describe("Nome do serviço desejado."),
-    professionalName: z.string().optional().describe("Nome do profissional (opcional).")
+    professionalName: z.string().describe("Nome do profissional.")
   })
   
   return tool({
-    description: "Verifica horários disponíveis para um serviço em uma data específica.",
+    description: "Verifica horários disponíveis para um serviço em uma data específica com um profissional específico.",
     parameters: paramsSchema,
     // @ts-expect-error - Type inference issue with ai library tool function
     execute: async ({ date, serviceName, professionalName }: z.infer<typeof paramsSchema>) => {
       const service = await findServiceByName(salonId, serviceName)
-      
-      let professionalId: string | undefined
-      if (professionalName) {
-        const professional = await findProfessionalByName(salonId, professionalName)
-        professionalId = professional.id
-      }
+      const professional = await findProfessionalByName(salonId, professionalName)
 
       const slots = await getAvailableSlotsFn({
         date,
         salonId,
         serviceDuration: service.duration,
-        professionalId
+        professionalId: professional.id
       })
 
       return { 

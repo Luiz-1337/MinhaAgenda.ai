@@ -16,8 +16,18 @@ import {
   date,
   jsonb,
   uniqueIndex,
-  bigint
+  bigint,
+  customType
 } from 'drizzle-orm/pg-core'
+
+// ============================================================================
+// CUSTOM TYPES
+// ============================================================================
+export const vector = customType<{ data: number[] }>({
+  dataType() {
+    return 'vector(1536)'
+  }
+})
 
 // ============================================================================
 // ENUMS
@@ -33,7 +43,7 @@ export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assista
 // TABLES - User/Auth
 // ============================================================================
 export const profiles = pgTable('profiles', {
-  id: uuid('id').primaryKey().notNull(),
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
   email: text('email').notNull(),
   fullName: text('full_name'),
   phone: text('phone'),
@@ -408,6 +418,45 @@ export const agentStats = pgTable(
 )
 
 // ============================================================================
+// TABLES - AI Agents & RAG
+// ============================================================================
+export const agents = pgTable(
+  'agents',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).unique().notNull(),
+    name: text('name').notNull(),
+    systemPrompt: text('system_prompt').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      salonIdx: index('agents_salon_idx').on(table.salonId)
+    }
+  }
+)
+
+export const embeddings = pgTable(
+  'embeddings',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'cascade' }).notNull(),
+    content: text('content').notNull(),
+    embedding: vector('embedding').notNull(),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => {
+    return {
+      agentIdx: index('embeddings_agent_idx').on(table.agentId)
+    }
+  }
+)
+
+// ============================================================================
 // RELATIONS
 // ============================================================================
 export const profilesRelations = relations(profiles, ({ many }) => ({
@@ -422,7 +471,8 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   appointments: many(appointments),
   chats: many(chats),
   customers: many(customers),
-  integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] })
+  integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] }),
+  agent: one(agents, { fields: [salons.id], references: [agents.salonId] })
 }))
 
 export const salonIntegrationsRelations = relations(salonIntegrations, ({ one }) => ({
@@ -481,4 +531,13 @@ export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
 
 export const customersRelations = relations(customers, ({ one }) => ({
   salon: one(salons, { fields: [customers.salonId], references: [salons.id] })
+}))
+
+export const agentsRelations = relations(agents, ({ one, many }) => ({
+  salon: one(salons, { fields: [agents.salonId], references: [salons.id] }),
+  embeddings: many(embeddings)
+}))
+
+export const embeddingsRelations = relations(embeddings, ({ one }) => ({
+  agent: one(agents, { fields: [embeddings.agentId], references: [agents.id] })
 }))

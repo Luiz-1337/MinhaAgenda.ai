@@ -5,62 +5,9 @@ import OpenAI from "openai";
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import dotenv from "dotenv";
-import { db, salons, eq } from "@repo/db";
+import { getSalonIdByWhatsapp, getClientIdByPhoneNumber, getDataFromClient } from "./mcp-chat-utils.js";
 
 dotenv.config();
-
-// ============================================================================
-// FUNÇÕES UTILITÁRIAS PARA BUSCA DE SALÃO
-// ============================================================================
-
-/**
- * Sanitiza o número de WhatsApp removendo espaços, traços, parênteses e prefixos
- * @param whatsapp - Número de WhatsApp a ser sanitizado
- * @returns Número sanitizado apenas com dígitos e sinal de + (se presente no início)
- */
-function sanitizeWhatsApp(whatsapp: string): string {
-  return whatsapp
-    .trim()
-    .replace(/^whatsapp:/i, "") // Remove prefixo "whatsapp:" (case-insensitive)
-    .replace(/\s/g, "") // Remove todos os espaços
-    .replace(/-/g, "") // Remove todos os traços
-    .replace(/\(/g, "") // Remove parênteses de abertura
-    .replace(/\)/g, ""); // Remove parênteses de fechamento
-}
-
-/**
- * Busca o ID do salão baseado no número de WhatsApp
- * @param whatsapp - Número de WhatsApp do salão (pode conter espaços, traços, parênteses)
- * @returns O ID do salão (UUID) ou null se não encontrado
- * @throws {Error} Se ocorrer um erro na consulta ao banco de dados
- */
-async function getSalonIdByWhatsapp(
-  whatsapp: string
-): Promise<string | null> {
-  // Sanitiza o número de WhatsApp para garantir o match
-  const sanitizedWhatsapp = sanitizeWhatsApp(whatsapp);
-
-  // Valida se o número sanitizado não está vazio
-  if (!sanitizedWhatsapp) {
-    return null;
-  }
-
-  try {
-    // Busca o salão pelo número de WhatsApp sanitizado
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.whatsapp, sanitizedWhatsapp),
-      columns: { id: true },
-    });
-
-    // Retorna o ID se encontrado, caso contrário retorna null
-    return salon?.id ?? null;
-  } catch (error) {
-    // Re-lança o erro com contexto adicional
-    throw new Error(
-      `Erro ao buscar salão por WhatsApp: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-}
 
 // CONFIGURAÇÃO: Caminho para o seu servidor MCP
 const SERVER_COMMAND = "node";
@@ -70,62 +17,6 @@ const SERVER_ARGS = ["--import", "tsx", "packages/mcp-server/src/index.ts"];
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-if (!process.env.DATABASE_URL) {
-  console.warn("⚠️  Aviso: DATABASE_URL não encontrada nas variáveis de ambiente. O servidor pode falhar.");
-} else {
-  console.log("✅ DATABASE_URL encontrada.");
-}
-
-// --- FUNÇÃO DE LIMPEZA DE SCHEMA PARA OPENAI ---
-function sanitizeSchema(schema: any): any {
-  if (!schema || typeof schema !== 'object') return schema;
-
-  // Clona para não mutar o original
-  const clean = { ...schema };
-
-  // Remove campos que a OpenAI não suporta
-  delete clean.$schema;
-  delete clean.title;
-  delete clean.default; 
-  delete clean.additionalProperties; 
-
-  // Correção 1: Arrays sem items (inclusive quando type é lista de tipos)
-  const isArrayType = clean.type === 'array' || (Array.isArray(clean.type) && clean.type.includes('array'));
-  
-  if (isArrayType) {
-      if (!clean.items) {
-         clean.items = { type: 'string' }; // Fallback
-      }
-      // Se items for array (tuple schema), converte para single schema ou garante que todos estão sanitizados
-      if (Array.isArray(clean.items)) {
-          clean.items = clean.items.map((i: any) => sanitizeSchema(i));
-      } else {
-          clean.items = sanitizeSchema(clean.items);
-      }
-  }
-
-  // Correção 2: Recursão em properties
-  if (clean.properties) {
-    const newProps: any = {};
-    for (const [key, val] of Object.entries(clean.properties)) {
-      newProps[key] = sanitizeSchema(val);
-    }
-    clean.properties = newProps;
-  }
-
-  // Correção 3: Recursão em anyOf/oneOf/allOf
-  ['anyOf', 'oneOf', 'allOf'].forEach(key => {
-    if (Array.isArray(clean[key])) {
-      clean[key] = clean[key].map((item: any) => sanitizeSchema(item));
-    }
-  });
-
-  // Correção 4: Zod .describe() muitas vezes coloca 'description' em lugares que conflitam ou duplicam
-  // A OpenAI gosta de description, então mantemos.
-
-  return clean;
-}
 
 async function main() {
   console.log("🔌 Conectando ao Servidor MCP...");
@@ -152,28 +43,22 @@ async function main() {
     const toolsList = await mcpClient.listTools();
     
     const openaiTools = toolsList.tools.map((tool) => {
-        // DEBUG: Imprimir schema original se for o problemático
-        if (tool.name === 'saveCustomerPreference') {
-            console.log("🔍 Schema Original saveCustomerPreference:", JSON.stringify(tool.inputSchema, null, 2));
-        }
-
-        const sanitized = sanitizeSchema(tool.inputSchema);
-
-        if (tool.name === 'saveCustomerPreference') {
-            console.log("✨ Schema Sanitizado saveCustomerPreference:", JSON.stringify(sanitized, null, 2));
-        }
-
         return {
             type: "function" as const,
             function: {
                 name: tool.name,
                 description: tool.description,
-                parameters: sanitized,
+                parameters: tool.inputSchema,
             },
         };
     });
 
     console.log(`🛠️  ${openaiTools.length} ferramentas carregadas.`);
+
+    for (const tool of openaiTools) {
+      console.log(`🛠️  ${tool.function.name}: ${tool.function.description}`);
+      console.log(`   > Schema: ${JSON.stringify(tool.function.parameters, null, 2)}`);
+    }
 
     // Solicita informações de contexto antes de iniciar o chat
     const rl = readline.createInterface({ input: stdin, output: stdout });
@@ -210,10 +95,25 @@ async function main() {
       process.exit(1);
     }
 
+    const clientId = await getClientIdByPhoneNumber(phoneNumber.trim());
+    if (!clientId) {
+      console.error("❌ Cliente não encontrado. Encerrando...");
+      rl.close();
+      await mcpClient.close();
+      process.exit(1);
+    }
+
+    console.log(`✅ Cliente encontrado! ID: ${clientId}`);
+
     console.log("\n✅ Contexto configurado!");
     console.log(`   WhatsApp do Salão: ${salonWhatsapp.trim()}`);
     console.log(`   Salão ID: ${salonId}`);
     console.log(`   Telefone: ${phoneNumber.trim()}`);
+
+    const client = await getDataFromClient(clientId);
+
+    console.log(`✅ Preferências do cliente: ${JSON.stringify(client.preferences, null, 2)}`);
+    console.log(`✅  Informações do Cliente: ${JSON.stringify(client.salonCustomers, null, 2)}`)
     console.log("\n💬 Chat iniciado! Digite sua mensagem (ou 'sair'):\n");
 
     // Obtém data e hora atual em pt-BR com timezone America/Sao_Paulo
@@ -248,6 +148,10 @@ async function main() {
 CONTEXTO TEMPORAL:
 - HOJE É: ${formattedDate}
 - HORA ATUAL: ${formattedTime}
+- As preferências do cliente são: ${JSON.stringify(client.preferences, null, 2)}
+- O Nome do Cliente é: ${client.fullName}
+- O ID do Cliente é: ${clientId}
+- Informações do Cliente: ${JSON.stringify(client.salonCustomers, null, 2)}
 - Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".
 
 CONTEXTO IMPORTANTE:
@@ -265,7 +169,7 @@ REGRAS CRÍTICAS:
 4. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas ferramentas.
 5. Se o usuário perguntar sobre algo que você não tem certeza, use a ferramenta apropriada primeiro.
 
-Ao usar as ferramentas MCP, SEMPRE forneça o salonId como "${salonId}" e o phone como "${phoneNumber.trim()}" quando necessário. 
+Ao usar as ferramentas MCP, SEMPRE forneça o salonId como "${salonId}" e o clientId como "${clientId}" quando necessário. 
 Use essas informações automaticamente ao chamar as ferramentas, não peça ao usuário por esses valores.` 
       }
     ];
@@ -287,9 +191,9 @@ Use essas informações automaticamente ao chamar as ferramentas, não peça ao 
           process.stdout.write("🤖 Pensando...");
           
           const response = await openai.chat.completions.create({
-            model: "gpt-4o", // ou gpt-3.5-turbo
+            model: "gpt-4o",
             messages: messages,
-            tools: openaiTools.length > 0 ? openaiTools : undefined,
+            tools: openaiTools,
             tool_choice: "auto",
           });
 
