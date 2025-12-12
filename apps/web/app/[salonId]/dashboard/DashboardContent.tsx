@@ -35,8 +35,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
   }))
 
   return (
-    <div className="flex-1 p-6 overflow-hidden flex flex-col gap-6 relative z-10">
-      
+    <div className="h-full flex flex-col gap-6">
       {/* Header Section */}
       <div className="flex justify-between items-end flex-shrink-0">
         <div>
@@ -52,35 +51,49 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
         </div>
         <div className="flex gap-8 text-right">
           <div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold mb-0.5">Taxa de Resposta</p>
-            <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.responseRate}% <span className="text-xs font-normal text-emerald-500 dark:text-emerald-400 ml-1">{responseVariation}</span></p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold mb-0.5">
+              Taxa de Resposta
+            </p>
+            <p className="text-xl font-bold text-slate-800 dark:text-white">
+              {stats.responseRate}%{" "}
+              <span className="text-xs font-normal text-emerald-500 dark:text-emerald-400 ml-1">
+                {responseVariation}
+              </span>
+            </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold mb-0.5">Fila Média</p>
-            <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.queueAverageTime} <span className="text-xs font-normal text-emerald-500 dark:text-emerald-400 ml-1">{queueVariation}</span></p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold mb-0.5">
+              Fila Média
+            </p>
+            <p className="text-xl font-bold text-slate-800 dark:text-white">
+              {stats.queueAverageTime}{" "}
+              <span className="text-xs font-normal text-emerald-500 dark:text-emerald-400 ml-1">
+                {queueVariation}
+              </span>
+            </p>
           </div>
         </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-6 flex-shrink-0">
-        <StatCard 
-          title="Atendimentos Concluídos" 
-          value={stats.completedAppointments} 
+        <StatCard
+          title="Atendimentos Concluídos"
+          value={stats.completedAppointments}
           trend={completedVariation}
           icon={<CheckCircle2 size={24} />}
           badgeType="neutral"
         />
-        <StatCard 
-          title="Em Andamento" 
-          value={stats.activeChats} 
+        <StatCard
+          title="Em Andamento"
+          value={stats.activeChats}
           badgeText={`IA Cobrindo ${stats.responseRate}%`}
           badgeType="success"
           icon={<MessageCircle size={24} />}
         />
-        <StatCard 
-          title="Tempo Médio" 
-          value={stats.averageResponseTime} 
+        <StatCard
+          title="Tempo Médio"
+          value={stats.averageResponseTime}
           subtext="Atendimento instantâneo"
           badgeText={`SLA ${stats.responseRate}%`}
           badgeType="warning"
@@ -89,15 +102,14 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
       </div>
 
       {/* Main Visualizations (Fills remaining height) */}
-      <div className="flex-1 min-h-0 grid grid-cols-3 gap-6 pb-2">
-        <div className="col-span-2 h-full">
+      <div className="flex-1 min-h-0 grid grid-cols-3 gap-6">
+        <div className="col-span-2 min-h-0">
           <ChartSection data={chartData} range={range} onRangeChange={setRange} />
         </div>
-        <div className="col-span-1 h-full">
+        <div className="col-span-1 min-h-0">
           <AgentList agents={agents} creditsByModel={stats.creditsByModel} />
         </div>
       </div>
-
     </div>
   )
 }

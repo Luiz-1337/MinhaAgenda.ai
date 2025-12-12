@@ -1,17 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { Pencil, Trash2, Users, Clock } from "lucide-react"
+import { Search, Plus, User, Pencil, Clock, Trash2 } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -41,11 +37,12 @@ type ProfessionalForm = z.infer<typeof professionalSchema>
 
 export default function TeamPage() {
   const { activeSalon } = useSalon()
-  const [tab, setTab] = useState("todos")
+  const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
+  const [searchTerm, setSearchTerm] = useState("")
   const [list, setList] = useState<ProfessionalRow[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ProfessionalRow | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [selectedProfessional, setSelectedProfessional] = useState<ProfessionalRow | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -57,7 +54,7 @@ export default function TeamPage() {
 
   useEffect(() => {
     if (!activeSalon) return
-    
+
     setIsLoading(true)
     startTransition(async () => {
       const res = await getProfessionals(activeSalon.id)
@@ -70,11 +67,18 @@ export default function TeamPage() {
     })
   }, [activeSalon?.id])
 
-  const filtered = useMemo(() => {
-    if (tab === "ativos") return list.filter((p) => p.is_active)
-    if (tab === "inativos") return list.filter((p) => !p.is_active)
-    return list
-  }, [list, tab])
+  const filteredTeam = useMemo(() => {
+    return list.filter((member) => {
+      const matchesFilter =
+        filter === "all" ? true : filter === "active" ? member.is_active : !member.is_active
+
+      const matchesSearch =
+        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        member.email.toLowerCase().includes(searchTerm.toLowerCase())
+
+      return matchesFilter && matchesSearch
+    })
+  }, [list, filter, searchTerm])
 
   function openCreate() {
     setEditing(null)
@@ -127,46 +131,71 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col h-full gap-6">
+      {/* Header */}
+      <div className="flex justify-between items-center flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Users className="size-5" />
-          <h1 className="text-2xl font-semibold tracking-tight">Equipe</h1>
+          <User size={24} className="text-slate-400" />
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Equipe</h2>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openCreate} className="bg-teal-600 text-white hover:bg-teal-700">Convidar membro</Button>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+            >
+              <Plus size={16} />
+              Convidar membro
+            </button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
             <DialogHeader>
-              <DialogTitle>{editing ? "Editar Profissional" : "Novo Profissional"}</DialogTitle>
+              <DialogTitle className="text-slate-800 dark:text-white">
+                {editing ? "Editar Profissional" : "Novo Profissional"}
+              </DialogTitle>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nome</Label>
-                <Input id="name" {...form.register("name")} placeholder="Ex.: Ana Souza" />
+                <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nome</Label>
+                <Input
+                  id="name"
+                  {...form.register("name")}
+                  placeholder="Ex.: Ana Souza"
+                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                />
                 {form.formState.errors.name && (
-                  <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
+                  <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <Input id="email" type="email" {...form.register("email")} placeholder="ana@empresa.com" />
+                <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">E-mail</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  {...form.register("email")}
+                  placeholder="ana@empresa.com"
+                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                />
                 {form.formState.errors.email && (
-                  <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
+                  <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
                 )}
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="phone">Telefone</Label>
-                  <Input id="phone" {...form.register("phone")} placeholder="(11) 9XXXX-XXXX" />
+                  <Label htmlFor="phone" className="text-slate-700 dark:text-slate-300">Telefone</Label>
+                  <Input
+                    id="phone"
+                    {...form.register("phone")}
+                    placeholder="(11) 9XXXX-XXXX"
+                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Controller
                     name="isActive"
                     control={form.control}
                     render={({ field }) => (
-                      <Label className="flex items-center gap-2">
+                      <Label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
                         Ativo
                       </Label>
@@ -174,99 +203,175 @@ export default function TeamPage() {
                   />
                 </div>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={isPending}>{editing ? "Salvar" : "Criar"}</Button>
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={form.formState.isSubmitting}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {editing ? "Salvar" : "Criar"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <Card className="p-4">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="todos">Todos</TabsTrigger>
-            <TabsTrigger value="ativos">Ativos</TabsTrigger>
-            <TabsTrigger value="inativos">Inativos</TabsTrigger>
-          </TabsList>
+      {/* Filter Bar */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-2 rounded-xl border border-slate-200 dark:border-white/5">
+        <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
+          <button
+            onClick={() => setFilter("all")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filter === "all"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setFilter("active")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filter === "active"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Ativos
+          </button>
+          <button
+            onClick={() => setFilter("inactive")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filter === "inactive"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Inativos
+          </button>
+        </div>
 
-          <TabsContent value={tab}>
-            <div className="mt-4">
-              {isLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 border rounded-lg">
-                      <Skeleton className="h-10 w-32" />
-                      <Skeleton className="h-10 flex-1" />
-                      <Skeleton className="h-10 w-32" />
-                      <Skeleton className="h-10 w-40" />
-                      <Skeleton className="h-10 w-20" />
-                      <Skeleton className="h-10 w-48" />
-                    </div>
-                  ))}
+        <div className="relative w-full sm:w-64">
+          <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Buscar por nome ou e-mail..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
+          />
+        </div>
+      </div>
+
+      {/* Table Container */}
+      <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
+        {/* Table Header */}
+        <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <div className="col-span-2 pl-2">Nome</div>
+          <div className="col-span-3">E-mail</div>
+          <div className="col-span-2">Telefone</div>
+          <div className="col-span-2">Dias de Trabalho</div>
+          <div className="col-span-1">Status</div>
+          <div className="col-span-2 text-right pr-2">Ações</div>
+        </div>
+
+        {/* Table Body */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-40 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-48 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>E-mail</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Dias de Trabalho</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          Nenhum profissional encontrado. Clique em "Convidar membro" para começar.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filtered.map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell className="font-medium">{p.name}</TableCell>
-                          <TableCell>{p.email}</TableCell>
-                          <TableCell>{p.phone || "—"}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatWorkingDays(p.working_days)}
-                          </TableCell>
-                          <TableCell>
-                            {p.is_active ? (
-                              <span className="bg-green-100 text-green-700 border-green-200 inline-flex rounded-md border px-2 py-1 text-xs">Ativo</span>
-                            ) : (
-                              <span className="bg-muted text-foreground/70 border-muted-foreground/20 inline-flex rounded-md border px-2 py-1 text-xs">Inativo</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
-                                <Pencil className="size-4" />
-                                Editar
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => { setSelectedProfessional(p); setAvailabilityOpen(true) }}>
-                                <Clock className="size-4" />
-                                Horários
-                              </Button>
-                              <Button variant="destructive" size="sm" onClick={() => onDelete(p.id)}>
-                                <Trash2 className="size-4" />
-                                Remover
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
+              ))}
             </div>
-          </TabsContent>
-        </Tabs>
-      </Card>
+          ) : filteredTeam.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+              <User size={32} className="mb-3 opacity-50" />
+              <p>Nenhum membro encontrado.</p>
+            </div>
+          ) : (
+            filteredTeam.map((member, index) => (
+              <div
+                key={member.id}
+                className={`grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
+                  index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
+                }`}
+              >
+                <div className="col-span-2 pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate">
+                  {member.name}
+                </div>
+
+                <div className="col-span-3 text-slate-600 dark:text-slate-400 truncate text-xs">
+                  {member.email}
+                </div>
+
+                <div className="col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                  {member.phone || "—"}
+                </div>
+
+                <div className="col-span-2 text-slate-600 dark:text-slate-400 text-xs truncate">
+                  {formatWorkingDays(member.working_days)}
+                </div>
+
+                <div className="col-span-1">
+                  {member.is_active ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+                      Ativo
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-500/10 border border-slate-500/20 text-xs font-bold text-slate-400">
+                      Inativo
+                    </span>
+                  )}
+                </div>
+
+                <div className="col-span-2 flex justify-end gap-2 pr-2">
+                  <button
+                    onClick={() => openEdit(member)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                  >
+                    <Pencil size={12} />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedProfessional(member)
+                      setAvailabilityOpen(true)
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                  >
+                    <Clock size={12} />
+                    Horários
+                  </button>
+                  <button
+                    onClick={() => onDelete(member.id)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    Remover
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {selectedProfessional && (
         <AvailabilitySheet
           open={availabilityOpen}

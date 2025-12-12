@@ -1,15 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from "@/components/ui/table"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Search, Download, MoreHorizontal, User } from "lucide-react"
 import { toast } from "sonner"
-import { MoreHorizontal } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { getSalonCustomers, type CustomerRow } from "@/app/actions/customers"
 import { useSalon } from "@/contexts/salon-context"
 
@@ -17,7 +11,7 @@ function exportCustomersToCSV(customers: CustomerRow[]) {
   const headers = ["Nome", "Telefone", "E-mail"]
   const rows = customers.map((c) => [c.name, c.phone || "", c.email || ""])
   const csv = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${cell}"`).join(","))].join("\n")
-  
+
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
   const link = document.createElement("a")
   const url = URL.createObjectURL(blob)
@@ -36,7 +30,7 @@ export default function ContactsPage() {
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const pageSize = 20
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
 
   useEffect(() => {
     if (!activeSalon) {
@@ -98,112 +92,153 @@ export default function ContactsPage() {
     }
   }
 
+  // Helper para obter iniciais do nome
+  function getInitials(name: string): string {
+    const parts = name.split(" ")
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+    }
+    return name.substring(0, 2).toUpperCase()
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Contatos</h1>
-        <p className="text-muted-foreground">Listagem dos contatos da sua conta</p>
+    <div className="flex flex-col h-full gap-6">
+      {/* Header */}
+      <div className="flex flex-col gap-1 flex-shrink-0">
+        <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Contatos</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Listagem dos contatos da sua conta</p>
       </div>
 
-      <Card className="p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <Input
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0">
+        <div className="relative w-full max-w-xl">
+          <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+          <input
+            type="text"
             placeholder="Buscar por nome ou telefone..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
               setPage(1)
             }}
-            className="md:max-w-sm"
+            className="w-full bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-slate-500"
           />
-          <Button variant="outline" onClick={handleExport}>Exportar</Button>
         </div>
-      </Card>
 
-      <Card className="p-0">
-        {isLoading ? (
-          <div className="p-6 space-y-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <Skeleton className="h-10 w-10 rounded-full" />
-                <Skeleton className="h-10 flex-1" />
-                <Skeleton className="h-10 w-32" />
-                <Skeleton className="h-10 w-48" />
-                <Skeleton className="h-10 w-16" />
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-medium transition-all"
+        >
+          <Download size={16} />
+          Exportar
+        </button>
+      </div>
+
+      {/* Table Container */}
+      <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
+        {/* Table Header */}
+        <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <div className="col-span-4 pl-2">Nome</div>
+          <div className="col-span-3">Telefone</div>
+          <div className="col-span-4">E-mail</div>
+          <div className="col-span-1 text-right pr-2">Ações</div>
+        </div>
+
+        {/* Table Body */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className="h-8 w-8 rounded-lg bg-slate-200 dark:bg-slate-800 animate-pulse" />
+                  <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-48 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-16 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                </div>
+              ))}
+            </div>
+          ) : filtered.list.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+              <User size={32} className="mb-3 opacity-50" />
+              <p>{activeSalon ? "Nenhum contato encontrado." : "Selecione um salão para ver os contatos."}</p>
+            </div>
+          ) : (
+            filtered.list.map((contact, index) => (
+              <div
+                key={contact.id}
+                className={`grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
+                  index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
+                }`}
+              >
+                <div className="col-span-4 flex items-center gap-3 pl-2">
+                  <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-white/10 font-mono">
+                    {getInitials(contact.name)}
+                  </div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{contact.name}</span>
+                </div>
+
+                <div className="col-span-3 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                  {contact.phone || "Não informado"}
+                </div>
+
+                <div className="col-span-4 text-slate-600 dark:text-slate-400 truncate">
+                  {contact.email || "Não informado"}
+                </div>
+
+                <div className="col-span-1 flex justify-end pr-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors">
+                        <MoreHorizontal size={18} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleViewCustomer(contact)}>Ver</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleEditCustomer(contact)}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-red-600 dark:text-red-400"
+                        onClick={() => handleRemoveCustomer(contact)}
+                      >
+                        Remover
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.list.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                    {activeSalon ? "Nenhum contato encontrado." : "Selecione um salão para ver os contatos."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.list.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>
-                            {c.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .slice(0, 2)
-                              .join("")
-                              .toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">{c.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{c.phone || "Não informado"}</TableCell>
-                    <TableCell>{c.email || "Não informado"}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewCustomer(c)}>Ver</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEditCustomer(c)}>Editar</DropdownMenuItem>
-                          <DropdownMenuItem variant="destructive" onClick={() => handleRemoveCustomer(c)}>Remover</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-            {filtered.total > 0 && (
-              <TableCaption>
-                Mostrando {(filtered.clampedPage - 1) * pageSize + 1} a {Math.min(filtered.clampedPage * pageSize, filtered.total)} de {filtered.total}
-              </TableCaption>
-            )}
-          </Table>
-        )}
-      </Card>
+            ))
+          )}
+        </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" disabled={filtered.clampedPage === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-          Anterior
-        </Button>
-        <Button variant="outline" disabled={filtered.clampedPage >= filtered.totalPages} onClick={() => setPage((p) => p + 1)}>
-          Próximo
-        </Button>
+        {/* Footer / Pagination */}
+        {!isLoading && filtered.total > 0 && (
+          <div className="p-4 border-t border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-medium text-slate-500">
+            <div className="w-full sm:w-auto text-center sm:text-left">
+              Mostrando <span className="text-slate-900 dark:text-white">{(filtered.clampedPage - 1) * pageSize + 1}</span> a{" "}
+              <span className="text-slate-900 dark:text-white">
+                {Math.min(filtered.clampedPage * pageSize, filtered.total)}
+              </span>{" "}
+              de <span className="text-slate-900 dark:text-white">{filtered.total}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={filtered.clampedPage === 1}
+                className="px-3 py-1.5 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Anterior
+              </button>
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={filtered.clampedPage >= filtered.totalPages}
+                className="px-3 py-1.5 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Próximo
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

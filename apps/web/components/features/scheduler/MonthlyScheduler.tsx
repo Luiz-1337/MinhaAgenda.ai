@@ -1,22 +1,10 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { format, addMonths, subMonths, eachDayOfInterval, isSameDay, isSameMonth, parseISO } from "date-fns"
+import { format, eachDayOfInterval, isSameDay, isSameMonth, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
-import { ChevronLeft, ChevronRight, Calendar, User } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import type { DailyAppointment, ProfessionalInfo, MonthlyAppointmentsResult } from "@/app/actions/appointments"
 import { getMonthlyAppointments } from "@/app/actions/appointments"
 
@@ -25,18 +13,18 @@ interface MonthlySchedulerProps {
   initialDate?: Date | string
 }
 
-function getStatusColor(status: DailyAppointment["status"]): string {
+function getStatusColor(status: DailyAppointment["status"]): { bg: string; border: string; text: string } {
   switch (status) {
     case "confirmed":
-      return "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
+      return { bg: "bg-indigo-100 dark:bg-indigo-500/20", border: "border-indigo-500", text: "text-indigo-700 dark:text-indigo-200" }
     case "pending":
-      return "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20"
+      return { bg: "bg-pink-100 dark:bg-pink-500/20", border: "border-pink-500", text: "text-pink-700 dark:text-pink-200" }
     case "cancelled":
-      return "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
+      return { bg: "bg-red-100 dark:bg-red-500/20", border: "border-red-500", text: "text-red-700 dark:text-red-200" }
     case "completed":
-      return "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20"
+      return { bg: "bg-emerald-100 dark:bg-emerald-500/20", border: "border-emerald-500", text: "text-emerald-700 dark:text-emerald-200" }
     default:
-      return "bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20"
+      return { bg: "bg-blue-100 dark:bg-blue-500/20", border: "border-blue-500", text: "text-blue-700 dark:text-blue-200" }
   }
 }
 
@@ -129,194 +117,86 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
     return map
   }, [selectedProfessionalId, appointmentsByProfessional, data])
 
-  const handlePreviousMonth = () => {
-    setSelectedDate((prev) => subMonths(prev, 1))
-  }
-
-  const handleNextMonth = () => {
-    setSelectedDate((prev) => addMonths(prev, 1))
-  }
-
-  const handleToday = () => {
-    setSelectedDate(getBrazilNow())
-  }
-
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = e.target.value ? parseISO(e.target.value) : new Date()
-    setSelectedDate(newDate)
-  }
-
-  // Agrupa os dias em semanas (7 dias por semana)
-  const weeks = useMemo(() => {
-    const weeksArray: Date[][] = []
-    for (let i = 0; i < calendarDays.length; i += 7) {
-      weeksArray.push(calendarDays.slice(i, i + 7))
-    }
-    return weeksArray
-  }, [calendarDays])
-
-  const weekDayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+  const weekDayNames = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+  const weekDayKeys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab']
 
   return (
-    <div className="flex flex-col gap-4 flex-1 min-h-0">
-      <Card className="p-4">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handlePreviousMonth}
-                disabled={loading}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleToday}
-                disabled={loading}
-              >
-                Hoje
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleNextMonth}
-                disabled={loading}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Input
-                type="date"
-                value={format(selectedDate, "yyyy-MM-dd")}
-                onChange={handleDateChange}
-                className="w-auto"
-                disabled={loading}
-              />
-            </div>
-
-            <div className="text-sm text-muted-foreground">
-              {formatBrazilTime(selectedDate, "MMMM 'de' yyyy")}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-muted-foreground" />
-            <Select
-              value={selectedProfessionalId || undefined}
-              onValueChange={setSelectedProfessionalId}
-              disabled={loading || activeProfessionals.length === 0}
-            >
-              <SelectTrigger className="w-full md:w-[300px]">
-                <SelectValue placeholder="Selecione um profissional" />
-              </SelectTrigger>
-              <SelectContent>
-                {activeProfessionals.map((professional) => (
-                  <SelectItem key={professional.id} value={professional.id}>
-                    {professional.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </Card>
-
+    <div className="flex flex-col flex-1 min-h-0">
       {loading ? (
-        <Card className="p-6">
+        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="space-y-4">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-[600px] w-full" />
           </div>
-        </Card>
+        </div>
       ) : error ? (
-        <Card className="p-6">
-          <div className="text-center text-destructive">{error}</div>
-        </Card>
+        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <div className="text-center text-red-600 dark:text-red-400">{error}</div>
+        </div>
       ) : !data || activeProfessionals.length === 0 ? (
-        <Card className="p-6">
-          <div className="text-center text-muted-foreground">
+        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <div className="text-center text-slate-500 dark:text-slate-400">
             Nenhum profissional ativo encontrado
           </div>
-        </Card>
+        </div>
       ) : !selectedProfessional ? (
-        <Card className="p-6">
-          <div className="text-center text-muted-foreground">
+        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <div className="text-center text-slate-500 dark:text-slate-400">
             Selecione um profissional para visualizar a agenda
           </div>
-        </Card>
+        </div>
       ) : (
-        <Card className="p-0 overflow-hidden flex-1 flex flex-col">
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="grid border-b sticky top-0 bg-background z-10" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
-              {weekDayNames.map((dayName) => (
-                <div key={dayName} className="p-3 border-r last:border-r-0 text-center font-semibold bg-muted/50 text-sm">
-                  {dayName}
-                </div>
-              ))}
-            </div>
-
-            <div className="overflow-y-auto flex-1" style={{ maxHeight: "calc(100vh - 350px)" }}>
-              <div className="grid" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
-                {calendarDays.map((day) => {
-                  const dayKey = formatBrazilTime(day, "yyyy-MM-dd")
-                  const dayAppointments = appointmentsByDay.get(dayKey) || []
-                  const isCurrentMonth = isSameMonth(day, selectedDate)
-                  const isToday = isSameDay(day, getBrazilNow())
-
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={`min-h-[120px] border-r border-b last:border-r-0 p-2 ${
-                        !isCurrentMonth ? "bg-muted/20 text-muted-foreground" : "bg-background"
-                      } ${isToday ? "ring-2 ring-primary" : ""}`}
-                    >
-                      <div className={`text-sm font-medium mb-1 ${isToday ? "text-primary" : ""}`}>
+        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-4 overflow-hidden flex flex-col">
+          <div className="grid grid-cols-7 gap-4 h-full">
+            {weekDayNames.map((d, index) => (
+              <div key={weekDayKeys[index]} className="text-center text-sm font-bold text-slate-400 dark:text-slate-500 mb-2">{d}</div>
+            ))}
+            {calendarDays.map((day) => {
+              const dayKey = formatBrazilTime(day, "yyyy-MM-dd")
+              const dayAppointments = appointmentsByDay.get(dayKey) || []
+              const isCurrentMonth = isSameMonth(day, selectedDate)
+              const isToday = isSameDay(day, getBrazilNow())
+              const hasEvent = dayAppointments.length > 0
+              
+              return (
+                <div 
+                  key={day.toISOString()} 
+                  className={`
+                    border rounded-xl p-2 relative flex flex-col justify-between transition-all
+                    ${isCurrentMonth 
+                      ? 'border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] hover:border-indigo-500/50 cursor-pointer' 
+                      : 'border-transparent opacity-30'}
+                  `}
+                >
+                  {isCurrentMonth && (
+                    <>
+                      <span className={`text-sm font-medium ${isToday ? 'text-indigo-500 dark:text-indigo-400 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
                         {formatBrazilTime(day, "d")}
-                      </div>
-                      <div className="space-y-1">
-                        {dayAppointments.slice(0, 3).map((appointment) => (
-                          <div
-                            key={appointment.id}
-                            className={`text-xs p-1.5 rounded border-l-2 cursor-pointer hover:opacity-80 transition-opacity truncate ${
-                              getStatusColor(appointment.status)
-                            }`}
-                            style={{
-                              borderLeftColor: getStatusColor(appointment.status).includes("green")
-                                ? "rgb(34 197 94)"
-                                : getStatusColor(appointment.status).includes("yellow")
-                                ? "rgb(234 179 8)"
-                                : getStatusColor(appointment.status).includes("red")
-                                ? "rgb(239 68 68)"
-                                : "rgb(59 130 246)",
-                            }}
-                            title={`${appointment.clientName || "Cliente"} - ${appointment.serviceName} (${formatBrazilTime(appointment.startTime, "HH:mm")})`}
-                          >
-                            <div className="font-semibold truncate">
-                              {formatBrazilTime(appointment.startTime, "HH:mm")}
-                            </div>
-                            <div className="truncate">
-                              {appointment.clientName || "Cliente"}
-                            </div>
-                          </div>
-                        ))}
-                        {dayAppointments.length > 3 && (
-                          <div className="text-xs text-muted-foreground px-1.5">
-                            +{dayAppointments.length - 3} mais
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+                      </span>
+                      {hasEvent && (
+                        <div className="space-y-1 mt-1">
+                          {dayAppointments.slice(0, 2).map((appointment) => {
+                            const colorScheme = getStatusColor(appointment.status)
+                            return (
+                              <div 
+                                key={appointment.id}
+                                className={`h-1.5 w-full ${colorScheme.bg.replace('bg-', 'bg-').replace('/20', '/40')} rounded-full`}
+                                title={`${appointment.clientName || "Cliente"} - ${formatBrazilTime(appointment.startTime, "HH:mm")}`}
+                              ></div>
+                            )
+                          })}
+                          {dayAppointments.length > 2 && (
+                            <div className="h-1.5 w-2/3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full"></div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        </Card>
+        </div>
       )}
     </div>
   )

@@ -1,17 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { Pencil, Trash2, Scissors, Clock, DollarSign } from "lucide-react"
+import { Search, Plus, Zap, Pencil, Trash2, Clock, DollarSign, Tag } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -35,11 +31,12 @@ interface ServiceListProps {
 
 export default function ServiceList({ salonId }: ServiceListProps) {
   const { activeSalon } = useSalon()
-  const [tab, setTab] = useState("todos")
+  const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
+  const [searchTerm, setSearchTerm] = useState("")
   const [list, setList] = useState<ServiceRow[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ServiceRow | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(true)
 
   const form = useForm<ServiceForm>({
@@ -49,7 +46,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   useEffect(() => {
     if (!salonId) return
-    
+
     setIsLoading(true)
     startTransition(async () => {
       try {
@@ -66,11 +63,18 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     })
   }, [salonId])
 
-  const filtered = useMemo(() => {
-    if (tab === "ativos") return list.filter((s) => s.is_active)
-    if (tab === "inativos") return list.filter((s) => !s.is_active)
-    return list
-  }, [list, tab])
+  const filteredServices = useMemo(() => {
+    return list.filter((service) => {
+      const matchesFilter =
+        filter === "all" ? true : filter === "active" ? service.is_active : !service.is_active
+
+      const matchesSearch =
+        service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (service.description && service.description.toLowerCase().includes(searchTerm.toLowerCase()))
+
+      return matchesFilter && matchesSearch
+    })
+  }, [list, filter, searchTerm])
 
   function openCreate() {
     setEditing(null)
@@ -152,72 +156,102 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col h-full gap-6">
+      {/* Header */}
+      <div className="flex justify-between items-center flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Scissors className="size-5" />
-          <h1 className="text-2xl font-semibold tracking-tight">Serviços</h1>
+          <Zap size={24} className="text-slate-400" />
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Serviços</h2>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button onClick={openCreate} className="bg-teal-600 text-white hover:bg-teal-700">
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+            >
+              <Plus size={16} />
               Criar serviço
-            </Button>
+            </button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
             <DialogHeader>
-              <DialogTitle>{editing ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
+              <DialogTitle className="text-slate-800 dark:text-white">
+                {editing ? "Editar Serviço" : "Novo Serviço"}
+              </DialogTitle>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nome *</Label>
-                <Input id="name" {...form.register("name")} placeholder="Ex.: Corte Masculino" />
+                <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nome *</Label>
+                <Input
+                  id="name"
+                  {...form.register("name")}
+                  placeholder="Ex.: Corte Masculino"
+                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                />
                 {form.formState.errors.name && (
-                  <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
+                  <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="description">Descrição</Label>
-                <Input id="description" {...form.register("description")} placeholder="Descrição do serviço" />
+                <Label htmlFor="description" className="text-slate-700 dark:text-slate-300">Descrição</Label>
+                <Input
+                  id="description"
+                  {...form.register("description")}
+                  placeholder="Descrição do serviço"
+                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Duração (minutos) *</Label>
+                  <Label htmlFor="duration" className="text-slate-700 dark:text-slate-300">
+                    Duração (minutos) *
+                  </Label>
                   <Input
                     id="duration"
                     type="number"
                     {...form.register("duration", { valueAsNumber: true })}
                     placeholder="60"
+                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
                   />
                   {form.formState.errors.duration && (
-                    <p className="text-sm text-destructive">{form.formState.errors.duration.message}</p>
+                    <p className="text-sm text-red-500">{form.formState.errors.duration.message}</p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="price">Preço (R$) *</Label>
+                  <Label htmlFor="price" className="text-slate-700 dark:text-slate-300">Preço (R$) *</Label>
                   <Input
                     id="price"
                     type="number"
                     step="0.01"
                     {...form.register("price", { valueAsNumber: true })}
                     placeholder="50.00"
+                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
                   />
                   {form.formState.errors.price && (
-                    <p className="text-sm text-destructive">{form.formState.errors.price.message}</p>
+                    <p className="text-sm text-red-500">{form.formState.errors.price.message}</p>
                   )}
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
+                <Label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                   <Switch {...form.register("isActive")} checked={form.watch("isActive")} />
                   Ativo
                 </Label>
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+                >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isPending}>
+                <Button
+                  type="submit"
+                  disabled={form.formState.isSubmitting}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
                   {editing ? "Salvar" : "Criar"}
                 </Button>
               </DialogFooter>
@@ -226,99 +260,145 @@ export default function ServiceList({ salonId }: ServiceListProps) {
         </Dialog>
       </div>
 
-      <Card className="p-4">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="todos">Todos</TabsTrigger>
-            <TabsTrigger value="ativos">Ativos</TabsTrigger>
-            <TabsTrigger value="inativos">Inativos</TabsTrigger>
-          </TabsList>
+      {/* Filter Bar */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-2 rounded-xl border border-slate-200 dark:border-white/5">
+        <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
+          <button
+            onClick={() => setFilter("all")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filter === "all"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            onClick={() => setFilter("active")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filter === "active"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Ativos
+          </button>
+          <button
+            onClick={() => setFilter("inactive")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              filter === "inactive"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Inativos
+          </button>
+        </div>
 
-          <TabsContent value={tab}>
-            <div className="mt-4">
-              {isLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 border rounded-lg">
-                      <Skeleton className="h-10 w-32" />
-                      <Skeleton className="h-10 flex-1" />
-                      <Skeleton className="h-10 w-32" />
-                      <Skeleton className="h-10 w-40" />
-                      <Skeleton className="h-10 w-20" />
-                    </div>
-                  ))}
+        <div className="relative w-full sm:w-64">
+          <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Buscar serviços..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
+          />
+        </div>
+      </div>
+
+      {/* Table Container */}
+      <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
+        {/* Table Header */}
+        <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <div className="col-span-3 pl-2">Nome</div>
+          <div className="col-span-4">Descrição</div>
+          <div className="col-span-1">Duração</div>
+          <div className="col-span-1">Preço</div>
+          <div className="col-span-1">Status</div>
+          <div className="col-span-2 text-right pr-2">Ações</div>
+        </div>
+
+        {/* Table Body */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-24 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-24 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Duração</TableHead>
-                      <TableHead>Preço</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          Nenhum serviço encontrado. Clique em "Criar serviço" para começar.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filtered.map((s) => (
-                        <TableRow key={s.id}>
-                          <TableCell className="font-medium">{s.name}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {s.description || "—"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1 text-sm">
-                              <Clock className="size-4" />
-                              {formatDuration(s.duration)}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1 text-sm font-medium">
-                              <DollarSign className="size-4" />
-                              {formatPrice(s.price)}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {s.is_active ? (
-                              <span className="bg-green-100 text-green-700 border-green-200 inline-flex rounded-md border px-2 py-1 text-xs">
-                                Ativo
-                              </span>
-                            ) : (
-                              <span className="bg-muted text-foreground/70 border-muted-foreground/20 inline-flex rounded-md border px-2 py-1 text-xs">
-                                Inativo
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button variant="outline" size="sm" onClick={() => openEdit(s)}>
-                                <Pencil className="size-4" />
-                                Editar
-                              </Button>
-                              <Button variant="destructive" size="sm" onClick={() => onDelete(s.id)}>
-                                <Trash2 className="size-4" />
-                                Remover
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
+              ))}
             </div>
-          </TabsContent>
-        </Tabs>
-      </Card>
+          ) : filteredServices.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+              <Zap size={32} className="mb-3 opacity-50" />
+              <p>Nenhum serviço encontrado.</p>
+            </div>
+          ) : (
+            filteredServices.map((service, index) => (
+              <div
+                key={service.id}
+                className={`grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
+                  index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
+                }`}
+              >
+                <div className="col-span-3 pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate flex items-center gap-2">
+                  <Tag size={14} className="text-slate-400" />
+                  {service.name}
+                </div>
+
+                <div className="col-span-4 text-slate-500 dark:text-slate-400 text-xs truncate" title={service.description || ""}>
+                  {service.description || "—"}
+                </div>
+
+                <div className="col-span-1 text-slate-600 dark:text-slate-300 font-medium text-xs flex items-center gap-1">
+                  <Clock size={12} className="text-slate-400" />
+                  {formatDuration(service.duration)}
+                </div>
+
+                <div className="col-span-1 text-slate-600 dark:text-slate-300 font-mono text-xs font-medium flex items-center gap-1">
+                  <DollarSign size={12} className="text-emerald-500" />
+                  {formatPrice(service.price)}
+                </div>
+
+                <div className="col-span-1">
+                  {service.is_active ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+                      Ativo
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-500/10 border border-slate-500/20 text-xs font-bold text-slate-400">
+                      Inativo
+                    </span>
+                  )}
+                </div>
+
+                <div className="col-span-2 flex justify-end gap-2 pr-2">
+                  <button
+                    onClick={() => openEdit(service)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                  >
+                    <Pencil size={12} />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => onDelete(service.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    Remover
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }

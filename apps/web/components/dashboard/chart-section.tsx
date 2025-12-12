@@ -36,30 +36,30 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
     <div className="h-full flex flex-col bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 relative overflow-hidden transition-colors duration-300">
       {/* Background decoration */}
       <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
-      
-      <div className="p-5 flex justify-between items-start z-10">
+
+      <div className="p-5 flex justify-between items-start z-10 flex-shrink-0">
         <div>
           <h3 className="text-slate-800 dark:text-slate-200 font-semibold">Gastos de créditos</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Monitoramento em tempo real ({range} dias)</p>
         </div>
         <div className="flex bg-slate-100 dark:bg-slate-950 rounded-lg p-1 border border-slate-200 dark:border-white/5">
-            {([7, 14, 30] as const).map((r) => (
-                <button 
-                    key={r}
-                    onClick={() => handleRangeClick(r)}
-                    className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
-                        range === r
-                        ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm dark:shadow-lg dark:shadow-indigo-500/20' 
-                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                    }`}
-                >
-                    {r}d
-                </button>
-            ))}
+          {([7, 14, 30] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => handleRangeClick(r)}
+              className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+                range === r
+                  ? "bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm dark:shadow-lg dark:shadow-indigo-500/20"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+            >
+              {r}d
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="flex-1 w-full min-h-0 px-2 pb-2">
+      <div className="flex-1 w-full min-h-0 px-2 pb-2 overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>

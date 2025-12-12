@@ -1,15 +1,9 @@
 "use client"
 
 import { useMemo, useState, useRef } from "react"
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, MoreHorizontal } from "lucide-react"
+import { Search, MoreHorizontal, Send } from "lucide-react"
 import { toast } from "sonner"
 
 type ConversationStatus = "Ativo" | "Finalizado" | "Aguardando humano"
@@ -27,6 +21,42 @@ type ChatMessage = {
   from: "cliente" | "agente" | "sistema"
   text: string
   time: string
+}
+
+// Helper para obter iniciais
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase()
+}
+
+// Helper para badge de status
+function getStatusBadge(status: ConversationStatus) {
+  switch (status) {
+    case "Ativo":
+      return (
+        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium text-emerald-400">
+          Ativo
+        </span>
+      )
+    case "Finalizado":
+      return (
+        <span className="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-medium text-blue-400">
+          Finalizado
+        </span>
+      )
+    case "Aguardando humano":
+      return (
+        <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-medium text-amber-400">
+          Aguardando humano
+        </span>
+      )
+    default:
+      return null
+  }
 }
 
 const conversations: Conversation[] = [
@@ -74,7 +104,7 @@ const chatByConversation: Record<string, ChatMessage[]> = {
 }
 
 export default function ChatPage() {
-  const [tab, setTab] = useState("todos")
+  const [filter, setFilter] = useState<"all" | "waiting">("all")
   const [query, setQuery] = useState("")
   const [activeId, setActiveId] = useState(conversations[0].id)
   const [messageText, setMessageText] = useState("")
@@ -83,10 +113,8 @@ export default function ChatPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     let list = conversations
-    if (tab !== "todos") {
-      list = list.filter((c) =>
-        tab === "Em espera" ? c.status === "Aguardando humano" : c.status !== "Aguardando humano"
-      )
+    if (filter === "waiting") {
+      list = list.filter((c) => c.status === "Aguardando humano")
     }
     if (q) {
       list = list.filter(
@@ -97,7 +125,7 @@ export default function ChatPage() {
       )
     }
     return list
-  }, [tab, query])
+  }, [filter, query])
 
   const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
   const messages = useMemo(() => (active ? chatByConversation[active.id] ?? [] : []), [active])
@@ -134,146 +162,200 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)]">
-      <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-[340px_1fr] lg:grid-cols-[380px_1fr]">
-        <Card className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium">Conversas</div>
+    <div className="h-full p-4 md:p-6">
+      <div className="flex h-full bg-slate-50 dark:bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-white/5 shadow-2xl">
+      {/* Sidebar List */}
+      <div className="w-80 border-r border-slate-200 dark:border-white/5 flex flex-col bg-white/50 dark:bg-slate-900/50 backdrop-blur-md">
+        {/* Sidebar Header */}
+        <div className="p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Conversas</h2>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFilter("all")}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
+                filter === "all"
+                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setFilter("waiting")}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
+                filter === "waiting"
+                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+            >
+              Em espera
+            </button>
           </div>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <Tabs value={tab} onValueChange={setTab}>
-              <TabsList>
-                <TabsTrigger value="todos">Todos</TabsTrigger>
-                <TabsTrigger value="Em espera">Em espera</TabsTrigger>
-              </TabsList>
-              <TabsContent value={tab} />
-            </Tabs>
-            <Input
+
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+            <input
+              type="text"
               placeholder="Buscar..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="max-w-[220px]"
+              className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
             />
           </div>
+        </div>
 
-          <div className="space-y-2">
-            {filtered.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setActiveId(c.id)}
-                className="hover:bg-muted/50 flex w-full items-start gap-3 rounded-md p-2 text-left"
-              >
-                <Avatar>
-                  <AvatarFallback>{c.customer.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{c.customer.name}</div>
-                    <div className="text-muted-foreground text-xs">{c.lastMessageAt}</div>
-                  </div>
-                  <div className="text-muted-foreground mt-1 text-xs">{c.preview}</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    {c.status === "Ativo" && (
-                      <Badge className="bg-green-100 text-green-700 border-green-200">Ativo</Badge>
-                    )}
-                    {c.status === "Finalizado" && (
-                      <Badge className="bg-blue-100 text-blue-700 border-blue-200">Finalizado</Badge>
-                    )}
-                    {c.status === "Aguardando humano" && (
-                      <Badge className="bg-orange-100 text-orange-700 border-orange-200">Aguardando humano</Badge>
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="flex h-full flex-col">
-          <div className="border-b p-4">
-            {active && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>{active.customer.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="font-medium">{active.customer.name}</div>
-                    <div className="text-muted-foreground text-xs">{active.customer.phone}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-muted-foreground text-xs">{active.assignedTo}</div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label="Ações">
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleTransferConversation(active.id)}>Transferir</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleFinishConversation(active.id)}>Finalizar</DropdownMenuItem>
-                      <DropdownMenuItem variant="destructive" onClick={() => handleBlockConversation(active.id)}>Bloquear</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1">
-            <ScrollArea className="h-full">
-              <div className="space-y-4 p-4">
-                {messages.map((m) => {
-                  if (m.from === "sistema") {
-                    return (
-                      <div key={m.id} className="text-muted-foreground text-center text-xs">
-                        {m.text}
-                      </div>
-                    )
-                  }
-                  const isClient = m.from === "cliente"
-                  return (
-                    <div key={m.id} className={`flex ${isClient ? "justify-start" : "justify-end"}`}>
-                      <div
-                        className={
-                          isClient
-                            ? "bg-violet-600 text-white max-w-[75%] rounded-2xl px-3 py-2 shadow-sm"
-                            : "bg-muted max-w-[75%] rounded-2xl px-3 py-2 shadow-sm"
-                        }
-                      >
-                        <div className="text-sm">{m.text}</div>
-                        <div className={isClient ? "text-violet-100 mt-1 text-[10px]" : "text-muted-foreground mt-1 text-[10px]"}>
-                          {m.time}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </ScrollArea>
-          </div>
-
-          <div className="border-t p-3">
-            <form
-              onSubmit={handleSendMessage}
-              className="flex items-end gap-2"
+        {/* Conversation List */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {filtered.map((chat) => (
+            <div
+              key={chat.id}
+              onClick={() => setActiveId(chat.id)}
+              className={`p-4 flex gap-3 cursor-pointer transition-colors border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 ${
+                activeId === chat.id
+                  ? "bg-indigo-50/50 dark:bg-indigo-500/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-indigo-500"
+                  : ""
+              }`}
             >
-              <textarea
-                ref={textareaRef}
-                placeholder="Digite sua mensagem..."
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                className="bg-background focus-visible:ring-ring/50 min-h-12 w-full resize-none rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:outline-1"
-                rows={3}
-              />
-              <Button type="submit" disabled={!messageText.trim()} className="bg-violet-600 text-white hover:bg-violet-700" aria-label="Enviar">
-                <Send className="size-4" />
-              </Button>
-            </form>
-          </div>
-        </Card>
+              <div className="flex-shrink-0">
+                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400">
+                  {getInitials(chat.customer.name)}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-start mb-1">
+                  <h3
+                    className={`text-sm font-semibold truncate ${
+                      activeId === chat.id ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-slate-200"
+                    }`}
+                  >
+                    {chat.customer.name}
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-mono">{chat.lastMessageAt}</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-2">{chat.preview}</p>
+                {getStatusBadge(chat.status)}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-950/30 backdrop-blur-sm relative">
+        {/* Background Grid Pattern */}
+        <div
+          className="absolute inset-0 z-0 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, #808080 1px, transparent 1px), linear-gradient(to bottom, #808080 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
+
+        {/* Chat Header */}
+        {active && (
+          <header className="h-20 flex items-center justify-between px-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-sm font-bold text-white shadow-lg">
+                {getInitials(active.customer.name)}
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  {active.customer.name}
+                </h2>
+                <p className="text-xs text-slate-500 font-mono">{active.customer.phone}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden sm:block">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Atendente</p>
+                <p className="text-xs text-slate-600 dark:text-slate-300">{active.assignedTo}</p>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-2 text-slate-400 hover:text-white transition-colors">
+                    <MoreHorizontal size={20} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleTransferConversation(active.id)}>Transferir</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFinishConversation(active.id)}>Finalizar</DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600 dark:text-red-400"
+                    onClick={() => handleBlockConversation(active.id)}
+                  >
+                    Bloquear
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </header>
+        )}
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar z-10">
+          {messages.map((msg) => {
+            if (msg.from === "sistema") {
+              return (
+                <div key={msg.id} className="flex justify-center my-4">
+                  <span className="text-[10px] text-slate-500 bg-slate-200/50 dark:bg-white/5 px-3 py-1 rounded-full border border-slate-300 dark:border-white/5">
+                    {msg.text}
+                  </span>
+                </div>
+              )
+            }
+
+            const isClient = msg.from === "cliente"
+
+            return (
+              <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
+                <div className={`max-w-[70%] relative group`}>
+                  {/* Message Bubble */}
+                  <div
+                    className={`p-4 shadow-sm relative ${
+                      isClient
+                        ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl rounded-tl-none shadow-indigo-500/20"
+                        : "bg-transparent text-slate-700 dark:text-slate-200 rounded-2xl rounded-tr-none text-right"
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed">{msg.text}</p>
+                    <span
+                      className={`text-[10px] font-mono mt-1 block opacity-60 ${
+                        isClient ? "text-indigo-200" : "text-slate-400"
+                      }`}
+                    >
+                      {msg.time}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Input Area */}
+        <div className="p-6 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-white/5 z-10">
+          <form onSubmit={handleSendMessage} className="relative">
+            <textarea
+              ref={textareaRef}
+              rows={3}
+              placeholder="Digite sua mensagem..."
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
+            />
+            <button
+              type="submit"
+              disabled={!messageText.trim()}
+              className="absolute right-3 bottom-3 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send size={18} />
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
     </div>
   )
 }

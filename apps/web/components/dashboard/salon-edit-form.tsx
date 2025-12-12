@@ -5,12 +5,9 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { updateSalon } from "@/app/actions/salon"
 import { updateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { Store, MapPin, Phone, MessageCircle, Clock, AlertCircle, CreditCard, Car } from "lucide-react"
 import type { SalonDetails } from "@/app/actions/salon"
 
 const DAYS_OF_WEEK = [
@@ -121,181 +118,273 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="name">Nome *</Label>
-        <Input id="name" {...form.register("name")} placeholder="Ex.: Barber Club" />
-        {form.formState.errors.name && (
-          <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="slug">Slug</Label>
-        <Input id="slug" value={salon.slug} disabled className="bg-muted" />
-        <p className="text-xs text-muted-foreground">O slug não pode ser alterado</p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="description">Descrição</Label>
-        <textarea
-          id="description"
-          {...form.register("description")}
-          placeholder="Descreva seu salão..."
-          rows={3}
-          className={cn(
-            "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none",
-            "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-            "disabled:cursor-not-allowed disabled:opacity-50"
-          )}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="address">Endereço</Label>
-        <Input id="address" {...form.register("address")} placeholder="Rua Exemplo, 123" />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="phone">Telefone</Label>
-        <Input id="phone" {...form.register("phone")} placeholder="(11) 90000-0000" />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="whatsapp">WhatsApp</Label>
-        <Input id="whatsapp" {...form.register("whatsapp")} placeholder="(11) 99999-9999" />
-        {form.formState.errors.whatsapp && (
-          <p className="text-sm text-destructive">{form.formState.errors.whatsapp.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <Label>Horário de Funcionamento</Label>
-        <div className="space-y-3">
-          {DAYS_OF_WEEK.map((day) => {
-            const workHours = form.watch("workHours") || {}
-            const dayHours = workHours[day.value as keyof typeof workHours]
-            const isActive = !!dayHours
-
-            return (
-              <div key={day.value} className="flex items-center gap-4 rounded-md border p-3">
-                <div className="flex items-center gap-2 min-w-[140px]">
-                  <Switch
-                    checked={isActive}
-                    onCheckedChange={(checked) => {
-                      const currentWorkHours = (form.getValues("workHours") || {}) as Record<string, { start: string; end: string }>
-                      if (checked) {
-                        form.setValue("workHours", {
-                          ...currentWorkHours,
-                          [day.value]: { start: "09:00", end: "18:00" },
-                        } as UpdateSalonSchema["workHours"])
-                      } else {
-                        // Remove the day from the workHours
-                        const { [day.value]: _, ...rest } = currentWorkHours;
-                        // Only keep keys that are valid days ("0"-"6") and cast to correct type
-                        const validRest = Object.fromEntries(
-                          Object.entries(rest as Record<string, { start: string; end: string }>).filter(([k]) =>
-                            ["0", "1", "2", "3", "4", "5", "6"].includes(k)
-                          )
-                        ) as Partial<Record<"0" | "1" | "2" | "3" | "4" | "5" | "6", { start: string; end: string }>>;
-                        form.setValue(
-                          "workHours",
-                          Object.keys(validRest).length > 0 
-                            ? (validRest as UpdateSalonSchema["workHours"]) 
-                            : undefined
-                        );
-                      }
-                    }}
-                  />
-                  <Label className="font-normal">{day.label}</Label>
-                </div>
-                {isActive && (
-                  <div className="flex items-center gap-2 flex-1">
-                    <Input
-                      type="time"
-                      {...form.register(`workHours.${day.value}.start`)}
-                      className="flex-1"
-                    />
-                    <span className="text-muted-foreground">até</span>
-                    <Input
-                      type="time"
-                      {...form.register(`workHours.${day.value}.end`)}
-                      className="flex-1"
-                    />
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        {form.formState.errors.workHours && (
-          <p className="text-sm text-destructive">
-            {form.formState.errors.workHours.message}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <Label>Configurações</Label>
-        <div className="space-y-4 rounded-md border p-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="accepts_card" className="font-normal">Aceita cartão</Label>
-              <p className="text-xs text-muted-foreground">O salão aceita pagamento com cartão</p>
-            </div>
-            <Switch
-              id="accepts_card"
-              {...form.register("settings.accepts_card")}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="parking" className="font-normal">Estacionamento</Label>
-              <p className="text-xs text-muted-foreground">O salão possui estacionamento</p>
-            </div>
-            <Switch
-              id="parking"
-              {...form.register("settings.parking")}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="late_tolerance" className="font-normal">
-              Tolerância de atraso (minutos)
-            </Label>
-            <Input
-              id="late_tolerance"
-              type="number"
-              min="0"
-              {...form.register("settings.late_tolerance_minutes", { valueAsNumber: true })}
-              placeholder="10"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cancellation_policy" className="font-normal">
-              Política de cancelamento
-            </Label>
-            <textarea
-              id="cancellation_policy"
-              {...form.register("settings.cancellation_policy")}
-              placeholder="Ex.: Cancelamentos devem ser feitos com pelo menos 24h de antecedência"
-              rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none",
-                "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-                "disabled:cursor-not-allowed disabled:opacity-50"
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Identity Card */}
+        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+            <Store size={16} className="text-indigo-500" /> Identidade do Salão
+          </h3>
+          <div className="grid grid-cols-1 gap-5">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Nome do Estabelecimento
+              </label>
+              <input
+                type="text"
+                {...form.register("name")}
+                placeholder="Ex.: Barber Club"
+                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+              />
+              {form.formState.errors.name && (
+                <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
               )}
-            />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Link Personalizado (Slug)
+              </label>
+              <div className="flex rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 overflow-hidden focus-within:border-indigo-500/50 transition-all">
+                <span className="px-4 py-2.5 text-slate-500 border-r border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-white/5 select-none text-xs font-mono flex items-center">
+                  minhaagenda.ai/
+                </span>
+                <input
+                  type="text"
+                  value={salon.slug}
+                  disabled
+                  className="flex-1 bg-transparent px-4 py-2.5 text-slate-500 dark:text-slate-400 placeholder-slate-500 focus:outline-none text-sm"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">O slug não pode ser alterado.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Descrição</label>
+              <textarea
+                rows={3}
+                {...form.register("description")}
+                placeholder="Descreva seu salão..."
+                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <Button type="submit" disabled={isPending} className="w-full">
-        {isPending ? "Salvando..." : "Salvar Alterações"}
-      </Button>
-    </form>
+        {/* Location & Contact Card */}
+        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+            <MapPin size={16} className="text-indigo-500" /> Localização & Contato
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Endereço</label>
+              <input
+                type="text"
+                {...form.register("address")}
+                placeholder="Rua Exemplo, 123"
+                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Telefone</label>
+              <div className="relative">
+                <Phone size={16} className="absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  {...form.register("phone")}
+                  placeholder="(11) 90000-0000"
+                  className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">WhatsApp</label>
+              <div className="relative">
+                <MessageCircle size={16} className="absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  {...form.register("whatsapp")}
+                  placeholder="(11) 99999-9999"
+                  className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                />
+              </div>
+              {form.formState.errors.whatsapp && (
+                <p className="text-xs text-red-500">{form.formState.errors.whatsapp.message}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Work Hours Card */}
+        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+            <Clock size={16} className="text-indigo-500" /> Horário de Funcionamento
+          </h3>
+          <div className="space-y-3">
+            {DAYS_OF_WEEK.map((day) => {
+              const workHours = form.watch("workHours") || {}
+              const dayHours = workHours[day.value as keyof typeof workHours]
+              const isActive = !!dayHours
+
+              return (
+                <div
+                  key={day.value}
+                  className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-white/5"
+                >
+                  <div className="flex items-center gap-2 min-w-[140px]">
+                    <Switch
+                      checked={isActive}
+                      onCheckedChange={(checked) => {
+                        const currentWorkHours = (form.getValues("workHours") || {}) as Record<
+                          string,
+                          { start: string; end: string }
+                        >
+                        if (checked) {
+                          form.setValue("workHours", {
+                            ...currentWorkHours,
+                            [day.value]: { start: "09:00", end: "18:00" },
+                          } as UpdateSalonSchema["workHours"])
+                        } else {
+                          // Remove the day from the workHours
+                          const { [day.value]: _, ...rest } = currentWorkHours
+                          // Only keep keys that are valid days ("0"-"6") and cast to correct type
+                          const validRest = Object.fromEntries(
+                            Object.entries(rest as Record<string, { start: string; end: string }>).filter(([k]) =>
+                              ["0", "1", "2", "3", "4", "5", "6"].includes(k)
+                            )
+                          ) as Partial<
+                            Record<"0" | "1" | "2" | "3" | "4" | "5" | "6", { start: string; end: string }>
+                          >
+                          form.setValue(
+                            "workHours",
+                            Object.keys(validRest).length > 0
+                              ? (validRest as UpdateSalonSchema["workHours"])
+                              : undefined
+                          )
+                        }
+                      }}
+                    />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{day.label}</span>
+                  </div>
+                  {isActive && (
+                    <div className="flex items-center gap-2 flex-1 w-full sm:w-auto">
+                      <input
+                        type="time"
+                        {...form.register(`workHours.${day.value}.start`)}
+                        className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      />
+                      <span className="text-xs text-slate-500">até</span>
+                      <input
+                        type="time"
+                        {...form.register(`workHours.${day.value}.end`)}
+                        className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {form.formState.errors.workHours && (
+            <p className="text-xs text-red-500 mt-2">{form.formState.errors.workHours.message}</p>
+          )}
+        </div>
+
+        {/* Rules & Details Card */}
+        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+            <AlertCircle size={16} className="text-indigo-500" /> Regras & Comodidades
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CreditCard size={18} className="text-slate-400" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Aceita Cartão</span>
+              </div>
+              <div
+                className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${
+                  form.watch("settings.accepts_card")
+                    ? "bg-indigo-500/20"
+                    : "bg-slate-300 dark:bg-slate-700"
+                }`}
+                onClick={() =>
+                  form.setValue("settings.accepts_card", !form.watch("settings.accepts_card"))
+                }
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 bg-white dark:bg-slate-400 rounded-full shadow-sm transition-transform ${
+                    form.watch("settings.accepts_card") ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                ></div>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Car size={18} className="text-slate-400" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Estacionamento</span>
+              </div>
+              <div
+                className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${
+                  form.watch("settings.parking")
+                    ? "bg-indigo-500/20"
+                    : "bg-slate-300 dark:bg-slate-700"
+                }`}
+                onClick={() => form.setValue("settings.parking", !form.watch("settings.parking"))}
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 bg-white dark:bg-slate-400 rounded-full shadow-sm transition-transform ${
+                    form.watch("settings.parking") ? "translate-x-5" : "translate-x-0.5"
+                  }`}
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Tolerância de atraso (minutos)
+              </label>
+              <div className="relative w-32">
+                <Clock size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="number"
+                  min="0"
+                  {...form.register("settings.late_tolerance_minutes", { valueAsNumber: true })}
+                  placeholder="15"
+                  className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Política de Cancelamento
+              </label>
+              <textarea
+                rows={2}
+                {...form.register("settings.cancellation_policy")}
+                placeholder="Ex.: Cancelamentos devem ser feitos com pelo menos 24h de antecedência"
+                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isPending}
+          className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isPending ? "Salvando..." : "Salvar Alterações"}
+        </button>
+      </form>
+    </div>
   )
 }
 

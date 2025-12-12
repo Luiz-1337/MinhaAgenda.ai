@@ -65,13 +65,13 @@ export default async function SalonLayout({
         </aside>
 
         {/* Conteúdo Principal */}
-        <main className="flex-1 flex flex-col h-full relative overflow-hidden md:ml-0">
+        <main className="flex-1 flex flex-col h-screen relative overflow-hidden md:ml-0">
           {/* Ambient Background Effects */}
           <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-100/50 dark:from-indigo-900/10 to-transparent pointer-events-none z-0"></div>
           <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-indigo-500/5 dark:bg-indigo-600/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
           
           {/* Header */}
-          <header className="h-16 flex items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-white/5 relative z-10 backdrop-blur-sm transition-colors duration-300">
+          <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-white/5 relative z-10 backdrop-blur-sm transition-colors duration-300">
             <div className="flex items-center gap-4">
               <MobileSidebar />
               <SalonSelector />
@@ -91,12 +91,14 @@ export default async function SalonLayout({
           </header>
 
           {/* Conteúdo da Página */}
-          <div className="flex-1 overflow-y-auto relative z-10">
-            {children}
+          <div className="flex-1 overflow-hidden relative z-10 pt-[25px] pr-[25px] pl-[25px] pb-[5px] min-h-0">
+            <div className="h-full overflow-y-auto">
+              {children}
+            </div>
           </div>
 
           {/* Footer Status Bar */}
-          <div className="h-8 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-white/5 flex items-center justify-between px-6 text-[10px] text-slate-500 dark:text-slate-400 select-none z-20 transition-colors duration-300">
+          <div className="h-8 flex-shrink-0 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-white/5 flex items-center justify-between px-6 text-[10px] text-slate-500 dark:text-slate-400 select-none z-20 transition-colors duration-300">
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
               <span>Infraestrutura saudável</span>

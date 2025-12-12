@@ -6,11 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { createSalon } from "@/app/actions/salon"
 import { createSalonSchema, type CreateSalonSchema } from "@/lib/schemas"
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
+import { X, Check, MapPin, Phone, MessageCircle, Clock, CreditCard, Car, AlertCircle, Store } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -96,189 +92,321 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-2xl py-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Cadastrar Salão</CardTitle>
-          <CardDescription>Informe os dados do seu salão</CardDescription>
-        </CardHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nome *</Label>
-            <Input id="name" {...form.register("name")} placeholder="Ex.: Barber Club" />
-            {form.formState.errors.name && (
-              <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug *</Label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">minhaagenda.ai/</span>
-              <Input id="slug" {...form.register("slug")} placeholder="meu-salao" className="flex-1" />
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-950 font-sans">
+      {/* Modal Content */}
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/50 rounded-t-2xl backdrop-blur-md z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
+              <Store size={20} className="text-indigo-500 dark:text-indigo-400" />
             </div>
-            {form.formState.errors.slug && (
-              <p className="text-sm text-destructive">{form.formState.errors.slug.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
-            <textarea
-              id="description"
-              {...form.register("description")}
-              placeholder="Descreva seu salão..."
-              rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none",
-                "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-                "disabled:cursor-not-allowed disabled:opacity-50"
-              )}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="address">Endereço</Label>
-            <Input id="address" {...form.register("address")} placeholder="Rua Exemplo, 123" />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone">Telefone</Label>
-            <Input id="phone" {...form.register("phone")} placeholder="(11) 90000-0000" />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="whatsapp">WhatsApp</Label>
-            <Input id="whatsapp" {...form.register("whatsapp")} placeholder="(11) 99999-9999" />
-            {form.formState.errors.whatsapp && (
-              <p className="text-sm text-destructive">{form.formState.errors.whatsapp.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <Label>Horário de Funcionamento</Label>
-            <div className="space-y-3">
-              {DAYS_OF_WEEK.map((day) => {
-                const workHours = form.watch("workHours") || {}
-                // @ts-ignore - Ignore type safety here just for reading, assuming structure matches
-                const dayHours = workHours[day.value]
-                const isActive = !!dayHours
-
-                return (
-                  <div key={day.value} className="flex items-center gap-4 rounded-md border p-3">
-                    <div className="flex items-center gap-2 min-w-[140px]">
-                    <Switch
-                      checked={isActive}
-                      onCheckedChange={(checked) => {
-                        const rawWorkHours = form.getValues("workHours") || {}
-                        const updatedWorkHours = { ...rawWorkHours } as Record<string, any>
-                        if (checked) {
-                          updatedWorkHours[day.value] = { start: "09:00", end: "18:00" }
-                        } else {
-                          delete updatedWorkHours[day.value]
-                        }
-                        const valueToSet = Object.keys(updatedWorkHours).length > 0 
-                          ? updatedWorkHours 
-                          : undefined
-                        form.setValue("workHours", valueToSet as any, {
-                          shouldDirty: true,
-                          shouldTouch: true,
-                          shouldValidate: true,
-                        })
-                      }}
-                    />
-                      <Label className="font-normal">{day.label}</Label>
-                    </div>
-                    {isActive && (
-                      <div className="flex items-center gap-2 flex-1">
-                        <Input
-                          type="time"
-                          {...form.register(`workHours.${day.value}.start`)}
-                          className="flex-1"
-                        />
-                        <span className="text-muted-foreground">até</span>
-                        <Input
-                          type="time"
-                          {...form.register(`workHours.${day.value}.end`)}
-                          className="flex-1"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">Cadastrar Salão</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Informe os dados do seu novo estabelecimento.</p>
             </div>
-            {form.formState.errors.workHours && (
-              <p className="text-sm text-destructive">
-                {form.formState.errors.workHours.message}
-              </p>
-            )}
           </div>
+        </div>
 
-          <div className="space-y-4">
-            <Label>Configurações</Label>
-            <div className="space-y-4 rounded-md border p-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="accepts_card" className="font-normal">Aceita cartão</Label>
-                  <p className="text-xs text-muted-foreground">O salão aceita pagamento com cartão</p>
+        {/* Scrollable Form Area */}
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white dark:bg-slate-900">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            
+            {/* Section: Basic Info */}
+            <div className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  Nome do Salão <span className="text-indigo-500">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  {...form.register("name")}
+                  placeholder="Ex: Barber Club Premium" 
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
+                />
+                {form.formState.errors.name && (
+                  <p className="text-xs text-red-500 dark:text-red-400 mt-1">{form.formState.errors.name.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  URL Personalizada (Slug) <span className="text-indigo-500">*</span>
+                </label>
+                <div className="flex rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 overflow-hidden focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/50 transition-all">
+                  <span className="px-4 py-3 text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-white/5 bg-white/50 dark:bg-white/5 select-none text-xs font-mono flex items-center">minhaagenda.ai/</span>
+                  <input 
+                    type="text" 
+                    {...form.register("slug")}
+                    placeholder="meu-salao" 
+                    className="flex-1 bg-transparent px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none text-sm"
+                  />
                 </div>
-                <Switch
-                  id="accepts_card"
-                  onCheckedChange={(checked) => form.setValue("settings.accepts_card", checked)}
-                  checked={form.watch("settings.accepts_card")}
-                />
+                {form.formState.errors.slug && (
+                  <p className="text-xs text-red-500 dark:text-red-400 mt-1">{form.formState.errors.slug.message}</p>
+                )}
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="parking" className="font-normal">Estacionamento</Label>
-                  <p className="text-xs text-muted-foreground">O salão possui estacionamento</p>
-                </div>
-                <Switch
-                  id="parking"
-                  onCheckedChange={(checked) => form.setValue("settings.parking", checked)}
-                  checked={form.watch("settings.parking")}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="late_tolerance" className="font-normal">
-                  Tolerância de atraso (minutos)
-                </Label>
-                <Input
-                  id="late_tolerance"
-                  type="number"
-                  min="0"
-                  {...form.register("settings.late_tolerance_minutes", { valueAsNumber: true })}
-                  placeholder="10"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cancellation_policy" className="font-normal">
-                  Política de cancelamento
-                </Label>
-                <textarea
-                  id="cancellation_policy"
-                  {...form.register("settings.cancellation_policy")}
-                  placeholder="Ex.: Cancelamentos devem ser feitos com pelo menos 24h de antecedência"
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Descrição</label>
+                <textarea 
                   rows={3}
-                  className={cn(
-                    "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none",
-                    "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-                    "disabled:cursor-not-allowed disabled:opacity-50"
-                  )}
+                  {...form.register("description")}
+                  placeholder="Descreva seu salão, especialidades e ambiente..." 
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all resize-none text-sm"
                 />
               </div>
             </div>
-          </div>
 
-          <Button type="submit" disabled={isPending} className="w-full">
-            {isPending ? "Enviando..." : "Criar Salão"}
-          </Button>
-        </form>
-      </Card>
+            {/* Section: Contact */}
+            <div className="space-y-5">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-white/5 pb-2">
+                <MapPin size={16} className="text-indigo-500 dark:text-indigo-400" /> Localização & Contato
+              </h3>
+              
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Endereço Completo</label>
+                <input 
+                  type="text" 
+                  {...form.register("address")}
+                  placeholder="Rua Exemplo, 123 - Bairro, Cidade - UF" 
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Telefone</label>
+                  <div className="relative">
+                    <Phone size={16} className="absolute left-4 top-3.5 text-slate-500 dark:text-slate-400" />
+                    <input 
+                      type="text" 
+                      {...form.register("phone")}
+                      placeholder="(11) 0000-0000" 
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">WhatsApp</label>
+                  <div className="relative">
+                    <MessageCircle size={16} className="absolute left-4 top-3.5 text-slate-500 dark:text-slate-400" />
+                    <input 
+                      type="text" 
+                      {...form.register("whatsapp")}
+                      placeholder="(11) 99999-9999" 
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
+                    />
+                  </div>
+                  {form.formState.errors.whatsapp && (
+                    <p className="text-xs text-red-500 dark:text-red-400 mt-1">{form.formState.errors.whatsapp.message}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Hours */}
+            <div className="space-y-5">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-white/5 pb-2">
+                <Clock size={16} className="text-indigo-500 dark:text-indigo-400" /> Horário de Funcionamento
+              </h3>
+              <div className="space-y-2">
+                {DAYS_OF_WEEK.map((day) => {
+                  const workHours = form.watch("workHours") || {}
+                  // @ts-ignore
+                  const dayHours = workHours[day.value]
+                  const isActive = !!dayHours
+                  const startTime = dayHours?.start || "09:00"
+                  const endTime = dayHours?.end || "18:00"
+
+                  return (
+                    <div 
+                      key={day.value} 
+                      className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/10 transition-colors group"
+                    >
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{day.label}</span>
+                      <div className="flex items-center gap-3">
+                        {isActive ? (
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="time"
+                              {...form.register(`workHours.${day.value}.start`)}
+                              className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 px-2 py-1 rounded focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                            />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">-</span>
+                            <input
+                              type="time"
+                              {...form.register(`workHours.${day.value}.end`)}
+                              className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 px-2 py-1 rounded focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-mono bg-white/50 dark:bg-white/5 px-2 py-1 rounded">Fechado</span>
+                        )}
+                        <div 
+                          className={cn(
+                            "w-10 h-5 rounded-full relative cursor-pointer transition-colors",
+                            isActive 
+                              ? "bg-indigo-500/20 dark:bg-indigo-500/30 hover:bg-indigo-500/30 dark:hover:bg-indigo-500/40"
+                              : "bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700"
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const rawWorkHours = form.getValues("workHours") || {}
+                            const updatedWorkHours = { ...rawWorkHours } as Record<string, any>
+                            if (isActive) {
+                              delete updatedWorkHours[day.value]
+                            } else {
+                              updatedWorkHours[day.value] = { start: "09:00", end: "18:00" }
+                            }
+                            const valueToSet = Object.keys(updatedWorkHours).length > 0 
+                              ? updatedWorkHours 
+                              : undefined
+                            form.setValue("workHours", valueToSet as any, {
+                              shouldDirty: true,
+                              shouldTouch: true,
+                              shouldValidate: true,
+                            })
+                          }}
+                        >
+                          <div className={cn(
+                            "absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-all",
+                            isActive
+                              ? "right-0.5 bg-indigo-500 dark:bg-indigo-400"
+                              : "left-0.5 bg-slate-400 dark:bg-slate-500"
+                          )}></div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {form.formState.errors.workHours && (
+                <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                  {form.formState.errors.workHours.message}
+                </p>
+              )}
+            </div>
+
+            {/* Section: Configs */}
+            <div className="space-y-5">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-white/5 pb-2">
+                <AlertCircle size={16} className="text-indigo-500 dark:text-indigo-400" /> Configurações
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Toggle Card */}
+                <div 
+                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/5 flex items-start gap-4 hover:border-indigo-500/20 transition-colors group cursor-pointer"
+                  onClick={() => form.setValue("settings.accepts_card", !form.watch("settings.accepts_card"))}
+                >
+                  <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 group-hover:border-indigo-500/20 transition-colors">
+                    <CreditCard size={20} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm group-hover:text-slate-900 dark:group-hover:text-white">Aceita Cartão</span>
+                      <div className={cn(
+                        "w-8 h-4 rounded-full relative transition-colors",
+                        form.watch("settings.accepts_card")
+                          ? "bg-indigo-500/20 dark:bg-indigo-500/30"
+                          : "bg-slate-200 dark:bg-slate-700/50"
+                      )}>
+                        <div className={cn(
+                          "absolute top-0.5 w-3 h-3 rounded-full transition-all",
+                          form.watch("settings.accepts_card")
+                            ? "right-0.5 bg-indigo-500 dark:bg-indigo-400"
+                            : "left-0.5 bg-slate-400 dark:bg-slate-500"
+                        )}></div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">O salão aceita pagamentos via cartão de crédito e débito.</p>
+                  </div>
+                </div>
+
+                {/* Toggle Parking */}
+                <div 
+                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/5 flex items-start gap-4 hover:border-slate-300 dark:hover:border-white/10 transition-colors group cursor-pointer"
+                  onClick={() => form.setValue("settings.parking", !form.watch("settings.parking"))}
+                >
+                  <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-colors">
+                    <Car size={20} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm group-hover:text-slate-900 dark:group-hover:text-white">Estacionamento</span>
+                      <div className={cn(
+                        "w-8 h-4 rounded-full relative transition-colors",
+                        form.watch("settings.parking")
+                          ? "bg-indigo-500/20 dark:bg-indigo-500/30"
+                          : "bg-slate-200 dark:bg-slate-700/50"
+                      )}>
+                        <div className={cn(
+                          "absolute top-0.5 w-3 h-3 rounded-full transition-all",
+                          form.watch("settings.parking")
+                            ? "right-0.5 bg-indigo-500 dark:bg-indigo-400"
+                            : "left-0.5 bg-slate-400 dark:bg-slate-500"
+                        )}></div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">O salão {form.watch("settings.parking") ? "possui" : "não possui"} estacionamento próprio.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Tolerância de Atraso (minutos)</label>
+                <input 
+                  type="number" 
+                  {...form.register("settings.late_tolerance_minutes", { valueAsNumber: true })}
+                  defaultValue={10}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Política de Cancelamento</label>
+                <textarea 
+                  rows={2}
+                  {...form.register("settings.cancellation_policy")}
+                  placeholder="Ex: Cancelamentos devem ser feitos com pelo menos 24h de antecedência." 
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all resize-none text-sm"
+                />
+              </div>
+            </div>
+
+          </form>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md rounded-b-2xl flex justify-end gap-3 z-10">
+          <button 
+            onClick={() => router.push("/login")}
+            className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={form.handleSubmit(onSubmit)}
+            disabled={isPending}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          >
+            {isPending ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                Criando...
+              </>
+            ) : (
+              <>
+                <Check size={18} />
+                Criar Salão
+              </>
+            )}
+          </button>
+        </div>
+
+      </div>
     </div>
   )
 }
