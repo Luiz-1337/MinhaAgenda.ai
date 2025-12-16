@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
-import { formatBrazilTime, startOfWeekBrazil, endOfWeekBrazil, startOfDayBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
+import { formatBrazilTime, startOfWeekBrazil, endOfWeekBrazil, startOfDayBrazil, getBrazilNow, fromBrazilTime } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo, WeeklyAppointmentsResult } from "@/app/actions/appointments"
@@ -132,7 +132,9 @@ export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) 
     const map = new Map<string, DailyAppointment[]>()
 
     appointments.forEach((apt) => {
-      const dayKey = formatBrazilTime(apt.startTime, "yyyy-MM-dd")
+      // apt.startTime já está em horário de Brasília (convertido por fromBrazilTime)
+      // Usa format diretamente para evitar dupla conversão
+      const dayKey = format(apt.startTime, "yyyy-MM-dd")
       const existing = map.get(dayKey) || []
       map.set(dayKey, [...existing, apt])
     })
@@ -197,7 +199,9 @@ export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) 
                   {hour}:00
                 </div>
                 {weekDays.map((day, dayIndex) => {
-                  const dayKey = formatBrazilTime(day, "yyyy-MM-dd")
+                  // Converte day para horário de Brasília para comparação consistente
+                  const dayInBrazil = fromBrazilTime(day)
+                  const dayKey = format(dayInBrazil, "yyyy-MM-dd")
                   const dayAppointments = appointmentsByDay.get(dayKey) || []
                   const dayStart = startOfDayBrazil(day)
 

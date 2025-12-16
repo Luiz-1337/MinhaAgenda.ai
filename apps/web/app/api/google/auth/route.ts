@@ -20,14 +20,37 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
-    // Busca salão do usuário
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.ownerId, user.id),
-      columns: { id: true },
-    })
+    // Tenta obter salonId dos query parameters (se fornecido na URL)
+    const searchParams = req.nextUrl.searchParams
+    const salonIdParam = searchParams.get('salonId')
 
-    if (!salon) {
-      return NextResponse.json({ error: 'Salão não encontrado' }, { status: 404 })
+    let salon
+
+    if (salonIdParam) {
+      // Usa o salonId fornecido na URL (do salão ativo/selecionado)
+      salon = await db.query.salons.findFirst({
+        where: eq(salons.id, salonIdParam),
+        columns: { id: true, ownerId: true },
+      })
+
+      // Verifica se o salão pertence ao usuário
+      if (!salon || salon.ownerId !== user.id) {
+        return NextResponse.json({ error: 'Salão não encontrado ou acesso negado' }, { status: 404 })
+      }
+
+      console.log('✅ Usando salonId fornecido na URL:', salonIdParam)
+    } else {
+      // Fallback: busca o primeiro salão do usuário (comportamento antigo)
+      salon = await db.query.salons.findFirst({
+        where: eq(salons.ownerId, user.id),
+        columns: { id: true },
+      })
+
+      if (!salon) {
+        return NextResponse.json({ error: 'Salão não encontrado' }, { status: 404 })
+      }
+
+      console.log('⚠️ Nenhum salonId fornecido na URL. Usando primeiro salão encontrado:', salon.id)
     }
 
     // Obtém cliente OAuth2

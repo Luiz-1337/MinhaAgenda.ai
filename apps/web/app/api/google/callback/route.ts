@@ -68,10 +68,19 @@ export async function GET(req: NextRequest) {
     // Troca código por tokens
     const { tokens } = await oauth2Client.getToken(code)
 
+    console.log('🔐 Tokens recebidos do Google:', {
+      hasRefreshToken: !!tokens.refresh_token,
+      hasAccessToken: !!tokens.access_token,
+      expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+      tokenType: tokens.token_type,
+      scope: tokens.scope,
+    })
+
     if (!tokens.refresh_token) {
+      console.error('❌ Refresh token não foi fornecido pelo Google!')
       return NextResponse.redirect(
         new URL(
-          '/dashboard?error=' + encodeURIComponent('Refresh token não fornecido. Tente novamente.'),
+          '/dashboard?error=' + encodeURIComponent('Refresh token não fornecido. Tente novamente autorizando o acesso novamente.'),
           req.url
         )
       )
@@ -110,11 +119,13 @@ export async function GET(req: NextRequest) {
       expiresAt,
       email,
       existingIntegration: !!existingIntegration,
+      refreshTokenLength: tokens.refresh_token?.length,
+      refreshTokenPrefix: tokens.refresh_token?.substring(0, 20) + '...',
     })
 
     if (existingIntegration) {
       // Atualiza existente
-      await db
+      const updateResult = await db
         .update(salonIntegrations)
         .set({
           refreshToken: tokens.refresh_token,
@@ -124,7 +135,20 @@ export async function GET(req: NextRequest) {
           updatedAt: new Date(),
         })
         .where(eq(salonIntegrations.id, existingIntegration.id))
-      console.log('✅ Integração atualizada com sucesso')
+        .returning({ id: salonIntegrations.id, refreshToken: salonIntegrations.refreshToken })
+      
+      // Verifica se o refresh token foi salvo corretamente
+      const verifyIntegration = await db.query.salonIntegrations.findFirst({
+        where: eq(salonIntegrations.id, existingIntegration.id),
+        columns: { id: true, refreshToken: true },
+      })
+      
+      if (!verifyIntegration?.refreshToken || verifyIntegration.refreshToken !== tokens.refresh_token) {
+        console.error('❌ ERRO: Refresh token não foi salvo corretamente!')
+        throw new Error('Falha ao salvar refresh token no banco de dados')
+      }
+      
+      console.log('✅ Integração atualizada com sucesso. Refresh token salvo e verificado.')
     } else {
       // Cria novo
       const result = await db.insert(salonIntegrations).values({
@@ -135,7 +159,19 @@ export async function GET(req: NextRequest) {
         expiresAt,
         email,
       }).returning({ id: salonIntegrations.id })
-      console.log('✅ Integração criada com sucesso:', result[0]?.id)
+      
+      // Verifica se o refresh token foi salvo corretamente
+      const verifyIntegration = await db.query.salonIntegrations.findFirst({
+        where: eq(salonIntegrations.id, result[0]?.id),
+        columns: { id: true, refreshToken: true },
+      })
+      
+      if (!verifyIntegration?.refreshToken || verifyIntegration.refreshToken !== tokens.refresh_token) {
+        console.error('❌ ERRO: Refresh token não foi salvo corretamente!')
+        throw new Error('Falha ao salvar refresh token no banco de dados')
+      }
+      
+      console.log('✅ Integração criada com sucesso. Refresh token salvo e verificado:', result[0]?.id)
     }
 
     // Redireciona para dashboard com sucesso

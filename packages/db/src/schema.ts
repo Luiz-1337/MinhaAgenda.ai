@@ -112,6 +112,7 @@ export const professionals = pgTable(
     email: text('email').notNull(),
     phone: text('phone'),
     serviceIds: jsonb('service_ids'), // IDs dos serviços que o profissional executa
+    googleCalendarId: text('google_calendar_id'), // ID do calendário secundário no Google Calendar
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },

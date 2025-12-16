@@ -6,12 +6,13 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import dotenv from "dotenv";
 import { getSalonIdByWhatsapp, getClientIdByPhoneNumber, getDataFromClient } from "./mcp-chat-utils.js";
+import { createCustomer } from "../packages/mcp-server/src/utils/customer.utils.js";
 
 dotenv.config();
 
 // CONFIGURAÇÃO: Caminho para o seu servidor MCP
 const SERVER_COMMAND = "node";
-const SERVER_ARGS = ["--import", "tsx", "packages/mcp-server/src/index.ts"]; 
+const SERVER_ARGS = ["--import", "tsx", "packages/mcp-server/src/index.ts"];
 
 // Inicializa OpenAI
 const openai = new OpenAI({
@@ -41,7 +42,7 @@ async function main() {
 
     // 2. Buscar ferramentas disponíveis e converter para formato OpenAI
     const toolsList = await mcpClient.listTools();
-    
+
     const openaiTools = toolsList.tools.map((tool) => {
         return {
             type: "function" as const,
@@ -62,9 +63,9 @@ async function main() {
 
     // Solicita informações de contexto antes de iniciar o chat
     const rl = readline.createInterface({ input: stdin, output: stdout });
-    
+
     console.log("\n📋 Por favor, forneça as seguintes informações para configurar o contexto:\n");
-    
+
     const salonWhatsapp = await rl.question("Número de WhatsApp do Salão: ");
     if (!salonWhatsapp || salonWhatsapp.trim() === "") {
       console.error("❌ Número de WhatsApp do salão é obrigatório. Encerrando...");
@@ -76,7 +77,7 @@ async function main() {
     // Busca o ID do salão pelo número de WhatsApp
     console.log("🔍 Buscando salão pelo número de WhatsApp...");
     const salonId = await getSalonIdByWhatsapp(salonWhatsapp.trim());
-    
+
     if (!salonId) {
       console.error(`❌ Salão não encontrado para o número: ${salonWhatsapp.trim()}`);
       console.error("   Verifique se o número está correto e se o salão está cadastrado no sistema.");
@@ -84,7 +85,7 @@ async function main() {
       await mcpClient.close();
       process.exit(1);
     }
-    
+
     console.log(`✅ Salão encontrado! ID: ${salonId}`);
 
     const phoneNumber = await rl.question("Número de Telefone do Cliente: ");
@@ -95,16 +96,27 @@ async function main() {
       process.exit(1);
     }
 
-    const clientId = await getClientIdByPhoneNumber(phoneNumber.trim());
+    let clientId = await getClientIdByPhoneNumber(phoneNumber.trim());
     if (!clientId) {
-      console.error("❌ Cliente não encontrado. Encerrando...");
-      rl.close();
-      await mcpClient.close();
-      process.exit(1);
+        console.log("Vejo que é a sua primeira vez por aqui. Poderia me informar seu nome completo para dar inicio ao seu atendimento?");
+        const fullName = await rl.question("Nome Completo: ");
+        if (!fullName || fullName.trim() === "") {
+          console.error("❌ Nome completo é obrigatório. Encerrando...");
+          rl.close();
+          await mcpClient.close();
+          process.exit(1);
+        }
+        const newCustomer = await createCustomer(fullName.trim(), phoneNumber.trim());
+        if (!newCustomer) {
+          console.error("❌ Erro ao criar cliente. Encerrando...");
+          rl.close();
+          await mcpClient.close();
+          process.exit(1);
+        }
+        clientId = newCustomer.id;
     }
 
     console.log(`✅ Cliente encontrado! ID: ${clientId}`);
-
     console.log("\n✅ Contexto configurado!");
     console.log(`   WhatsApp do Salão: ${salonWhatsapp.trim()}`);
     console.log(`   Salão ID: ${salonId}`);
@@ -119,7 +131,7 @@ async function main() {
     // Obtém data e hora atual em pt-BR com timezone America/Sao_Paulo
     const now = new Date();
     const timeZone = 'America/Sao_Paulo';
-    
+
     // Formata a data com dia da semana (ex: "quarta-feira, 10 de dezembro de 2025")
     const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
       timeZone,
@@ -129,7 +141,7 @@ async function main() {
       year: 'numeric',
     });
     const formattedDate = dateFormatter.format(now);
-    
+
     // Formata a hora como HH:mm
     const timeFormatter = new Intl.DateTimeFormat('pt-BR', {
       timeZone,
@@ -141,8 +153,8 @@ async function main() {
 
     // Histórico de conversas com contexto
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { 
-        role: "system", 
+      {
+        role: "system",
         content: `Você é um assistente útil conectado a ferramentas via MCP para gerenciar agendamentos de um salão.
 
 CONTEXTO TEMPORAL:
@@ -169,15 +181,15 @@ REGRAS CRÍTICAS:
 4. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas ferramentas.
 5. Se o usuário perguntar sobre algo que você não tem certeza, use a ferramenta apropriada primeiro.
 
-Ao usar as ferramentas MCP, SEMPRE forneça o salonId como "${salonId}" e o clientId como "${clientId}" quando necessário. 
-Use essas informações automaticamente ao chamar as ferramentas, não peça ao usuário por esses valores.` 
+Ao usar as ferramentas MCP, SEMPRE forneça o salonId como "${salonId}" e o clientId como "${clientId}" quando necessário.
+Use essas informações automaticamente ao chamar as ferramentas, não peça ao usuário por esses valores.`
       }
     ];
 
     // 3. Loop do Chat
     while (true) {
       const userInput = await rl.question("Você: ");
-      
+
       if (userInput.toLowerCase() === "sair") break;
 
       // Adiciona pergunta do usuário ao histórico
@@ -189,7 +201,7 @@ Use essas informações automaticamente ao chamar as ferramentas, não peça ao 
 
         while (keepProcessing) {
           process.stdout.write("🤖 Pensando...");
-          
+
           const response = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: messages,
@@ -242,7 +254,7 @@ Use essas informações automaticamente ao chamar as ferramentas, não peça ao 
                     tool_call_id: toolCall.id,
                     content: toolResultContent,
                   });
-                  
+
                   console.log(`   > Resultado enviado.`);
                 } catch (toolError) {
                   console.error(`   > Erro ao executar ferramenta ${toolName}:`, toolError);
@@ -282,3 +294,4 @@ Use essas informações automaticamente ao chamar as ferramentas, não peça ao 
 }
 
 main();
+

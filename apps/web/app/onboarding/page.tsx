@@ -111,7 +111,7 @@ export default function OnboardingPage() {
 
         {/* Scrollable Form Area */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white dark:bg-slate-900">
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8" noValidate>
             
             {/* Section: Basic Info */}
             <div className="space-y-5">
@@ -380,7 +380,7 @@ export default function OnboardingPage() {
             <div className="pt-4 border-t border-slate-200 dark:border-white/5 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => router.push("/login")}
+                onClick={() => router.back()}
                 className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
               >
                 Cancelar

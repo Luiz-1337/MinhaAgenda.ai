@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import { formatBrazilTime, startOfDayBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"

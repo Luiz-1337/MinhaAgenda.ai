@@ -1,5 +1,5 @@
 import { and, asc, eq, gt, ilike } from "drizzle-orm"
-import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, salonCustomers, salonIntegrations, salons, services, availability, professionalServices } from "@repo/db"
+import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, salonCustomers, salonIntegrations, salons, services, availability, professionalServices, fromBrazilTime } from "@repo/db"
 
 export class MinhaAgendaAITools {
 
@@ -46,13 +46,13 @@ export class MinhaAgendaAITools {
     public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number) {
         // Se serviceId for fornecido, busca a duração do serviço no DB
         let finalServiceDuration = serviceDuration || 60
-        
+
         if (serviceId && !serviceDuration) {
             const service = await db.query.services.findFirst({
                 where: eq(services.id, serviceId),
                 columns: { duration: true },
             })
-            
+
             if (service) {
                 finalServiceDuration = service.duration
             }
@@ -104,10 +104,28 @@ export class MinhaAgendaAITools {
 
         // Sincroniza com Google Calendar (não bloqueia se falhar)
         try {
-            await this.createGoogleEventForAppointment(appointmentId, salonId)
-        } catch (error) {
+            console.log("🔄 Iniciando sincronização com Google Calendar para agendamento:", appointmentId)
+            // Importa dinamicamente para evitar dependência obrigatória
+            const dbModule = await import("@repo/db")
+            if (dbModule.createGoogleEvent) {
+                const result = await dbModule.createGoogleEvent(appointmentId)
+                if (result) {
+                    console.log("✅ Agendamento sincronizado com Google Calendar:", {
+                        eventId: result.eventId,
+                        htmlLink: result.htmlLink,
+                    })
+                } else {
+                    console.warn("⚠️ Sincronização com Google Calendar retornou null. Integração pode não estar configurada.")
+                }
+            } else {
+                console.warn("⚠️ Função createGoogleEvent não está disponível no módulo @repo/db")
+            }
+        } catch (error: any) {
             // Loga erro mas não falha a operação principal
-            console.error("Erro ao sincronizar agendamento com Google Calendar:", error)
+            console.error("❌ Erro ao sincronizar agendamento com Google Calendar:", {
+                error: error?.message || error,
+                stack: error?.stack,
+            })
         }
 
         // Busca info para retorno (opcional, já temos success, mas a mensagem pede nomes)
@@ -155,7 +173,27 @@ export class MinhaAgendaAITools {
             })
             .where(eq(appointments.id, appointmentId))
 
-        // TODO: Remover evento do Google Calendar se houver googleEventId
+        // Remove evento do Google Calendar se houver googleEventId (não bloqueia se falhar)
+        try {
+            console.log("🔄 Iniciando remoção de evento do Google Calendar para agendamento:", appointmentId)
+            const dbModule = await import("@repo/db")
+            if (dbModule.deleteGoogleEvent) {
+                const result = await dbModule.deleteGoogleEvent(appointmentId)
+                if (result === true) {
+                    console.log("✅ Evento removido com sucesso do Google Calendar")
+                } else if (result === false) {
+                    console.log("ℹ️ Agendamento não tinha evento no Google Calendar")
+                } else {
+                    console.warn("⚠️ Não foi possível remover evento do Google Calendar. Integração pode não estar configurada.")
+                }
+            }
+        } catch (error: any) {
+            // Loga erro mas não falha a operação principal
+            console.error("❌ Erro ao remover evento do Google Calendar:", {
+                error: error?.message || error,
+                stack: error?.stack,
+            })
+        }
 
         return JSON.stringify({
             message: `Agendamento ${appointmentId} cancelado com sucesso`,
@@ -213,6 +251,20 @@ export class MinhaAgendaAITools {
         // Transação: cancela antigo e cria novo
         const endTime = new Date(newDateObj.getTime() + serviceDuration * 60 * 1000)
 
+        // Deleta evento do Google Calendar do agendamento antigo antes de cancelar
+        try {
+            console.log("🔄 Deletando evento do Google Calendar do agendamento antigo antes de reagendar:", appointmentId)
+            const dbModule = await import("@repo/db")
+            if (dbModule.deleteGoogleEvent) {
+                await dbModule.deleteGoogleEvent(appointmentId)
+            }
+        } catch (error: any) {
+            // Loga erro mas não bloqueia o reagendamento
+            console.error("❌ Erro ao deletar evento do Google Calendar do agendamento antigo:", {
+                error: error?.message || error,
+            })
+        }
+
         // Cancela o agendamento antigo
         await db
             .update(appointments)
@@ -234,12 +286,28 @@ export class MinhaAgendaAITools {
             })
             .returning({ id: appointments.id })
 
-        // Sincroniza com Google Calendar (não bloqueia se falhar)
+        // Sincroniza novo agendamento com Google Calendar (não bloqueia se falhar)
         try {
-            await this.createGoogleEventForAppointment(newAppointment.id, appointment.salonId)
-        } catch (error) {
+            console.log("🔄 Criando evento no Google Calendar para o novo agendamento:", newAppointment.id)
+            // Importa dinamicamente para evitar dependência obrigatória
+            const dbModule = await import("@repo/db")
+            if (dbModule.createGoogleEvent) {
+                const result = await dbModule.createGoogleEvent(newAppointment.id)
+                if (result) {
+                    console.log("✅ Evento criado com sucesso no Google Calendar para o reagendamento:", {
+                        eventId: result.eventId,
+                        htmlLink: result.htmlLink,
+                    })
+                } else {
+                    console.warn("⚠️ Não foi possível criar evento no Google Calendar. Integração pode não estar configurada.")
+                }
+            }
+        } catch (error: any) {
             // Loga erro mas não falha a operação principal
-            console.error("Erro ao sincronizar reagendamento com Google Calendar:", error)
+            console.error("❌ Erro ao sincronizar reagendamento com Google Calendar:", {
+                error: error?.message || error,
+                stack: error?.stack,
+            })
         }
 
         return JSON.stringify({
@@ -367,17 +435,21 @@ export class MinhaAgendaAITools {
             .orderBy(asc(appointments.date))
 
         // Formata lista para exibição ao usuário (sem IDs, apenas informações legíveis)
+        // Converte datas de UTC para UTC-3 (horário do Brasil) antes de formatar
         const formattedList = upcomingAppointments.map((apt) => {
-            const date = new Date(apt.date)
-            const dateStr = date.toLocaleDateString("pt-BR", {
+            // Converte de UTC (banco) para UTC-3 (horário do Brasil)
+            const dateBrazil = fromBrazilTime(apt.date)
+            const dateStr = dateBrazil.toLocaleDateString("pt-BR", {
                 weekday: "long",
                 year: "numeric",
                 month: "long",
                 day: "numeric",
+                timeZone: "America/Sao_Paulo"
             })
-            const timeStr = date.toLocaleTimeString("pt-BR", {
+            const timeStr = dateBrazil.toLocaleTimeString("pt-BR", {
                 hour: "2-digit",
                 minute: "2-digit",
+                timeZone: "America/Sao_Paulo"
             })
 
             return `${dateStr} - ${timeStr} - ${apt.service?.name || "Serviço não encontrado"} - ${apt.professional?.name || "Profissional não encontrado"}`
@@ -669,139 +741,5 @@ export class MinhaAgendaAITools {
         })
     }
 
-    /**
-     * Cria evento no Google Calendar para um agendamento.
-     * Função auxiliar privada usada internamente.
-     */
-    private async createGoogleEventForAppointment(
-        appointmentId: string,
-        salonId: string
-    ): Promise<void> {
-        // Verifica se há integração Google configurada
-        const integration = await db.query.salonIntegrations.findFirst({
-            where: eq(salonIntegrations.salonId, salonId),
-        })
-
-        if (!integration || !integration.refreshToken) {
-            // Salão não tem integração - não é erro, apenas não sincroniza
-            return
-        }
-
-        // Importa dinamicamente para evitar dependência obrigatória
-        try {
-            const { google } = await import("googleapis")
-            const { OAuth2Client } = await import("google-auth-library")
-
-            // Configura cliente OAuth
-            const clientId = process.env.GOOGLE_CLIENT_ID
-            const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-            const redirectUri = process.env.GOOGLE_REDIRECT_URI
-
-            if (!clientId || !clientSecret) {
-                return // Configuração não disponível
-            }
-
-            const oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri)
-            oauth2Client.setCredentials({
-                refresh_token: integration.refreshToken,
-                access_token: integration.accessToken || undefined,
-                expiry_date: integration.expiresAt ? integration.expiresAt * 1000 : undefined,
-            })
-
-            // Verifica se precisa fazer refresh do token
-            const now = Date.now()
-            const expiresAt = integration.expiresAt ? integration.expiresAt * 1000 : 0
-            const fiveMinutes = 5 * 60 * 1000
-
-            if (!integration.accessToken || (expiresAt && expiresAt - now < fiveMinutes)) {
-                const { credentials } = await oauth2Client.refreshAccessToken()
-                await db
-                    .update(salonIntegrations)
-                    .set({
-                        accessToken: credentials.access_token || null,
-                        expiresAt: credentials.expiry_date ? Math.floor(credentials.expiry_date / 1000) : null,
-                        updatedAt: new Date(),
-                    })
-                    .where(eq(salonIntegrations.id, integration.id))
-                oauth2Client.setCredentials(credentials)
-            }
-
-            // Busca dados do agendamento
-            const appointmentData = await db
-                .select({
-                    id: appointments.id,
-                    date: appointments.date,
-                    endTime: appointments.endTime,
-                    notes: appointments.notes,
-                    professionalName: professionals.name,
-                    professionalEmail: professionals.email,
-                    serviceName: services.name,
-                    clientName: profiles.fullName,
-                })
-                .from(appointments)
-                .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
-                .innerJoin(services, eq(appointments.serviceId, services.id))
-                .innerJoin(profiles, eq(appointments.clientId, profiles.id))
-                .where(eq(appointments.id, appointmentId))
-                .limit(1)
-
-            const apt = appointmentData[0]
-            if (!apt) {
-                return
-            }
-
-            const calendar = google.calendar({ version: "v3", auth: oauth2Client })
-            const timeZone = process.env.GOOGLE_TIMEZONE || "America/Sao_Paulo"
-
-            // Formata título: "[Profissional] Serviço - Cliente"
-            const summary = `[${apt.professionalName}] ${apt.serviceName} - ${apt.clientName || "Cliente"}`
-
-            let description = `Serviço: ${apt.serviceName}\n`
-            description += `Cliente: ${apt.clientName || "Cliente"}\n`
-            if (apt.notes) {
-                description += `\nObservações: ${apt.notes}`
-            }
-
-            const attendees = apt.professionalEmail ? [{ email: apt.professionalEmail }] : undefined
-
-            const event = {
-                summary,
-                description,
-                start: {
-                    dateTime: apt.date.toISOString(),
-                    timeZone,
-                },
-                end: {
-                    dateTime: apt.endTime.toISOString(),
-                    timeZone,
-                },
-                attendees,
-                reminders: {
-                    useDefault: false,
-                    overrides: [
-                        { method: "email", minutes: 24 * 60 },
-                        { method: "popup", minutes: 30 },
-                    ],
-                },
-            }
-
-            const response = await calendar.events.insert({
-                calendarId: "primary",
-                requestBody: event,
-            })
-
-            // Atualiza agendamento com ID do evento Google
-            if (response.data.id) {
-                await db
-                    .update(appointments)
-                    .set({ googleEventId: response.data.id })
-                    .where(eq(appointments.id, appointmentId))
-            }
-        } catch (error) {
-            // Se googleapis não estiver instalado ou houver erro, apenas loga
-            console.error("Erro ao criar evento Google Calendar:", error)
-            throw error
-        }
-    }
 }
 

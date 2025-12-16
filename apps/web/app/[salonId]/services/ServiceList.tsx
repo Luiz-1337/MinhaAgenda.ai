@@ -6,13 +6,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { Search, Plus, Zap, Pencil, Trash2, Clock, DollarSign, Tag } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { getServices, upsertService, deleteService } from "@/app/actions/services"
+import { getServices, upsertService, deleteService, getServiceLinkedProfessionals } from "@/app/actions/services"
+import { getProfessionals } from "@/app/actions/professionals"
 import type { ServiceRow } from "@/lib/types/service"
+import type { ProfessionalRow } from "@/lib/types/professional"
 import { useSalon } from "@/contexts/salon-context"
 
 const serviceSchema = z.object({
@@ -22,6 +25,7 @@ const serviceSchema = z.object({
   duration: z.number().int().positive("Duração deve ser positiva"),
   price: z.number().positive("Preço deve ser positivo"),
   isActive: z.boolean().default(true),
+  professionalIds: z.array(z.string()).default([]),
 })
 type ServiceForm = z.infer<typeof serviceSchema>
 
@@ -34,14 +38,17 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [list, setList] = useState<ServiceRow[]>([])
+  const [professionals, setProfessionals] = useState<ProfessionalRow[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ServiceRow | null>(null)
   const [, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(true)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const form = useForm<ServiceForm>({
     resolver: zodResolver(serviceSchema) as any,
-    defaultValues: { name: "", description: "", duration: 60, price: 0, isActive: true },
+    defaultValues: { name: "", description: "", duration: 60, price: 0, isActive: true, professionalIds: [] },
   })
 
   useEffect(() => {
@@ -63,6 +70,26 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     })
   }, [salonId])
 
+  // Carregar profissionais do salão
+  useEffect(() => {
+    if (!salonId) return
+
+    startTransition(async () => {
+      try {
+        const res = await getProfessionals(salonId)
+        if ("error" in res) {
+          console.error("Erro ao carregar profissionais:", res.error)
+          setProfessionals([])
+        } else {
+          setProfessionals(res)
+        }
+      } catch (error) {
+        console.error("Erro ao carregar profissionais:", error)
+        setProfessionals([])
+      }
+    })
+  }, [salonId])
+
   const filteredServices = useMemo(() => {
     return list.filter((service) => {
       const matchesFilter =
@@ -78,12 +105,24 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   function openCreate() {
     setEditing(null)
-    form.reset({ name: "", description: "", duration: 60, price: 0, isActive: true })
+    form.reset({ name: "", description: "", duration: 60, price: 0, isActive: true, professionalIds: [] })
     setOpen(true)
   }
 
-  function openEdit(service: ServiceRow) {
+  async function openEdit(service: ServiceRow) {
     setEditing(service)
+    
+    // Carregar profissionais vinculados ao serviço
+    let linkedProfessionalIds: string[] = []
+    try {
+      const linked = await getServiceLinkedProfessionals(service.id, salonId)
+      if (!("error" in linked)) {
+        linkedProfessionalIds = linked
+      }
+    } catch (error) {
+      console.error("Erro ao carregar profissionais vinculados:", error)
+    }
+
     form.reset({
       id: service.id,
       name: service.name,
@@ -91,6 +130,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       duration: service.duration,
       price: parseFloat(service.price),
       isActive: service.is_active,
+      professionalIds: linkedProfessionalIds,
     })
     setOpen(true)
   }
@@ -102,7 +142,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     }
 
     startTransition(async () => {
-      const res = await upsertService({ ...values, salonId, professionalIds: [] })
+      const res = await upsertService({ ...values, salonId, professionalIds: values.professionalIds || [] })
       if ("error" in res) {
         toast.error(res.error)
         return
@@ -119,19 +159,26 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     })
   }
 
-  async function onDelete(id: string) {
-    if (!salonId) {
+  function handleDeleteClick(service: ServiceRow) {
+    setServiceToDelete({ id: service.id, name: service.name })
+    setDeleteConfirmOpen(true)
+  }
+
+  async function onDelete() {
+    if (!salonId || !serviceToDelete) {
       toast.error("Selecione um salão")
       return
     }
 
+    setDeleteConfirmOpen(false)
     startTransition(async () => {
-      const res = await deleteService(id, salonId)
+      const res = await deleteService(serviceToDelete.id, salonId)
       if ("error" in res) {
         toast.error(res.error)
         return
       }
-      toast.success("Serviço desativado")
+      toast.success("Serviço removido")
+      setServiceToDelete(null)
       try {
         const again = await getServices(salonId)
         setList(again)
@@ -237,6 +284,74 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                   <Switch {...form.register("isActive")} checked={form.watch("isActive")} />
                   Ativo
                 </Label>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="professionals" className="text-slate-700 dark:text-slate-300">
+                  Profissionais Habilitados
+                </Label>
+                <div className="border border-slate-200 dark:border-white/10 rounded-lg bg-slate-50 dark:bg-slate-950">
+                  {(() => {
+                    const activeProfessionals = professionals.filter((p) => p.is_active)
+                    if (activeProfessionals.length === 0) {
+                      return (
+                        <div className="p-3">
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            Nenhum profissional ativo cadastrado
+                          </p>
+                        </div>
+                      )
+                    }
+                    return (
+                      <>
+                        <div className="p-2 border-b border-slate-200 dark:border-white/10">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const allActiveIds = activeProfessionals.map((p) => p.id)
+                              form.setValue("professionalIds", allActiveIds)
+                            }}
+                            className="w-full text-xs h-7 border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+                          >
+                            Selecionar todos
+                          </Button>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto p-3 space-y-2">
+                          {activeProfessionals.map((professional) => {
+                            const professionalIds = form.watch("professionalIds") || []
+                            const isChecked = professionalIds.includes(professional.id)
+                            return (
+                              <div key={professional.id} className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`professional-${professional.id}`}
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const currentIds = form.getValues("professionalIds") || []
+                                    if (e.target.checked) {
+                                      form.setValue("professionalIds", [...currentIds, professional.id])
+                                    } else {
+                                      form.setValue(
+                                        "professionalIds",
+                                        currentIds.filter((id) => id !== professional.id)
+                                      )
+                                    }
+                                  }}
+                                />
+                                <Label
+                                  htmlFor={`professional-${professional.id}`}
+                                  className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-normal"
+                                >
+                                  {professional.name}
+                                </Label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
               </div>
               <DialogFooter className="gap-2">
                 <Button
@@ -387,7 +502,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                     Editar
                   </button>
                   <button
-                    onClick={() => onDelete(service.id)}
+                    onClick={() => handleDeleteClick(service)}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
                   >
                     <Trash2 size={12} />
@@ -399,6 +514,43 @@ export default function ServiceList({ salonId }: ServiceListProps) {
           )}
         </div>
       </div>
+
+      {/* Dialog de Confirmação de Exclusão */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-slate-800 dark:text-white">Confirmar Exclusão</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-slate-700 dark:text-slate-300">
+              Tem certeza que deseja remover o serviço <strong>"{serviceToDelete?.name}"</strong>?
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              Esta ação não pode ser desfeita. O serviço será removido permanentemente.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false)
+                setServiceToDelete(null)
+              }}
+              className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={onDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Remover
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "professionals" ADD COLUMN "google_calendar_id" text;

@@ -166,7 +166,7 @@ export async function upsertService(input: UpsertServiceInput & { salonId: strin
 }
 
 /**
- * Remove um serviço (soft delete)
+ * Remove um serviço definitivamente (hard delete)
  */
 export async function deleteService(id: string, salonId: string): Promise<ActionResult> {
   if (!salonId) {
@@ -195,9 +195,12 @@ export async function deleteService(id: string, salonId: string): Promise<Action
   }
 
   try {
+    // Remove primeiro as associações com profissionais (cascade)
+    await db.delete(professionalServices).where(eq(professionalServices.serviceId, id))
+    
+    // Remove o serviço definitivamente
     await db
-      .update(services)
-      .set({ isActive: false })
+      .delete(services)
       .where(and(eq(services.id, id), eq(services.salonId, salonId)))
   } catch (error) {
     return { error: extractErrorMessage(error) }

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+/*!/usr/bin/env node
 /**
  * Utilitários para o script mcp-chat.ts
  * 
@@ -65,7 +65,7 @@ export async function getSalonIdByWhatsapp(
  */
 export async function getClientIdByPhoneNumber(
   phoneNumber: string
-): Promise<string> {
+): Promise<string | null> {
   // Valida se o número não está vazio
   const trimmedPhone = phoneNumber.trim();
   if (!trimmedPhone) {
@@ -80,7 +80,7 @@ export async function getClientIdByPhoneNumber(
     });
 
     // Retorna o ID se encontrado, caso contrário retorna null
-    return profile?.id ?? "Não encontrado";
+    return profile?.id ?? null;
   } catch (error) {
     // Re-lança o erro com contexto adicional
     throw new Error(

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons } from "@repo/db"
+import { db, salons, professionalServices, appointments } from "@repo/db"
 import { eq } from "drizzle-orm"
 import { formatZodError } from "@/lib/services/validation.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
@@ -171,7 +171,7 @@ export async function upsertProfessional(
 }
 
 /**
- * Remove um profissional (soft delete)
+ * Remove um profissional definitivamente (hard delete)
  */
 export async function deleteProfessional(id: string, salonId: string): Promise<ActionResult> {
   if (!salonId) {
@@ -199,14 +199,45 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
     return { error: "Acesso negado a este salão" }
   }
 
-  const updateResult = await supabase
-    .from("professionals")
-    .update({ is_active: false })
-    .eq("id", id)
-    .eq("salon_id", salonId)
+  try {
+    // Remove primeiro os agendamentos relacionados
+    await db.delete(appointments).where(eq(appointments.professionalId, id))
+    
+    // Remove as associações com serviços
+    await db.delete(professionalServices).where(eq(professionalServices.professionalId, id))
+    
+    // Remove a disponibilidade do profissional
+    const deleteAvailabilityResult = await supabase
+      .from("availability")
+      .delete()
+      .eq("professional_id", id)
 
-  if (updateResult.error) {
-    return { error: updateResult.error.message }
+    if (deleteAvailabilityResult.error) {
+      return { error: deleteAvailabilityResult.error.message }
+    }
+
+    // Remove os schedule overrides (se houver)
+    const deleteOverridesResult = await supabase
+      .from("schedule_overrides")
+      .delete()
+      .eq("professional_id", id)
+
+    if (deleteOverridesResult.error) {
+      return { error: deleteOverridesResult.error.message }
+    }
+
+    // Remove o profissional definitivamente
+    const deleteResult = await supabase
+      .from("professionals")
+      .delete()
+      .eq("id", id)
+      .eq("salon_id", salonId)
+
+    if (deleteResult.error) {
+      return { error: deleteResult.error.message }
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Erro ao remover profissional" }
   }
 
   revalidatePath("/dashboard/team")

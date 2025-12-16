@@ -19,9 +19,10 @@
     "mcp:dev": "pnpm --filter @repo/mcp-server run dev",
     "mcp:start": "pnpm --filter @repo/mcp-server run start",
     "mcp:debug": "tsx scripts/mcp-client.ts",
-    "mcp:chat": "tsx scripts/mcp-chat.ts",
+    "mcp:chat": "set DATABASE_URL=postgresql://postgres.egrfxtrkcasiuypkxilr:n5c+RcNxT*!puv6@aws-0-us-west-2.pooler.supabase.com:6543/postgres && tsx scripts/mcp-chat.ts",
     "test:google": "tsx scripts/test-google-calendar.ts",
-    "diagnose:google": "tsx scripts/diagnose-google-integration.ts"
+    "diagnose:google": "tsx scripts/diagnose-google-integration.ts",
+    "check:integration": "tsx scripts/check-google-integration.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

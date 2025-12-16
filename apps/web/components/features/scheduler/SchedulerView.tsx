@@ -40,9 +40,11 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       try {
         const result = await getProfessionals(salonId)
         if (!('error' in result)) {
+          // Filtra apenas profissionais ativos
+          const activeProfessionals = result.filter(p => p.is_active)
           const allProfessionals: Professional[] = [
             { id: 'all', name: 'Todos os Profissionais', avatar: null },
-            ...result.map(p => ({ id: p.id, name: p.name, avatar: p.name.split(' ').map(n => n[0]).slice(0, 2).join('') }))
+            ...activeProfessionals.map(p => ({ id: p.id, name: p.name, avatar: p.name.split(' ').map(n => n[0]).slice(0, 2).join('') }))
           ]
           setProfessionals(allProfessionals)
           setSelectedPro(allProfessionals[0])

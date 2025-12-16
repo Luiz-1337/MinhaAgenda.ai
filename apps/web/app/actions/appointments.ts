@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, gt, lt } from "drizzle-orm"
+import { and, eq, gte, lte } from "drizzle-orm"
 
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
@@ -143,7 +143,11 @@ async function fetchAppointments(
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
       .innerJoin(profiles, eq(appointments.clientId, profiles.id))
       .innerJoin(services, eq(appointments.serviceId, services.id))
-      .where(and(eq(appointments.salonId, salonId), lt(appointments.date, rangeEnd), gt(appointments.endTime, rangeStart)))
+      .where(and(
+        eq(appointments.salonId, salonId),
+        lte(appointments.date, rangeEnd),
+        gte(appointments.endTime, rangeStart)
+      ))
       .orderBy(appointments.date)
 
     const appointmentsInfo: DailyAppointment[] = appointmentsList.map((apt) => ({

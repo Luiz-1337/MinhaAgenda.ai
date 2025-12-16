@@ -46,6 +46,8 @@ export default function TeamPage() {
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [selectedProfessional, setSelectedProfessional] = useState<ProfessionalRow | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [professionalToDelete, setProfessionalToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const form = useForm<ProfessionalForm>({
     resolver: zodResolver(professionalSchema) as any,
@@ -112,19 +114,26 @@ export default function TeamPage() {
     })
   }
 
-  async function onDelete(id: string) {
-    if (!activeSalon) {
+  function handleDeleteClick(professional: ProfessionalRow) {
+    setProfessionalToDelete({ id: professional.id, name: professional.name })
+    setDeleteConfirmOpen(true)
+  }
+
+  async function onDelete() {
+    if (!activeSalon || !professionalToDelete) {
       toast.error("Selecione um salão")
       return
     }
 
+    setDeleteConfirmOpen(false)
     startTransition(async () => {
-      const res = await deleteProfessional(id, activeSalon.id)
+      const res = await deleteProfessional(professionalToDelete.id, activeSalon.id)
       if ("error" in res) {
         toast.error(res.error)
         return
       }
-      toast.success("Profissional desativado")
+      toast.success("Profissional removido")
+      setProfessionalToDelete(null)
       const again = await getProfessionals(activeSalon.id)
       if (Array.isArray(again)) setList(again)
     })
@@ -359,7 +368,7 @@ export default function TeamPage() {
                     Horários
                   </button>
                   <button
-                    onClick={() => onDelete(member.id)}
+                    onClick={() => handleDeleteClick(member)}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
                   >
                     <Trash2 size={12} />
@@ -382,6 +391,43 @@ export default function TeamPage() {
           professional={{ id: selectedProfessional.id, name: selectedProfessional.name }}
         />
       )}
+
+      {/* Dialog de Confirmação de Exclusão */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-slate-800 dark:text-white">Confirmar Exclusão</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-slate-700 dark:text-slate-300">
+              Tem certeza que deseja remover o profissional <strong>"{professionalToDelete?.name}"</strong>?
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              Esta ação não pode ser desfeita. O profissional será removido permanentemente, incluindo seus horários e associações com serviços.
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false)
+                setProfessionalToDelete(null)
+              }}
+              className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={onDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Remover
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

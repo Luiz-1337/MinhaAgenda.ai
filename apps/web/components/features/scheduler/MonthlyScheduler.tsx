@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { format, eachDayOfInterval, isSameDay, isSameMonth, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
-import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
+import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow, fromBrazilTime } from "@/lib/utils/timezone.utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo, MonthlyAppointmentsResult } from "@/app/actions/appointments"
 import { getMonthlyAppointments } from "@/app/actions/appointments"
@@ -109,7 +109,9 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
     const map = new Map<string, DailyAppointment[]>()
 
     appointments.forEach((apt) => {
-      const dayKey = formatBrazilTime(apt.startTime, "yyyy-MM-dd")
+      // apt.startTime já está em horário de Brasília (convertido por fromBrazilTime)
+      // Usa format diretamente para evitar dupla conversão
+      const dayKey = format(apt.startTime, "yyyy-MM-dd")
       const existing = map.get(dayKey) || []
       map.set(dayKey, [...existing, apt])
     })
@@ -152,7 +154,9 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
               <div key={weekDayKeys[index]} className="text-center text-sm font-bold text-slate-400 dark:text-slate-500 mb-2">{d}</div>
             ))}
             {calendarDays.map((day) => {
-              const dayKey = formatBrazilTime(day, "yyyy-MM-dd")
+              // Converte day para horário de Brasília para comparação consistente
+              const dayInBrazil = fromBrazilTime(day)
+              const dayKey = format(dayInBrazil, "yyyy-MM-dd")
               const dayAppointments = appointmentsByDay.get(dayKey) || []
               const isCurrentMonth = isSameMonth(day, selectedDate)
               const isToday = isSameDay(day, getBrazilNow())

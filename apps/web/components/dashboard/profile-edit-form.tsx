@@ -9,6 +9,33 @@ import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { User, Mail, Phone, Camera, Globe, Calendar, Check } from "lucide-react"
 import type { ProfileDetails } from "@/app/actions/profile"
+import { useParams } from "next/navigation"
+
+function GoogleCalendarConnectButton({ isConnected }: { isConnected: boolean }) {
+  const params = useParams()
+  const salonId = params?.salonId as string | undefined
+  
+  const handleConnect = () => {
+    if (!salonId) {
+      toast.error("Não foi possível identificar o salão. Tente novamente.")
+      return
+    }
+    
+    // Passa o salonId como query parameter
+    window.location.href = `/api/google/auth?salonId=${salonId}`
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleConnect}
+      className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+    >
+      <Calendar size={16} />
+      {isConnected ? "Reconectar Google Calendar" : "Conectar Google Calendar"}
+    </button>
+  )
+}
 
 interface ProfileEditFormProps {
   profile: ProfileDetails
@@ -149,24 +176,28 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
             <Globe size={16} className="text-indigo-500" /> Integrações
           </h3>
 
-          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-white dark:bg-white/10 flex items-center justify-center p-2 shadow-sm">
-                <Calendar className="text-blue-500" />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-lg bg-white dark:bg-white/10 flex items-center justify-center p-2 shadow-sm">
+                  <Calendar className="text-blue-500" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Google Calendar</h4>
+                  <p className="text-xs text-slate-500">Sincronize agendamentos automaticamente.</p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Google Calendar</h4>
-                <p className="text-xs text-slate-500">Sincronize agendamentos automaticamente.</p>
+              <div className="flex items-center gap-2">
+                <Switch id="calendarSyncEnabled" {...form.register("calendarSyncEnabled")} />
+                {form.watch("calendarSyncEnabled") && (
+                  <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs font-bold flex items-center gap-1">
+                    <Check size={12} /> Conectado
+                  </span>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Switch id="calendarSyncEnabled" {...form.register("calendarSyncEnabled")} />
-              {form.watch("calendarSyncEnabled") && (
-                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs font-bold flex items-center gap-1">
-                  <Check size={12} /> Conectado
-                </span>
-              )}
-            </div>
+            
+            <GoogleCalendarConnectButton isConnected={!!form.watch("calendarSyncEnabled")} />
           </div>
         </div>
 
