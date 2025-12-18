@@ -101,8 +101,7 @@ export function createAvailabilityTool(
   
   return tool({
     description: "Verifica horários disponíveis para um serviço em uma data específica com um profissional específico.",
-    parameters: paramsSchema,
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: paramsSchema,
     execute: async ({ date, serviceName, professionalName }: z.infer<typeof paramsSchema>) => {
       const service = await findServiceByName(salonId, serviceName)
       const professional = await findProfessionalByName(salonId, professionalName)
@@ -140,8 +139,8 @@ export function createBookAppointmentTool(
   
   return tool({
     description: "Realiza o agendamento de um serviço.",
-    parameters: paramsSchema,
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: paramsSchema,
+
     execute: async ({ date, time, serviceName, professionalName }: z.infer<typeof paramsSchema>) => {
       if (!clientId) {
         throw new Error("Você precisa estar logado para realizar um agendamento. Por favor, faça login e tente novamente.")
@@ -232,8 +231,7 @@ export function createBookAppointmentTool(
 export function createGetServicesTool(salonId: string) {
   return tool({
     description: "Lista os serviços disponíveis no salão com seus preços.",
-    parameters: z.object({}),
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: z.object({}),
     execute: async () => {
       const results = await db
         .select({
@@ -261,8 +259,7 @@ export function createGetServicesTool(salonId: string) {
 export function createGetProfessionalsTool(salonId: string) {
   return tool({
     description: "Lista os profissionais do salão e os serviços que realizam.",
-    parameters: z.object({}),
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: z.object({}),
     execute: async () => {
       const pros = await db
         .select({
@@ -340,8 +337,7 @@ export function createSaveUserPreferencesTool(
   
   return tool({
     description: "Salva preferências do cliente no CRM. Chame esta tool PROATIVAMENTE (em background) quando detectar que o usuário expressou uma preferência, como: preferência por profissional específico (ex: 'Só corto com o João'), alergias (ex: 'Tenho alergia a lâmina'), preferência por serviço, ou outras informações relevantes. Não é necessário informar ao usuário que está salvando - faça silenciosamente.",
-    parameters: paramsSchema,
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: paramsSchema,
     execute: async ({ key, value }: z.infer<typeof paramsSchema>) => {
       if (!clientId) {
         // Se não há clientId, não podemos salvar preferências
@@ -468,8 +464,9 @@ REGRAS CRÍTICAS:
 5. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas tools.
 6. Se houver ambiguidade em nomes, peça esclarecimento listando as opções encontradas pela tool (ela retornará erro com sugestões).
 7. Quando usar getServices ou getProfessionals, apresente a lista de forma formatada e amigável.
-8. Antes de agendar (bookAppointment), SEMPRE verifique disponibilidade (checkAvailability).
+8. Antes de agendar, SEMPRE verifique disponibilidade (checkAvailability). Para criar o agendamento, use a tool de agendamento que estiver disponível no contexto (ex: createAppointment no WhatsApp/MCP ou bookAppointment no chat web).
 9. Seja educado, conciso e use português brasileiro.
+10. SEMPRE gere uma resposta de texto após executar qualquer tool. NUNCA retorne apenas resultados de tools sem uma resposta explicativa e amigável ao usuário. Mesmo que tenha executado tools, você DEVE sempre fornecer uma resposta final em texto.
 
 MEMÓRIA DE PREFERÊNCIAS:
 - Quando o cliente mencionar uma preferência (ex: "Só corto com o João", "Tenho alergia a lâmina", "Prefiro corte tradicional"), use a tool saveUserPreferences PROATIVAMENTE em background para salvar essa informação.

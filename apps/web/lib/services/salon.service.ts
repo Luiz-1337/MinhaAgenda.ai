@@ -5,14 +5,40 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import type { SalonOwnerResult } from "@/lib/types/salon"
+import { headers } from "next/headers"
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function parseSalonIdFromPathname(pathname: string | null | undefined): string | null {
+  if (!pathname) return null
+  const parts = pathname.split("?")[0].split("#")[0].split("/").filter(Boolean)
+  if (parts.length === 0) return null
+  const candidate = parts[0]
+  return UUID_RE.test(candidate) ? candidate : null
+}
+
+async function inferSalonIdFromRequest(): Promise<string | null> {
+  const h = await headers()
+  const referer = h.get("referer")
+  if (!referer) return null
+
+  try {
+    const url = new URL(referer)
+    return parseSalonIdFromPathname(url.pathname)
+  } catch {
+    // Em alguns cenários o referer pode vir como pathname relativo
+    return parseSalonIdFromPathname(referer)
+  }
+}
 
 /**
  * Obtém o ID do salão do usuário autenticado
  * Retorna erro se o usuário não estiver autenticado ou não tiver salão
  */
-export async function getOwnerSalonId(): Promise<SalonOwnerResult> {
+export async function getOwnerSalonId(salonId?: string): Promise<SalonOwnerResult> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -22,9 +48,25 @@ export async function getOwnerSalonId(): Promise<SalonOwnerResult> {
     return { error: "Não autenticado" }
   }
 
+  // Prioridade: salonId explícito (quando o callsite tem) > salonId inferido do request (URL atual)
+  const activeSalonId = salonId ?? (await inferSalonIdFromRequest())
+
+  if (activeSalonId) {
+    const activeSalon = await db.query.salons.findFirst({
+      where: and(eq(salons.id, activeSalonId), eq(salons.ownerId, user.id)),
+      columns: { id: true },
+    })
+
+    if (activeSalon) {
+      return { salonId: activeSalon.id, userId: user.id }
+    }
+  }
+
+  // Fallback: primeiro salão do dono (ex.: pós-login, quando não há URL ativa)
   const salon = await db.query.salons.findFirst({
     where: eq(salons.ownerId, user.id),
     columns: { id: true },
+    orderBy: asc(salons.createdAt),
   })
 
   if (!salon) {

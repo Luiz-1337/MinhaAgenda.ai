@@ -2,7 +2,7 @@
  * Serviço para operações relacionadas a chats e mensagens
  */
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import { db, chats, messages, salons } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
 
@@ -70,13 +70,15 @@ export async function saveMessage(
  * Obtém o histórico de mensagens de um chat
  */
 export async function getChatHistory(chatId: string, limit = 10): Promise<ChatMessage[]> {
-  const historyMessages = await db.query.messages.findMany({
+  // Importante: queremos as mensagens MAIS RECENTES, mas retornadas em ordem cronológica (asc)
+  const latestMessages = await db.query.messages.findMany({
     where: eq(messages.chatId, chatId),
-    orderBy: asc(messages.createdAt),
+    orderBy: desc(messages.createdAt),
     limit,
   })
 
-  return historyMessages.map((msg) => ({
+  // Reverte para ficar do mais antigo -> mais novo dentro do recorte
+  return latestMessages.reverse().map((msg) => ({
     role: msg.role as "user" | "assistant" | "system",
     content: msg.content || "",
   }))

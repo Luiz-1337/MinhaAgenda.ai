@@ -30,6 +30,11 @@ export type SalonDetails = {
     parking?: boolean
     late_tolerance_minutes?: number
     cancellation_policy?: string
+    agent_config?: {
+      system_instructions?: string
+      tone?: "formal" | "informal"
+      isActive?: boolean
+    }
   } | null
 }
 
@@ -152,6 +157,11 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
       parking?: boolean
       late_tolerance_minutes?: number
       cancellation_policy?: string
+      agent_config?: {
+        system_instructions?: string
+        tone?: "formal" | "informal"
+        isActive?: boolean
+      }
     } | null) ?? undefined,
   }
 }
@@ -175,7 +185,7 @@ export async function updateSalon(
   // Verifica se o usuário é o dono do salão
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: { id: true, ownerId: true },
+    columns: { id: true, ownerId: true, settings: true },
   })
 
   if (!salon) {
@@ -186,6 +196,14 @@ export async function updateSalon(
     return { error: "Você não tem permissão para atualizar este salão" }
   }
 
+  // IMPORTANT: mescla settings para não sobrescrever chaves desconhecidas (ex.: settings.agent_config)
+  const existingSettings =
+    salon.settings && typeof salon.settings === "object" ? (salon.settings as Record<string, unknown>) : {}
+  const incomingSettings =
+    data.settings && typeof data.settings === "object" ? (data.settings as Record<string, unknown>) : undefined
+  const mergedSettings =
+    incomingSettings ? ({ ...existingSettings, ...incomingSettings } as Record<string, unknown>) : existingSettings
+
   const updateResult = await supabase
     .from("salons")
     .update({
@@ -195,7 +213,7 @@ export async function updateSalon(
       phone: data.phone || null,
       description: data.description || null,
       work_hours: data.workHours || null,
-      settings: data.settings || null,
+      settings: Object.keys(mergedSettings).length > 0 ? mergedSettings : null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", salonId)

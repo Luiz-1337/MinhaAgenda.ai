@@ -27,8 +27,7 @@ export function createLookupCustomerTool() {
 
   return tool({
     description: "Busca informações de um cliente pelo número de telefone. Retorna null se o cliente não for encontrado.",
-    parameters: paramsSchema,
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: paramsSchema,
     execute: async ({ phone, salonId }: z.infer<typeof paramsSchema>) => {
       try {
         const normalizedPhone = normalizePhone(phone)
@@ -80,8 +79,7 @@ export function createRegisterCustomerTool() {
 
   return tool({
     description: "Registra um novo cliente no sistema. O telefone será normalizado automaticamente.",
-    parameters: paramsSchema,
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: paramsSchema,
     execute: async ({ phone, name, salonId }: z.infer<typeof paramsSchema>) => {
       try {
         const normalizedPhone = normalizePhone(phone)
@@ -149,8 +147,7 @@ export function createUpdateCustomerPreferencesTool() {
 
   return tool({
     description: "Atualiza as preferências e notas da IA sobre um cliente. IMPORTANTE: Esta função substitui completamente o campo aiPreferences com o novo resumo fornecido. A IA deve concatenar ou resumir todas as preferências conhecidas antes de chamar esta tool.",
-    parameters: paramsSchema,
-    // @ts-expect-error - Type inference issue with ai library tool function
+    inputSchema: paramsSchema,
     execute: async ({ customerId, preferences }: z.infer<typeof paramsSchema>) => {
       try {
         // Verifica se o cliente existe

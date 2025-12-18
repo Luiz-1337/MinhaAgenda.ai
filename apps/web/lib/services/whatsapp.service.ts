@@ -28,6 +28,9 @@ function getTwilioClient(): twilio.Twilio {
 
 /**
  * Envia uma mensagem via WhatsApp usando Twilio
+ * @param to Número de telefone no formato whatsapp:+E.164 (ex: whatsapp:+5511999999999)
+ * @param body Conteúdo da mensagem
+ * @param config Configuração opcional do Twilio
  */
 export async function sendWhatsAppMessage(
   to: string,
@@ -41,11 +44,24 @@ export async function sendWhatsAppMessage(
     throw new Error("TWILIO_PHONE_NUMBER não configurado")
   }
 
-  await client.messages.create({
-    body,
-    from: phoneNumber,
-    to,
-  })
+  // Garante que os números estão no formato correto (whatsapp:+E.164)
+  const fromNumber = phoneNumber.startsWith("whatsapp:") ? phoneNumber : `whatsapp:${phoneNumber}`
+  const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
+
+  console.log(`📤 Enviando mensagem WhatsApp: ${fromNumber} -> ${toNumber}`)
+
+  try {
+    const message = await client.messages.create({
+      body,
+      from: fromNumber,
+      to: toNumber,
+    })
+
+    console.log(`✅ Mensagem enviada com sucesso. SID: ${message.sid}`)
+  } catch (error) {
+    console.error("❌ Erro ao enviar mensagem WhatsApp:", error)
+    throw error
+  }
 }
 
 /**

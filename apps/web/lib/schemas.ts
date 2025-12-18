@@ -52,6 +52,15 @@ export const updateSalonSchema = z.object({
 
 export type UpdateSalonSchema = z.infer<typeof updateSalonSchema>
 
+// Schema para configuração do agente (armazenado em salons.settings.agent_config)
+export const agentConfigSchema = z.object({
+  system_instructions: z.string().max(10000, "Instruções muito longas").optional().or(z.literal("")),
+  tone: z.enum(["formal", "informal"]),
+  isActive: z.boolean(),
+})
+
+export type AgentConfigSchema = z.infer<typeof agentConfigSchema>
+
 // Schema para atualização do perfil
 export const updateProfileSchema = z.object({
   fullName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").optional().or(z.literal("")).or(z.undefined()),

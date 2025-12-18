@@ -3,10 +3,10 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "pnpm -w exec dotenv -e ../../.env -- expo start",
+    "android": "pnpm -w exec dotenv -e ../../.env -- expo start --android",
+    "ios": "pnpm -w exec dotenv -e ../../.env -- expo start --ios",
+    "web": "pnpm -w exec dotenv -e ../../.env -- expo start --web"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

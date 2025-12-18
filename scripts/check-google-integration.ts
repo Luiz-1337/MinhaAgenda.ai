@@ -10,7 +10,7 @@
 import * as dotenv from 'dotenv'
 import { resolve } from 'path'
 import { db, salonIntegrations, salons } from '../packages/db/src/index'
-import { eq } from 'drizzle-orm'
+import { eq } from '@repo/db'
 
 // Carrega variáveis de ambiente
 const rootPath = resolve(__dirname, '..')
