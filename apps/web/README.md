@@ -1,5 +1,14 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## WhatsApp (Twilio) + AI tools (Opção A)
+
+O webhook principal fica em `app/api/webhook/whatsapp/route.ts`.
+
+- O `apps/web` atua como **host** chamando o modelo via Vercel AI SDK (`ai`).
+- As “tools” são **locais** (sem servidor MCP remoto). Elas são montadas via:
+  - `@repo/mcp-server/tools/vercel-ai` → `createMCPTools(salonId, clientPhone)`
+- Os schemas de entrada das tools são validados/tipados com **Zod**.
+
 ## Getting Started
 
 First, run the development server:

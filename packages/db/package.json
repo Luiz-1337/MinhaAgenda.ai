@@ -17,6 +17,7 @@
     "migrate:manual:003": "node scripts/migrate_003.mjs",
     "migrate:manual:005": "node scripts/migrate_005.mjs",
     "migrate:manual:006": "node scripts/migrate_006.mjs",
+    "migrate:manual:009": "node scripts/migrate_009.mjs",
     "reset": "node scripts/reset.mjs"
   },
   "dependencies": {

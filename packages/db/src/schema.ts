@@ -251,7 +251,7 @@ export const chats = pgTable(
   'chats',
   {
     id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id).notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     clientPhone: text('client_phone').notNull(),
     status: chatStatusEnum('status').default('active').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -34,12 +34,18 @@ async function main() {
         await sql.unsafe(statement)
         console.log('✓ Executed statement')
       } catch (err) {
-        // Ignora erros de "already exists" mas mostra outros
-        if (err.message && err.message.includes('already exists')) {
-          console.log('⚠ Statement already applied (skipping)')
+        // Códigos de erro PostgreSQL:
+        // 42P07 = relation already exists (tabela/sequência)
+        // 42710 = duplicate object (enum/type já existe)
+        // 42701 = duplicate column (coluna já existe)
+        // 23505 = unique violation (constraint já existe)
+        // 42P16 = invalid table definition (pode ocorrer se constraint já existe)
+        if (err.code === '42P07' || err.code === '42710' || err.code === '42701' || err.code === '23505' || err.code === '42P16') {
+          console.log(`⚠ Ignorando erro (objeto já existe): ${err.code} - ${err.message?.split('\n')[0]}`)
         } else {
           console.error('✗ Error executing statement:', err.message)
           console.error('Statement:', statement.substring(0, 100) + '...')
+          throw err
         }
       }
     }

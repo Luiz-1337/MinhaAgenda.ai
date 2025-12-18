@@ -3,7 +3,7 @@
  */
 
 import { and, asc, desc, eq } from "drizzle-orm"
-import { db, chats, messages, salons } from "@repo/db"
+import { db, chats, messages, salons, chatMessages, profiles } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
 
 /**
@@ -52,7 +52,7 @@ export async function findOrCreateChat(
 }
 
 /**
- * Salva uma mensagem no banco de dados
+ * Salva uma mensagem no banco de dados (tabela messages)
  */
 export async function saveMessage(
   chatId: string,
@@ -61,6 +61,31 @@ export async function saveMessage(
 ): Promise<void> {
   await db.insert(messages).values({
     chatId,
+    role,
+    content,
+  })
+}
+
+/**
+ * Salva uma mensagem na tabela chatMessages (relacionada a salonId e clientId)
+ */
+export async function saveChatMessage(
+  salonId: string,
+  clientPhone: string,
+  role: "user" | "assistant",
+  content: string
+): Promise<void> {
+  // Busca o profileId pelo telefone (pode ser null se o cliente não existir)
+  const profile = await db.query.profiles.findFirst({
+    where: eq(profiles.phone, clientPhone),
+    columns: { id: true },
+  })
+
+  const clientId = profile?.id || null
+
+  await db.insert(chatMessages).values({
+    salonId,
+    clientId,
     role,
     content,
   })

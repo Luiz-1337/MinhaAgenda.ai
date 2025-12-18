@@ -1,27 +1,14 @@
 "use client"
 
-import { useMemo, useState, useRef } from "react"
+import { useMemo, useState, useRef, useEffect } from "react"
+import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Search, MoreHorizontal, Send } from "lucide-react"
+import { Search, MoreHorizontal, Send, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { getChatConversations, getChatMessages, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
 
 type ConversationStatus = "Ativo" | "Finalizado" | "Aguardando humano"
-type Conversation = {
-  id: string
-  customer: { name: string; phone: string }
-  lastMessageAt: string
-  preview: string
-  status: ConversationStatus
-  assignedTo: string
-}
-
-type ChatMessage = {
-  id: string
-  from: "cliente" | "agente" | "sistema"
-  text: string
-  time: string
-}
 
 // Helper para obter iniciais
 function getInitials(name: string): string {
@@ -59,56 +46,75 @@ function getStatusBadge(status: ConversationStatus) {
   }
 }
 
-const conversations: Conversation[] = [
-  {
-    id: "1",
-    customer: { name: "Cesar Aubar", phone: "(11) 98888-7777" },
-    lastMessageAt: "10:42",
-    preview: "Eu queria saber sobre horários disponíveis amanhã.",
-    status: "Ativo",
-    assignedTo: "Liz - Marcos Affonso",
-  },
-  {
-    id: "2",
-    customer: { name: "Larissa Oliveira", phone: "(21) 97777-6666" },
-    lastMessageAt: "09:12",
-    preview: "Obrigada! até mais.",
-    status: "Finalizado",
-    assignedTo: "Liz - Marina Alves",
-  },
-  {
-    id: "3",
-    customer: { name: "João Lima", phone: "(31) 96666-5555" },
-    lastMessageAt: "Ontem",
-    preview: "Aguarde um momento, estou transferindo...",
-    status: "Aguardando humano",
-    assignedTo: "Liz - Diego Ramos",
-  },
-]
-
-const chatByConversation: Record<string, ChatMessage[]> = {
-  "1": [
-    { id: "m1", from: "cliente", text: "Bom dia! Quais horários você tem amanhã?", time: "10:38" },
-    { id: "m2", from: "agente", text: "Olá, Cesar! Temos 10h, 14h e 17h.", time: "10:40" },
-    { id: "m3", from: "sistema", text: "Estou transferindo você para um atendente humano.", time: "10:41" },
-    { id: "m4", from: "cliente", text: "Perfeito, pode ser às 14h.", time: "10:42" },
-  ],
-  "2": [
-    { id: "m1", from: "agente", text: "Seu atendimento foi finalizado. Qualquer dúvida, estamos aqui!", time: "09:10" },
-    { id: "m2", from: "cliente", text: "Obrigada! até mais.", time: "09:12" },
-  ],
-  "3": [
-    { id: "m1", from: "cliente", text: "Quero confirmar meu horário de amanhã.", time: "Ontem" },
-    { id: "m2", from: "sistema", text: "Estou transferindo você...", time: "Ontem" },
-  ],
-}
-
 export default function ChatPage() {
+  const params = useParams()
+  const salonId = params?.salonId as string
+  
   const [filter, setFilter] = useState<"all" | "waiting">("all")
   const [query, setQuery] = useState("")
-  const [activeId, setActiveId] = useState(conversations[0].id)
+  const [conversations, setConversations] = useState<ChatConversation[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageText, setMessageText] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Busca conversas quando o componente carrega ou salonId muda
+  useEffect(() => {
+    if (!salonId) return
+
+    async function loadConversations() {
+      setIsLoading(true)
+      try {
+        const result = await getChatConversations(salonId)
+        if ("error" in result) {
+          toast.error(result.error)
+          setConversations([])
+        } else {
+          setConversations(result)
+          if (result.length > 0 && !activeId) {
+            setActiveId(result[0].id)
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao carregar conversas:", error)
+        toast.error("Erro ao carregar conversas")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadConversations()
+  }, [salonId])
+
+  // Busca mensagens quando o chat ativo muda
+  useEffect(() => {
+    if (!activeId) {
+      setMessages([])
+      return
+    }
+
+    async function loadMessages() {
+      setIsLoadingMessages(true)
+      try {
+        const result = await getChatMessages(activeId)
+        if ("error" in result) {
+          toast.error(result.error)
+          setMessages([])
+        } else {
+          setMessages(result)
+        }
+      } catch (error) {
+        console.error("Erro ao carregar mensagens:", error)
+        toast.error("Erro ao carregar mensagens")
+      } finally {
+        setIsLoadingMessages(false)
+      }
+    }
+
+    loadMessages()
+  }, [activeId])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -125,10 +131,9 @@ export default function ChatPage() {
       )
     }
     return list
-  }, [filter, query])
+  }, [filter, query, conversations])
 
   const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
-  const messages = useMemo(() => (active ? chatByConversation[active.id] ?? [] : []), [active])
 
   function handleSendMessage(e: React.FormEvent) {
     e.preventDefault()
@@ -207,7 +212,16 @@ export default function ChatPage() {
 
         {/* Conversation List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {filtered.map((chat) => (
+          {isLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="animate-spin text-slate-400" size={20} />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              Nenhuma conversa encontrada
+            </div>
+          ) : (
+            filtered.map((chat) => (
             <div
               key={chat.id}
               onClick={() => setActiveId(chat.id)}
@@ -237,7 +251,8 @@ export default function ChatPage() {
                 {getStatusBadge(chat.status)}
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -295,43 +310,43 @@ export default function ChatPage() {
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar z-10">
-          {messages.map((msg) => {
-            if (msg.from === "sistema") {
+          {isLoadingMessages ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="animate-spin text-slate-400" size={24} />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-sm text-slate-500">
+              Nenhuma mensagem ainda
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const isClient = msg.from === "cliente"
+
               return (
-                <div key={msg.id} className="flex justify-center my-4">
-                  <span className="text-[10px] text-slate-500 bg-slate-200/50 dark:bg-white/5 px-3 py-1 rounded-full border border-slate-300 dark:border-white/5">
-                    {msg.text}
-                  </span>
-                </div>
-              )
-            }
-
-            const isClient = msg.from === "cliente"
-
-            return (
-              <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
-                <div className={`max-w-[70%] relative group`}>
-                  {/* Message Bubble */}
-                  <div
-                    className={`p-4 shadow-sm relative ${
-                      isClient
-                        ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl rounded-tl-none shadow-indigo-500/20"
-                        : "bg-transparent text-slate-700 dark:text-slate-200 rounded-2xl rounded-tr-none text-right"
-                    }`}
-                  >
-                    <p className="text-sm leading-relaxed">{msg.text}</p>
-                    <span
-                      className={`text-[10px] font-mono mt-1 block opacity-60 ${
-                        isClient ? "text-indigo-200" : "text-slate-400"
+                <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
+                  <div className={`max-w-[70%] relative group`}>
+                    {/* Message Bubble */}
+                    <div
+                      className={`p-4 shadow-sm relative ${
+                        isClient
+                          ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl rounded-tl-none shadow-indigo-500/20"
+                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl rounded-tr-none border border-slate-200 dark:border-white/10"
                       }`}
                     >
-                      {msg.time}
-                    </span>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
+                      <span
+                        className={`text-[10px] font-mono mt-1 block opacity-60 ${
+                          isClient ? "text-indigo-200" : "text-slate-400"
+                        }`}
+                      >
+                        {msg.time}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          )}
         </div>
 
         {/* Input Area */}

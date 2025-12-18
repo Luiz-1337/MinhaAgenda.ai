@@ -66,8 +66,7 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
-CURSOR_MCP_SETUP.md
-GOOGLE_CALENDAR_SYNC.md
-CURSOR_MCP_SETUP.md
-ONDE_VER_LOGS.md
+Tutoriais/
+
 .gitignore
+ 

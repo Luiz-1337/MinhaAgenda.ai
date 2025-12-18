@@ -119,6 +119,16 @@ export const identifyCustomerSchema = z.object({
 export type IdentifyCustomerInput = z.infer<typeof identifyCustomerSchema>
 
 /**
+ * Schema para criar cliente explicitamente
+ */
+export const createCustomerSchema = z.object({
+  phone: z.string().min(1, "phone é obrigatório").describe("Telefone do cliente"),
+  name: z.string().min(1, "name é obrigatório").describe("Nome completo do cliente"),
+})
+
+export type CreateCustomerInput = z.infer<typeof createCustomerSchema>
+
+/**
  * Schema para buscar agendamentos futuros do cliente
  */
 export const getCustomerUpcomingAppointmentsSchema = z.object({

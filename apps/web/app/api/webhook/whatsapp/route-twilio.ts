@@ -5,7 +5,6 @@ import {
     cancelAppointmentSchema,
     checkAvailabilitySchema,
     createAppointmentSchema,
-    createCustomerSchema,
     getCustomerUpcomingAppointmentsSchema,
     getMyFutureAppointmentsSchema,
     getProfessionalAvailabilityRulesSchema,
@@ -20,8 +19,10 @@ import { MinhaAgendaAITools } from '@repo/mcp-server/MinhaAgendaAI_tools';
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
 import { ensureIsoWithTimezone } from '@/lib/services/ai.service';
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
-import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage } from '@/lib/services/chat.service';
+import { findOrCreateChat, getChatHistory, saveMessage } from '@/lib/services/chat.service';
 import { validateRequest } from "twilio";
+import { eq } from "drizzle-orm";
+import { db, messages } from "@repo/db";
 
 export const maxDuration = 120;
 
@@ -70,7 +71,6 @@ export async function POST(req: Request) {
     } else {
       console.log("🔓 Twilio signature validation bypassed (development)");
     }
-
     const fromValue = formData.get("From");
     const bodyValue = formData.get("Body");
     const toValue = formData.get("To");
@@ -111,8 +111,18 @@ export async function POST(req: Request) {
     console.log(`✅ Chat ID: ${chat.id}`);
 
     // Idempotência: verifica se a mensagem já foi processada
-    // (verificação removida - não salvamos markers no banco para evitar poluição)
-    // Se necessário, pode ser implementada com cache/Redis ou tabela separada
+    if (messageSid) {
+      const marker = `__twilio_message_sid:${messageSid}`;
+      const alreadyProcessed = await db.query.messages.findFirst({
+        where: eq(messages.content, marker),
+        columns: { id: true },
+      });
+
+      if (alreadyProcessed) {
+        console.warn(`🔁 Mensagem já processada (idempotency): ${messageSid}`);
+        return new Response("OK", { status: 200 });
+      }
+    }
 
     // Salva mensagem do usuário
     console.log("💾 Salvando mensagem do usuário...");
@@ -121,7 +131,7 @@ export async function POST(req: Request) {
 
     // Busca histórico de mensagens do chat (últimas 20 mensagens)
     console.log("📜 Buscando histórico de mensagens...");
-    const historyMessages = await getChatHistory(chat.id, 10);
+    const historyMessages = await getChatHistory(chat.id, 20);
     console.log(`✅ Histórico carregado: ${historyMessages.length} mensagens`);
 
     // Filtra mensagens de sistema (markers de idempotência)
@@ -147,14 +157,6 @@ export async function POST(req: Request) {
     const identifyCustomerInputSchema = identifyCustomerSchema
       .partial({ phone: true })
       .describe("Identificação de cliente (phone é opcional; padrão = telefone do WhatsApp)");
-
-    const createCustomerInputSchema = createCustomerSchema
-      .omit({ phone: true })
-      .extend({
-        phone: createCustomerSchema.shape.phone
-          .optional()
-          .describe("Telefone do cliente (opcional; padrão = telefone do WhatsApp)"),
-      });
 
     const checkAvailabilityInputSchema = checkAvailabilitySchema
       .omit({ salonId: true })
@@ -221,22 +223,8 @@ export async function POST(req: Request) {
             "Identifica um cliente pelo telefone. Se não encontrar e um nome for fornecido, cria um novo cliente. Retorna { id, name, found: true/false, created: true/false }.",
           inputSchema: identifyCustomerSchema,
           execute: async ({ phone, name }: z.infer<typeof identifyCustomerSchema>) => {
-            const resolvedPhone = (clientPhone || phone).trim();
-            const result = await impl.identifyCustomer(resolvedPhone, name, salonId);
-            return result;
-          },
-        },
-
-        createCustomer: {
-          description:
-            "Cria um novo cliente no sistema explicitamente. Se o cliente já existir, retorna os dados do cliente existente. Retorna { id, name, phone, created: true/false, alreadyExists: true/false }.",
-          inputSchema: createCustomerInputSchema,
-          execute: async ({ phone, name }: z.infer<typeof createCustomerSchema>) => {
             const resolvedPhone = (phone || clientPhone).trim();
-            if (!name || name.trim() === "") {
-              throw new Error("Nome é obrigatório para criar um cliente");
-            }
-            const result = await impl.createCustomer(resolvedPhone, name.trim(), salonId);
+            const result = await impl.identifyCustomer(resolvedPhone, name);
             return result;
           },
         },
@@ -309,7 +297,7 @@ export async function POST(req: Request) {
           execute: async (input: z.infer<typeof saveCustomerPreferenceSchema>) => {
             let resolvedCustomerId = input.customerId;
             if (!resolvedCustomerId) {
-              const identified = await impl.identifyCustomer(clientPhone, undefined, salonId);
+              const identified = await impl.identifyCustomer(clientPhone);
               const parsed = identified as any;
               resolvedCustomerId = parsed?.id;
             }
@@ -392,26 +380,28 @@ export async function POST(req: Request) {
     // Se não houver texto final, usa fallback
     if (!finalText.trim()) {
       console.warn("⚠️ IA não gerou texto final");
-      finalText = "Desculpe, tive uma instabilidade para concluir seu pedido agora";
+      finalText = "Desculpe, tive uma instabilidade para concluir seu pedido agora. Pode repetir sua mensagem ou me dizer o serviço e o dia/horário que você prefere?";
     }
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);
 
     // Salva mensagem do assistente
     await saveMessage(chat.id, "assistant", finalText);
-    // Salva também na tabela chatMessages
-    await saveChatMessage(salonId, clientPhone, "assistant", finalText).catch(err => {
-      console.warn("⚠️ Erro ao salvar mensagem do assistente em chatMessages (continuando):", err);
-    });
 
     // Envia resposta via WhatsApp
     await sendWhatsAppMessage(from, finalText);
 
     console.log(`✅ Resposta enviada para ${from}`);
 
-    // Idempotência: a verificação já foi feita no início, não precisa salvar marker
+    // Marca mensagem como processada (idempotência)
+    if (messageSid) {
+      const marker = `__twilio_message_sid:${messageSid}`;
+      await saveMessage(chat.id, "system", marker).catch(err => {
+        console.error('Erro ao salvar marker de idempotência:', err);
+      });
+    }
 
-    return new Response("", { status: 200 });
+    return new Response("OK", { status: 200 });
   } catch (error) {
     console.error("❌ Error processing WhatsApp webhook:", error);
     
@@ -422,6 +412,7 @@ export async function POST(req: Request) {
     }
     
     // Retorna OK mesmo em caso de erro para evitar retentativas do Twilio
-    return new Response("", { status: 200 });
+    return new Response("OK", { status: 200 });
   }
 }
+

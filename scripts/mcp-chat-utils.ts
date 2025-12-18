@@ -6,7 +6,7 @@
  * usados no chat MCP.
  */
 
-import { db, salons, profiles, salonCustomers, eq, and } from "@repo/db";
+import { db, salons, profiles, salonCustomers, professionals, eq, and, ilike } from "@repo/db";
 
 /**
  * Sanitiza o número de WhatsApp removendo espaços, traços, parênteses e prefixos
@@ -65,7 +65,7 @@ export async function getSalonIdByWhatsapp(
  */
 export async function getClientIdByPhoneNumber(
   phoneNumber: string
-): Promise<string | null> {
+): Promise<string> {
   // Valida se o número não está vazio
   const trimmedPhone = phoneNumber.trim();
   if (!trimmedPhone) {
@@ -80,7 +80,7 @@ export async function getClientIdByPhoneNumber(
     });
 
     // Retorna o ID se encontrado, caso contrário retorna null
-    return profile?.id ?? null;
+    return profile?.id ?? "Não encontrado";
   } catch (error) {
     // Re-lança o erro com contexto adicional
     throw new Error(
@@ -205,5 +205,165 @@ export async function getDataFromClient(
       `Erro ao buscar dados do cliente: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+}
+
+/**
+ * Busca o ID do profissional baseado no nome
+ * @param name - Nome do profissional (busca case-insensitive)
+ * @param salonId - ID do salão (opcional, mas recomendado para garantir unicidade)
+ * @returns O ID do profissional (UUID) ou null se não encontrado
+ * @throws {Error} Se ocorrer um erro na consulta ao banco de dados ou se houver múltiplos profissionais com o mesmo nome
+ */
+export async function getProfessionalIdByName(
+  name: string,
+  salonId?: string
+): Promise<string | null> {
+  // Valida se o nome não está vazio
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error("Nome do profissional não pode ser vazio");
+  }
+
+  try {
+    // Monta as condições de busca
+    const conditions = salonId
+      ? and(ilike(professionals.name, trimmedName), eq(professionals.salonId, salonId))
+      : ilike(professionals.name, trimmedName);
+
+    // Busca o profissional pelo nome (case-insensitive)
+    const professional = await db.query.professionals.findFirst({
+      where: conditions,
+      columns: { id: true },
+    });
+
+    // Se encontrou, retorna o ID
+    if (professional) {
+      return professional.id;
+    }
+
+    // Se não encontrou e não foi especificado salonId, verifica se há múltiplos profissionais com o mesmo nome
+    if (!salonId) {
+      const allProfessionals = await db.query.professionals.findMany({
+        where: ilike(professionals.name, trimmedName),
+        columns: { id: true, salonId: true },
+      });
+
+      if (allProfessionals.length > 1) {
+        throw new Error(
+          `Múltiplos profissionais encontrados com o nome "${trimmedName}". Por favor, especifique o salonId para garantir unicidade.`
+        );
+      }
+    }
+
+    // Retorna null se não encontrado
+    return null;
+  } catch (error) {
+    // Re-lança o erro com contexto adicional
+    if (error instanceof Error && error.message.includes("Múltiplos profissionais")) {
+      throw error;
+    }
+    throw new Error(
+      `Erro ao buscar profissional por nome: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
+ * Gera uma data aleatória no futuro em formato ISO
+ * A data será sempre em dias úteis (segunda a sexta) e entre 9h e 18h
+ * @param daysFromNow - Número mínimo de dias a partir de hoje (padrão: 1)
+ * @param maxDaysFromNow - Número máximo de dias a partir de hoje (padrão: 365)
+ * @returns Data aleatória no futuro em formato ISO string (YYYY-MM-DDTHH:mm)
+ */
+export function getRandomFutureDate(
+  daysFromNow: number = 1,
+  maxDaysFromNow: number = 365
+): string {
+  // Valida os parâmetros
+  if (daysFromNow < 0) {
+    throw new Error("daysFromNow deve ser maior ou igual a zero");
+  }
+  if (maxDaysFromNow <= daysFromNow) {
+    throw new Error("maxDaysFromNow deve ser maior que daysFromNow");
+  }
+
+  // Horário comercial fixo: 9h às 18h
+  const minHour = 9;
+  const maxHour = 18;
+
+  // Função auxiliar para verificar se é dia útil (segunda=1 a sexta=5)
+  const isWeekday = (date: Date): boolean => {
+    const day = date.getDay(); // 0=domingo, 1=segunda, ..., 6=sábado
+    return day >= 1 && day <= 5; // Segunda a sexta
+  };
+
+  // Função auxiliar para avançar para o próximo dia útil
+  const nextWeekday = (date: Date): Date => {
+    const next = new Date(date);
+    while (!isWeekday(next)) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
+  };
+
+  // Obtém a data atual
+  const today = new Date();
+  
+  // Calcula a data mínima (hoje + daysFromNow) e garante que seja dia útil
+  const minDate = new Date(today);
+  minDate.setDate(today.getDate() + daysFromNow);
+  minDate.setHours(minHour, 0, 0, 0);
+  if (!isWeekday(minDate)) {
+    const adjusted = nextWeekday(minDate);
+    minDate.setTime(adjusted.getTime());
+  }
+  
+  // Calcula a data máxima (hoje + maxDaysFromNow) e garante que seja dia útil
+  const maxDate = new Date(today);
+  maxDate.setDate(today.getDate() + maxDaysFromNow);
+  maxDate.setHours(maxHour, 59, 59, 999);
+  if (!isWeekday(maxDate)) {
+    // Se a data máxima cair em fim de semana, retrocede para a sexta anterior
+    while (!isWeekday(maxDate)) {
+      maxDate.setDate(maxDate.getDate() - 1);
+    }
+    maxDate.setHours(maxHour, 59, 59, 999);
+  }
+  
+  // Gera um número aleatório entre as duas datas
+  const minTime = minDate.getTime();
+  const maxTime = maxDate.getTime();
+  
+  if (minTime > maxTime) {
+    throw new Error("Não foi possível gerar uma data válida no intervalo especificado");
+  }
+  
+  // Gera uma data aleatória
+  let randomTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+  let randomDate = new Date(randomTime);
+  
+  // Se não for dia útil, ajusta para o próximo dia útil
+  if (!isWeekday(randomDate)) {
+    randomDate = nextWeekday(randomDate);
+    // Se ultrapassou o limite máximo, usa a data máxima
+    if (randomDate.getTime() > maxTime) {
+      randomDate = new Date(maxDate);
+    }
+  }
+  
+  // Garante que a hora esteja entre 9h e 18h
+  const randomHour = Math.floor(Math.random() * (maxHour - minHour + 1)) + minHour;
+  const randomMinute = Math.floor(Math.random() * 60); // Minutos aleatórios (0-59)
+  
+  randomDate.setHours(randomHour, randomMinute, 0, 0);
+  
+  // Formata como ISO string (YYYY-MM-DDTHH:mm)
+  const year = randomDate.getFullYear();
+  const month = String(randomDate.getMonth() + 1).padStart(2, '0');
+  const day = String(randomDate.getDate()).padStart(2, '0');
+  const hour = String(randomDate.getHours()).padStart(2, '0');
+  const minute = String(randomDate.getMinutes()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 

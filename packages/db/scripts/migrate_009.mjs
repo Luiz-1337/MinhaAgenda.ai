@@ -1,5 +1,5 @@
 import * as fs from 'node:fs'
-import * as path from 'node:path'
+import * as path from 'path'
 import { fileURLToPath } from 'node:url'
 import * as dotenv from 'dotenv'
 import postgres from 'postgres'
@@ -16,9 +16,16 @@ const sql = postgres(url, { prepare: false, ssl: 'require' })
 
 async function main() {
   const __dirname = path.dirname(fileURLToPath(import.meta.url))
-  const file = path.resolve(__dirname, '..', 'drizzle', '0001_sour_jigsaw.sql')
+  const file = path.resolve(__dirname, '..', 'drizzle', '0009_whole_agent_brand.sql')
+  
+  if (!fs.existsSync(file)) {
+    console.error(`Migration file not found: ${file}`)
+    process.exit(1)
+  }
+  
   const content = fs.readFileSync(file, 'utf8')
   const chunks = content.split('--> statement-breakpoint').map((c) => c.trim()).filter(Boolean)
+  
   for (const chunk of chunks) {
     try {
       await sql.unsafe(chunk)
@@ -36,11 +43,12 @@ async function main() {
       throw error
     }
   }
-  console.log('manual-migrate-ok')
+  console.log('manual-migrate-009-ok')
   await sql.end({ timeout: 0 })
 }
 
 main().catch((err) => {
-  console.error('manual-migrate-error', err)
+  console.error('manual-migrate-009-error', err)
   process.exit(1)
 })
+

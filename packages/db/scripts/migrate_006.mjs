@@ -30,9 +30,14 @@ async function main() {
     try {
       await sql.unsafe(chunk)
     } catch (error) {
-      // Se a tabela ou constraint já existir, ignorar o erro
-      if (error.code === '42P07' || error.code === '42710' || error.code === '23505') {
-        console.log(`Ignorando erro (objeto já existe): ${error.code}`)
+      // Códigos de erro PostgreSQL:
+      // 42P07 = relation already exists (tabela/sequência)
+      // 42710 = duplicate object (enum/type já existe)
+      // 42701 = duplicate column (coluna já existe)
+      // 23505 = unique violation (constraint já existe)
+      // 42P16 = invalid table definition (pode ocorrer se constraint já existe)
+      if (error.code === '42P07' || error.code === '42710' || error.code === '42701' || error.code === '23505' || error.code === '42P16') {
+        console.log(`Ignorando erro (objeto já existe): ${error.code} - ${error.message?.split('\n')[0]}`)
         continue
       }
       throw error

@@ -18,19 +18,25 @@
     "mcp:build": "pnpm --filter @repo/mcp-server run build",
     "mcp:dev": "pnpm --filter @repo/mcp-server run dev",
     "mcp:start": "pnpm --filter @repo/mcp-server run start",
-    "mcp:debug": "tsx scripts/mcp-client.ts",
-    "mcp:chat": "set DATABASE_URL=postgresql://postgres.egrfxtrkcasiuypkxilr:n5c+RcNxT*!puv6@aws-0-us-west-2.pooler.supabase.com:6543/postgres && tsx scripts/mcp-chat.ts",
-    "test:google": "tsx scripts/test-google-calendar.ts",
-    "diagnose:google": "tsx scripts/diagnose-google-integration.ts",
-    "check:integration": "tsx scripts/check-google-integration.ts"
+    "mcp:debug": "dotenv -e ./.env -- tsx scripts/mcp-client.ts",
+    "mcp:debug:vercel": "dotenv -e ./.env -v MCP_CLIENT_TOOL_SOURCE=vercel -- tsx scripts/mcp-client.ts",
+    "mcp:debug:mcp": "dotenv -e ./.env -v MCP_CLIENT_TOOL_SOURCE=mcp -- tsx scripts/mcp-client.ts",
+    "mcp:chat": "dotenv -e ./.env -- tsx scripts/mcp-chat.ts",
+    "test:google": "dotenv -e ./.env -- tsx scripts/test-google-calendar.ts",
+    "diagnose:google": "dotenv -e ./.env -- tsx scripts/diagnose-google-integration.ts",
+    "check:integration": "dotenv -e ./.env -- tsx scripts/check-google-integration.ts",
+    "teste": "dotenv -e ./.env -- tsx scripts/Testes_tools.js"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
     "@types/node": "^24.10.2",
+    "dotenv-cli": "^7.4.4",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.80",
+    "ai": "^5.0.108",
     "dotenv": "^16.4.7",
     "openai": "^6.10.0"
   }

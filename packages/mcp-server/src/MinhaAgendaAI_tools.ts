@@ -3,47 +3,131 @@ import { appointments, db, domainServices as sharedServices, leads, professional
 
 export class MinhaAgendaAITools {
 
-    public async identifyCustomer(phone: string, name?: string) {
+    public async identifyCustomer(phone: string, name?: string, salonId?: string) {
         // Busca cliente existente
         const existing = await db.query.profiles.findFirst({
             where: eq(profiles.phone, phone),
             columns: { id: true, fullName: true, phone: true },
         })
-
+        
+        let profileId: string;
+        let created = false;
+        
         if (existing) {
-            return JSON.stringify({
-                id: existing.id,
-                name: existing.fullName,
-                phone: existing.phone,
-                found: true,
-            })
-        }
-
-        // Se não encontrado e nome fornecido, cria novo cliente
-        if (name) {
+            profileId = existing.id;
+        } else if (name) {
+            // Se não encontrado e nome fornecido, cria novo cliente
             // Email temporário baseado no telefone (schema requer email notNull)
             const [newProfile] = await db
                 .insert(profiles)
                 .values({
                     phone,
                     fullName: name,
-                    email: `${phone}@temp.com`, // Email temporário (schema requer notNull)
+                    email: `${phone.replace(/\D/g, '')}@temp.com`, // Remove caracteres não numéricos
                 })
                 .returning({ id: profiles.id, fullName: profiles.fullName, phone: profiles.phone })
-
-            return JSON.stringify({
-                id: newProfile.id,
-                name: newProfile.fullName,
-                phone: newProfile.phone,
-                created: true,
-            })
+            
+            profileId = newProfile.id;
+            created = true;
+        } else {
+            // Cliente não encontrado e sem nome para criar
+            return JSON.stringify({ found: false })
         }
 
-        // Cliente não encontrado e sem nome para criar
-        return JSON.stringify({ found: false })
+        // Se salonId foi fornecido, garante que existe salonCustomer
+        if (salonId && profileId) {
+            const salonCustomer = await db.query.salonCustomers.findFirst({
+                where: and(
+                    eq(salonCustomers.salonId, salonId),
+                    eq(salonCustomers.profileId, profileId)
+                ),
+                columns: { id: true },
+            })
+
+            if (!salonCustomer) {
+                // Cria registro em salonCustomers se não existir
+                await db.insert(salonCustomers).values({
+                    salonId,
+                    profileId,
+                })
+            }
+        }
+        
+        return JSON.stringify({
+            id: profileId,
+            name: existing?.fullName || name,
+            phone: existing?.phone || phone,
+            found: !created,
+            created: created,
+        })
     }
 
-    public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number) {
+    public async createCustomer(phone: string, name: string, salonId?: string) {
+        // Verifica se o cliente já existe
+        const existing = await db.query.profiles.findFirst({
+            where: eq(profiles.phone, phone),
+            columns: { id: true, fullName: true, phone: true },
+        })
+        
+        let profileId: string;
+        let alreadyExists = false;
+        
+        if (existing) {
+            profileId = existing.id;
+            alreadyExists = true;
+        } else {
+            // Cria novo cliente
+            // Email temporário baseado no telefone (schema requer email notNull)
+            const [newProfile] = await db
+                .insert(profiles)
+                .values({
+                    phone,
+                    fullName: name,
+                    email: `${phone.replace(/\D/g, '')}@temp.com`, // Remove caracteres não numéricos do telefone
+                })
+                .returning({ id: profiles.id, fullName: profiles.fullName, phone: profiles.phone })
+            
+            profileId = newProfile.id;
+        }
+
+        // Se salonId foi fornecido, garante que existe salonCustomer
+        if (salonId && profileId) {
+            const salonCustomer = await db.query.salonCustomers.findFirst({
+                where: and(
+                    eq(salonCustomers.salonId, salonId),
+                    eq(salonCustomers.profileId, profileId)
+                ),
+                columns: { id: true },
+            })
+
+            if (!salonCustomer) {
+                // Cria registro em salonCustomers se não existir
+                await db.insert(salonCustomers).values({
+                    salonId,
+                    profileId,
+                })
+            }
+        }
+        
+        return JSON.stringify({
+            id: profileId,
+            name: existing?.fullName || name,
+            phone: existing?.phone || phone,
+            alreadyExists: alreadyExists,
+            created: !alreadyExists,
+            message: alreadyExists 
+                ? "Cliente já existe no sistema" 
+                : "Cliente criado com sucesso",
+        })
+    }
+
+    public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number)
+    {
+        // Valida se professionalId foi fornecido
+        if (!professionalId || professionalId.trim() === "") {
+            throw new Error("professionalId é obrigatório para verificar disponibilidade")
+        }
+
         // Se serviceId for fornecido, busca a duração do serviço no DB
         let finalServiceDuration = serviceDuration || 60
 
@@ -63,7 +147,7 @@ export class MinhaAgendaAITools {
             date,
             salonId,
             serviceDuration: finalServiceDuration,
-            professionalId: professionalId || "",
+            professionalId: professionalId,
         })
 
         return JSON.stringify({
@@ -146,6 +230,7 @@ export class MinhaAgendaAITools {
             appointmentId: appointmentId,
             message: `Agendamento criado com sucesso para ${client.fullName || "cliente"} com ${professional?.name} às ${dateObj.toLocaleString("pt-BR")}`,
         })
+
     }
 
     public async cancelAppointment(appointmentId: string, reason?: string) {
@@ -314,6 +399,7 @@ export class MinhaAgendaAITools {
             appointmentId: newAppointment.id,
             message: `Agendamento reagendado com sucesso para ${newDateObj.toLocaleString("pt-BR")}`,
         })
+
     }
 
     public async getCustomerUpcomingAppointments(salonId: string, customerPhone: string) {
@@ -371,6 +457,7 @@ export class MinhaAgendaAITools {
             })),
             message: `Encontrados ${upcomingAppointments.length} agendamento(s) futuro(s)`,
         })
+
     }
 
     public async getMyFutureAppointments(salonId: string, clientId?: string, phone?: string) {
@@ -472,6 +559,7 @@ export class MinhaAgendaAITools {
             appointments: appointmentsData,
             message: `Encontrados ${upcomingAppointments.length} agendamento(s) futuro(s)`,
         })
+
     }
 
     public async getServices(salonId: string, includeInactive?: boolean) {
@@ -499,6 +587,7 @@ export class MinhaAgendaAITools {
             })),
             message: `Encontrados ${servicesList.length} serviço(s) disponível(is)`,
         })
+
     }
 
     public async saveCustomerPreference(salonId: string, customerId: string, key: string, value: string | number | boolean) {
@@ -629,6 +718,7 @@ export class MinhaAgendaAITools {
             settings,
             message: "Informações do salão recuperadas com sucesso",
         })
+
     }
 
     public async getProfessionals(salonId: string, includeInactive?: boolean) {
@@ -678,6 +768,7 @@ export class MinhaAgendaAITools {
             professionals: professionalsList,
             message: `Encontrados ${professionalsList.length} profissional(is)`,
         })
+
     }
 
     public async getProfessionalAvailabilityRules(salonId: string, professionalName: string) {
