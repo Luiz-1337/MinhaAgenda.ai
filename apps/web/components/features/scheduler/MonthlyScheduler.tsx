@@ -1,16 +1,19 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { format, eachDayOfInterval, isSameDay, isSameMonth, parseISO } from "date-fns"
-import { ptBR } from "date-fns/locale/pt-BR"
+import { useMemo } from "react"
+import { format, eachDayOfInterval, isSameDay, isSameMonth } from "date-fns"
 import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow, fromBrazilTime } from "@/lib/utils/timezone.utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { DailyAppointment, ProfessionalInfo, MonthlyAppointmentsResult } from "@/app/actions/appointments"
-import { getMonthlyAppointments } from "@/app/actions/appointments"
+import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
 
 interface MonthlySchedulerProps {
   salonId: string
-  initialDate?: Date | string
+  currentDate: Date
+  appointments: DailyAppointment[]
+  professionals: ProfessionalInfo[]
+  loading: boolean
+  error: string | null
+  selectedProfessionalId: string | null
 }
 
 function getStatusColor(status: DailyAppointment["status"]): { bg: string; border: string; text: string } {
@@ -28,17 +31,18 @@ function getStatusColor(status: DailyAppointment["status"]): { bg: string; borde
   }
 }
 
-export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps) {
-  const [selectedDate, setSelectedDate] = useState<Date>(
-    initialDate ? (typeof initialDate === "string" ? parseISO(initialDate) : initialDate) : getBrazilNow()
-  )
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null)
-  const [data, setData] = useState<MonthlyAppointmentsResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function MonthlyScheduler({ 
+  salonId, 
+  currentDate, 
+  appointments, 
+  professionals, 
+  loading, 
+  error,
+  selectedProfessionalId
+}: MonthlySchedulerProps) {
 
-  const monthStart = useMemo(() => startOfMonthBrazil(selectedDate), [selectedDate])
-  const monthEnd = useMemo(() => endOfMonthBrazil(selectedDate), [selectedDate])
+  const monthStart = useMemo(() => startOfMonthBrazil(currentDate), [currentDate])
+  const monthEnd = useMemo(() => endOfMonthBrazil(currentDate), [currentDate])
   
   // Calendário começa no domingo da semana que contém o primeiro dia do mês
   const calendarStart = useMemo(() => startOfWeekBrazil(monthStart, { weekStartsOn: 0 }), [monthStart])
@@ -50,60 +54,23 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
     return eachDayOfInterval({ start, end })
   }, [calendarStart, calendarEnd])
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const result = await getMonthlyAppointments(salonId, selectedDate)
-        if ("error" in result) {
-          setError(result.error)
-          setData(null)
-        } else {
-          setData(result)
-        }
-      } catch (err) {
-        setError("Erro ao carregar agendamentos")
-        setData(null)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [salonId, selectedDate])
-
   const appointmentsByProfessional = useMemo(() => {
-    if (!data) return new Map<string, DailyAppointment[]>()
-
     const map = new Map<string, DailyAppointment[]>()
-    data.appointments.forEach((apt) => {
+    appointments.forEach((apt) => {
       const existing = map.get(apt.professionalId) || []
       map.set(apt.professionalId, [...existing, apt])
     })
 
     return map
-  }, [data])
-
-  const activeProfessionals = useMemo(() => {
-    if (!data) return []
-    return data.professionals.filter((p) => p.isActive)
-  }, [data])
-
-  useEffect(() => {
-    if (activeProfessionals.length > 0 && !selectedProfessionalId) {
-      setSelectedProfessionalId(activeProfessionals[0].id)
-    }
-  }, [activeProfessionals, selectedProfessionalId])
+  }, [appointments])
 
   const selectedProfessional = useMemo(() => {
-    if (!selectedProfessionalId || !data) return null
-    return activeProfessionals.find((p) => p.id === selectedProfessionalId) || null
-  }, [selectedProfessionalId, activeProfessionals, data])
+    if (!selectedProfessionalId || professionals.length === 0) return null
+    return professionals.find((p) => p.id === selectedProfessionalId) || null
+  }, [selectedProfessionalId, professionals])
 
   const appointmentsByDay = useMemo(() => {
-    if (!selectedProfessionalId || !data) return new Map<string, DailyAppointment[]>()
+    if (!selectedProfessionalId) return new Map<string, DailyAppointment[]>()
 
     const appointments = appointmentsByProfessional.get(selectedProfessionalId) || []
     const map = new Map<string, DailyAppointment[]>()
@@ -117,7 +84,7 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
     })
 
     return map
-  }, [selectedProfessionalId, appointmentsByProfessional, data])
+  }, [selectedProfessionalId, appointmentsByProfessional])
 
   const weekDayNames = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
   const weekDayKeys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab']
@@ -135,7 +102,7 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
         <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="text-center text-red-600 dark:text-red-400">{error}</div>
         </div>
-      ) : !data || activeProfessionals.length === 0 ? (
+      ) : professionals.length === 0 ? (
         <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="text-center text-slate-500 dark:text-slate-400">
             Nenhum profissional ativo encontrado
@@ -158,7 +125,7 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
               const dayInBrazil = fromBrazilTime(day)
               const dayKey = format(dayInBrazil, "yyyy-MM-dd")
               const dayAppointments = appointmentsByDay.get(dayKey) || []
-              const isCurrentMonth = isSameMonth(day, selectedDate)
+              const isCurrentMonth = isSameMonth(day, currentDate)
               const isToday = isSameDay(day, getBrazilNow())
               const hasEvent = dayAppointments.length > 0
               
@@ -205,4 +172,3 @@ export function MonthlyScheduler({ salonId, initialDate }: MonthlySchedulerProps
     </div>
   )
 }
-

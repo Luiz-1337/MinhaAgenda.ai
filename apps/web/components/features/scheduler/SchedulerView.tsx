@@ -1,13 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users } from "lucide-react"
 import { DailyScheduler } from "./DailyScheduler"
 import { WeeklyScheduler } from "./WeeklyScheduler"
 import { MonthlyScheduler } from "./MonthlyScheduler"
-import { getProfessionals } from "@/app/actions/professionals"
-import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfMonth, startOfWeek, endOfWeek } from "date-fns"
+import { getAppointments, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
+import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
+import {
+  startOfDayBrazil,
+  endOfDayBrazil,
+  startOfWeekBrazil,
+  endOfWeekBrazil,
+  startOfMonthBrazil,
+  endOfMonthBrazil
+} from "@/lib/utils/timezone.utils"
 
 interface SchedulerViewProps {
   salonId: string
@@ -30,33 +38,125 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     }
     return new Date()
   })
-  const [professionals, setProfessionals] = useState<Professional[]>([])
-  const [selectedPro, setSelectedPro] = useState<Professional | null>(null)
-  const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
+  
+  // Estado unificado de dados
+  const [appointments, setAppointments] = useState<AppointmentDTO[]>([])
+  const [professionals, setProfessionals] = useState<ProfessionalInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
+  // Estado de UI
+  const [selectedProId, setSelectedProId] = useState<string | null>(null)
+  const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
+
+  // Carrega dados unificados (Agendamentos + Profissionais)
   useEffect(() => {
-    async function loadProfessionals() {
+    async function fetchData() {
+      setLoading(true)
+      setError(null)
+      
+      let start: Date
+      let end: Date
+
+      // Calcula range baseado na view
+      switch (viewType) {
+        case 'daily':
+          start = startOfDayBrazil(currentDate)
+          end = endOfDayBrazil(currentDate)
+          break
+        case 'weekly':
+          start = startOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+          end = endOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+          break
+        case 'monthly':
+          start = startOfMonthBrazil(currentDate)
+          end = endOfMonthBrazil(currentDate)
+          break
+      }
+
       try {
-        const result = await getProfessionals(salonId)
-        if (!('error' in result)) {
-          // Filtra apenas profissionais ativos
-          const activeProfessionals = result.filter(p => p.is_active)
-          const allProfessionals: Professional[] = [
-            { id: 'all', name: 'Todos os Profissionais', avatar: null },
-            ...activeProfessionals.map(p => ({ id: p.id, name: p.name, avatar: p.name.split(' ').map(n => n[0]).slice(0, 2).join('') }))
-          ]
-          setProfessionals(allProfessionals)
-          setSelectedPro(allProfessionals[0])
+        const result = await getAppointments(salonId, start, end)
+        
+        if ('error' in result) {
+          setError(result.error)
+          setAppointments([])
+          setProfessionals([])
+        } else {
+          setAppointments(result.appointments)
+          setProfessionals(result.professionals)
         }
-      } catch (error) {
-        console.error('Erro ao carregar profissionais:', error)
+      } catch (err) {
+        console.error('Erro ao buscar dados:', err)
+        setError('Falha ao carregar agendamentos')
       } finally {
         setLoading(false)
       }
     }
-    loadProfessionals()
-  }, [salonId])
+
+    fetchData()
+  }, [salonId, currentDate, viewType])
+
+  // Seleciona o primeiro profissional automaticamente se nenhum estiver selecionado
+  useEffect(() => {
+    if (professionals.length > 0 && !selectedProId) {
+       // Filtra apenas ativos para seleção automática, embora a query já deva retornar ativos ou a UI filtre
+       const activePros = professionals.filter(p => p.isActive)
+       if (activePros.length > 0) {
+         setSelectedProId(activePros[0].id) // Seleciona o primeiro específico por padrão? Ou 'all'? 
+         // O código original selecionava o primeiro.
+         // Mas o dropdown original tinha opção "Todos". Vamos manter consistência com o original.
+         // Se o design original tinha "Todos", vamos ver.
+         // Código original:
+         // setProfessionals([{ id: 'all', name: 'Todos os Profissionais' }, ...active])
+         // setSelectedPro(allProfessionals[0]) // que era 'all'
+         
+         // Se eu quiser suportar "Todos", precisaria ajustar a lógica de filtragem nos subcomponentes ou filtrar aqui.
+         // Os subcomponentes originais recebiam `selectedProfessionalId` e filtravam por ele.
+         // Se eu passar 'all', eles precisam saber lidar. 
+         // Mas olhando o código dos subcomponentes que acabei de escrever:
+         // `appointmentsByProfessional.get(selectedProfessionalId)` -> Isso implica que eles esperam um ID específico.
+         // Para suportar "Todos", eu teria que alterar os subcomponentes ou lidar com isso aqui.
+         // O código original dos subcomponentes (Daily/Weekly) também tinha lógica:
+         // const selectedProfessionalAppointments = ... appointmentsByProfessional.get(selectedProfessionalId)
+         // Parece que eles NÃO suportavam ver todos ao mesmo tempo na visualização detalhada (Daily/Weekly), 
+         // pois filtravam por ID único.
+         // Vamos manter o comportamento de selecionar um específico por enquanto para garantir que funcione como antes na visualização,
+         // ou implementar a visualização de "Todos" se for desejado. 
+         // O código original do SchedulerView tinha a opção 'all' no dropdown, mas não vi como isso era passado para os subcomponentes.
+         // Ah, o SchedulerView original NÃO passava selectedPro para os subcomponentes! 
+         // Os subcomponentes tinham seu PRÓPRIO estado `selectedProfessionalId` e lógica de seleção interna!
+         // Então a seleção no `SchedulerView` (cabeçalho) era desconectada da seleção dentro do `DailyScheduler`?
+         // Espera, olhando o código original do `SchedulerView`:
+         // Ele tinha um dropdown de profissionais no Header.
+         // Mas ele passava APENAS `salonId` e `initialDate` para `DailyScheduler`.
+         // E `DailyScheduler` tinha seu PRÓPRIO fetch e seu PRÓPRIO estado `selectedProfessionalId`.
+         // Isso significa que o dropdown no Header do `SchedulerView` NÃO controlava os subcomponentes?
+         // Isso parece um bug ou inconsistência da versão anterior, ou eu perdi algo.
+         // O dropdown no SchedulerView original parecia ser apenas visual ou incompleto.
+         
+         // NA MINHA REFATORAÇÃO:
+         // Eu tornei o `SchedulerView` o "dono" da verdade.
+         // Eu vou passar `selectedProfessionalId` para os subcomponentes.
+         // Assim o dropdown do Header vai controlar a view.
+         setSelectedProId(activePros[0].id)
+       }
+    }
+  }, [professionals, selectedProId])
+
+  // Helpers para UI
+  const selectedPro = useMemo(() => {
+    if (!selectedProId) return null
+    return professionals.find(p => p.id === selectedProId) || null
+  }, [professionals, selectedProId])
+
+  // Formatação para Dropdown
+  const dropdownProfessionals = useMemo(() => {
+    return professionals.filter(p => p.isActive).map(p => ({
+      id: p.id,
+      name: p.name,
+      avatar: p.name.split(' ').map(n => n[0]).slice(0, 2).join('')
+    }))
+  }, [professionals])
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -148,7 +248,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             >
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                  {selectedPro.avatar || <Users size={12} />}
+                  {selectedPro.name.split(' ').map(n => n[0]).slice(0, 2).join('') || <Users size={12} />}
                 </div>
                 <span className="truncate">{selectedPro.name}</span>
               </div>
@@ -157,10 +257,10 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             
             {isProDropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                {professionals.map(pro => (
+                {dropdownProfessionals.map(pro => (
                   <button
                     key={pro.id}
-                    onClick={() => { setSelectedPro(pro); setIsProDropdownOpen(false); }}
+                    onClick={() => { setSelectedProId(pro.id); setIsProDropdownOpen(false); }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 transition-colors"
                   >
                     <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400">
@@ -206,11 +306,40 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     <div className="h-full flex flex-col">
       {renderHeader()}
       <div className="flex-1 min-h-0">
-        {viewType === "daily" && <DailyScheduler salonId={salonId} initialDate={currentDate} />}
-        {viewType === "weekly" && <WeeklyScheduler salonId={salonId} initialDate={currentDate} />}
-        {viewType === "monthly" && <MonthlyScheduler salonId={salonId} initialDate={currentDate} />}
+        {viewType === "daily" && (
+          <DailyScheduler 
+            salonId={salonId} 
+            currentDate={currentDate} 
+            appointments={appointments}
+            professionals={professionals}
+            loading={loading}
+            error={error}
+            selectedProfessionalId={selectedProId}
+          />
+        )}
+        {viewType === "weekly" && (
+          <WeeklyScheduler 
+            salonId={salonId} 
+            currentDate={currentDate} 
+            appointments={appointments}
+            professionals={professionals}
+            loading={loading}
+            error={error}
+            selectedProfessionalId={selectedProId}
+          />
+        )}
+        {viewType === "monthly" && (
+          <MonthlyScheduler 
+            salonId={salonId} 
+            currentDate={currentDate} 
+            appointments={appointments}
+            professionals={professionals}
+            loading={loading}
+            error={error}
+            selectedProfessionalId={selectedProId}
+          />
+        )}
       </div>
     </div>
   )
 }
-

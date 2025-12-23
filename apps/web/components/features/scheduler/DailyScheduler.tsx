@@ -1,17 +1,21 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { format, parseISO } from "date-fns"
+import { useMemo } from "react"
+import { format } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
-import { formatBrazilTime, startOfDayBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
+import { formatBrazilTime, startOfDayBrazil } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { DailyAppointment, ProfessionalInfo, DailyAppointmentsResult } from "@/app/actions/appointments"
-import { getDailyAppointments } from "@/app/actions/appointments"
+import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
 
 interface DailySchedulerProps {
   salonId: string
-  initialDate?: Date | string
+  currentDate: Date
+  appointments: DailyAppointment[]
+  professionals: ProfessionalInfo[]
+  loading: boolean
+  error: string | null
+  selectedProfessionalId: string | null
 }
 
 const PIXELS_PER_MINUTE = 2
@@ -58,79 +62,40 @@ function getStatusColor(status: DailyAppointment["status"]): { bg: string; borde
   }
 }
 
-export function DailyScheduler({ salonId, initialDate }: DailySchedulerProps) {
-  const [selectedDate, setSelectedDate] = useState<Date>(
-    initialDate ? (typeof initialDate === "string" ? parseISO(initialDate) : initialDate) : getBrazilNow()
-  )
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null)
-  const [data, setData] = useState<DailyAppointmentsResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const dayStart = useMemo(() => startOfDayBrazil(selectedDate), [selectedDate])
-
-  // Busca os dados quando a data muda
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const result = await getDailyAppointments(salonId, selectedDate)
-        if ("error" in result) {
-          setError(result.error)
-          setData(null)
-        } else {
-          setData(result)
-        }
-      } catch (err) {
-        setError("Erro ao carregar agendamentos")
-        setData(null)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [salonId, selectedDate])
+export function DailyScheduler({ 
+  salonId, 
+  currentDate, 
+  appointments, 
+  professionals, 
+  loading, 
+  error,
+  selectedProfessionalId
+}: DailySchedulerProps) {
+  
+  const dayStart = useMemo(() => startOfDayBrazil(currentDate), [currentDate])
 
   // Agrupa agendamentos por profissional
   const appointmentsByProfessional = useMemo(() => {
-    if (!data) return new Map<string, DailyAppointment[]>()
-
     const map = new Map<string, DailyAppointment[]>()
-    data.appointments.forEach((apt) => {
+    appointments.forEach((apt) => {
       const existing = map.get(apt.professionalId) || []
       map.set(apt.professionalId, [...existing, apt])
     })
 
     return map
-  }, [data])
-
-  // Filtra apenas profissionais ativos
-  const activeProfessionals = useMemo(() => {
-    if (!data) return []
-    return data.professionals.filter((p) => p.isActive)
-  }, [data])
-
-  // Define o profissional selecionado automaticamente quando os dados carregam
-  useEffect(() => {
-    if (activeProfessionals.length > 0 && !selectedProfessionalId) {
-      setSelectedProfessionalId(activeProfessionals[0].id)
-    }
-  }, [activeProfessionals, selectedProfessionalId])
+  }, [appointments])
 
   // Obtém o profissional selecionado
   const selectedProfessional = useMemo(() => {
-    if (!selectedProfessionalId || !data) return null
-    return activeProfessionals.find((p) => p.id === selectedProfessionalId) || null
-  }, [selectedProfessionalId, activeProfessionals, data])
+    if (!selectedProfessionalId || professionals.length === 0) return null
+    return professionals.find((p) => p.id === selectedProfessionalId) || null
+  }, [selectedProfessionalId, professionals])
 
   // Obtém os agendamentos do profissional selecionado
   const selectedProfessionalAppointments = useMemo(() => {
-    if (!selectedProfessionalId || !data) return []
+    if (!selectedProfessionalId) return []
     return appointmentsByProfessional.get(selectedProfessionalId) || []
-  }, [selectedProfessionalId, appointmentsByProfessional, data])
+  }, [selectedProfessionalId, appointmentsByProfessional])
 
   const hours = Array.from({ length: 11 }, (_, i) => i + 8) // 8:00 to 18:00
 
@@ -147,7 +112,7 @@ export function DailyScheduler({ salonId, initialDate }: DailySchedulerProps) {
         <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="text-center text-red-600 dark:text-red-400">{error}</div>
         </div>
-      ) : !data || activeProfessionals.length === 0 ? (
+      ) : professionals.length === 0 ? (
         <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="text-center text-slate-500 dark:text-slate-400">
             Nenhum profissional ativo encontrado
@@ -165,7 +130,7 @@ export function DailyScheduler({ salonId, initialDate }: DailySchedulerProps) {
           <div className="flex border-b border-slate-200 dark:border-white/5">
             <div className="w-16 flex-shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5"></div>
             <div className="flex-1 py-3 text-center text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {formatBrazilTime(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
+              {formatBrazilTime(currentDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
             </div>
           </div>
 
@@ -215,4 +180,3 @@ export function DailyScheduler({ salonId, initialDate }: DailySchedulerProps) {
     </div>
   )
 }
-

@@ -1,17 +1,21 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns"
+import { useMemo } from "react"
+import { format, eachDayOfInterval, isSameDay } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import { formatBrazilTime, startOfWeekBrazil, endOfWeekBrazil, startOfDayBrazil, getBrazilNow, fromBrazilTime } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { DailyAppointment, ProfessionalInfo, WeeklyAppointmentsResult } from "@/app/actions/appointments"
-import { getWeeklyAppointments } from "@/app/actions/appointments"
+import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
 
 interface WeeklySchedulerProps {
   salonId: string
-  initialDate?: Date | string
+  currentDate: Date
+  appointments: DailyAppointment[]
+  professionals: ProfessionalInfo[]
+  loading: boolean
+  error: string | null
+  selectedProfessionalId: string | null
 }
 
 const PIXELS_PER_MINUTE = 2
@@ -55,17 +59,18 @@ function getStatusColor(status: DailyAppointment["status"]): { bg: string; borde
   }
 }
 
-export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) {
-  const [selectedDate, setSelectedDate] = useState<Date>(
-    initialDate ? (typeof initialDate === "string" ? parseISO(initialDate) : initialDate) : getBrazilNow()
-  )
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string | null>(null)
-  const [data, setData] = useState<WeeklyAppointmentsResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const weekStart = useMemo(() => startOfWeekBrazil(selectedDate, { weekStartsOn: 0 }), [selectedDate])
-  const weekEnd = useMemo(() => endOfWeekBrazil(selectedDate, { weekStartsOn: 0 }), [selectedDate])
+export function WeeklyScheduler({
+  salonId,
+  currentDate,
+  appointments,
+  professionals,
+  loading,
+  error,
+  selectedProfessionalId
+}: WeeklySchedulerProps) {
+  
+  const weekStart = useMemo(() => startOfWeekBrazil(currentDate, { weekStartsOn: 0 }), [currentDate])
+  const weekEnd = useMemo(() => endOfWeekBrazil(currentDate, { weekStartsOn: 0 }), [currentDate])
   const weekDays = useMemo(() => {
     // Converte de volta para horário local para exibição
     const start = new Date(weekStart)
@@ -73,60 +78,23 @@ export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) 
     return eachDayOfInterval({ start, end })
   }, [weekStart, weekEnd])
 
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const result = await getWeeklyAppointments(salonId, selectedDate)
-        if ("error" in result) {
-          setError(result.error)
-          setData(null)
-        } else {
-          setData(result)
-        }
-      } catch (err) {
-        setError("Erro ao carregar agendamentos")
-        setData(null)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [salonId, selectedDate])
-
   const appointmentsByProfessional = useMemo(() => {
-    if (!data) return new Map<string, DailyAppointment[]>()
-
     const map = new Map<string, DailyAppointment[]>()
-    data.appointments.forEach((apt) => {
+    appointments.forEach((apt) => {
       const existing = map.get(apt.professionalId) || []
       map.set(apt.professionalId, [...existing, apt])
     })
 
     return map
-  }, [data])
-
-  const activeProfessionals = useMemo(() => {
-    if (!data) return []
-    return data.professionals.filter((p) => p.isActive)
-  }, [data])
-
-  useEffect(() => {
-    if (activeProfessionals.length > 0 && !selectedProfessionalId) {
-      setSelectedProfessionalId(activeProfessionals[0].id)
-    }
-  }, [activeProfessionals, selectedProfessionalId])
+  }, [appointments])
 
   const selectedProfessional = useMemo(() => {
-    if (!selectedProfessionalId || !data) return null
-    return activeProfessionals.find((p) => p.id === selectedProfessionalId) || null
-  }, [selectedProfessionalId, activeProfessionals, data])
+    if (!selectedProfessionalId || professionals.length === 0) return null
+    return professionals.find((p) => p.id === selectedProfessionalId) || null
+  }, [selectedProfessionalId, professionals])
 
   const appointmentsByDay = useMemo(() => {
-    if (!selectedProfessionalId || !data) return new Map<string, DailyAppointment[]>()
+    if (!selectedProfessionalId) return new Map<string, DailyAppointment[]>()
 
     const appointments = appointmentsByProfessional.get(selectedProfessionalId) || []
     const map = new Map<string, DailyAppointment[]>()
@@ -140,7 +108,7 @@ export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) 
     })
 
     return map
-  }, [selectedProfessionalId, appointmentsByProfessional, data])
+  }, [selectedProfessionalId, appointmentsByProfessional])
 
 
   const hours = Array.from({ length: 11 }, (_, i) => i + 8) // 8:00 to 18:00
@@ -159,7 +127,7 @@ export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) 
         <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="text-center text-red-600 dark:text-red-400">{error}</div>
         </div>
-      ) : !data || activeProfessionals.length === 0 ? (
+      ) : professionals.length === 0 ? (
         <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
           <div className="text-center text-slate-500 dark:text-slate-400">
             Nenhum profissional ativo encontrado
@@ -247,4 +215,3 @@ export function WeeklyScheduler({ salonId, initialDate }: WeeklySchedulerProps) 
     </div>
   )
 }
-
