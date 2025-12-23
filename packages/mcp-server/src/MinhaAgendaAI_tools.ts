@@ -9,10 +9,10 @@ export class MinhaAgendaAITools {
             where: eq(profiles.phone, phone),
             columns: { id: true, fullName: true, phone: true },
         })
-        
+
         let profileId: string;
         let created = false;
-        
+
         if (existing) {
             profileId = existing.id;
         } else if (name) {
@@ -26,7 +26,7 @@ export class MinhaAgendaAITools {
                     email: `${phone.replace(/\D/g, '')}@temp.com`, // Remove caracteres não numéricos
                 })
                 .returning({ id: profiles.id, fullName: profiles.fullName, phone: profiles.phone })
-            
+
             profileId = newProfile.id;
             created = true;
         } else {
@@ -52,7 +52,7 @@ export class MinhaAgendaAITools {
                 })
             }
         }
-        
+
         return JSON.stringify({
             id: profileId,
             name: existing?.fullName || name,
@@ -68,10 +68,10 @@ export class MinhaAgendaAITools {
             where: eq(profiles.phone, phone),
             columns: { id: true, fullName: true, phone: true },
         })
-        
+
         let profileId: string;
         let alreadyExists = false;
-        
+
         if (existing) {
             profileId = existing.id;
             alreadyExists = true;
@@ -86,7 +86,7 @@ export class MinhaAgendaAITools {
                     email: `${phone.replace(/\D/g, '')}@temp.com`, // Remove caracteres não numéricos do telefone
                 })
                 .returning({ id: profiles.id, fullName: profiles.fullName, phone: profiles.phone })
-            
+
             profileId = newProfile.id;
         }
 
@@ -108,21 +108,20 @@ export class MinhaAgendaAITools {
                 })
             }
         }
-        
+
         return JSON.stringify({
             id: profileId,
             name: existing?.fullName || name,
             phone: existing?.phone || phone,
             alreadyExists: alreadyExists,
             created: !alreadyExists,
-            message: alreadyExists 
-                ? "Cliente já existe no sistema" 
+            message: alreadyExists
+                ? "Cliente já existe no sistema"
                 : "Cliente criado com sucesso",
         })
     }
 
-    public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number)
-    {
+    public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number) {
         // Valida se professionalId foi fornecido
         if (!professionalId || professionalId.trim() === "") {
             throw new Error("professionalId é obrigatório para verificar disponibilidade")
