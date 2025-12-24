@@ -4,17 +4,13 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { type CreateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import type { ActionResult } from "@/lib/types/common"
-import { db, salons } from "@repo/db"
-import { eq, asc } from "drizzle-orm"
+import { db, salons, professionals } from "@repo/db"
+import { eq, asc, or, and } from "drizzle-orm"
+import type { SalonListItem } from "@/lib/types/salon"
+import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { createSalonWithOwner } from "@/lib/services/salon.service"
 
 export type CreateSalonResult = ActionResult<{ salonId: string }>
-
-export type SalonListItem = {
-  id: string
-  name: string
-  slug: string
-  whatsapp?: string | null
-}
 
 export type SalonDetails = {
   id: string
@@ -39,7 +35,7 @@ export type SalonDetails = {
 }
 
 /**
- * Busca todos os salões do usuário autenticado
+ * Busca todos os salões do usuário autenticado (como dono ou profissional)
  */
 export async function getUserSalons(): Promise<SalonListItem[]> {
   const supabase = await createClient()
@@ -51,18 +47,41 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     return []
   }
 
-  const userSalons = await db.query.salons.findMany({
-    where: eq(salons.ownerId, user.id),
-    columns: {
-      id: true,
-      name: true,
-      slug: true,
-      whatsapp: true,
-    },
-    orderBy: asc(salons.name),
-  })
+  const result = await db
+    .select({
+      id: salons.id,
+      name: salons.name,
+      slug: salons.slug,
+      whatsapp: salons.whatsapp,
+      planTier: salons.planTier,
+      ownerId: salons.ownerId,
+      professionalRole: professionals.role
+    })
+    .from(salons)
+    .leftJoin(
+      professionals, 
+      and(
+        eq(professionals.salonId, salons.id), 
+        eq(professionals.userId, user.id)
+      )
+    )
+    .where(
+      or(
+        eq(salons.ownerId, user.id),
+        eq(professionals.userId, user.id)
+      )
+    )
+    .orderBy(asc(salons.name))
 
-  return userSalons
+  return result.map(s => ({
+    id: s.id,
+    name: s.name,
+    slug: s.slug,
+    whatsapp: s.whatsapp,
+    planTier: s.planTier,
+    // Prioridade: Se é dono -> MANAGER, senão usa a role do profissional (se for OWNER vira MANAGER), senão STAFF
+    role: (s.ownerId === user.id || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
+  }))
 }
 
 /**
@@ -78,31 +97,15 @@ export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonR
     return { error: "Não autenticado" }
   }
 
-  const insertResult = await supabase
-    .from("salons")
-    .insert({
-      owner_id: user.id,
-      name: data.name,
-      slug: data.slug,
-      whatsapp: data.whatsapp || null,
-      address: data.address || null,
-      phone: data.phone || null,
-      description: data.description || null,
-      work_hours: data.workHours || null,
-      settings: data.settings || null,
-    })
-    .select("id")
-    .single()
-
-  if (insertResult.error) {
-    return { error: insertResult.error.message }
+  try {
+    const newSalon = await createSalonWithOwner(user.id, data)
+    
+    revalidatePath("/")
+    return { success: true, data: { salonId: newSalon.id } }
+  } catch (error) {
+    console.error("Erro detalhado em createSalon:", error)
+    return { error: error instanceof Error ? error.message : "Erro ao criar salão" }
   }
-
-  // Atualiza o perfil do usuário para admin
-  await supabase.from("profiles").update({ system_role: "admin" }).eq("id", user.id)
-
-  revalidatePath("/")
-  return { success: true, data: { salonId: insertResult.data.id } }
 }
 
 /**
@@ -130,7 +133,7 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
       description: true,
       workHours: true,
       settings: true,
-      ownerId: true, // Inclui ownerId para verificação
+      ownerId: true,
     },
   })
 
@@ -138,9 +141,15 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
     return { error: "Salão não encontrado" }
   }
 
-  // Verifica se o usuário é o dono do salão
+  // Verifica permissão: Dono ou Profissional vinculado
   if (salon.ownerId !== user.id) {
-    return { error: "Você não tem permissão para acessar este salão" }
+    const professional = await db.query.professionals.findFirst({
+      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id))
+    })
+    
+    if (!professional) {
+      return { error: "Você não tem permissão para acessar este salão" }
+    }
   }
 
   return {
@@ -182,7 +191,13 @@ export async function updateSalon(
     return { error: "Não autenticado" }
   }
 
-  // Verifica se o usuário é o dono do salão
+  // Verifica permissão (Owner ou Manager)
+  const hasAccess = await hasSalonPermission(salonId, user.id)
+
+  if (!hasAccess) {
+    return { error: "Você não tem permissão para atualizar este salão" }
+  }
+
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
     columns: { id: true, ownerId: true, settings: true },
@@ -190,10 +205,6 @@ export async function updateSalon(
 
   if (!salon) {
     return { error: "Salão não encontrado" }
-  }
-
-  if (salon.ownerId !== user.id) {
-    return { error: "Você não tem permissão para atualizar este salão" }
   }
 
   // IMPORTANT: mescla settings para não sobrescrever chaves desconhecidas (ex.: settings.agent_config)

@@ -98,6 +98,7 @@ export default function ChatPage() {
     async function loadMessages() {
       setIsLoadingMessages(true)
       try {
+        if (!activeId) return
         const result = await getChatMessages(activeId)
         if ("error" in result) {
           toast.error(result.error)

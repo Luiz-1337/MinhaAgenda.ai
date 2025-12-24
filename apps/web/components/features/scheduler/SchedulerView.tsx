@@ -240,7 +240,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       <div className="flex items-center gap-3 w-full md:w-auto">
         
         {/* Professional Dropdown */}
-        {!loading && selectedPro && (
+        {!loading && selectedPro && dropdownProfessionals.length > 1 && (
           <div className="relative professional-dropdown">
             <button 
               onClick={() => setIsProDropdownOpen(!isProDropdownOpen)}

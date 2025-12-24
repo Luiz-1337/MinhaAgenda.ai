@@ -1,0 +1,102 @@
+import { db, professionals, salons } from "@repo/db"
+import { eq, count, and } from "drizzle-orm"
+import { canAddProfessional } from "@/lib/utils/permissions"
+import type { UpsertProfessionalInput } from "@/lib/types/professional"
+import type { PlanTier } from "@/lib/types/salon"
+import { normalizeString, normalizeEmail, emptyStringToNull } from "@/lib/services/validation.service"
+
+export class ProfessionalService {
+  /**
+   * Conta o número de profissionais ativos em um salão
+   */
+  static async countActiveProfessionals(salonId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: count() })
+      .from(professionals)
+      .where(and(eq(professionals.salonId, salonId), eq(professionals.isActive, true)))
+
+    return result?.count ?? 0
+  }
+
+  /**
+   * Cria um novo profissional com verificação de plano (Feature Gating)
+   */
+  static async createProfessional(salonId: string, data: UpsertProfessionalInput) {
+    // 1. Busca informações do salão (Plan Tier)
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: {
+        id: true,
+        planTier: true,
+      },
+    })
+
+    if (!salon) {
+      throw new Error("Salão não encontrado")
+    }
+
+    // 2. Verifica limites do plano
+    const currentCount = await this.countActiveProfessionals(salonId)
+    const tier = salon.planTier as PlanTier
+
+    if (!canAddProfessional(tier, currentCount)) {
+      if (tier === 'SOLO') {
+        throw new Error("O plano SOLO permite apenas 1 profissional (você). Faça upgrade para o plano BUSINESS para adicionar equipe.")
+      }
+      throw new Error(`Limite de profissionais atingido para o plano ${tier}.`)
+    }
+
+    // 3. Prepara dados
+    const payload = {
+      salonId,
+      userId: data.userId || null,
+      name: normalizeString(data.name),
+      email: normalizeEmail(data.email),
+      phone: emptyStringToNull(data.phone),
+      role: data.role || 'STAFF',
+      commissionRate: data.commissionRate?.toString() || '0',
+      isActive: data.isActive ?? true,
+    }
+
+    // 4. Insere no banco
+    const [newProfessional] = await db
+      .insert(professionals)
+      .values(payload)
+      .returning()
+
+    return newProfessional
+  }
+
+  /**
+   * Atualiza um profissional existente (sem verificação de limite de quantidade, pois já existe)
+   */
+  static async updateProfessional(id: string, salonId: string, data: UpsertProfessionalInput) {
+     const payload = {
+      name: normalizeString(data.name),
+      email: normalizeEmail(data.email),
+      phone: emptyStringToNull(data.phone),
+      role: data.role, // Pode ser undefined se não for atualizar
+      commissionRate: data.commissionRate?.toString(),
+      isActive: data.isActive,
+      userId: data.userId, // Caso queira vincular/desvincular usuário
+    }
+
+    // Filtra undefined
+    const cleanPayload = Object.fromEntries(
+      Object.entries(payload).filter(([_, v]) => v !== undefined)
+    )
+
+    const [updated] = await db
+      .update(professionals)
+      .set(cleanPayload)
+      .where(and(eq(professionals.id, id), eq(professionals.salonId, salonId)))
+      .returning()
+    
+    return updated
+  }
+}
+
+
+
+
+

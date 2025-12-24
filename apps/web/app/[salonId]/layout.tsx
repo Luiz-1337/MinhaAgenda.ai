@@ -5,6 +5,7 @@ import { SalonProvider } from "@/contexts/salon-context"
 import { SidebarNav, MobileSidebar } from "@/components/dashboard/sidebar"
 import { UserNav } from "@/components/dashboard/user-nav"
 import { SalonSelector } from "@/components/dashboard/salon-selector"
+import { RouteGuard } from "@/components/auth/route-guard"
 import { Bot } from 'lucide-react'
 
 export default async function SalonLayout({
@@ -39,10 +40,9 @@ export default async function SalonLayout({
     redirect(`/${salons[0].id}/dashboard`)
   }
 
-  const activeSalon = salons.find(s => s.id === salonId) || salons[0]
-
   return (
     <SalonProvider initialSalons={salons}>
+      <RouteGuard />
       <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-200 overflow-hidden font-sans selection:bg-indigo-500/30 transition-colors duration-300">
         {/* Sidebar Desktop */}
         <aside className="hidden md:flex md:w-64 h-full bg-slate-50/80 dark:bg-slate-950/50 border-r border-slate-200 dark:border-white/5 flex flex-col backdrop-blur-md relative z-20 transition-colors duration-300">
@@ -114,4 +114,3 @@ export default async function SalonLayout({
     </SalonProvider>
   )
 }
-

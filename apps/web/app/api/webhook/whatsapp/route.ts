@@ -18,7 +18,9 @@ import {
   } from "@repo/mcp-server/src/schemas/tools.schema"
 import { MinhaAgendaAITools } from '@repo/mcp-server/MinhaAgendaAI_tools';
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
-import { ensureIsoWithTimezone } from '@/lib/services/ai.service';
+import { ensureIsoWithTimezone, createSalonAssistantPrompt } from '@/lib/services/ai.service';
+import { db, salons, customers } from "@repo/db";
+import { eq, and } from "drizzle-orm";
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
 import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage } from '@/lib/services/chat.service';
 import { validateRequest } from "twilio";
@@ -104,6 +106,33 @@ export async function POST(req: Request) {
     }
     
     console.log(`✅ Salon ID encontrado: ${salonId}`);
+
+    // Busca nome do salão
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { name: true }
+    });
+    const salonName = salon?.name || "nosso salão";
+
+    // Busca preferências do cliente (se existir no CRM)
+    const customer = await db.query.customers.findFirst({
+      where: and(
+        eq(customers.salonId, salonId),
+        eq(customers.phone, clientPhone)
+      ),
+      columns: { aiPreferences: true }
+    });
+
+    let preferences: Record<string, unknown> | undefined = undefined;
+    if (customer?.aiPreferences) {
+      try {
+        preferences = JSON.parse(customer.aiPreferences);
+      } catch (e) {
+        console.error("Erro ao fazer parse das preferências do cliente:", e);
+      }
+    }
+
+    const systemPrompt = createSalonAssistantPrompt(salonName, preferences);
 
     // Encontra ou cria chat
     console.log("💬 Encontrando ou criando chat...");
@@ -214,6 +243,7 @@ export async function POST(req: Request) {
     // Gera resposta usando streamText (mesmo padrão do teste.tsx)
     const result = streamText({
       model: openai("o4-mini"),
+      system: systemPrompt,
       messages: convertToModelMessages(uiMessages),
       tools: {
         identifyCustomer: {

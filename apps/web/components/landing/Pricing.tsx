@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { PLANS } from './constants';
+import Link from 'next/link';
 
 const Pricing: React.FC = () => {
   return (
@@ -43,13 +44,15 @@ const Pricing: React.FC = () => {
                   </li>
                 ))}
               </ul>
+              <Link href={`/register?plan=${plan.name}`}>
               <button className={`w-full py-3 px-6 rounded-xl font-bold transition-colors ${
                 plan.highlight 
                   ? 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 shadow-lg shadow-indigo-600/30' 
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10'
               }`}>
-                Escolher {plan.name}
+                {plan.buttonText}
               </button>
+              </Link>
             </div>
           ))}
         </div>

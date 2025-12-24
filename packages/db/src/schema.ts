@@ -33,11 +33,16 @@ export const vector = customType<{ data: number[] }>({
 // ENUMS
 // ============================================================================
 export const systemRoleEnum = pgEnum('system_role', ['admin', 'user'])
+export const profileRoleEnum = pgEnum('profile_role', ['OWNER', 'PROFESSIONAL', 'CLIENT'])
 export const userTierEnum = pgEnum('user_tier', ['standard', 'advanced', 'professional'])
+export const subscriptionTierEnum = pgEnum('subscription_tier', ['SOLO', 'PRO', 'ENTERPRISE'])
 export const statusEnum = pgEnum('status', ['pending', 'confirmed', 'cancelled', 'completed'])
 export const leadStatusEnum = pgEnum('lead_status', ['new', 'cold', 'recently_scheduled'])
 export const chatStatusEnum = pgEnum('chat_status', ['active', 'completed'])
 export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant', 'system', 'tool'])
+export const planTierEnum = pgEnum('plan_tier', ['SOLO', 'PRO', 'ENTERPRISE'])
+export const subscriptionStatusEnum = pgEnum('subscription_status', ['ACTIVE', 'PAID', 'PAST_DUE', 'CANCELED', 'TRIAL'])
+export const professionalRoleEnum = pgEnum('professional_role', ['OWNER', 'MANAGER', 'STAFF'])
 
 // ============================================================================
 // TABLES - User/Auth
@@ -50,8 +55,12 @@ export const profiles = pgTable('profiles', {
   googleAccessToken: text('google_access_token'),
   googleRefreshToken: text('google_refresh_token'),
   calendarSyncEnabled: boolean('calendar_sync_enabled').default(false).notNull(),
+  onboardingCompleted: boolean('onboarding_completed').default(false).notNull(),
   systemRole: systemRoleEnum('system_role').default('user').notNull(),
+  role: profileRoleEnum('role').default('CLIENT').notNull(),
   userTier: userTierEnum('user_tier'),
+  tier: subscriptionTierEnum('tier').default('SOLO').notNull(),
+  salonId: uuid('salon_id'), // FK adicionada via migration para evitar referência circular
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
@@ -70,6 +79,8 @@ export const salons = pgTable(
     address: text('address'),
     phone: text('phone'),
     description: text('description'),
+    planTier: planTierEnum('plan_tier').default('SOLO').notNull(),
+    subscriptionStatus: subscriptionStatusEnum('subscription_status').default('TRIAL').notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -108,9 +119,11 @@ export const professionals = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     userId: uuid('user_id').references(() => profiles.id),
+    role: professionalRoleEnum('role').default('STAFF').notNull(),
     name: text('name').notNull(),
     email: text('email').notNull(),
     phone: text('phone'),
+    commissionRate: numeric('commission_rate', { precision: 5, scale: 2 }).default('0').notNull(),
     serviceIds: jsonb('service_ids'), // IDs dos serviços que o profissional executa
     googleCalendarId: text('google_calendar_id'), // ID do calendário secundário no Google Calendar
     isActive: boolean('is_active').default(true).notNull(),
@@ -460,9 +473,10 @@ export const embeddings = pgTable(
 // ============================================================================
 // RELATIONS
 // ============================================================================
-export const profilesRelations = relations(profiles, ({ many }) => ({
+export const profilesRelations = relations(profiles, ({ many, one }) => ({
   appointments: many(appointments),
-  ownedSalons: many(salons)
+  ownedSalons: many(salons),
+  salon: one(salons, { fields: [profiles.salonId], references: [salons.id] })
 }))
 
 export const salonsRelations = relations(salons, ({ one, many }) => ({

@@ -6,29 +6,46 @@ import { cn } from "@/lib/utils"
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
-  SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
 import {
   LayoutDashboard,
-  Users,
   Settings,
   Menu,
   MessageSquare,
   Bot,
   CreditCard,
   User,
-  Scissors,
   Plus,
   Calendar,
   Briefcase,
   Zap,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { useSalon } from "@/contexts/salon-context"
+import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import { createBrowserClient } from "@supabase/ssr"
 import { useEffect, useState } from "react"
+import type { ProfessionalRole } from "@/lib/types/professional"
+
+// Helper para verificar permissões de visualização
+function shouldShowItem(href: string, role: ProfessionalRole, isSolo: boolean) {
+  // 1. Staff: Acesso restrito
+  if (role === 'STAFF') {
+    const allowed = ['schedule', 'chat']
+    return allowed.includes(href)
+  }
+
+  // 2. Manager (Dono/Admin)
+  if (role === 'MANAGER') {
+    // Se for SOLO, esconde funcionalidades de equipe
+    if (isSolo) {
+      if (href === 'team') return false
+    }
+    // Manager tem acesso total (exceto o que foi filtrado acima)
+    return true
+  }
+
+  return false
+}
 
 const menuGroups = [
   {
@@ -61,6 +78,7 @@ export function SidebarNav() {
   const pathname = usePathname()
   const router = useRouter()
   const { activeSalon } = useSalon()
+  const { role, isSolo, isManager } = useSalonAuth()
   const [userName, setUserName] = useState<string>("")
 
   useEffect(() => {
@@ -115,34 +133,41 @@ export function SidebarNav() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-4 py-2 custom-scrollbar">
-        {menuGroups.map((group, groupIndex) => (
-          <div key={groupIndex} className="mb-6">
-            <h4 className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 mb-2 px-3">
-              {group.title}
-            </h4>
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const active = isActive(item.href)
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.href}
-                    href={buildHref(item.href)}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-                      active
-                        ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 shadow-sm dark:shadow-[0_0_15px_rgba(99,102,241,0.1)]"
-                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-slate-200"
-                    )}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </Link>
-                )
-              })}
+        {menuGroups.map((group, groupIndex) => {
+          // Filtra itens baseados na role
+          const visibleItems = group.items.filter(item => shouldShowItem(item.href, role, isSolo))
+          
+          if (visibleItems.length === 0) return null
+
+          return (
+            <div key={groupIndex} className="mb-6">
+              <h4 className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 mb-2 px-3">
+                {group.title}
+              </h4>
+              <div className="space-y-0.5">
+                {visibleItems.map((item) => {
+                  const active = isActive(item.href)
+                  const Icon = item.icon
+                  return (
+                    <Link
+                      key={item.href}
+                      href={buildHref(item.href)}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        active
+                          ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 shadow-sm dark:shadow-[0_0_15px_rgba(99,102,241,0.1)]"
+                          : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-slate-200"
+                      )}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </Link>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </nav>
 
       {/* User Mini Profile */}
@@ -153,7 +178,9 @@ export function SidebarNav() {
           </div>
           <div className="flex-1 overflow-hidden">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{userName || "Usuário"}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Admin</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              {isManager ? 'Administrador' : 'Colaborador'}
+            </p>
           </div>
         </div>
       </div>

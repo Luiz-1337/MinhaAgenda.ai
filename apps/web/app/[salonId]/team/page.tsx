@@ -6,14 +6,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Search, Plus, User, Pencil, Clock, Trash2 } from "lucide-react"
+import { Search, Plus, User, Pencil, Clock, Trash2, AlertCircle } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { getProfessionals, upsertProfessional, deleteProfessional } from "@/app/actions/professionals"
 import type { ProfessionalRow } from "@/lib/types/professional"
-import { useSalon } from "@/contexts/salon-context"
+import { useSalon, useSalonAuth } from "@/contexts/salon-context"
+import { canAddProfessional } from "@/lib/utils/permissions"
 import AvailabilitySheet from "@/components/team/availability-sheet"
 
 // Função para formatar os dias da semana
@@ -31,12 +33,15 @@ const professionalSchema = z.object({
   name: z.string().min(2, "Informe o nome"),
   email: z.string().email("E-mail inválido"),
   phone: z.string().optional().or(z.literal("")),
+  role: z.enum(["MANAGER", "STAFF"]).optional(),
   isActive: z.boolean().default(true),
 })
 type ProfessionalForm = z.infer<typeof professionalSchema>
 
 export default function TeamPage() {
   const { activeSalon } = useSalon()
+  const { planTier, isManager } = useSalonAuth()
+  
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [list, setList] = useState<ProfessionalRow[]>([])
@@ -51,8 +56,12 @@ export default function TeamPage() {
 
   const form = useForm<ProfessionalForm>({
     resolver: zodResolver(professionalSchema) as any,
-    defaultValues: { name: "", email: "", phone: "", isActive: true },
+    defaultValues: { name: "", email: "", phone: "", role: "STAFF", isActive: true },
   })
+
+  // Calcula contagem de ativos
+  const activeCount = useMemo(() => list.filter(p => p.is_active).length, [list])
+  const canCreate = canAddProfessional(planTier, activeCount)
 
   useEffect(() => {
     if (!activeSalon) return
@@ -84,13 +93,20 @@ export default function TeamPage() {
 
   function openCreate() {
     setEditing(null)
-    form.reset({ name: "", email: "", phone: "", isActive: true })
+    form.reset({ name: "", email: "", phone: "", role: "STAFF", isActive: true })
     setOpen(true)
   }
 
   function openEdit(p: ProfessionalRow) {
     setEditing(p)
-    form.reset({ id: p.id, name: p.name, email: p.email, phone: p.phone || "", isActive: p.is_active })
+    form.reset({ 
+      id: p.id, 
+      name: p.name, 
+      email: p.email, 
+      phone: p.phone || "", 
+      role: p.role || "STAFF",
+      isActive: p.is_active 
+    })
     setOpen(true)
   }
 
@@ -147,91 +163,126 @@ export default function TeamPage() {
           <User size={24} className="text-slate-400" />
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Equipe</h2>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
-            >
-              <Plus size={16} />
-              Convidar membro
-            </button>
-          </DialogTrigger>
-          <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
-            <DialogHeader>
-              <DialogTitle className="text-slate-800 dark:text-white">
-                {editing ? "Editar Profissional" : "Novo Profissional"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nome</Label>
-                <Input
-                  id="name"
-                  {...form.register("name")}
-                  placeholder="Ex.: Ana Souza"
-                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                />
-                {form.formState.errors.name && (
-                  <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">E-mail</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  {...form.register("email")}
-                  placeholder="ana@empresa.com"
-                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                />
-                {form.formState.errors.email && (
-                  <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
-                )}
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="phone" className="text-slate-700 dark:text-slate-300">Telefone</Label>
+        
+        {canCreate ? (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+              >
+                <Plus size={16} />
+                Convidar membro
+              </button>
+            </DialogTrigger>
+            <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
+              <DialogHeader>
+                <DialogTitle className="text-slate-800 dark:text-white">
+                  {editing ? "Editar Profissional" : "Novo Profissional"}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nome</Label>
                   <Input
-                    id="phone"
-                    {...form.register("phone")}
-                    placeholder="(11) 9XXXX-XXXX"
+                    id="name"
+                    {...form.register("name")}
+                    placeholder="Ex.: Ana Souza"
                     className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
                   />
+                  {form.formState.errors.name && (
+                    <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Controller
+                  <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">E-mail</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    {...form.register("email")}
+                    placeholder="ana@empresa.com"
+                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Se este e-mail já estiver cadastrado no sistema, o usuário será vinculado automaticamente.
+                  </p>
+                  {form.formState.errors.email && (
+                    <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="text-slate-700 dark:text-slate-300">Telefone</Label>
+                    <Input
+                      id="phone"
+                      {...form.register("phone")}
+                      placeholder="(11) 9XXXX-XXXX"
+                      className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
+                    />
+                  </div>
+                  
+                  {/* Seletor de Role apenas para Manager */}
+                  {isManager && (
+                    <div className="space-y-2">
+                      <Label htmlFor="role" className="text-slate-700 dark:text-slate-300">Permissão</Label>
+                      <Controller
+                        name="role"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value || "STAFF"}>
+                            <SelectTrigger className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10">
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="STAFF">Staff (Padrão)</SelectItem>
+                              <SelectItem value="MANAGER">Gerente</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                   <Controller
                     name="isActive"
                     control={form.control}
                     render={({ field }) => (
-                      <Label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <Label className="flex items-center gap-2 text-slate-700 dark:text-slate-300 cursor-pointer">
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
-                        Ativo
+                        Profissional Ativo
                       </Label>
                     )}
                   />
                 </div>
-              </div>
-              <DialogFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                  className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={form.formState.isSubmitting}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {editing ? "Salvar" : "Criar"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                
+                <DialogFooter className="gap-2 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setOpen(false)}
+                    className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={form.formState.isSubmitting}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {editing ? "Salvar" : "Criar"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 dark:border-amber-500/20">
+            <AlertCircle size={16} />
+            <span>Limite do plano {planTier} atingido</span>
+          </div>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -286,11 +337,11 @@ export default function TeamPage() {
         {/* Table Header */}
         <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
           <div className="col-span-2 pl-2">Nome</div>
+          <div className="col-span-1">Role</div>
           <div className="col-span-3">E-mail</div>
           <div className="col-span-2">Telefone</div>
-          <div className="col-span-2">Dias de Trabalho</div>
           <div className="col-span-1">Status</div>
-          <div className="col-span-2 text-right pr-2">Ações</div>
+          <div className="col-span-3 text-right pr-2">Ações</div>
         </div>
 
         {/* Table Body */}
@@ -300,11 +351,11 @@ export default function TeamPage() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
                   <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
                   <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
                   <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-40 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
                   <div className="h-4 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-48 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
                 </div>
               ))}
             </div>
@@ -321,20 +372,22 @@ export default function TeamPage() {
                   index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
                 }`}
               >
-                <div className="col-span-2 pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate">
+                <div className="col-span-2 pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate flex items-center gap-2">
                   {member.name}
+                </div>
+
+                <div className="col-span-1 text-xs">
+                    {member.role === 'MANAGER' && <span className="text-indigo-600 dark:text-indigo-400 font-medium">Manager</span>}
+                    {(!member.role || member.role === 'STAFF') && <span className="text-slate-500">Staff</span>}
                 </div>
 
                 <div className="col-span-3 text-slate-600 dark:text-slate-400 truncate text-xs">
                   {member.email}
+                  {member.user_id && <span className="ml-1 text-[10px] text-emerald-500 font-mono">(Vinculado)</span>}
                 </div>
 
                 <div className="col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
                   {member.phone || "—"}
-                </div>
-
-                <div className="col-span-2 text-slate-600 dark:text-slate-400 text-xs truncate">
-                  {formatWorkingDays(member.working_days)}
                 </div>
 
                 <div className="col-span-1">
@@ -349,7 +402,7 @@ export default function TeamPage() {
                   )}
                 </div>
 
-                <div className="col-span-2 flex justify-end gap-2 pr-2">
+                <div className="col-span-3 flex justify-end gap-2 pr-2">
                   <button
                     onClick={() => openEdit(member)}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
@@ -372,7 +425,7 @@ export default function TeamPage() {
                     className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
                   >
                     <Trash2 size={12} />
-                    Remover
+                    
                   </button>
                 </div>
               </div>
@@ -431,4 +484,3 @@ export default function TeamPage() {
     </div>
   )
 }
-

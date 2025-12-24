@@ -38,6 +38,8 @@
     "@ai-sdk/openai": "^2.0.80",
     "ai": "^5.0.108",
     "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.45.1",
     "openai": "^6.10.0"
   }
 }

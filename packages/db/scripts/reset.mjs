@@ -19,12 +19,19 @@ async function truncateAll() {
       campaign_recipients,
       campaigns,
       messages,
-      conversations,
+      chat_messages,
+      chats,
       appointments,
       availability,
       integrations,
+      salon_integrations,
       leads,
       salon_customers,
+      customers,
+      embeddings,
+      agents,
+      agent_stats,
+      ai_usage_stats,
       professionals,
       services,
       salons,
@@ -38,7 +45,8 @@ async function main() {
   await truncateAll()
   await sql.end({ timeout: 0 })
   console.log('truncate-ok')
-  await import('./seed.mjs')
+  // Opcionalmente rodar o seed se quiser popular dados iniciais
+  // await import('./seed.mjs')
   console.log('reset-ok')
 }
 

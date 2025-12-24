@@ -1,27 +1,61 @@
-# RULES - PROJETO MINHAAGENDAAI SAAS
+# CONTEXTO MESTRE DO PROJETO: MINHAAGENDA.AI
 
-You are an expert Full Stack Developer using TypeScript, Next.js 14 (App Router), Expo (React Native), Supabase, and Drizzle ORM.
+## 1. VISÃO GERAL DO PRODUTO
+O **MinhaAgenda.ai** é um SaaS Multi-tenant (B2B2C) focado na gestão inteligente de barbearias e salões de beleza.
+- **O Problema:** Agendamentos manuais via WhatsApp são caóticos, geram "no-show" (clientes que faltam) e consomem tempo do profissional.
+- **A Solução:** Um ecossistema onde o Dono gerencia o salão (Web), o Profissional vê sua agenda e o Cliente final agenda horários via Whatsapp  através de um **Agente de IA**.
 
-## CODE STYLE
-- Use TypeScript strictly. No `any`. Define interfaces for all props.
-- Prefer Functional Components with Arrow Functions.
-- Use `shadcn/ui` for Web components.
-- Use `NativeWind` (Tailwind classes) for Mobile styling.
+## 2. ARQUITETURA TÉCNICA (MONOREPO)
+O projeto utiliza **Turborepo** e segue uma arquitetura estrita:
 
-## DATABASE (PACKAGES/DB)
-- All database schemas must be defined in `packages/db/src/schema.ts`.
-- When modifying the DB, remind me to run `pnpm db:push` or generate migrations.
-- Use Drizzle ORM syntax for all queries.
+### A. Estrutura de Pastas
+- `apps/web`: Painel Administrativo e Landing Page (Next.js 14, App Router, Shadcn/ui). Foco: Donos de Salão e Recepção.
+- `apps/mobile`: Aplicativo Igual ao web mas na palma da mão (React Native, Expo, NativeWind)
+- `packages/db`: A **ÚNICA** fonte da verdade para dados. Contém o Schema do Drizzle ORM e a conexão Postgres.
+- `packages/ui`: Componentes compartilhados e configurações de design system.
 
-## MOBILE (APPS/MOBILE)
-- Use `expo-router` for navigation.
-- Avoid inline styles; use Tailwind classes via `className` prop.
-- Remember that `<div>` does not exist in React Native; use `<View>`, `<Text>`, etc.
+### B. Stack Tecnológica (Não negociável)
+- **Backend/Infra:** Supabase (Auth, Postgres Database, Realtime, Edge Functions).
+- **ORM:** Drizzle ORM (Tipagem estrita TypeScript).
+- **AI Engine:** Vercel AI SDK (Core) + OpenAI GPT-4o. A IA utiliza "Tool Calling" para executar ações reais no banco (verificar disponibilidade, criar agendamento).
+- **Estilização:** Tailwind CSS (Web) e NativeWind (Mobile).
 
-## WEB (APPS/WEB)
-- Use Server Components by default. Add "use client" only when using hooks (useState, useEffect).
-- The AI Agent logic resides in `apps/web/app/api/chat`.
+## 3. MODELO DE DADOS (DOMÍNIO)
+O banco de dados (Postgres) gira em torno das seguintes entidades principais:
+1.  **Profiles:** Usuários do sistema (Dono, Profissional, Cliente). Vinculados ao `auth.users` do Supabase.
+2.  **Salons:** A entidade "Empresa". Um salão tem muitos profissionais e serviços.
+3.  **Services:** Cortes, barba, tratamentos (com preço e duração).
+4.  **Professionals:** Barbeiros/Cabeleireiros vinculados a um Salão.
+5.  **Availability:** Regras de horário de cada profissional (ex: Seg-Sex, 09:00-18:00, almoço 12:00-13:00).
+6.  **Appointments:** O agendamento em si (Data, Hora, Cliente, Profissional, Serviço, Status).
 
-## GENERAL
-- This is a Monorepo using Turborepo.
-- If I ask to install a package, specify which workspace (e.g., `pnpm --filter web add xyz`).
+## 4. FUNCIONALIDADES CHAVE ("GOLDEN PATHS")
+
+### Fluxo 1: O Agendamento via IA (Chat)
+1.  Cliente envia: "Tem horário para corte amanhã à tarde?"
+2.  IA recebe a mensagem (`api/chat`).
+3.  IA usa a tool `getAvailability` consultando o banco (`packages/db`).
+4.  IA responde: "Tenho 14:00 e 15:30 com o barbeiro João. Qual prefere?"
+5.  Cliente confirma.
+6.  IA usa a tool `createAppointment` para gravar no banco.
+
+### Fluxo 2: Gestão do Salão (Web Dashboard)
+- Dono cadastra serviços e convida profissionais.
+- Dashboard exibe métricas (Faturamento, Agendamentos do dia).
+- Calendário visual (Drag & Drop) para remanejar horários.
+
+### Fluxo 3: App do Cliente (Mobile) -> Plano futuro, ainda não executar
+- Dono cadastra serviços e convida profissionais.
+- Dashboard exibe métricas (Faturamento, Agendamentos do dia).
+- Calendário visual (Drag & Drop) para remanejar horários.
+
+## 5. DIRETRIZES DE CÓDIGO (ESTRITO)
+
+1.  **TypeScript First:** Proibido uso de `any`. Sempre importar tipos de `packages/db/src/schema.ts` ou criar interfaces em `types/`.
+2.  **Server Actions:** Para mutações no Next.js, use Server Actions (`app/actions/*.ts`) em vez de API Routes, exceto para webhooks ou endpoints externos.
+3.  **Mobile Limitations:** Lembre-se que no React Native não existe HTML (`div`, `h1`, `span`). Use `<View>`, `<Text>`, `<SafeAreaView>`.
+4.  **Tratamento de Erros:** Toda interação com banco ou IA deve ter `try/catch` e feedback visual para o usuário (Toasts).
+5.  **Dry Principle:** Lógicas de negócio complexas (ex: cálculo de slots livres) devem ser funções utilitárias puras, testáveis e reutilizáveis entre Web e Mobile e IA.
+
+## 6. OBJETIVO ATUAL
+Estamos desenvolvendo e refinando o MVP para atingir estabilidade total na Sprint 5 (Refinamento e Deploy). O foco é robustez no agendamento e integração fluida da IA.

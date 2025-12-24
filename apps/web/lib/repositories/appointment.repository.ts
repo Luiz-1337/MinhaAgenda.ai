@@ -26,6 +26,8 @@ export interface ProfessionalDTO {
   email: string
   phone: string | null
   isActive: boolean
+  userId?: string | null // Para vincular com usuário logado
+  role?: string // OWNER, MANAGER, STAFF
 }
 
 export interface AppointmentsResultDTO {
@@ -45,7 +47,7 @@ export async function getSalonProfessionals(salonId: string): Promise<Profession
   try {
     const professionalsList = await db.query.professionals.findMany({
       where: eq(professionals.salonId, salonId),
-      columns: { id: true, name: true, email: true, phone: true, isActive: true },
+      columns: { id: true, name: true, email: true, phone: true, isActive: true, userId: true, role: true },
       orderBy: (professionals, { asc }) => [asc(professionals.name)],
     })
 
@@ -55,6 +57,8 @@ export async function getSalonProfessionals(salonId: string): Promise<Profession
       email: p.email,
       phone: p.phone,
       isActive: p.isActive,
+      userId: p.userId,
+      role: p.role,
     }))
   } catch (error) {
     console.error("Erro ao buscar profissionais no repositório:", error)
@@ -112,4 +116,3 @@ export async function getAppointmentsByRange({
     throw new Error("Falha ao buscar agendamentos")
   }
 }
-

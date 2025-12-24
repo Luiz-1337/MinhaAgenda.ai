@@ -9,6 +9,8 @@ import { formatZodError, isValidTimeRange } from "@/lib/services/validation.serv
 import type { AvailabilityItem, ScheduleItem } from "@/lib/types/availability"
 import type { ActionResult } from "@/lib/types/common"
 
+import { hasSalonPermission } from "@/lib/services/permissions.service"
+
 const scheduleItemSchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
   startTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
@@ -36,16 +38,10 @@ export async function getAvailability(
     return { error: "Não autenticado" }
   }
 
-  // Verifica se o usuário tem acesso ao salão
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
+  // Verifica se o usuário tem acesso ao salão (Owner ou Manager)
+  const hasAccess = await hasSalonPermission(salonId, user.id)
 
-  if (!salon || salon.ownerId !== user.id) {
+  if (!hasAccess) {
     return { error: "Acesso negado a este salão" }
   }
 
@@ -120,16 +116,10 @@ export async function updateAvailability(
     }
   }
 
-  // Verifica se o usuário tem acesso ao salão
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
+  // Verifica se o usuário tem acesso ao salão (Owner ou Manager)
+  const hasAccess = await hasSalonPermission(salonId, user.id)
 
-  if (!salon || salon.ownerId !== user.id) {
+  if (!hasAccess) {
     return { error: "Acesso negado a este salão" }
   }
 

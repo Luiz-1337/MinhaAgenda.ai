@@ -10,6 +10,8 @@ import { extractErrorMessage } from "@/lib/services/error.service"
 import type { ServiceRow, UpsertServiceInput, ServicePayload } from "@/lib/types/service"
 import type { ActionResult } from "@/lib/types/common"
 
+import { hasSalonPermission } from "@/lib/services/permissions.service"
+
 const upsertServiceSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2),
@@ -30,34 +32,57 @@ type ServiceSelect = Pick<
 /**
  * Obtém todos os serviços de um salão
  */
-export async function getServices(salonId: string): Promise<ServiceRow[]> {
-  if (!salonId) {
-    throw new Error("salonId é obrigatório")
+export async function getServices(salonId: string): Promise<ActionResult<ServiceRow[]>> {
+  try {
+    if (!salonId) {
+      return { error: "salonId é obrigatório" }
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Unauthorized" }
+    }
+
+    // Permission Check: Verify if user has access to the salon (Owner/Manager)
+    const hasAccess = await hasSalonPermission(salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    const rows: ServiceSelect[] = await db.query.services.findMany({
+      where: eq(services.salonId, salonId),
+      columns: {
+        id: true,
+        salonId: true,
+        name: true,
+        description: true,
+        duration: true,
+        price: true,
+        isActive: true,
+      },
+      orderBy: asc(services.name),
+    })
+
+    const formattedRows = rows.map((row) => ({
+      id: row.id,
+      salon_id: row.salonId,
+      name: row.name,
+      description: row.description ?? null,
+      duration: row.duration,
+      price: row.price ?? "0",
+      is_active: row.isActive,
+    }))
+
+    return { success: true, data: formattedRows }
+  } catch (error) {
+    console.error("Erro ao buscar serviços:", error)
+    return { error: "Falha ao buscar serviços." }
   }
-
-  const rows: ServiceSelect[] = await db.query.services.findMany({
-    where: eq(services.salonId, salonId),
-    columns: {
-      id: true,
-      salonId: true,
-      name: true,
-      description: true,
-      duration: true,
-      price: true,
-      isActive: true,
-    },
-    orderBy: asc(services.name),
-  })
-
-  return rows.map((row) => ({
-    id: row.id,
-    salon_id: row.salonId,
-    name: row.name,
-    description: row.description ?? null,
-    duration: row.duration,
-    price: row.price ?? "0",
-    is_active: row.isActive,
-  }))
 }
 
 /**
@@ -77,39 +102,35 @@ function prepareServicePayload(data: z.infer<typeof upsertServiceSchema>): Servi
  * Cria ou atualiza um serviço
  */
 export async function upsertService(input: UpsertServiceInput & { salonId: string }): Promise<ActionResult> {
-  // Validação
-  const parsed = upsertServiceSchema.safeParse(input)
-  if (!parsed.success) {
-    return { error: formatZodError(parsed.error) }
-  }
-
-  if (!input.salonId) {
-    return { error: "salonId é obrigatório" }
-  }
-
-  // Verifica autenticação e propriedade do salão
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: "Não autenticado" }
-  }
-
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, input.salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
-
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
-  }
-
   try {
+    // 1. Auth Check
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Unauthorized" }
+    }
+
+    // 2. Input Validation (Zod)
+    const parsed = upsertServiceSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: formatZodError(parsed.error) }
+    }
+
+    if (!input.salonId) {
+      return { error: "salonId é obrigatório" }
+    }
+
+    // 3. Permission Check
+    const hasAccess = await hasSalonPermission(input.salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // 4. DB Operation
     const payload = prepareServicePayload(parsed.data)
     let serviceId = parsed.data.id
 
@@ -157,44 +178,43 @@ export async function upsertService(input: UpsertServiceInput & { salonId: strin
         )
       }
     }
-  } catch (error) {
-    return { error: extractErrorMessage(error) }
-  }
 
-  revalidatePath("/dashboard/services")
-  return { success: true }
+    revalidatePath("/dashboard/services")
+    return { success: true, data: undefined } // Explicitly return data: undefined for void
+
+  } catch (error) {
+    console.error("Erro ao salvar serviço:", error)
+    return { error: "Falha ao salvar serviço." }
+  }
 }
 
 /**
  * Remove um serviço definitivamente (hard delete)
  */
 export async function deleteService(id: string, salonId: string): Promise<ActionResult> {
-  if (!salonId) {
-    return { error: "salonId é obrigatório" }
-  }
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: "Não autenticado" }
-  }
-
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
-
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
-  }
-
   try {
+    // 1. Auth Check
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Unauthorized" }
+    }
+
+    if (!salonId) {
+      return { error: "salonId é obrigatório" }
+    }
+
+    // 2. Permission Check
+    const hasAccess = await hasSalonPermission(salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // 3. DB Operation
     // Remove primeiro as associações com profissionais (cascade)
     await db.delete(professionalServices).where(eq(professionalServices.serviceId, id))
     
@@ -202,12 +222,14 @@ export async function deleteService(id: string, salonId: string): Promise<Action
     await db
       .delete(services)
       .where(and(eq(services.id, id), eq(services.salonId, salonId)))
-  } catch (error) {
-    return { error: extractErrorMessage(error) }
-  }
 
-  revalidatePath("/dashboard/services")
-  return { success: true }
+    revalidatePath("/dashboard/services")
+    return { success: true, data: undefined }
+
+  } catch (error) {
+    console.error("Erro ao excluir serviço:", error)
+    return { error: "Falha ao excluir serviço." }
+  }
 }
 
 /**
@@ -216,36 +238,39 @@ export async function deleteService(id: string, salonId: string): Promise<Action
 export async function getServiceLinkedProfessionals(
   serviceId: string,
   salonId: string
-): Promise<string[] | { error: string }> {
-  if (!salonId) {
-    return { error: "salonId é obrigatório" }
+): Promise<ActionResult<string[]>> {
+  try {
+    // 1. Auth Check
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Unauthorized" }
+    }
+
+    if (!salonId) {
+      return { error: "salonId é obrigatório" }
+    }
+
+    // 2. Permission Check
+    const hasAccess = await hasSalonPermission(salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // 3. DB Operation
+    const links = await db.query.professionalServices.findMany({
+      where: eq(professionalServices.serviceId, serviceId),
+      columns: { professionalId: true },
+    })
+
+    return { success: true, data: links.map((link) => link.professionalId) }
+
+  } catch (error) {
+    console.error("Erro ao buscar profissionais vinculados:", error)
+    return { error: "Falha ao buscar profissionais vinculados." }
   }
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: "Não autenticado" }
-  }
-
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
-
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
-  }
-
-  const links = await db.query.professionalServices.findMany({
-    where: eq(professionalServices.serviceId, serviceId),
-    columns: { professionalId: true },
-  })
-
-  return links.map((link) => link.professionalId)
 }

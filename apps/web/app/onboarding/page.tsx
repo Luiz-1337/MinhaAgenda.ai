@@ -111,7 +111,10 @@ export default function OnboardingPage() {
 
         {/* Scrollable Form Area */}
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white dark:bg-slate-900">
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8" noValidate>
+          <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+            console.error("Erros de validação:", errors)
+            toast.error("Verifique os campos destacados em vermelho")
+          })} className="space-y-8" noValidate>
             
             {/* Section: Basic Info */}
             <div className="space-y-5">
@@ -138,7 +141,17 @@ export default function OnboardingPage() {
                   <span className="px-4 py-3 text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-white/5 bg-white/50 dark:bg-white/5 select-none text-xs font-mono flex items-center">minhaagenda.ai/</span>
                   <input 
                     type="text" 
-                    {...form.register("slug")}
+                    {...form.register("slug", {
+                      onChange: (e) => {
+                        // Auto-formata slug: lowercase e substitui espaços/símbolos por hífens
+                        const val = e.target.value
+                          .toLowerCase()
+                          .replace(/\s+/g, '-')
+                          .replace(/[^a-z0-9-]/g, '')
+                        e.target.value = val // Atualiza visualmente
+                        form.setValue("slug", val, { shouldValidate: true }) // Atualiza form state
+                      }
+                    })}
                     placeholder="meu-salao" 
                     className="flex-1 bg-transparent px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none text-sm"
                   />

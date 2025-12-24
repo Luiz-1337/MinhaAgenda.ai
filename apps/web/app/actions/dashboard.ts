@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons, sql } from "@repo/db"
 import { eq, and, gte, desc } from "drizzle-orm"
 
+import { hasSalonPermission } from "@/lib/services/permissions.service"
+
 export interface DashboardStats {
   completedAppointments: number
   activeChats: number
@@ -245,17 +247,21 @@ export async function initializeDashboardData(salonId: string): Promise<{ succes
     return { error: "Não autenticado" }
   }
 
-  // Verifica se o usuário tem acesso ao salão
+  // Verifica se o usuário tem acesso ao salão (Owner ou Manager)
+  const hasAccess = await hasSalonPermission(salonId, user.id)
+
+  if (!hasAccess) {
+    return { error: "Acesso negado a este salão" }
+  }
+
+  // Verifica se o salão existe
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
+    columns: { id: true },
   })
 
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
+  if (!salon) {
+     return { error: "Salão não encontrado" }
   }
 
   // Verifica se já existem dados

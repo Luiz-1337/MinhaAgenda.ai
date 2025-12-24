@@ -12,7 +12,7 @@ export interface ChatConversation {
   }
   lastMessageAt: string
   preview: string
-  status: "Ativo" | "Finalizado"
+  status: "Ativo" | "Finalizado" | "Aguardando humano"
   assignedTo: string
 }
 
@@ -156,7 +156,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           },
           lastMessageAt: formatPreviewTime(lastMessage.createdAt),
           preview: lastMessage.content?.substring(0, 50) || "Sem mensagens",
-          status: chat.status === "active" ? "Ativo" : "Finalizado",
+          status: (chat.status === "active" ? "Ativo" : "Finalizado") as "Ativo" | "Finalizado" | "Aguardando humano",
           assignedTo: "IA Assistente",
         }
       })

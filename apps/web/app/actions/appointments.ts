@@ -1,92 +1,47 @@
 "use server"
 
-import { and, eq, gte, lte } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
-import {
-  endOfDayBrazil,
-  endOfMonthBrazil,
-  endOfWeekBrazil,
-  fromBrazilTime,
-  startOfDayBrazil,
-  startOfMonthBrazil,
-  startOfWeekBrazil,
-} from "@/lib/utils/timezone.utils"
+import { fromBrazilTime } from "@/lib/utils/timezone.utils"
 
-import { appointments, db, domainServices as sharedServices, professionals, profiles, salons, services } from "@repo/db"
+import { db, domainServices as sharedServices, professionals, salons } from "@repo/db"
+import { 
+  getAppointmentsByRange, 
+  getSalonProfessionals, 
+  type AppointmentDTO, 
+  type ProfessionalDTO 
+} from "@/lib/repositories/appointment.repository"
+
+// Re-exportando tipos para compatibilidade com componentes existentes que possam importá-los
+export type { AppointmentDTO, ProfessionalDTO as ProfessionalInfo }
+export type DailyAppointment = AppointmentDTO
 
 /**
- * Informações de um agendamento formatado para exibição.
+ * Resultado da busca de agendamentos.
  */
-export interface DailyAppointment {
-  id: string
-  professionalId: string
-  professionalName: string
-  clientId: string
-  clientName: string | null
-  serviceId: string
-  serviceName: string
-  serviceDuration: number
-  startTime: Date
-  endTime: Date
-  status: "pending" | "confirmed" | "cancelled" | "completed"
-  notes: string | null
+export interface AppointmentsResult {
+  professionals: ProfessionalDTO[]
+  appointments: AppointmentDTO[]
 }
-
-/**
- * Informações básicas de um profissional.
- */
-export interface ProfessionalInfo {
-  id: string
-  name: string
-  email: string
-  phone: string | null
-  isActive: boolean
-}
-
-/**
- * Resultado da busca de agendamentos diários.
- */
-export interface DailyAppointmentsResult {
-  professionals: ProfessionalInfo[]
-  appointments: DailyAppointment[]
-}
-
-/**
- * Resultado da busca de agendamentos semanais.
- */
-export type WeeklyAppointmentsResult = DailyAppointmentsResult
-
-/**
- * Resultado da busca de agendamentos mensais.
- */
-export type MonthlyAppointmentsResult = DailyAppointmentsResult
 
 /**
  * Busca agendamentos e profissionais de um salão em um intervalo de datas.
  * 
  * **Validações:**
  * - Verifica autenticação do usuário
- * - Verifica se o usuário é dono do salão
+ * - Verifica se o usuário é dono do salão OU profissional vinculado
  * 
  * **Conversão de Timezone:**
  * - As datas são armazenadas em UTC no banco
- * - São convertidas para horário de Brasília antes de retornar
- * 
- * @param salonId - ID do salão (UUID)
- * @param rangeStart - Início do intervalo (Date em UTC)
- * @param rangeEnd - Fim do intervalo (Date em UTC)
- * 
- * @returns Objeto com profissionais e agendamentos, ou erro
- * 
- * @throws Não lança exceções, retorna erro via objeto de retorno
+ * - São convertidas para horário de Brasília antes de retornar no formato esperado pelo frontend
  */
-async function fetchAppointments(
+export async function getAppointments(
   salonId: string,
   rangeStart: Date,
   rangeEnd: Date
-): Promise<DailyAppointmentsResult | { error: string }> {
+): Promise<AppointmentsResult | { error: string }> {
   if (!salonId) {
     return { error: "salonId é obrigatório" }
   }
@@ -100,197 +55,86 @@ async function fetchAppointments(
     return { error: "Não autenticado" }
   }
 
+  // Verifica permissão (Dono do salão ou Profissional)
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
     columns: { id: true, ownerId: true },
   })
 
-  if (!salon || salon.ownerId !== user.id) {
+  if (!salon) {
+    return { error: "Salão não encontrado" }
+  }
+
+  const isOwner = salon.ownerId === user.id
+  let isProfessional = false
+
+  if (!isOwner) {
+    const pro = await db.query.professionals.findFirst({
+      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id))
+    })
+    if (pro) isProfessional = true
+  }
+
+  if (!isOwner && !isProfessional) {
     return { error: "Acesso negado a este salão" }
   }
 
   try {
-    const professionalsList = await db.query.professionals.findMany({
-      where: eq(professionals.salonId, salonId),
-      columns: { id: true, name: true, email: true, phone: true, isActive: true },
-      orderBy: (professionals, { asc }) => [asc(professionals.name)],
-    })
+    // Busca paralela de profissionais e agendamentos
+    const [professionalsList, appointmentsList] = await Promise.all([
+      getSalonProfessionals(salonId),
+      getAppointmentsByRange({ salonId, startDate: rangeStart, endDate: rangeEnd })
+    ])
 
-    const professionalsInfo: ProfessionalInfo[] = professionalsList.map((p) => ({
-      id: p.id,
-      name: p.name,
-      email: p.email,
-      phone: p.phone,
-      isActive: p.isActive,
-    }))
+    // Se for STAFF, filtrar agendamentos? O prompt diz "filtrar e mostrar apenas a coluna dele".
+    // Mas a Action retorna TUDO e o Frontend filtra, ou a Action já filtra?
+    // Se eu filtrar aqui, é mais seguro.
+    // Prompt: "Se o usuário for STAFF, a agenda deve, por padrão, filtrar e mostrar apenas a coluna dele. (Opcional) Bloquear o dropdown..."
+    // Se bloquear o dropdown, ele não consegue ver outros. Se eu retornar todos, ele pode "hackear" se eu só esconder no front.
+    // Mas talvez STAFF precise ver agenda dos outros para encaixar? Geralmente não.
+    // Vou retornar tudo se for Owner/Manager, e filtrar se for Staff.
 
-    const appointmentsList = await db
-      .select({
-        id: appointments.id,
-        professionalId: appointments.professionalId,
-        professionalName: professionals.name,
-        clientId: appointments.clientId,
-        clientName: profiles.fullName,
-        serviceId: appointments.serviceId,
-        serviceName: services.name,
-        serviceDuration: services.duration,
-        startTime: appointments.date,
-        endTime: appointments.endTime,
-        status: appointments.status,
-        notes: appointments.notes,
-      })
-      .from(appointments)
-      .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
-      .innerJoin(profiles, eq(appointments.clientId, profiles.id))
-      .innerJoin(services, eq(appointments.serviceId, services.id))
-      .where(and(
-        eq(appointments.salonId, salonId),
-        lte(appointments.date, rangeEnd),
-        gte(appointments.endTime, rangeStart)
-      ))
-      .orderBy(appointments.date)
+    // Descobrir role atual
+    let role = isOwner ? 'MANAGER' : 'STAFF'
+    if (!isOwner) {
+       const me = professionalsList.find(p => p.userId === user.id)
+       // Se o profissional tem role OWNER (banco antigo), tratamos como MANAGER
+       if (me?.role === 'OWNER' || me?.role === 'MANAGER') role = 'MANAGER'
+       else if (me?.role) role = me.role
+    }
 
-    const appointmentsInfo: DailyAppointment[] = appointmentsList.map((apt) => ({
-      id: apt.id,
-      professionalId: apt.professionalId,
-      professionalName: apt.professionalName,
-      clientId: apt.clientId,
-      clientName: apt.clientName,
-      serviceId: apt.serviceId,
-      serviceName: apt.serviceName,
-      serviceDuration: apt.serviceDuration,
+    let filteredAppointments = appointmentsList
+    let filteredProfessionals = professionalsList
+
+    if (role === 'STAFF') {
+      // Staff vê apenas seus agendamentos e seu perfil profissional
+      const myProId = professionalsList.find(p => p.userId === user.id)?.id
+      if (myProId) {
+        filteredAppointments = appointmentsList.filter(a => a.professionalId === myProId)
+        // Opcional: filtrar profissionais também para o dropdown só mostrar ele
+        filteredProfessionals = professionalsList.filter(p => p.id === myProId)
+      }
+    }
+
+    // Converte as datas UTC do banco para Timezone do Brasil para exibição
+    const appointmentsWithLocalTime = filteredAppointments.map(apt => ({
+      ...apt,
       startTime: fromBrazilTime(apt.startTime),
-      endTime: fromBrazilTime(apt.endTime),
-      status: apt.status,
-      notes: apt.notes,
+      endTime: fromBrazilTime(apt.endTime)
     }))
 
-    return { professionals: professionalsInfo, appointments: appointmentsInfo }
+    return { 
+      professionals: filteredProfessionals, 
+      appointments: appointmentsWithLocalTime 
+    }
   } catch (error) {
-    console.error("Erro ao buscar agendamentos:", error)
+    console.error("Erro na action getAppointments:", error)
     return { error: "Erro ao buscar agendamentos" }
   }
 }
 
 /**
- * Obtém todos os profissionais e agendamentos de um salão para uma data específica.
- * 
- * **Timezone:**
- * - A data fornecida é interpretada como horário de Brasília
- * - Calcula início e fim do dia no timezone do Brasil
- * - Converte para UTC para buscar no banco de dados
- * - Retorna as datas convertidas de volta para horário de Brasília
- * 
- * @param salonId - ID do salão (UUID)
- * @param date - Data para buscar agendamentos (Date ou string ISO)
- * 
- * @returns Objeto com profissionais e agendamentos do dia, ou erro
- * 
- * @throws Não lança exceções, retorna erro via objeto de retorno
- */
-export async function getDailyAppointments(
-  salonId: string,
-  date: Date | string
-): Promise<DailyAppointmentsResult | { error: string }> {
-  const targetDate = typeof date === "string" ? new Date(date) : date
-  if (Number.isNaN(targetDate.getTime())) {
-    return { error: "Data inválida" }
-  }
-
-  // Calcula início e fim do dia no horário de Brasília (converte para UTC para query)
-  const dayStart = startOfDayBrazil(targetDate)
-  const dayEnd = endOfDayBrazil(targetDate)
-  return fetchAppointments(salonId, dayStart, dayEnd)
-}
-
-/**
- * Obtém todos os profissionais e agendamentos de um salão para uma semana específica.
- * 
- * **Timezone:**
- * - A data fornecida é interpretada como horário de Brasília
- * - Calcula início e fim da semana (domingo a sábado) no timezone do Brasil
- * - Converte para UTC para buscar no banco de dados
- * - Retorna as datas convertidas de volta para horário de Brasília
- * 
- * @param salonId - ID do salão (UUID)
- * @param date - Data dentro da semana para buscar agendamentos (Date ou string ISO)
- * 
- * @returns Objeto com profissionais e agendamentos da semana, ou erro
- * 
- * @throws Não lança exceções, retorna erro via objeto de retorno
- */
-export async function getWeeklyAppointments(
-  salonId: string,
-  date: Date | string
-): Promise<WeeklyAppointmentsResult | { error: string }> {
-  const targetDate = typeof date === "string" ? new Date(date) : date
-  if (Number.isNaN(targetDate.getTime())) {
-    return { error: "Data inválida" }
-  }
-
-  // Calcula início e fim da semana no horário de Brasília (converte para UTC para query)
-  const weekStart = startOfWeekBrazil(targetDate, { weekStartsOn: 0 })
-  const weekEnd = endOfWeekBrazil(targetDate, { weekStartsOn: 0 })
-  return fetchAppointments(salonId, weekStart, weekEnd)
-}
-
-/**
- * Obtém todos os profissionais e agendamentos de um salão para um mês específico.
- * 
- * **Timezone:**
- * - A data fornecida é interpretada como horário de Brasília
- * - Calcula início e fim do mês no timezone do Brasil
- * - Converte para UTC para buscar no banco de dados
- * - Retorna as datas convertidas de volta para horário de Brasília
- * 
- * @param salonId - ID do salão (UUID)
- * @param date - Data dentro do mês para buscar agendamentos (Date ou string ISO)
- * 
- * @returns Objeto com profissionais e agendamentos do mês, ou erro
- * 
- * @throws Não lança exceções, retorna erro via objeto de retorno
- */
-export async function getMonthlyAppointments(
-  salonId: string,
-  date: Date | string
-): Promise<MonthlyAppointmentsResult | { error: string }> {
-  const targetDate = typeof date === "string" ? new Date(date) : date
-  if (Number.isNaN(targetDate.getTime())) {
-    return { error: "Data inválida" }
-  }
-
-  // Calcula início e fim do mês no horário de Brasília (converte para UTC para query)
-  const monthStart = startOfMonthBrazil(targetDate)
-  const monthEnd = endOfMonthBrazil(targetDate)
-  return fetchAppointments(salonId, monthStart, monthEnd)
-}
-
-/**
  * Cria um novo agendamento no sistema.
- * 
- * **Autorização:**
- * - Apenas donos do salão ou profissionais ativos do salão podem criar agendamentos
- * 
- * **Fluxo:**
- * 1. Valida autenticação do usuário
- * 2. Verifica se o usuário é dono do salão ou profissional ativo
- * 3. Delega a criação para o serviço centralizado (`createAppointmentService`)
- * 4. Retorna resultado padronizado
- * 
- * **Nota:** A lógica de negócio (validações, verificações de conflito, etc.)
- * está centralizada no serviço `createAppointmentService`.
- * 
- * @param input - Dados do agendamento a ser criado
- * @param input.salonId - ID do salão (UUID)
- * @param input.professionalId - ID do profissional (UUID)
- * @param input.clientId - ID do cliente (UUID)
- * @param input.serviceId - ID do serviço (UUID)
- * @param input.date - Data/hora do agendamento (string ISO ou Date)
- * @param input.notes - Notas opcionais do agendamento
- * 
- * @returns Resultado da operação com ID do agendamento criado em caso de sucesso
- * 
- * @throws Não lança exceções, retorna erro via ActionResult
  */
 export async function createAppointment(input: {
   salonId: string

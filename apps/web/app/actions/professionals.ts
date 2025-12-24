@@ -3,22 +3,28 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionalServices, appointments } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, salons, professionalServices, appointments, profiles, professionals } from "@repo/db"
+import { eq, and } from "drizzle-orm"
 import { formatZodError } from "@/lib/services/validation.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import type { ProfessionalRow, UpsertProfessionalInput } from "@/lib/types/professional"
 import type { ActionResult } from "@/lib/types/common"
+
+import { ProfessionalService } from "@/lib/services/professional.service"
 
 const upsertProfessionalSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2),
   email: z.string().email(),
   phone: z.string().optional().or(z.literal("")),
+  role: z.enum(["MANAGER", "STAFF"]).optional(),
+  commissionRate: z.number().optional(),
   isActive: z.boolean().default(true),
 })
 
 export type { UpsertProfessionalInput }
+
+import { hasSalonPermission } from "@/lib/services/permissions.service"
 
 /**
  * Obtém todos os profissionais de um salão
@@ -37,22 +43,19 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
     return { error: "Não autenticado" }
   }
 
-  // Verifica se o usuário tem acesso ao salão (é dono ou tem permissão)
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
+  const hasAccess = await hasSalonPermission(salonId, user.id)
 
-  if (!salon || salon.ownerId !== user.id) {
+  if (!hasAccess) {
+    // Se não for Manager/Owner, verifica se é o próprio profissional (para ver seu perfil/agenda)
+    // Mas para a lista "Team", geralmente apenas managers veem tudo. 
+    // STAFF vê apenas a si mesmo? O prompt diz "STAFF: Ocultar Equipe".
+    // Então aqui deve bloquear mesmo.
     return { error: "Acesso negado a este salão" }
   }
 
   const result = await supabase
     .from("professionals")
-    .select("id,salon_id,name,email,phone,is_active,created_at")
+    .select("id,salon_id,user_id,role,name,email,phone,is_active,created_at,commission_rate")
     .eq("salon_id", salonId)
     .order("name", { ascending: true })
 
@@ -60,14 +63,18 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
     return { error: result.error.message }
   }
 
-  const professionals = (result.data || []) as ProfessionalRow[]
+  const rawList = (result.data || []) as any[]
+  const proList = rawList.map(p => ({
+    ...p,
+    role: (p.role === 'OWNER' || p.role === 'MANAGER') ? 'MANAGER' : 'STAFF'
+  })) as ProfessionalRow[]
 
-  if (professionals.length === 0) {
-    return professionals
+  if (proList.length === 0) {
+    return proList
   }
 
   // Busca todos os dias trabalhados de uma vez
-  const professionalIds = professionals.map((p) => p.id)
+  const professionalIds = proList.map((p) => p.id)
   const availabilityResult = await supabase
     .from("availability")
     .select("professional_id,day_of_week")
@@ -87,7 +94,7 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
   }
 
   // Atribui os dias a cada profissional
-  for (const professional of professionals) {
+  for (const professional of proList) {
     const daysSet = daysByProfessional.get(professional.id)
     if (daysSet) {
       professional.working_days = Array.from(daysSet).sort((a, b) => a - b)
@@ -96,7 +103,7 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
     }
   }
 
-  return professionals
+  return proList
 }
 
 /**
@@ -117,7 +124,7 @@ export async function upsertProfessional(
     return { error: "salonId é obrigatório" }
   }
 
-  // Verifica autenticação e propriedade do salão
+  // Verifica autenticação
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -126,48 +133,42 @@ export async function upsertProfessional(
     return { error: "Não autenticado" }
   }
 
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, input.salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
+  // Verifica permissão (Owner ou Manager)
+  const hasAccess = await hasSalonPermission(input.salonId, user.id)
+
+  if (!hasAccess) {
+    return { error: "Acesso negado. Apenas Gerentes e Proprietários podem gerenciar a equipe." }
+  }
+
+  // Busca userId pelo email, se existir
+  let userIdToLink: string | undefined = undefined
+  const existingUser = await db.query.profiles.findFirst({
+    where: eq(profiles.email, normalizeEmail(parsed.data.email))
   })
-
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
+  if (existingUser) {
+    userIdToLink = existingUser.id
   }
 
-  // Prepara dados para inserção/atualização
-  const payload = {
-    salon_id: input.salonId,
-    name: normalizeString(parsed.data.name),
-    email: normalizeEmail(parsed.data.email),
-    phone: emptyStringToNull(parsed.data.phone),
-    is_active: parsed.data.isActive,
+  // Preparar dados com userId
+  const dataWithUserId = {
+    ...parsed.data,
+    userId: userIdToLink
   }
 
-  // Atualiza profissional existente
-  if (parsed.data.id) {
-    const updateResult = await supabase
-      .from("professionals")
-      .update(payload)
-      .eq("id", parsed.data.id)
-      .eq("salon_id", input.salonId)
-
-    if (updateResult.error) {
-      return { error: updateResult.error.message }
+  try {
+    if (parsed.data.id) {
+      // Se for edição, mantém o userId existente se não encontramos um novo (ou atualiza se mudou email e achou user)
+      // A lógica do ProfessionalService.updateProfessional usa userId se fornecido.
+      await ProfessionalService.updateProfessional(parsed.data.id, input.salonId, dataWithUserId)
+    } else {
+      await ProfessionalService.createProfessional(input.salonId, dataWithUserId)
     }
-  } else {
-    // Cria novo profissional
-    const insertResult = await supabase.from("professionals").insert(payload)
-    if (insertResult.error) {
-      return { error: insertResult.error.message }
-    }
-  }
 
-  revalidatePath("/dashboard/team")
-  return { success: true }
+    revalidatePath("/dashboard/team")
+    return { success: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Erro ao salvar profissional" }
+  }
 }
 
 /**
@@ -187,16 +188,10 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
     return { error: "Não autenticado" }
   }
 
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      ownerId: true,
-    },
-  })
+  const hasAccess = await hasSalonPermission(salonId, user.id)
 
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
+  if (!hasAccess) {
+    return { error: "Acesso negado" }
   }
 
   try {

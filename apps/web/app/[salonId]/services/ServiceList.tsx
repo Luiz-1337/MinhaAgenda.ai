@@ -58,8 +58,13 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     startTransition(async () => {
       try {
         const res = await getServices(salonId)
-        // getServices agora retorna sempre um array ou lança um erro
-        setList(res)
+        if ("error" in res) {
+          console.error("Erro ao carregar serviços:", res.error)
+          toast.error(res.error)
+          setList([])
+        } else {
+          setList(res.data || [])
+        }
       } catch (error) {
         console.error("Erro ao carregar serviços:", error)
         toast.error(error instanceof Error ? error.message : "Erro ao carregar serviços")
@@ -116,8 +121,10 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     let linkedProfessionalIds: string[] = []
     try {
       const linked = await getServiceLinkedProfessionals(service.id, salonId)
-      if (!("error" in linked)) {
-        linkedProfessionalIds = linked
+      if ("error" in linked) {
+        console.error("Erro ao carregar profissionais vinculados:", linked.error)
+      } else {
+        linkedProfessionalIds = linked.data || []
       }
     } catch (error) {
       console.error("Erro ao carregar profissionais vinculados:", error)
@@ -152,7 +159,11 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       setEditing(null)
       try {
         const again = await getServices(salonId)
-        setList(again)
+        if ("error" in again) {
+          console.error("Erro ao recarregar serviços:", again.error)
+        } else {
+          setList(again.data || [])
+        }
       } catch (error) {
         console.error("Erro ao recarregar serviços:", error)
       }
@@ -181,7 +192,11 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       setServiceToDelete(null)
       try {
         const again = await getServices(salonId)
-        setList(again)
+        if ("error" in again) {
+          console.error("Erro ao recarregar serviços:", again.error)
+        } else {
+          setList(again.data || [])
+        }
       } catch (error) {
         console.error("Erro ao recarregar serviços:", error)
       }

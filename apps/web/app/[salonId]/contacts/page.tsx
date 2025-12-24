@@ -41,11 +41,11 @@ export default function ContactsPage() {
     setIsLoading(true)
     startTransition(async () => {
       const result = await getSalonCustomers(activeSalon.id)
-      if (Array.isArray(result)) {
-        setCustomers(result)
-      } else {
+      if ("error" in result) {
         toast.error(result.error)
         setCustomers([])
+      } else {
+        setCustomers(result.data || [])
       }
       setIsLoading(false)
     })

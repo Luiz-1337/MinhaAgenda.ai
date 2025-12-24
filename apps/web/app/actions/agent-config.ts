@@ -7,6 +7,8 @@ import { agentConfigSchema, type AgentConfigSchema } from "@/lib/schemas"
 import { db, salons } from "@repo/db"
 import { eq } from "drizzle-orm"
 
+import { hasSalonPermission } from "@/lib/services/permissions.service"
+
 export async function updateAgentConfig(salonId: string, data: AgentConfigSchema): Promise<ActionResult> {
   const parsed = agentConfigSchema.safeParse(data)
   if (!parsed.success) {
@@ -22,7 +24,13 @@ export async function updateAgentConfig(salonId: string, data: AgentConfigSchema
     return { error: "Não autenticado" }
   }
 
-  // Verifica se o usuário é o dono do salão e busca settings atual
+  // Verifica se o usuário tem permissão (Owner ou Manager) e busca settings atual
+  const hasAccess = await hasSalonPermission(salonId, user.id)
+
+  if (!hasAccess) {
+    return { error: "Você não tem permissão para atualizar este salão" }
+  }
+
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
     columns: { id: true, ownerId: true, settings: true },
@@ -30,10 +38,6 @@ export async function updateAgentConfig(salonId: string, data: AgentConfigSchema
 
   if (!salon) {
     return { error: "Salão não encontrado" }
-  }
-
-  if (salon.ownerId !== user.id) {
-    return { error: "Você não tem permissão para atualizar este salão" }
   }
 
   const currentSettings =

@@ -1,8 +1,9 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from "react"
 import { useRouter, usePathname, useParams } from "next/navigation"
-import type { SalonListItem } from "@/app/actions/salon"
+import type { SalonListItem } from "@/lib/types/salon"
+import type { ProfessionalRole } from "@/lib/types/professional"
 import { getUserSalons } from "@/app/actions/salon"
 
 interface SalonContextType {
@@ -26,9 +27,11 @@ export function SalonProvider({ children, initialSalons }: { children: ReactNode
   const salonIdFromPath = params?.salonId as string | undefined
   
   // Encontra o salão ativo baseado no pathname
-  const activeSalon = salonIdFromPath 
-    ? salons.find((s) => s.id === salonIdFromPath) || (salons.length > 0 ? salons[0] : null)
-    : (salons.length > 0 ? salons[0] : null)
+  const activeSalon = useMemo(() => {
+    return salonIdFromPath 
+      ? salons.find((s) => s.id === salonIdFromPath) || (salons.length > 0 ? salons[0] : null)
+      : (salons.length > 0 ? salons[0] : null)
+  }, [salons, salonIdFromPath])
 
   // Atualiza a URL quando o salão muda
   const setActiveSalon = useCallback((salon: SalonListItem | null) => {
@@ -100,3 +103,36 @@ export function useSalon() {
   return context
 }
 
+/**
+ * Hook para acessar permissões do usuário no salão atual
+ */
+export function useSalonAuth() {
+  const { activeSalon } = useSalon()
+
+  return useMemo(() => {
+    // Garantir que o role seja compatível com o novo tipo (embora getUserSalons já deva tratar)
+    const rawRole = activeSalon?.role
+    const role: ProfessionalRole = ((rawRole as string) === 'OWNER' ? 'MANAGER' : rawRole) as ProfessionalRole || 'STAFF'
+    
+    const planTier = activeSalon?.planTier || 'SOLO'
+    const isManager = role === 'MANAGER'
+    const isStaff = role === 'STAFF'
+    const isSolo = planTier === 'SOLO'
+    
+    return {
+      role,
+      planTier,
+      isManager,
+      isStaff,
+      isSolo,
+      // Alias para compatibilidade se necessário, mas idealmente usar isManager
+      isOwner: isManager,
+      
+      canManageTeam: isManager && !isSolo, // Solo não gerencia equipe (apenas ele mesmo)
+      canViewFinancials: isManager,
+      canViewSettings: isManager,
+      canManageServices: isManager,
+      canViewClients: true,
+    }
+  }, [activeSalon])
+}

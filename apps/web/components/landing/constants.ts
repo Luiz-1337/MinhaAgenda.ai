@@ -13,6 +13,7 @@ export interface Plan {
   description: string;
   features: string[];
   highlight?: boolean;
+  buttonText: string;
 }
 
 export const FEATURES: Feature[] = [
@@ -50,40 +51,43 @@ export const FEATURES: Feature[] = [
 
 export const PLANS: Plan[] = [
   {
-    name: "Básico",
-    price: "R$ 49,90",
+    name: "Solo",
+    price: "R$ 999,90",
+    highlight: true,
     description: "Perfeito para profissionais autônomos iniciando a digitalização.",
     features: [
       "Agendamento Automático (WhatsApp)",
       "Até 100 agendamentos/mês",
       "Respostas de FAQ Básico",
       "Painel de Controle Simples"
-    ]
+    ],
+    buttonText: "Escolher Solo"
   },
   {
-    name: "Standard",
-    price: "R$ 99,90",
+    name: "Pro",
+    price: "R$ 1599,90",
     description: "Ideal para salões em crescimento com até 5 profissionais.",
-    highlight: true,
     features: [
-      "Tudo do plano Básico",
+      "Tudo do plano Solo",
       "Agendamentos Ilimitados",
       "Recomendação de Produtos por IA",
       "Lembretes Automáticos para Clientes",
       "Relatórios de Desempenho Semanal"
-    ]
+    ],
+    buttonText: "Escolher Pro"
   },
   {
-    name: "Corporate",
+    name: "Enterprise",
     price: "Sob Consulta",
     description: "Para grandes redes e franquias que precisam de controle total.",
     features: [
-      "Tudo do plano Standard",
+      "Tudo do plano Pro",
       "API Personalizada",
       "Gestão Multi-Unidades",
       "Gerente de Conta Dedicado",
       "Treinamento da IA com dados históricos"
-    ]
+    ],
+    buttonText: "Fale conosco"
   }
 ];
 
