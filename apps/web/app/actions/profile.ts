@@ -14,7 +14,7 @@ export type ProfileDetails = {
   phone?: string | null
   calendarSyncEnabled: boolean
   systemRole: "admin" | "user"
-  userTier?: "standard" | "advanced" | "professional" | null
+  tier?: "SOLO" | "PRO" | "ENTERPRISE" | null
 }
 
 /**
@@ -39,7 +39,7 @@ export async function getCurrentProfile(): Promise<ProfileDetails | { error: str
       phone: true,
       calendarSyncEnabled: true,
       systemRole: true,
-      userTier: true,
+      tier: true,
     },
   })
 
@@ -54,7 +54,7 @@ export async function getCurrentProfile(): Promise<ProfileDetails | { error: str
     phone: profile.phone ?? undefined,
     calendarSyncEnabled: profile.calendarSyncEnabled,
     systemRole: profile.systemRole,
-    userTier: profile.userTier ?? undefined,
+    tier: profile.tier ?? undefined,
   }
 }
 

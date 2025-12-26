@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { type CreateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import type { ActionResult } from "@/lib/types/common"
-import { db, salons, professionals } from "@repo/db"
+import { db, salons, professionals, profiles } from "@repo/db"
 import { eq, asc, or, and } from "drizzle-orm"
 import type { SalonListItem } from "@/lib/types/salon"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
@@ -53,11 +53,12 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
       name: salons.name,
       slug: salons.slug,
       whatsapp: salons.whatsapp,
-      planTier: salons.planTier,
+      tier: profiles.tier,
       ownerId: salons.ownerId,
       professionalRole: professionals.role
     })
     .from(salons)
+    .innerJoin(profiles, eq(profiles.id, salons.ownerId))
     .leftJoin(
       professionals, 
       and(
@@ -78,7 +79,7 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     name: s.name,
     slug: s.slug,
     whatsapp: s.whatsapp,
-    planTier: s.planTier,
+    planTier: s.tier as 'SOLO' | 'PRO' | 'ENTERPRISE',
     // Prioridade: Se é dono -> MANAGER, senão usa a role do profissional (se for OWNER vira MANAGER), senão STAFF
     role: (s.ownerId === user.id || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
   }))

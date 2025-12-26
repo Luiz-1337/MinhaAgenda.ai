@@ -161,7 +161,6 @@ export async function createSalonWithOwner(userId: string, data: CreateSalonSche
         description: data.description || null,
         workHours: data.workHours || null,
         settings: data.settings || null,
-        planTier: 'SOLO', // Default, mas explícito
         subscriptionStatus: 'TRIAL',
       })
       .returning()

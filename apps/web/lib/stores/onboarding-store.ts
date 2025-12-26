@@ -4,17 +4,27 @@
 export interface OnboardingData {
   // Step 1: Account
   salonName?: string
-  fullName?: string
+  firstName?: string
+  lastName?: string
   email?: string
+  phone?: string
   password?: string
+  // Endereço de cobrança
+  billingAddress?: string
+  billingPostalCode?: string
+  billingCity?: string
+  billingState?: string
+  billingCountry?: string
+  billingAddressComplement?: string
   
   // Step 2: Legal
   documentType?: 'CPF' | 'CNPJ'
   document?: string
+  documentNumber?: string
   
   // Step 3: Salon Details
   address?: string
-  phone?: string
+  salonPhone?: string
   whatsapp?: string
   description?: string
   workHours?: Record<string, { start: string; end: string }>

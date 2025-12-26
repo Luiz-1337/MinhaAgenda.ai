@@ -13,6 +13,7 @@
     "db:migrate:manual": "pnpm --filter @repo/db run migrate:manual",
     "db:migrate:manual:002": "pnpm --filter @repo/db run migrate:manual:002",
     "db:migrate:manual:003": "pnpm --filter @repo/db run migrate:manual:003",
+    "db:migrate:manual:005:profile": "pnpm --filter @repo/db run migrate:manual:005:profile",
     "db:migrate:manual:006": "pnpm --filter @repo/db run migrate:manual:006",
     "db:reset": "pnpm --filter @repo/db run reset",
     "mcp:build": "pnpm --filter @repo/mcp-server run build",

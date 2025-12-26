@@ -1,29 +1,46 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { db, profiles, salons, eq, sql } from "@repo/db"
 import type { ActionResult } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
 
-interface OnboardingStep1Data {
-  salonName: string
-  fullName: string
+interface CreateUserCredentialsData {
   email: string
   password: string
+}
+
+interface OnboardingStep1Data {
+  userId: string
+  salonName: string
+  firstName: string
+  lastName: string
+  phone: string
   plan: 'SOLO' | 'PRO' | 'ENTERPRISE'
+  // Endereço de cobrança
+  billingAddress: string
+  billingPostalCode: string
+  billingCity: string
+  billingState: string
+  billingCountry?: string
+  billingAddressComplement?: string
+  // Dados legais
+  documentType: 'CPF' | 'CNPJ'
+  document: string
 }
 
 interface OnboardingStep2Data {
   documentType: 'CPF' | 'CNPJ'
   document: string
+  documentNumber: string
   userId: string
 }
 
 interface OnboardingStep3Data {
   address?: string
-  phone?: string
+  salonPhone?: string
   whatsapp?: string
   description?: string
   workHours?: Record<string, { start: string; end: string }>
@@ -36,39 +53,17 @@ interface OnboardingStep3Data {
 }
 
 /**
- * Passo 1: Criar conta e salão inicial
+ * Criar usuário apenas com credenciais (primeira etapa)
  */
-export async function onboardingStep1(
-  data: OnboardingStep1Data
-): Promise<ActionResult<{ userId: string; salonId: string }>> {
-  const supabase = await createClient()
+export async function createUserWithCredentials(
+  data: CreateUserCredentialsData
+): Promise<ActionResult<{ userId: string }>> {
+  // VALIDAÇÃO E PREPARAÇÃO ANTES DE CRIAR O USUÁRIO NO AUTH
+  // Isso garante que se der erro, o usuário não será criado no Supabase Auth
   
-  // Criar usuário no Supabase Auth
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: normalizeEmail(data.email),
-    password: data.password,
-    options: {
-      data: { full_name: normalizeString(data.fullName) },
-    },
-  })
-
-  if (authError) {
-    return { error: formatAuthError(authError) }
-  }
-
-  if (!authData.user) {
-    return { error: "Erro ao criar usuário" }
-  }
-
-  // Armazenar userId em variável local para TypeScript
-  const userId = authData.user.id
-
+  // 1. Preparar tipos e função no banco ANTES de criar usuário
   try {
-    // Aguardar trigger criar perfil
-    await new Promise(resolve => setTimeout(resolve, 500))
-
     // Garantir que tipos e função existem
-    try {
       await db.execute(sql`
         DO $$ BEGIN
           IF NOT EXISTS (
@@ -93,47 +88,172 @@ export async function onboardingStep1(
         END $$;
       `)
 
+      // Criar função atualizada que verifica colunas dinamicamente
       await db.execute(sql`
-        CREATE OR REPLACE FUNCTION "public"."update_profile_on_signup"(
-          p_user_id uuid,
-          p_full_name text,
-          p_role text,
-          p_tier text,
-          p_salon_id uuid default null
-        )
-        RETURNS void
-        LANGUAGE plpgsql
-        SECURITY DEFINER
-        SET search_path = public
-        AS $$
-        BEGIN
-          UPDATE "public"."profiles"
-          SET
-            full_name = p_full_name,
-            role = p_role::profile_role,
-            tier = p_tier::subscription_tier,
-            salon_id = COALESCE(p_salon_id, salon_id),
-            updated_at = now()
-          WHERE id = p_user_id;
-        END;
-        $$;
+          CREATE OR REPLACE FUNCTION "public"."update_profile_on_signup"(
+            p_user_id uuid,
+            p_full_name text,
+            p_first_name text,
+            p_last_name text,
+            p_phone text,
+            p_billing_address text,
+            p_billing_postal_code text,
+            p_billing_city text,
+            p_billing_state text,
+            p_billing_country text,
+            p_billing_address_complement text,
+            p_role text,
+            p_tier text,
+            p_salon_id uuid default null
+          )
+          RETURNS void
+          LANGUAGE plpgsql
+          SECURITY DEFINER
+          SET search_path = public
+          AS $$
+          DECLARE
+            v_set_clauses text := '';
+            v_has_first_name boolean;
+            v_has_last_name boolean;
+            v_has_billing_address boolean;
+            v_has_billing_postal_code boolean;
+            v_has_billing_city boolean;
+            v_has_billing_state boolean;
+            v_has_billing_country boolean;
+            v_has_billing_address_complement boolean;
+            v_has_role boolean;
+            v_has_tier boolean;
+            v_has_salon_id boolean;
+          BEGIN
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'first_name') INTO v_has_first_name;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'last_name') INTO v_has_last_name;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_address') INTO v_has_billing_address;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_postal_code') INTO v_has_billing_postal_code;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_city') INTO v_has_billing_city;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_state') INTO v_has_billing_state;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_country') INTO v_has_billing_country;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_address_complement') INTO v_has_billing_address_complement;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'role') INTO v_has_role;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'tier') INTO v_has_tier;
+            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'salon_id') INTO v_has_salon_id;
+            
+            v_set_clauses := 'full_name = ' || quote_literal(p_full_name);
+            IF v_has_first_name THEN v_set_clauses := v_set_clauses || ', first_name = ' || quote_literal(p_first_name); END IF;
+            IF v_has_last_name THEN v_set_clauses := v_set_clauses || ', last_name = ' || quote_literal(p_last_name); END IF;
+            IF p_phone IS NOT NULL THEN v_set_clauses := v_set_clauses || ', phone = ' || quote_literal(p_phone); END IF;
+            IF v_has_billing_address AND p_billing_address IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_address = ' || quote_literal(p_billing_address); END IF;
+            IF v_has_billing_postal_code AND p_billing_postal_code IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_postal_code = ' || quote_literal(p_billing_postal_code); END IF;
+            IF v_has_billing_city AND p_billing_city IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_city = ' || quote_literal(p_billing_city); END IF;
+            IF v_has_billing_state AND p_billing_state IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_state = ' || quote_literal(p_billing_state); END IF;
+            IF v_has_billing_country THEN v_set_clauses := v_set_clauses || ', billing_country = ' || quote_literal(COALESCE(p_billing_country, 'BR')); END IF;
+            IF v_has_billing_address_complement AND p_billing_address_complement IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_address_complement = ' || quote_literal(p_billing_address_complement); END IF;
+            IF v_has_role AND p_role IS NOT NULL THEN v_set_clauses := v_set_clauses || ', role = ' || quote_literal(p_role) || '::profile_role'; END IF;
+            IF v_has_tier AND p_tier IS NOT NULL THEN v_set_clauses := v_set_clauses || ', tier = ' || quote_literal(p_tier) || '::subscription_tier'; END IF;
+            IF v_has_salon_id AND p_salon_id IS NOT NULL THEN v_set_clauses := v_set_clauses || ', salon_id = ' || quote_literal(p_salon_id); END IF;
+            v_set_clauses := v_set_clauses || ', updated_at = now()';
+            EXECUTE format('UPDATE "public"."profiles" SET %s WHERE id = %L', v_set_clauses, p_user_id);
+          END;
+          $$;
       `)
-    } catch (createErr) {
-      console.log("Erro ao criar função/tipos:", createErr instanceof Error ? createErr.message : String(createErr))
+  } catch (createErr) {
+    // Se falhar ao preparar tipos/função, retornar erro SEM criar usuário
+    console.error("Erro ao preparar tipos/função no banco:", createErr)
+    return { error: `Erro ao preparar banco de dados: ${(createErr as Error).message}` }
+  }
+
+  // 2. AGORA SIM: Criar usuário no Supabase Auth (após tudo estar pronto)
+  const supabase = await createClient()
+  let userId: string | null = null
+  
+  try {
+    const signUpResult = await supabase.auth.signUp({
+      email: normalizeEmail(data.email),
+      password: data.password,
+    })
+
+    if (signUpResult.error) {
+      return { error: formatAuthError(signUpResult.error) }
     }
+
+    if (!signUpResult.data.user) {
+      return { error: "Erro ao criar usuário" }
+    }
+
+    userId = signUpResult.data.user.id
+
+    // Aguardar trigger criar perfil básico
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    return { success: true, data: { userId } }
+  } catch (err) {
+    console.error("Erro ao criar usuário:", err)
+    
+    // Deletar o usuário do Auth se a criação falhar
+    if (userId) {
+      try {
+        const adminClient = createAdminClient()
+        if (adminClient) {
+          await adminClient.auth.admin.deleteUser(userId)
+          console.log(`Usuário ${userId} deletado do Auth devido a erro`)
+        }
+      } catch (deleteErr) {
+        console.error("Erro ao deletar usuário do Auth após falha:", deleteErr)
+      }
+    }
+    
+    return { error: `Erro ao criar usuário: ${(err as Error).message}` }
+  }
+}
+
+/**
+ * Passo 1: Criar perfil e salão inicial (após usuário já criado)
+ */
+export async function onboardingStep1(
+  data: OnboardingStep1Data
+): Promise<ActionResult<{ salonId: string }>> {
+  // Validar dados obrigatórios
+  if (!data.firstName || !data.lastName || !data.phone || !data.billingAddress || 
+      !data.billingPostalCode || !data.billingCity || !data.billingState ||
+      !data.documentType || !data.document) {
+    return { error: "Campos obrigatórios não preenchidos" }
+  }
+
+  try {
+    // Aguardar trigger criar perfil se ainda não existir
+    await new Promise(resolve => setTimeout(resolve, 300))
 
     // Criar salão e atualizar perfil em transação
     const result = await db.transaction(async (tx) => {
-      // Atualizar perfil
+      const fullName = `${data.firstName} ${data.lastName}`.trim()
+      const documentNumber = data.document.replace(/\D/g, '')
+      
+      // Atualizar perfil com todos os dados
       await tx.execute(sql`
         SELECT update_profile_on_signup(
-          ${userId}::uuid,
-          ${normalizeString(data.fullName)}::text,
+          ${data.userId}::uuid,
+          ${normalizeString(fullName)}::text,
+          ${normalizeString(data.firstName)}::text,
+          ${normalizeString(data.lastName)}::text,
+          ${normalizeString(data.phone)}::text,
+          ${normalizeString(data.billingAddress)}::text,
+          ${normalizeString(data.billingPostalCode)}::text,
+          ${normalizeString(data.billingCity)}::text,
+          ${normalizeString(data.billingState)}::text,
+          ${(data.billingCountry || 'BR')}::text,
+          ${data.billingAddressComplement ? normalizeString(data.billingAddressComplement) : null}::text,
           ${'OWNER'}::text,
           ${data.plan}::text,
           NULL::uuid
         )
       `)
+
+      // Atualizar dados legais
+      await tx.update(profiles)
+        .set({
+          documentType: data.documentType,
+          documentNumber: documentNumber,
+        })
+        .where(eq(profiles.id, data.userId))
 
       // Criar salão
       const slug = normalizeString(data.salonName)
@@ -143,9 +263,8 @@ export async function onboardingStep1(
       const [newSalon] = await tx.insert(salons)
         .values({
           name: normalizeString(data.salonName),
-          ownerId: userId,
+          ownerId: data.userId,
           slug,
-          planTier: data.plan,
           subscriptionStatus: 'ACTIVE',
         })
         .returning({ id: salons.id })
@@ -153,59 +272,65 @@ export async function onboardingStep1(
       // Vincular salão ao perfil
       await tx.execute(sql`
         SELECT update_profile_on_signup(
-          ${userId}::uuid,
-          ${normalizeString(data.fullName)}::text,
+          ${data.userId}::uuid,
+          ${normalizeString(fullName)}::text,
+          ${normalizeString(data.firstName)}::text,
+          ${normalizeString(data.lastName)}::text,
+          ${normalizeString(data.phone)}::text,
+          ${normalizeString(data.billingAddress)}::text,
+          ${normalizeString(data.billingPostalCode)}::text,
+          ${normalizeString(data.billingCity)}::text,
+          ${normalizeString(data.billingState)}::text,
+          ${(data.billingCountry || 'BR')}::text,
+          ${data.billingAddressComplement ? normalizeString(data.billingAddressComplement) : null}::text,
           ${'OWNER'}::text,
           ${data.plan}::text,
           ${newSalon.id}::uuid
         )
       `)
 
-      return { userId, salonId: newSalon.id }
+      return { salonId: newSalon.id }
     })
 
     return { success: true, data: result }
   } catch (err) {
     console.error("Erro ao configurar conta:", err)
+    
+    // Deletar o usuário do Auth se a criação do perfil/salão falhar
+    if (data.userId) {
+      try {
+        const adminClient = createAdminClient()
+        if (adminClient) {
+          await adminClient.auth.admin.deleteUser(data.userId)
+          console.log(`Usuário ${data.userId} deletado do Auth devido a erro na criação do perfil`)
+        }
+      } catch (deleteErr) {
+        console.error("Erro ao deletar usuário do Auth após falha:", deleteErr)
+      }
+    }
+    
     return { error: `Erro ao configurar conta: ${(err as Error).message}` }
   }
 }
 
 /**
  * Passo 2: Atualizar dados legais (CPF/CNPJ)
- * Por enquanto, vamos armazenar no settings do salão
+ * Salva no profile do usuário
  */
 export async function onboardingStep2(
   data: OnboardingStep2Data
 ): Promise<ActionResult> {
   try {
-    // Buscar salão do usuário
-    const profile = await db.query.profiles.findFirst({
-      where: eq(profiles.id, data.userId),
-      columns: { salonId: true },
-    })
-
-    if (!profile?.salonId) {
-      return { error: "Salão não encontrado" }
-    }
-
-    // Atualizar settings do salão com documento
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.id, profile.salonId),
-      columns: { settings: true },
-    })
-
-    const currentSettings = (salon?.settings as Record<string, unknown>) || {}
+    // Remove formatação do documento (apenas números)
+    const documentNumber = data.document.replace(/\D/g, '')
     
-    await db.update(salons)
+    // Atualizar profile com dados legais
+    await db.update(profiles)
       .set({
-        settings: {
-          ...currentSettings,
-          document_type: data.documentType,
-          document: data.document,
-        },
+        documentType: data.documentType,
+        documentNumber: documentNumber,
       })
-      .where(eq(salons.id, profile.salonId))
+      .where(eq(profiles.id, data.userId))
 
     return { success: true }
   } catch (err) {
@@ -223,7 +348,7 @@ export async function onboardingStep3(
     const updateData: Record<string, unknown> = {}
 
     if (data.address !== undefined) updateData.address = normalizeString(data.address)
-    if (data.phone !== undefined) updateData.phone = normalizeString(data.phone)
+    if (data.salonPhone !== undefined) updateData.phone = normalizeString(data.salonPhone)
     if (data.whatsapp !== undefined) updateData.whatsapp = normalizeString(data.whatsapp)
     if (data.description !== undefined) updateData.description = normalizeString(data.description)
     if (data.workHours !== undefined) updateData.workHours = data.workHours

@@ -14,7 +14,10 @@ export function normalizeEmail(email: string): string {
 /**
  * Valida e normaliza string (remove espaços)
  */
-export function normalizeString(value: string): string {
+export function normalizeString(value: string | undefined | null): string {
+  if (!value) {
+    return ""
+  }
   return value.trim()
 }
 

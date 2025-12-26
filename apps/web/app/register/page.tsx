@@ -4,17 +4,17 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useOnboardingStore } from "@/lib/stores/onboarding-store"
 import { Stepper } from "@/components/onboarding/stepper"
+import { StepCredentials } from "@/components/onboarding/step-credentials"
 import { StepAccount } from "@/components/onboarding/step-account"
-import { StepLegal } from "@/components/onboarding/step-legal"
 import { StepSalon } from "@/components/onboarding/step-salon"
 import { StepPayment } from "@/components/onboarding/step-payment"
-import { onboardingStep1, onboardingStep2, onboardingStep3, onboardingStep4 } from "@/app/actions/onboarding"
+import { onboardingStep1, onboardingStep3, onboardingStep4, createUserWithCredentials } from "@/app/actions/onboarding"
 import { toast } from "sonner"
 import { Bot, AlertCircle, ArrowRight } from "lucide-react"
 
 const STEPS = [
-  { label: "Conta", description: "Criar sua conta" },
-  { label: "Legal", description: "Dados legais" },
+  { label: "Credenciais", description: "E-mail e senha" },
+  { label: "Dados", description: "Informações pessoais" },
   { label: "Salão", description: "Detalhes do salão" },
   { label: "Pagamento", description: "Finalizar" },
 ]
@@ -99,18 +99,16 @@ export default function RegisterPage() {
     )
   }
 
+  // Step 1: Criar usuário apenas com credenciais
   const handleStep1Next = async () => {
-    if (!data.salonName || !data.fullName || !data.email || !data.password) {
-      toast.error("Preencha todos os campos")
+    if (!data.email || !data.password) {
+      toast.error("E-mail e senha são obrigatórios")
       return
     }
 
-    const result = await onboardingStep1({
-      salonName: data.salonName,
-      fullName: data.fullName,
+    const result = await createUserWithCredentials({
       email: data.email,
       password: data.password,
-      plan: plan,
     })
 
     if ('error' in result) {
@@ -121,20 +119,33 @@ export default function RegisterPage() {
     if (result.success && result.data) {
       setData({
         userId: result.data.userId,
-        salonId: result.data.salonId,
       })
       setStep(2)
     }
   }
 
+  // Step 2: Preencher dados pessoais e criar perfil/salão
   const handleStep2Next = async () => {
-    if (!data.userId || !data.documentType || !data.document) {
-      toast.error("Preencha todos os campos")
+    if (!data.userId || !data.salonName || !data.firstName || !data.lastName || !data.phone || 
+        !data.billingAddress || !data.billingPostalCode || !data.billingCity || !data.billingState ||
+        !data.documentType || !data.document) {
+      toast.error("Preencha todos os campos obrigatórios")
       return
     }
 
-    const result = await onboardingStep2({
+    const result = await onboardingStep1({
       userId: data.userId,
+      salonName: data.salonName,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      phone: data.phone,
+      plan: plan,
+      billingAddress: data.billingAddress,
+      billingPostalCode: data.billingPostalCode,
+      billingCity: data.billingCity,
+      billingState: data.billingState,
+      billingCountry: data.billingCountry || 'BR',
+      billingAddressComplement: data.billingAddressComplement,
       documentType: data.documentType,
       document: data.document,
     })
@@ -144,7 +155,10 @@ export default function RegisterPage() {
       return
     }
 
-    if (result.success) {
+    if (result.success && result.data) {
+      setData({
+        salonId: result.data.salonId,
+      })
       setStep(3)
     }
   }
@@ -158,7 +172,7 @@ export default function RegisterPage() {
     const result = await onboardingStep3({
       salonId: data.salonId,
       address: data.address,
-      phone: data.phone,
+      salonPhone: data.salonPhone,
       whatsapp: data.whatsapp,
       description: data.description,
       workHours: data.workHours,
@@ -221,8 +235,8 @@ export default function RegisterPage() {
       {/* Content */}
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-8">
-          {currentStep === 1 && <StepAccount onNext={handleStep1Next} />}
-          {currentStep === 2 && <StepLegal onNext={handleStep2Next} onBack={handleBack} />}
+          {currentStep === 1 && <StepCredentials onNext={handleStep1Next} />}
+          {currentStep === 2 && <StepAccount onNext={handleStep2Next} onBack={handleBack} />}
           {currentStep === 3 && <StepSalon onNext={handleStep3Next} onBack={handleBack} />}
           {currentStep === 4 && <StepPayment onComplete={handleComplete} onBack={handleBack} />}
         </div>

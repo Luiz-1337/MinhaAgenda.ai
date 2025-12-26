@@ -1,4 +1,4 @@
-import { db, professionals, salons } from "@repo/db"
+import { db, professionals, salons, profiles } from "@repo/db"
 import { eq, count, and } from "drizzle-orm"
 import { canAddProfessional } from "@/lib/utils/permissions"
 import type { UpsertProfessionalInput } from "@/lib/types/professional"
@@ -22,22 +22,24 @@ export class ProfessionalService {
    * Cria um novo profissional com verificação de plano (Feature Gating)
    */
   static async createProfessional(salonId: string, data: UpsertProfessionalInput) {
-    // 1. Busca informações do salão (Plan Tier)
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.id, salonId),
-      columns: {
-        id: true,
-        planTier: true,
-      },
-    })
+    // 1. Busca informações do salão e tier do owner
+    const result = await db
+      .select({
+        salonId: salons.id,
+        ownerTier: profiles.tier,
+      })
+      .from(salons)
+      .innerJoin(profiles, eq(profiles.id, salons.ownerId))
+      .where(eq(salons.id, salonId))
+      .limit(1)
 
-    if (!salon) {
+    if (!result.length) {
       throw new Error("Salão não encontrado")
     }
 
     // 2. Verifica limites do plano
     const currentCount = await this.countActiveProfessionals(salonId)
-    const tier = salon.planTier as PlanTier
+    const tier = result[0].ownerTier as PlanTier
 
     if (!canAddProfessional(tier, currentCount)) {
       if (tier === 'SOLO') {

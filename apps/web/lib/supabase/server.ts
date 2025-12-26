@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 
 interface CookieToSet {
@@ -33,6 +34,32 @@ export async function createClient() {
           }
         },
       },
+    }
+  )
+}
+
+/**
+ * Cria um cliente Supabase Admin com service role key
+ * Usado para operações administrativas como deletar usuários
+ * ATENÇÃO: Use apenas em server actions, nunca exponha a service role key no cliente
+ * Retorna null se a chave não estiver configurada (não lança erro)
+ */
+export function createAdminClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!serviceRoleKey) {
+    console.warn("SUPABASE_SERVICE_ROLE_KEY não configurada. Operações administrativas não estarão disponíveis.")
+    return null
+  }
+
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
     }
   )
 }
