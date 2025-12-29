@@ -121,15 +121,17 @@ export function SidebarNav() {
   return (
     <>
       {/* Action Button */}
-      <div className="p-4">
-        <button 
-          onClick={handleCreateSalon}
-          className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-white py-2.5 px-4 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm transition-all duration-200 group"
-        >
-          <Plus size={16} className="text-indigo-500 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
-          <span className="text-sm font-medium">Criar Novo Salão</span>
-        </button>
-      </div>
+      {!isSolo && (
+        <div className="p-4">
+          <button 
+            onClick={handleCreateSalon}
+            className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-white py-2.5 px-4 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm transition-all duration-200 group"
+          >
+            <Plus size={16} className="text-indigo-500 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
+            <span className="text-sm font-medium">Criar Novo Salão</span>
+          </button>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-4 py-2 custom-scrollbar">

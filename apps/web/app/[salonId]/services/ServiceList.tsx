@@ -16,7 +16,7 @@ import { getServices, upsertService, deleteService, getServiceLinkedProfessional
 import { getProfessionals } from "@/app/actions/professionals"
 import type { ServiceRow } from "@/lib/types/service"
 import type { ProfessionalRow } from "@/lib/types/professional"
-import { useSalon } from "@/contexts/salon-context"
+import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 
 const serviceSchema = z.object({
   id: z.string().uuid().optional(),
@@ -35,6 +35,7 @@ interface ServiceListProps {
 
 export default function ServiceList({ salonId }: ServiceListProps) {
   const { activeSalon } = useSalon()
+  const { isSolo } = useSalonAuth()
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [list, setList] = useState<ServiceRow[]>([])
@@ -300,74 +301,83 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                   Ativo
                 </Label>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="professionals" className="text-slate-700 dark:text-slate-300">
-                  Profissionais Habilitados
-                </Label>
-                <div className="border border-slate-200 dark:border-white/10 rounded-lg bg-slate-50 dark:bg-slate-950">
-                  {(() => {
-                    const activeProfessionals = professionals.filter((p) => p.is_active)
-                    if (activeProfessionals.length === 0) {
+              {!isSolo && (
+                <div className="space-y-2">
+                  <Label htmlFor="professionals" className="text-slate-700 dark:text-slate-300">
+                    Profissionais Habilitados
+                  </Label>
+                  <div className="border border-slate-200 dark:border-white/10 rounded-lg bg-slate-50 dark:bg-slate-950">
+                    {(() => {
+                      const activeProfessionals = professionals.filter((p) => p.is_active)
+                      if (activeProfessionals.length === 0) {
+                        return (
+                          <div className="p-3">
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                              Nenhum profissional ativo cadastrado
+                            </p>
+                          </div>
+                        )
+                      }
                       return (
-                        <div className="p-3">
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            Nenhum profissional ativo cadastrado
-                          </p>
-                        </div>
+                        <>
+                          <div className="p-2 border-b border-slate-200 dark:border-white/10">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const allActiveIds = activeProfessionals.map((p) => p.id)
+                                form.setValue("professionalIds", allActiveIds)
+                              }}
+                              className="w-full text-xs h-7 border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+                            >
+                              Selecionar todos
+                            </Button>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto p-3 space-y-2">
+                            {activeProfessionals.map((professional) => {
+                              const professionalIds = form.watch("professionalIds") || []
+                              const isChecked = professionalIds.includes(professional.id)
+                              return (
+                                <div key={professional.id} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`professional-${professional.id}`}
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      const currentIds = form.getValues("professionalIds") || []
+                                      if (e.target.checked) {
+                                        form.setValue("professionalIds", [...currentIds, professional.id])
+                                      } else {
+                                        form.setValue(
+                                          "professionalIds",
+                                          currentIds.filter((id) => id !== professional.id)
+                                        )
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`professional-${professional.id}`}
+                                    className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-normal"
+                                  >
+                                    {professional.name}
+                                  </Label>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </>
                       )
-                    }
-                    return (
-                      <>
-                        <div className="p-2 border-b border-slate-200 dark:border-white/10">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const allActiveIds = activeProfessionals.map((p) => p.id)
-                              form.setValue("professionalIds", allActiveIds)
-                            }}
-                            className="w-full text-xs h-7 border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-                          >
-                            Selecionar todos
-                          </Button>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto p-3 space-y-2">
-                          {activeProfessionals.map((professional) => {
-                            const professionalIds = form.watch("professionalIds") || []
-                            const isChecked = professionalIds.includes(professional.id)
-                            return (
-                              <div key={professional.id} className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`professional-${professional.id}`}
-                                  checked={isChecked}
-                                  onChange={(e) => {
-                                    const currentIds = form.getValues("professionalIds") || []
-                                    if (e.target.checked) {
-                                      form.setValue("professionalIds", [...currentIds, professional.id])
-                                    } else {
-                                      form.setValue(
-                                        "professionalIds",
-                                        currentIds.filter((id) => id !== professional.id)
-                                      )
-                                    }
-                                  }}
-                                />
-                                <Label
-                                  htmlFor={`professional-${professional.id}`}
-                                  className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-normal"
-                                >
-                                  {professional.name}
-                                </Label>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </>
-                    )
-                  })()}
+                    })()}
+                  </div>
                 </div>
-              </div>
+              )}
+              {isSolo && (
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                  <p className="text-sm text-indigo-700 dark:text-indigo-300">
+                    No plano SOLO, os serviços são automaticamente vinculados a você.
+                  </p>
+                </div>
+              )}
               <DialogFooter className="gap-2">
                 <Button
                   type="button"

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { and, asc, eq, inArray } from "drizzle-orm"
 import { createClient } from "@/lib/supabase/server"
-import { db, professionalServices, professionals, salons, services } from "@repo/db"
+import { db, professionalServices, professionals, salons, services, profiles } from "@repo/db"
 import { formatZodError, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import { extractErrorMessage } from "@/lib/services/error.service"
 import type { ServiceRow, UpsertServiceInput, ServicePayload } from "@/lib/types/service"
@@ -154,28 +154,59 @@ export async function upsertService(input: UpsertServiceInput & { salonId: strin
       return { error: "Não foi possível salvar o serviço" }
     }
 
+    // Verifica se é plano SOLO
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, input.salonId),
+      columns: { ownerId: true },
+    })
+
+    const ownerProfile = salon ? await db.query.profiles.findFirst({
+      where: eq(profiles.id, salon.ownerId),
+      columns: { tier: true },
+    }) : null
+
+    const isSolo = ownerProfile?.tier === 'SOLO'
+
     // Remove associações existentes com profissionais
     await db.delete(professionalServices).where(eq(professionalServices.serviceId, serviceId))
 
-    // Cria novas associações com profissionais válidos
-    if (parsed.data.professionalIds.length > 0) {
-      const validProfessionals = await db.query.professionals.findMany({
+    // No plano SOLO, vincula automaticamente ao profissional do usuário (owner)
+    if (isSolo && salon) {
+      const userProfessional = await db.query.professionals.findFirst({
         where: and(
           eq(professionals.salonId, input.salonId),
-          inArray(professionals.id, parsed.data.professionalIds)
+          eq(professionals.userId, salon.ownerId)
         ),
         columns: { id: true },
       })
 
-      const professionalIds = validProfessionals.map((p) => p.id)
+      if (userProfessional) {
+        await db.insert(professionalServices).values({
+          professionalId: userProfessional.id,
+          serviceId,
+        })
+      }
+    } else {
+      // Para outros planos, usa os profissionais selecionados
+      if (parsed.data.professionalIds.length > 0) {
+        const validProfessionals = await db.query.professionals.findMany({
+          where: and(
+            eq(professionals.salonId, input.salonId),
+            inArray(professionals.id, parsed.data.professionalIds)
+          ),
+          columns: { id: true },
+        })
 
-      if (professionalIds.length > 0) {
-        await db.insert(professionalServices).values(
-          professionalIds.map((professionalId) => ({
-            professionalId,
-            serviceId,
-          }))
-        )
+        const professionalIds = validProfessionals.map((p) => p.id)
+
+        if (professionalIds.length > 0) {
+          await db.insert(professionalServices).values(
+            professionalIds.map((professionalId) => ({
+              professionalId,
+              serviceId,
+            }))
+          )
+        }
       }
     }
 

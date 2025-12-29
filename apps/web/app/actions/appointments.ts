@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 import { fromBrazilTime } from "@/lib/utils/timezone.utils"
 
-import { db, domainServices as sharedServices, professionals, salons } from "@repo/db"
+import { db, domainServices as sharedServices, professionals, salons, profiles } from "@repo/db"
 import { 
   getAppointmentsByRange, 
   getSalonProfessionals, 
@@ -182,8 +182,34 @@ export async function createAppointment(input: {
     return { error: "Acesso negado" }
   }
 
+  // Verifica se é plano SOLO e ajusta professionalId automaticamente
+  const ownerProfile = await db.query.profiles.findFirst({
+    where: eq(profiles.id, salon.ownerId),
+    columns: { tier: true },
+  })
+
+  let finalProfessionalId = input.professionalId
+
+  if (ownerProfile?.tier === 'SOLO') {
+    // No plano SOLO, sempre usa o profissional do owner
+    const userProfessional = await db.query.professionals.findFirst({
+      where: and(
+        eq(professionals.salonId, input.salonId),
+        eq(professionals.userId, salon.ownerId)
+      ),
+      columns: { id: true },
+    })
+
+    if (userProfessional) {
+      finalProfessionalId = userProfessional.id
+    }
+  }
+
   // Delega para o serviço centralizado (lógica de negócio)
-  const result = await sharedServices.createAppointmentService(input)
+  const result = await sharedServices.createAppointmentService({
+    ...input,
+    professionalId: finalProfessionalId,
+  })
 
   if (!result.success) {
     return { error: result.error }

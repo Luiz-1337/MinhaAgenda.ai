@@ -16,6 +16,7 @@ import {
   startOfMonthBrazil,
   endOfMonthBrazil
 } from "@/lib/utils/timezone.utils"
+import { useSalonAuth } from "@/contexts/salon-context"
 
 interface SchedulerViewProps {
   salonId: string
@@ -31,6 +32,7 @@ interface Professional {
 }
 
 export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
+  const { isSolo } = useSalonAuth()
   const [viewType, setViewType] = useState<ViewType>("weekly")
   const [currentDate, setCurrentDate] = useState<Date>(() => {
     if (initialDate) {
@@ -240,7 +242,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       <div className="flex items-center gap-3 w-full md:w-auto">
         
         {/* Professional Dropdown */}
-        {!loading && selectedPro && dropdownProfessionals.length > 1 && (
+        {!loading && selectedPro && dropdownProfessionals.length > 1 && !isSolo && (
           <div className="relative professional-dropdown">
             <button 
               onClick={() => setIsProDropdownOpen(!isProDropdownOpen)}
@@ -271,6 +273,11 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {isSolo && selectedPro && (
+          <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs text-indigo-700 dark:text-indigo-300">
+            No plano SOLO, os agendamentos são automaticamente vinculados a você.
           </div>
         )}
 

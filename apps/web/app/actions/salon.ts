@@ -98,6 +98,20 @@ export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonR
     return { error: "Não autenticado" }
   }
 
+  // Verifica se o usuário tem plano SOLO e já possui um salão
+  const userProfile = await db.query.profiles.findFirst({
+    where: eq(profiles.id, user.id),
+    columns: { tier: true },
+  })
+
+  if (userProfile?.tier === 'SOLO') {
+    // Verifica se já possui salão
+    const existingSalons = await getUserSalons()
+    if (existingSalons.length > 0) {
+      return { error: "Plano SOLO permite apenas um salão" }
+    }
+  }
+
   try {
     const newSalon = await createSalonWithOwner(user.id, data)
     

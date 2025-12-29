@@ -1,10 +1,10 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useTransition } from "react"
+import { useTransition, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { createSalon } from "@/app/actions/salon"
+import { createSalon, getUserSalons } from "@/app/actions/salon"
 import { createSalonSchema, type CreateSalonSchema } from "@/lib/schemas"
 import { X, Check, MapPin, Phone, MessageCircle, Clock, CreditCard, Car, AlertCircle, Store } from "lucide-react"
 import { toast } from "sonner"
@@ -23,6 +23,26 @@ const DAYS_OF_WEEK = [
 export default function OnboardingPage() {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  
+  // Verifica se é plano SOLO e já tem salão
+  useEffect(() => {
+    async function checkSoloPlan() {
+      try {
+        const salons = await getUserSalons()
+        if (salons.length > 0) {
+          const soloSalon = salons.find(s => s.planTier === 'SOLO')
+          if (soloSalon) {
+            // Plano SOLO já tem salão, redireciona para o dashboard
+            router.replace(`/${soloSalon.id}/dashboard`)
+            return
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao verificar salões:", error)
+      }
+    }
+    checkSoloPlan()
+  }, [router])
   
   const form = useForm<CreateSalonSchema>({
     resolver: zodResolver(createSalonSchema),

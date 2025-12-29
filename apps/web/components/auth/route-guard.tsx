@@ -8,7 +8,7 @@ import { toast } from "sonner"
 export function RouteGuard() {
   const pathname = usePathname()
   const router = useRouter()
-  const { role } = useSalonAuth()
+  const { role, isSolo } = useSalonAuth()
   const { activeSalon, isLoading } = useSalon()
 
   useEffect(() => {
@@ -30,15 +30,16 @@ export function RouteGuard() {
       }
     }
 
-    if (role === 'MANAGER') {
-      const forbiddenSections = ['billing'] // Manager não vê faturamento
+    if (role === 'MANAGER' && !isSolo) {
+      // Manager não-SOLO não vê faturamento (apenas SOLO tem acesso completo)
+      const forbiddenSections = ['billing']
       if (forbiddenSections.includes(section)) {
         toast.error("Acesso negado para seu nível de permissão.")
         router.replace(`/${activeSalon.id}/dashboard`)
       }
     }
 
-  }, [pathname, role, activeSalon, isLoading, router])
+  }, [pathname, role, isSolo, activeSalon, isLoading, router])
 
   return null
 }

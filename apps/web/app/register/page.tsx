@@ -7,8 +7,9 @@ import { Stepper } from "@/components/onboarding/stepper"
 import { StepCredentials } from "@/components/onboarding/step-credentials"
 import { StepAccount } from "@/components/onboarding/step-account"
 import { StepSalon } from "@/components/onboarding/step-salon"
+import { StepPlan } from "@/components/onboarding/step-plan"
 import { StepPayment } from "@/components/onboarding/step-payment"
-import { onboardingStep1, onboardingStep3, onboardingStep4, createUserWithCredentials } from "@/app/actions/onboarding"
+import { completeOnboardingWithPayment } from "@/app/actions/onboarding"
 import { toast } from "sonner"
 import { Bot, AlertCircle, ArrowRight } from "lucide-react"
 
@@ -16,6 +17,7 @@ const STEPS = [
   { label: "Credenciais", description: "E-mail e senha" },
   { label: "Dados", description: "Informações pessoais" },
   { label: "Salão", description: "Detalhes do salão" },
+  { label: "Plano", description: "Escolha seu plano" },
   { label: "Pagamento", description: "Finalizar" },
 ]
 
@@ -26,7 +28,7 @@ export default function RegisterPage() {
   const [data, setDataState] = useState(store.data)
   const [currentStep, setStepState] = useState(store.currentStep)
   
-  // Sincronizar com localStorage
+  // Sincronizar com sessionStorage
   useEffect(() => {
     const handleStorage = () => {
       const updated = useOnboardingStore()
@@ -35,8 +37,19 @@ export default function RegisterPage() {
     }
     
     window.addEventListener('onboarding-storage', handleStorage)
-    return () => window.removeEventListener('onboarding-storage', handleStorage)
-  }, [])
+    
+    // Limpar storage quando a aba for fechada (pagehide é mais confiável que beforeunload)
+    const handlePageHide = () => {
+      store.reset()
+    }
+    
+    window.addEventListener('pagehide', handlePageHide)
+    
+    return () => {
+      window.removeEventListener('onboarding-storage', handleStorage)
+      window.removeEventListener('pagehide', handlePageHide)
+    }
+  }, [store])
   
   const setData = (newData: Partial<typeof data>) => {
     store.setData(newData)
@@ -57,24 +70,17 @@ export default function RegisterPage() {
   const rawPlan = searchParams.get('plan')
   const VALID_PLANS = ['SOLO', 'PRO', 'ENTERPRISE']
   const isValidPlan = rawPlan && VALID_PLANS.includes(rawPlan.toUpperCase())
-  const plan = isValidPlan ? (rawPlan!.toUpperCase() as 'SOLO' | 'PRO' | 'ENTERPRISE') : 'SOLO'
+  const initialPlan = isValidPlan ? (rawPlan!.toUpperCase() as 'SOLO' | 'PRO' | 'ENTERPRISE') : undefined
 
-  // Redirecionar Enterprise
+  // Inicializar plan no store se veio pela URL
   useEffect(() => {
-    if (plan === 'ENTERPRISE') {
-      router.push('/contact?reason=enterprise_plan')
+    if (initialPlan && !data.plan) {
+      setData({ plan: initialPlan })
     }
-  }, [plan, router])
+  }, [initialPlan, data.plan, setData])
 
-  // Inicializar plan no store
-  useEffect(() => {
-    if (plan && !data.plan) {
-      setData({ plan })
-    }
-  }, [plan, data.plan, setData])
-
-  // Se plano inválido
-  if (!isValidPlan && rawPlan) {
+  // Se plano inválido na URL
+  if (rawPlan && !isValidPlan) {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
         <div className="max-w-md w-full text-center space-y-6">
@@ -99,55 +105,90 @@ export default function RegisterPage() {
     )
   }
 
-  // Step 1: Criar usuário apenas com credenciais
+  // Step 1: Apenas validar credenciais (salvar no store, não criar usuário ainda)
   const handleStep1Next = async () => {
     if (!data.email || !data.password) {
       toast.error("E-mail e senha são obrigatórios")
       return
     }
 
-    const result = await createUserWithCredentials({
-      email: data.email,
-      password: data.password,
-    })
-
-    if ('error' in result) {
-      toast.error(result.error)
-      return
-    }
-
-    if (result.success && result.data) {
-      setData({
-        userId: result.data.userId,
-      })
-      setStep(2)
-    }
+    // Apenas validar e avançar - dados já foram salvos no store pelo StepCredentials
+    setStep(2)
   }
 
-  // Step 2: Preencher dados pessoais e criar perfil/salão
+  // Step 2: Preencher dados pessoais (apenas salva no store)
   const handleStep2Next = async () => {
-    if (!data.userId || !data.salonName || !data.firstName || !data.lastName || !data.phone || 
+    if (!data.salonName || !data.firstName || !data.lastName || !data.phone || 
         !data.billingAddress || !data.billingPostalCode || !data.billingCity || !data.billingState ||
         !data.documentType || !data.document) {
       toast.error("Preencha todos os campos obrigatórios")
       return
     }
 
-    const result = await onboardingStep1({
-      userId: data.userId,
-      salonName: data.salonName,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      phone: data.phone,
-      plan: plan,
-      billingAddress: data.billingAddress,
-      billingPostalCode: data.billingPostalCode,
-      billingCity: data.billingCity,
-      billingState: data.billingState,
-      billingCountry: data.billingCountry || 'BR',
-      billingAddressComplement: data.billingAddressComplement,
-      documentType: data.documentType,
-      document: data.document,
+    // Dados já foram salvos no store pelo StepAccount, apenas avança
+    setStep(3)
+  }
+
+  // Step 3: Preencher dados do salão (apenas salva no store)
+  const handleStep3Next = async () => {
+    // Dados já foram salvos no store pelo StepSalon, apenas avança
+    setStep(4)
+  }
+
+  // Step 4: Selecionar plano (apenas valida, não cria nada ainda)
+  const handleStep4Next = async () => {
+    if (!data.plan) {
+      toast.error("Selecione um plano para continuar")
+      return
+    }
+
+    if (!data.email || !data.password || !data.salonName || !data.firstName || !data.lastName || !data.phone || 
+        !data.billingAddress || !data.billingPostalCode || !data.billingCity || !data.billingState ||
+        !data.documentType || !data.document) {
+      toast.error("Dados incompletos. Por favor, preencha todos os campos obrigatórios.")
+      return
+    }
+
+    // Apenas validar e avançar - dados já foram salvos no store pelo StepPlan
+    setStep(5)
+  }
+
+  // Step 5: Finalizar onboarding - criar tudo de uma vez após pagamento confirmado
+  const handleStep5Complete = async () => {
+    // Ler dados diretamente do store para garantir que não foram perdidos
+    const storeData = store.data
+    
+    // Validar todos os dados obrigatórios
+    if (!storeData.email || !storeData.password || !storeData.salonName || !storeData.firstName || !storeData.lastName || !storeData.phone || 
+        !storeData.billingAddress || !storeData.billingPostalCode || !storeData.billingCity || !storeData.billingState ||
+        !storeData.documentType || !storeData.document || !storeData.plan) {
+      toast.error("Dados incompletos. Por favor, preencha todos os campos obrigatórios.")
+      return
+    }
+
+    // Criar tudo de uma vez: usuário, perfil, salão e marcar onboarding como completo
+    const result = await completeOnboardingWithPayment({
+      email: storeData.email,
+      password: storeData.password,
+      salonName: storeData.salonName,
+      firstName: storeData.firstName,
+      lastName: storeData.lastName,
+      phone: storeData.phone,
+      plan: storeData.plan,
+      billingAddress: storeData.billingAddress,
+      billingPostalCode: storeData.billingPostalCode,
+      billingCity: storeData.billingCity,
+      billingState: storeData.billingState,
+      billingCountry: storeData.billingCountry || 'BR',
+      billingAddressComplement: storeData.billingAddressComplement,
+      documentType: storeData.documentType,
+      document: storeData.document,
+      address: storeData.address,
+      salonPhone: storeData.salonPhone,
+      whatsapp: storeData.whatsapp,
+      description: storeData.description,
+      workHours: storeData.workHours,
+      settings: storeData.settings,
     })
 
     if ('error' in result) {
@@ -156,56 +197,10 @@ export default function RegisterPage() {
     }
 
     if (result.success && result.data) {
-      setData({
-        salonId: result.data.salonId,
-      })
-      setStep(3)
-    }
-  }
-
-  const handleStep3Next = async () => {
-    if (!data.salonId) {
-      toast.error("Erro: Salão não encontrado")
-      return
-    }
-
-    const result = await onboardingStep3({
-      salonId: data.salonId,
-      address: data.address,
-      salonPhone: data.salonPhone,
-      whatsapp: data.whatsapp,
-      description: data.description,
-      workHours: data.workHours,
-      settings: data.settings,
-    })
-
-    if ('error' in result) {
-      toast.error(result.error)
-      return
-    }
-
-    if (result.success) {
-      setStep(4)
-    }
-  }
-
-  const handleComplete = async () => {
-    if (!data.salonId) {
-      toast.error("Erro: Salão não encontrado")
-      return
-    }
-
-    const result = await onboardingStep4(data.salonId)
-
-    if ('error' in result) {
-      toast.error(result.error)
-      return
-    }
-
-    if (result.success) {
-      toast.success("Onboarding concluído com sucesso!")
+      toast.success("Conta criada com sucesso!")
       reset()
-      router.push(`/${data.salonId}/dashboard`)
+      // Redirecionar para o dashboard - o usuário já está autenticado pelo signUp
+      router.push(`/${result.data.salonId}/dashboard`)
     }
   }
 
@@ -233,12 +228,13 @@ export default function RegisterPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-2xl mx-auto px-4 py-12">
+      <div className={`mx-auto px-4 py-12 ${currentStep === 4 ? 'max-w-5xl' : 'max-w-2xl'}`}>
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-8">
           {currentStep === 1 && <StepCredentials onNext={handleStep1Next} />}
           {currentStep === 2 && <StepAccount onNext={handleStep2Next} onBack={handleBack} />}
           {currentStep === 3 && <StepSalon onNext={handleStep3Next} onBack={handleBack} />}
-          {currentStep === 4 && <StepPayment onComplete={handleComplete} onBack={handleBack} />}
+          {currentStep === 4 && <StepPlan onNext={handleStep4Next} onBack={handleBack} initialPlan={initialPlan} />}
+          {currentStep === 5 && <StepPayment onComplete={handleStep5Complete} onBack={handleBack} />}
         </div>
       </div>
     </div>

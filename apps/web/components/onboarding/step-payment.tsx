@@ -51,7 +51,7 @@ const PLAN_DETAILS = {
 }
 
 export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
-  const { data, reset } = useOnboardingStore()
+  const { data } = useOnboardingStore()
   const [isProcessing, setIsProcessing] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
 
@@ -68,8 +68,8 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
     setIsComplete(true)
     
     // Aguardar um pouco antes de redirecionar
+    // Não limpar o store aqui - será limpo após sucesso no handleStep5Complete
     setTimeout(() => {
-      reset()
       onComplete()
     }, 1500)
   }

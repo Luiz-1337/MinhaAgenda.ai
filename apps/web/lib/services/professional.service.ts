@@ -19,6 +19,32 @@ export class ProfessionalService {
   }
 
   /**
+   * Obtém o profissional vinculado ao usuário (owner) em um salão
+   * Útil para plano SOLO onde o usuário é o único profissional
+   */
+  static async getUserProfessional(salonId: string, userId: string) {
+    // Busca o profissional que é owner do salão (vinculado ao userId)
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { ownerId: true },
+    })
+
+    if (!salon || salon.ownerId !== userId) {
+      return null
+    }
+
+    // Busca o profissional vinculado ao usuário
+    const professional = await db.query.professionals.findFirst({
+      where: and(
+        eq(professionals.salonId, salonId),
+        eq(professionals.userId, userId)
+      ),
+    })
+
+    return professional
+  }
+
+  /**
    * Cria um novo profissional com verificação de plano (Feature Gating)
    */
   static async createProfessional(salonId: string, data: UpsertProfessionalInput) {

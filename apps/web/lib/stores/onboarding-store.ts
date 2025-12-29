@@ -1,4 +1,4 @@
-// Store simples usando localStorage (pode ser substituído por Zustand depois)
+// Store simples usando sessionStorage (limpa automaticamente quando a aba é fechada)
 // Para instalar Zustand: pnpm add zustand
 
 export interface OnboardingData {
@@ -49,7 +49,7 @@ function getStorage(): { data: OnboardingData; currentStep: number } {
     return { data: {}, currentStep: 1 }
   }
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = sessionStorage.getItem(STORAGE_KEY)
     if (stored) {
       return JSON.parse(stored)
     }
@@ -62,7 +62,7 @@ function getStorage(): { data: OnboardingData; currentStep: number } {
 function setStorage(data: OnboardingData, currentStep: number) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, currentStep }))
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data, currentStep }))
   } catch {
     // Ignore
   }
@@ -92,7 +92,7 @@ export function useOnboardingStore() {
     },
     reset: () => {
       if (typeof window === 'undefined') return
-      localStorage.removeItem(STORAGE_KEY)
+      sessionStorage.removeItem(STORAGE_KEY)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('onboarding-storage'))
       }

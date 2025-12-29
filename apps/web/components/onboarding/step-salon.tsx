@@ -52,7 +52,7 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
     resolver: zodResolver(salonSchema),
     defaultValues: {
       address: data.address || "",
-      phone: data.phone || "",
+      phone: data.salonPhone || data.phone || "", // Usar salonPhone se existir, senão phone como fallback
       whatsapp: data.whatsapp || "",
       description: data.description || "",
       workHours: data.workHours || {},
@@ -62,7 +62,12 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
   const workHours = watch("workHours") || {}
 
   const onSubmit = (formData: SalonFormData) => {
-    setData(formData)
+    // Mapear phone para salonPhone para evitar conflito com o phone pessoal do StepAccount
+    const { phone, ...rest } = formData
+    setData({
+      ...rest,
+      salonPhone: phone,
+    })
     onNext()
   }
 

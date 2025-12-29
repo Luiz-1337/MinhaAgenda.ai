@@ -7,17 +7,13 @@ import type { ActionResult } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
 
-interface CreateUserCredentialsData {
-  email: string
-  password: string
-}
-
 interface OnboardingStep1Data {
-  userId: string
   salonName: string
   firstName: string
   lastName: string
+  email: string
   phone: string
+  password: string
   plan: 'SOLO' | 'PRO' | 'ENTERPRISE'
   // Endereço de cobrança
   billingAddress: string
@@ -29,6 +25,17 @@ interface OnboardingStep1Data {
   // Dados legais
   documentType: 'CPF' | 'CNPJ'
   document: string
+  // Detalhes do salão
+  address?: string
+  salonPhone?: string
+  whatsapp?: string
+  description?: string
+  workHours?: Record<string, { start: string; end: string }>
+  settings?: {
+    accepts_card?: boolean
+    parking?: boolean
+    late_tolerance_minutes?: number
+  }
 }
 
 interface OnboardingStep2Data {
@@ -53,15 +60,23 @@ interface OnboardingStep3Data {
 }
 
 /**
- * Criar usuário apenas com credenciais (primeira etapa)
+ * Criar conta completa após pagamento confirmado
+ * Esta função cria tudo de uma vez: usuário, perfil, salão e marca onboarding como completo
  */
-export async function createUserWithCredentials(
-  data: CreateUserCredentialsData
-): Promise<ActionResult<{ userId: string }>> {
+export async function completeOnboardingWithPayment(
+  data: OnboardingStep1Data
+): Promise<ActionResult<{ userId: string; salonId: string }>> {
   // VALIDAÇÃO E PREPARAÇÃO ANTES DE CRIAR O USUÁRIO NO AUTH
   // Isso garante que se der erro, o usuário não será criado no Supabase Auth
   
-  // 1. Preparar tipos e função no banco ANTES de criar usuário
+  // 1. Validar dados obrigatórios
+  if (!data.firstName || !data.lastName || !data.phone || !data.billingAddress || 
+      !data.billingPostalCode || !data.billingCity || !data.billingState ||
+      !data.documentType || !data.document) {
+    return { error: "Campos obrigatórios não preenchidos" }
+  }
+
+  // 2. Preparar tipos e função no banco ANTES de criar usuário
   try {
     // Garantir que tipos e função existem
       await db.execute(sql`
@@ -161,14 +176,20 @@ export async function createUserWithCredentials(
     return { error: `Erro ao preparar banco de dados: ${(createErr as Error).message}` }
   }
 
-  // 2. AGORA SIM: Criar usuário no Supabase Auth (após tudo estar pronto)
+  // 3. AGORA SIM: Criar usuário no Supabase Auth (após tudo estar pronto)
   const supabase = await createClient()
+  const fullName = `${data.firstName} ${data.lastName}`.trim()
+  
+  let authData: { user: { id: string } | null } | null = null
   let userId: string | null = null
   
   try {
     const signUpResult = await supabase.auth.signUp({
       email: normalizeEmail(data.email),
       password: data.password,
+      options: {
+        data: { full_name: fullName },
+      },
     })
 
     if (signUpResult.error) {
@@ -179,58 +200,25 @@ export async function createUserWithCredentials(
       return { error: "Erro ao criar usuário" }
     }
 
+    authData = signUpResult.data
     userId = signUpResult.data.user.id
 
     // Aguardar trigger criar perfil básico
     await new Promise(resolve => setTimeout(resolve, 500))
 
-    return { success: true, data: { userId } }
-  } catch (err) {
-    console.error("Erro ao criar usuário:", err)
-    
-    // Deletar o usuário do Auth se a criação falhar
-    if (userId) {
-      try {
-        const adminClient = createAdminClient()
-        if (adminClient) {
-          await adminClient.auth.admin.deleteUser(userId)
-          console.log(`Usuário ${userId} deletado do Auth devido a erro`)
-        }
-      } catch (deleteErr) {
-        console.error("Erro ao deletar usuário do Auth após falha:", deleteErr)
-      }
-    }
-    
-    return { error: `Erro ao criar usuário: ${(err as Error).message}` }
-  }
-}
-
-/**
- * Passo 1: Criar perfil e salão inicial (após usuário já criado)
- */
-export async function onboardingStep1(
-  data: OnboardingStep1Data
-): Promise<ActionResult<{ salonId: string }>> {
-  // Validar dados obrigatórios
-  if (!data.firstName || !data.lastName || !data.phone || !data.billingAddress || 
-      !data.billingPostalCode || !data.billingCity || !data.billingState ||
-      !data.documentType || !data.document) {
-    return { error: "Campos obrigatórios não preenchidos" }
-  }
-
-  try {
-    // Aguardar trigger criar perfil se ainda não existir
-    await new Promise(resolve => setTimeout(resolve, 300))
-
-    // Criar salão e atualizar perfil em transação
+    // 4. Criar salão e atualizar perfil em transação
     const result = await db.transaction(async (tx) => {
+      if (!userId) {
+        throw new Error("User ID não disponível")
+      }
+
       const fullName = `${data.firstName} ${data.lastName}`.trim()
       const documentNumber = data.document.replace(/\D/g, '')
       
       // Atualizar perfil com todos os dados
       await tx.execute(sql`
         SELECT update_profile_on_signup(
-          ${data.userId}::uuid,
+          ${userId}::uuid,
           ${normalizeString(fullName)}::text,
           ${normalizeString(data.firstName)}::text,
           ${normalizeString(data.lastName)}::text,
@@ -253,26 +241,34 @@ export async function onboardingStep1(
           documentType: data.documentType,
           documentNumber: documentNumber,
         })
-        .where(eq(profiles.id, data.userId))
+        .where(eq(profiles.id, userId))
 
       // Criar salão
       const slug = normalizeString(data.salonName)
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7)
       
+      const salonData = {
+        name: normalizeString(data.salonName),
+        ownerId: userId,
+        slug,
+        subscriptionStatus: 'ACTIVE' as const,
+        address: data.address !== undefined ? normalizeString(data.address) : null,
+        phone: data.salonPhone !== undefined ? normalizeString(data.salonPhone) : null,
+        whatsapp: data.whatsapp !== undefined ? normalizeString(data.whatsapp) : null,
+        description: data.description !== undefined ? normalizeString(data.description) : null,
+        workHours: data.workHours !== undefined ? data.workHours : null,
+        settings: data.settings !== undefined ? data.settings : null,
+      }
+
       const [newSalon] = await tx.insert(salons)
-        .values({
-          name: normalizeString(data.salonName),
-          ownerId: data.userId,
-          slug,
-          subscriptionStatus: 'ACTIVE',
-        })
+        .values(salonData)
         .returning({ id: salons.id })
 
-      // Vincular salão ao perfil
+      // Vincular salão ao perfil e marcar onboarding como completo
       await tx.execute(sql`
         SELECT update_profile_on_signup(
-          ${data.userId}::uuid,
+          ${userId}::uuid,
           ${normalizeString(fullName)}::text,
           ${normalizeString(data.firstName)}::text,
           ${normalizeString(data.lastName)}::text,
@@ -289,7 +285,12 @@ export async function onboardingStep1(
         )
       `)
 
-      return { salonId: newSalon.id }
+      // Marcar onboarding como completo
+      await tx.update(profiles)
+        .set({ onboardingCompleted: true })
+        .where(eq(profiles.id, userId))
+
+      return { userId, salonId: newSalon.id }
     })
 
     return { success: true, data: result }
@@ -297,15 +298,19 @@ export async function onboardingStep1(
     console.error("Erro ao configurar conta:", err)
     
     // Deletar o usuário do Auth se a criação do perfil/salão falhar
-    if (data.userId) {
+    // Isso garante que não fiquem usuários órfãos no sistema
+    if (userId) {
       try {
         const adminClient = createAdminClient()
         if (adminClient) {
-          await adminClient.auth.admin.deleteUser(data.userId)
-          console.log(`Usuário ${data.userId} deletado do Auth devido a erro na criação do perfil`)
+          await adminClient.auth.admin.deleteUser(userId)
+          console.log(`Usuário ${userId} deletado do Auth devido a erro na criação do perfil`)
+        } else {
+          console.warn(`Não foi possível deletar usuário ${userId} do Auth: SUPABASE_SERVICE_ROLE_KEY não configurada`)
         }
       } catch (deleteErr) {
         console.error("Erro ao deletar usuário do Auth após falha:", deleteErr)
+        // Continuar mesmo se a deleção falhar - o importante é reportar o erro original
       }
     }
     

@@ -7,6 +7,8 @@ import { UserNav } from "@/components/dashboard/user-nav"
 import { SalonSelector } from "@/components/dashboard/salon-selector"
 import { RouteGuard } from "@/components/auth/route-guard"
 import { Bot } from 'lucide-react'
+import { db, profiles } from "@repo/db"
+import { eq } from "drizzle-orm"
 
 export default async function SalonLayout({
   children,
@@ -30,6 +32,14 @@ export default async function SalonLayout({
   const salons = await getUserSalons()
 
   if (salons.length === 0) {
+    // Verifica se o usuário tem plano SOLO antes de redirecionar
+    const userProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, user.id),
+      columns: { tier: true },
+    })
+
+    // Se for SOLO e não tiver salão, permite criar o primeiro (via onboarding)
+    // Se não for SOLO, redireciona para onboarding normalmente
     redirect("/onboarding")
   }
 
