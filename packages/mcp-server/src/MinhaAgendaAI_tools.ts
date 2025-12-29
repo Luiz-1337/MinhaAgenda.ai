@@ -831,5 +831,18 @@ export class MinhaAgendaAITools {
         })
     }
 
+    /**
+     * Verifica se o salão tem integração ativa com Google Calendar
+     * Método helper para verificação rápida sem precisar importar módulos externos
+     */
+    public async hasGoogleCalendarIntegration(salonId: string): Promise<boolean> {
+        const integration = await db.query.salonIntegrations.findFirst({
+            where: eq(salonIntegrations.salonId, salonId),
+            columns: { id: true, refreshToken: true },
+        })
+
+        return !!integration && !!integration.refreshToken
+    }
+
 }
 

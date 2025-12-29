@@ -285,7 +285,7 @@ async function main() {
     ) as unknown as Record<string, any>
   } else {
     console.log("🛠️ Criando tools locais (vercel-ai.ts)...")
-    aiTools = createVercelTools(salonId, clientPhone) as unknown as Record<string, any>
+    aiTools = (await createVercelTools(salonId, clientPhone)) as unknown as Record<string, any>
   }
 
   console.log(`✅ ${Object.keys(aiTools).length} tools criadas`)

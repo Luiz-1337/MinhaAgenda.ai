@@ -208,7 +208,7 @@ export async function POST(req: Request) {
 
     // Cria tools do MCP
     console.log("🛠️ Criando tools do MCP...")
-    const mcpTools = createMCPTools(salonId, clientPhone)
+    const mcpTools = await createMCPTools(salonId, clientPhone)
     console.log(`✅ ${Object.keys(mcpTools).length} tools criadas`)
     // Debug: garante que as tools estão com schema/executor (ajuda a diagnosticar toolCalls=0)
     try {
