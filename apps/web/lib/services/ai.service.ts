@@ -420,7 +420,8 @@ export function ensureIsoWithTimezone(input: unknown): unknown {
 
 export function createSalonAssistantPrompt(
   salonName: string, 
-  preferences?: Record<string, unknown>
+  preferences?: Record<string, unknown>,
+  knowledgeContext?: string
 ): string {
   // Obtém data e hora atual em pt-BR com timezone America/Sao_Paulo
   const now = new Date()
@@ -474,12 +475,21 @@ export function createSalonAssistantPrompt(
     }
   }
 
+  let knowledgeContextText = ""
+  if (knowledgeContext && knowledgeContext.trim()) {
+    knowledgeContextText = `\n\nCONTEXTO DE REGRAS DO SALÃO:\n${knowledgeContext}\n\nUse essas informações para responder de forma precisa e consistente. Se a pergunta do cliente estiver relacionada a essas regras, priorize essas informações.`
+    console.log("✅ Contexto RAG injetado no system prompt:")
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    console.log(knowledgeContext)
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+  }
+
   return `Você é o assistente virtual do salão ${salonName}.
 
 CONTEXTO TEMPORAL:
 - HOJE É: ${formattedDate}
 - HORA ATUAL: ${formattedTime}
-- Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${preferencesText}
+- Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${preferencesText}${knowledgeContextText}
 
 REGRAS CRÍTICAS:
 1. O cliente NÃO sabe IDs de serviço ou profissional. Nunca peça IDs.

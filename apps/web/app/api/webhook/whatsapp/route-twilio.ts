@@ -34,6 +34,15 @@ export async function POST(req: Request) {
   console.log("🔔 Webhook Twilio chamado - início do processamento");
 
   try {
+    // Verifica Content-Type antes de processar formData
+    const contentType = req.headers.get("content-type") || "";
+    const isFormData = contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded");
+    
+    if (!isFormData) {
+      console.error(`❌ Content-Type inválido: ${contentType}. Esperado: multipart/form-data ou application/x-www-form-urlencoded`);
+      return new Response("Content-Type must be multipart/form-data or application/x-www-form-urlencoded", { status: 400 });
+    }
+
     // Processa formData do Twilio (precisa ser feito antes da validação)
     const formData = await req.formData();
     
@@ -93,13 +102,13 @@ export async function POST(req: Request) {
     const clientPhone = normalizePhoneNumber(from);
     console.log(`📞 Número normalizado do cliente: ${clientPhone}`);
 
-    // Busca salão pelo número de WhatsApp que recebeu a mensagem
+    // Busca salão pelo número de WhatsApp do agente que recebeu a mensagem
     const salonId = await getSalonIdByWhatsapp(to);
     
     if (!salonId) {
-      console.error(`❌ Salão não encontrado para o número de WhatsApp: ${to}`);
+      console.error(`❌ Agente não encontrado para o número de WhatsApp: ${to}`);
       return new Response(
-        `Salão não encontrado para o número de WhatsApp: ${to}`,
+        `Agente não encontrado para o número de WhatsApp: ${to}`,
         { status: 404 }
       );
     }
@@ -216,7 +225,7 @@ export async function POST(req: Request) {
     const impl = new MinhaAgendaAITools();
 
     // Gera resposta usando streamText (mesmo padrão do teste.tsx)
-    const modelName = "gpt-4o-mini"; // Modelo usado
+    const modelName = "gpt-4o-mini"; 
     const result = streamText({
       model: openai(modelName),
       messages: convertToModelMessages(uiMessages),
@@ -426,8 +435,8 @@ export async function POST(req: Request) {
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);
 
-    // Envia resposta via WhatsApp
-    await sendWhatsAppMessage(from, finalText);
+    // Envia resposta via WhatsApp usando o número do agente ativo
+    await sendWhatsAppMessage(from, finalText, salonId);
 
     console.log(`✅ Resposta enviada para ${from}`);
 

@@ -279,12 +279,13 @@ export async function sendManualMessage(
   }
 
   try {
-    // Busca o chat para obter o clientPhone
+    // Busca o chat para obter o clientPhone e salonId
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
       columns: {
         id: true,
         clientPhone: true,
+        salonId: true,
         isManual: true,
       },
     })
@@ -300,8 +301,8 @@ export async function sendManualMessage(
     // Salva a mensagem como assistant (mensagem do agente humano)
     await saveMessage(chat.id, "assistant", content.trim())
 
-    // Envia via WhatsApp
-    await sendWhatsAppMessage(chat.clientPhone, content.trim())
+    // Envia via WhatsApp usando o número do agente ativo
+    await sendWhatsAppMessage(chat.clientPhone, content.trim(), chat.salonId)
 
     // Atualiza updatedAt do chat
     await db

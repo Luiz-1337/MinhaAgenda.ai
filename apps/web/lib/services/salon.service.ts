@@ -4,7 +4,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionals, profiles } from "@repo/db"
+import { db, salons, professionals, profiles, agents } from "@repo/db"
 import { and, asc, eq } from "drizzle-orm"
 import type { SalonOwnerResult } from "@/lib/types/salon"
 import type { CreateSalonSchema } from "@/lib/schemas"
@@ -106,8 +106,8 @@ function sanitizeWhatsApp(whatsapp: string): string {
 }
 
 /**
- * Busca o ID do salão baseado no número de WhatsApp
- * @param whatsapp - Número de WhatsApp do salão (pode conter espaços, traços, parênteses)
+ * Busca o ID do salão baseado no número de WhatsApp do agente
+ * @param whatsapp - Número de WhatsApp do agente (pode conter espaços, traços, parênteses)
  * @returns O ID do salão (UUID) ou null se não encontrado
  * @throws {Error} Se ocorrer um erro na consulta ao banco de dados
  */
@@ -123,18 +123,18 @@ export async function getSalonIdByWhatsapp(
   }
 
   try {
-    // Busca o salão pelo número de WhatsApp sanitizado
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.whatsapp, sanitizedWhatsapp),
-      columns: { id: true },
+    // Busca o agente pelo número de WhatsApp sanitizado
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.whatsappNumber, sanitizedWhatsapp),
+      columns: { salonId: true },
     })
 
-    // Retorna o ID se encontrado, caso contrário retorna null
-    return salon?.id ?? null
+    // Retorna o salonId do agente se encontrado, caso contrário retorna null
+    return agent?.salonId ?? null
   } catch (error) {
     // Re-lança o erro com contexto adicional
     throw new Error(
-      `Erro ao buscar salão por WhatsApp: ${error instanceof Error ? error.message : String(error)}`
+      `Erro ao buscar salão por WhatsApp do agente: ${error instanceof Error ? error.message : String(error)}`
     )
   }
 }

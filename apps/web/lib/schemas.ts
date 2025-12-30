@@ -82,8 +82,10 @@ export const agentSchema = z.object({
 
 export type AgentSchema = z.infer<typeof agentSchema>
 
-// Schema para criação de agente (todos os campos obrigatórios exceto whatsappNumber)
-export const createAgentSchema = agentSchema
+// Schema para criação de agente (todos os campos obrigatórios, incluindo whatsappNumber)
+export const createAgentSchema = agentSchema.extend({
+  whatsappNumber: z.string().min(1, "Número de WhatsApp é obrigatório"),
+})
 
 export type CreateAgentSchema = z.infer<typeof createAgentSchema>
 

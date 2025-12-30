@@ -169,7 +169,7 @@ export async function createAgent(
         systemPrompt: parsed.data.systemPrompt.trim(),
         model: parsed.data.model,
         tone: parsed.data.tone,
-        whatsappNumber: emptyStringToNull(parsed.data.whatsappNumber),
+        whatsappNumber: parsed.data.whatsappNumber.trim(),
         isActive: parsed.data.isActive,
       })
       .returning({ id: agents.id })
@@ -253,7 +253,12 @@ export async function updateAgent(
       updateData.tone = parsed.data.tone
     }
     if (parsed.data.whatsappNumber !== undefined) {
-      updateData.whatsappNumber = emptyStringToNull(parsed.data.whatsappNumber)
+      const whatsappValue = emptyStringToNull(parsed.data.whatsappNumber)
+      // Como o campo é NOT NULL no schema, apenas atualiza se houver um valor válido
+      // Se for null (string vazia), não atualiza o campo (undefined = não atualizar)
+      if (whatsappValue !== null) {
+        updateData.whatsappNumber = whatsappValue
+      }
     }
     if (parsed.data.isActive !== undefined) {
       updateData.isActive = parsed.data.isActive

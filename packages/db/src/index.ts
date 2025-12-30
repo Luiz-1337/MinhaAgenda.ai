@@ -30,6 +30,7 @@ if (!process.env.DATABASE_URL) {
 const connectionString = process.env.DATABASE_URL
 const client = postgres(connectionString, { prepare: false })
 export const db = drizzle(client, { schema })
+export { client as postgresClient }
 export * from './schema'
 // Re-export drizzle-orm helpers for convenience
 export { and, eq, gt, lt, gte, lte, ne, like, ilike, inArray, notInArray, isNull, isNotNull, desc, asc, sql } from 'drizzle-orm'

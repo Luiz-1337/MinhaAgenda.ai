@@ -22,9 +22,9 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
   }, [range, stats.creditsByDay])
 
   // Calcula variação percentual
-  const completedVariation = "+58%"
-  const responseVariation = "+4%"
-  const queueVariation = "-18%"
+
+
+
 
   // Transforma topAgents para o formato esperado pelo AgentList
   const agents = stats.topAgents.map((agent, index) => ({
@@ -57,9 +57,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
             </p>
             <p className="text-xl font-bold text-slate-800 dark:text-white">
               {stats.responseRate}%{" "}
-              <span className="text-xs font-normal text-emerald-500 dark:text-emerald-400 ml-1">
-                {responseVariation}
-              </span>
+
             </p>
           </div>
           <div>
@@ -68,9 +66,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
             </p>
             <p className="text-xl font-bold text-slate-800 dark:text-white">
               {stats.queueAverageTime}{" "}
-              <span className="text-xs font-normal text-emerald-500 dark:text-emerald-400 ml-1">
-                {queueVariation}
-              </span>
+
             </p>
           </div>
         </div>
@@ -81,7 +77,7 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
         <StatCard
           title="Atendimentos Concluídos"
           value={stats.completedAppointments}
-          trend={completedVariation}
+
           icon={<CheckCircle2 size={24} />}
           badgeType="neutral"
         />

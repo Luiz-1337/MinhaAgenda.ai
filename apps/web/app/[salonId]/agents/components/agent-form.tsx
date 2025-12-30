@@ -6,7 +6,7 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle } from "lucide-react"
-import { agentSchema, type AgentSchema } from "@/lib/schemas"
+import { agentSchema, createAgentSchema, type AgentSchema } from "@/lib/schemas"
 import { createAgent, updateAgent } from "@/app/actions/agents"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -33,7 +33,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
   const [isPending, startTransition] = useTransition()
 
   const form = useForm<AgentSchema>({
-    resolver: zodResolver(agentSchema),
+    resolver: zodResolver(mode === "create" ? createAgentSchema : agentSchema),
     defaultValues: {
       name: initialData?.name ?? "",
       systemPrompt: initialData?.systemPrompt ?? "",

@@ -3,11 +3,12 @@ import { openai } from "@ai-sdk/openai";
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
 import { createSalonAssistantPrompt } from '@/lib/services/ai.service';
 import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
-import { db, salons, customers, chats } from "@repo/db";
+import { db, salons, customers, chats, agents } from "@repo/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
 import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage } from '@/lib/services/chat.service';
 import { validateRequest } from "twilio";
+import { findRelevantContext } from "@/app/actions/knowledge";
 
 export const maxDuration = 120;
 
@@ -18,6 +19,22 @@ export async function POST(req: Request) {
   console.log("🔔 Webhook Twilio chamado - início do processamento");
 
   try {
+    // Verifica Content-Type para suportar tanto form-data (Twilio) quanto JSON (testes)
+    const contentType = req.headers.get("content-type") || "";
+    const isFormData = contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded");
+    const isJson = contentType.includes("application/json");
+    
+    // Se for JSON, provavelmente é uma requisição de teste - retorna erro informando para usar /api/chat
+    if (isJson) {
+      console.log("⚠️ Requisição JSON recebida. Para testes de chat, use /api/chat");
+      return new Response("Este endpoint é para webhooks do Twilio (form-data). Para testes de chat, use /api/chat", { status: 400 });
+    }
+    
+    if (!isFormData) {
+      console.error(`❌ Content-Type inválido: ${contentType}. Esperado: multipart/form-data ou application/x-www-form-urlencoded`);
+      return new Response("Content-Type must be multipart/form-data or application/x-www-form-urlencoded", { status: 400 });
+    }
+
     // Processa formData do Twilio (precisa ser feito antes da validação)
     const formData = await req.formData();
     
@@ -116,7 +133,43 @@ export async function POST(req: Request) {
       }
     }
 
-    const systemPrompt = createSalonAssistantPrompt(salonName, preferences);
+    // Busca agente ativo do salão para recuperar contexto de conhecimento
+    let knowledgeContext: string | undefined = undefined;
+    const activeAgent = await db.query.agents.findFirst({
+      where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
+      columns: { id: true },
+    });
+
+    // Se houver agente ativo e mensagem do usuário, busca contexto relevante
+    if (activeAgent && body) {
+      try {
+        const contextResult = await findRelevantContext(
+          activeAgent.id,
+          body,
+          3
+        );
+        
+        if (!("error" in contextResult) && contextResult.data && contextResult.data.length > 0) {
+          // Formata o contexto recuperado
+          const contextTexts = contextResult.data.map((item) => item.content).join("\n\n");
+          knowledgeContext = contextTexts;
+          console.log(`📚 Contexto RAG recuperado (${contextResult.data.length} itens):`);
+          contextResult.data.forEach((item, index) => {
+            console.log(`  [${index + 1}] ${item.content}`);
+          });
+          console.log(`\n📝 Contexto completo que será injetado no prompt:\n${contextTexts}\n`);
+        } else {
+          console.log("⚠️ Nenhum contexto RAG encontrado ou erro na busca:", contextResult);
+        }
+      } catch (error) {
+        console.error("❌ Erro ao buscar contexto RAG:", error);
+        // Continua sem contexto se houver erro
+      }
+    } else {
+      console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG");
+    }
+
+    const systemPrompt = createSalonAssistantPrompt(salonName, preferences, knowledgeContext);
 
     // Encontra ou cria chat
     console.log("💬 Encontrando ou criando chat...");
@@ -205,8 +258,8 @@ export async function POST(req: Request) {
       console.warn("⚠️ Erro ao salvar mensagem do assistente em chatMessages (continuando):", err);
     });
 
-    // Envia resposta via WhatsApp
-    await sendWhatsAppMessage(from, finalText);
+    // Envia resposta via WhatsApp usando o número do agente ativo
+    await sendWhatsAppMessage(from, finalText, salonId);
 
     console.log(`✅ Resposta enviada para ${from}`);
 

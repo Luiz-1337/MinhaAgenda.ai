@@ -11,12 +11,14 @@ import { getCurrentSalon } from "@/app/actions/salon"
 import { getCurrentProfile } from "@/app/actions/profile"
 import { useSalon } from "@/contexts/salon-context"
 import { toast } from "sonner"
-import { User, Store, Lock, Save } from "lucide-react"
+import { User, Store, Shield, Save, ChevronRight } from "lucide-react"
 import type { SalonDetails } from "@/app/actions/salon"
 import type { ProfileDetails } from "@/app/actions/profile"
 
+type TabType = "profile" | "salon" | "security"
+
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"profile" | "salon" | "security">("profile")
+  const [activeTab, setActiveTab] = useState<TabType>("profile")
   const { activeSalon } = useSalon()
   const [salonData, setSalonData] = useState<SalonDetails | null>(null)
   const [isLoadingSalon, setIsLoadingSalon] = useState(false)
@@ -25,6 +27,12 @@ export default function SettingsPage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false)
   const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" })
   const [isPendingPassword, startPasswordTransition] = useTransition()
+
+  const navItems: { id: TabType; label: string; icon: React.ReactNode; description: string }[] = [
+    { id: "profile", label: "Meu Perfil", icon: <User size={18} />, description: "Informações pessoais e avatar" },
+    { id: "salon", label: "Meu Salão", icon: <Store size={18} />, description: "Dados do estabelecimento e regras" },
+    { id: "security", label: "Segurança", icon: <Shield size={18} />, description: "Senha e sessões ativas" },
+  ]
 
   // Função para carregar dados do salão
   const loadSalonData = async (salonId: string) => {
@@ -133,72 +141,54 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-6 relative">
-      {/* Header & Actions */}
-      <div className="flex justify-between items-end flex-shrink-0">
+    <div className="h-full flex flex-col gap-6 overflow-hidden">
+      {/* Header Compacto */}
+      <div className="flex justify-between items-center flex-shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Gerencie seu perfil, salão e segurança.</p>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
+          <p className="text-xs text-slate-500">Personalize seu ambiente de IA.</p>
         </div>
-        <button className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transform">
-          <Save size={18} />
-          Salvar Tudo
+        <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
+          <Save size={16} />
+          Salvar Alterações
         </button>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex border-b border-slate-200 dark:border-white/10">
-        <button
-          onClick={() => setActiveTab("profile")}
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === "profile"
-              ? "text-indigo-600 dark:text-indigo-400"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <User size={16} /> Perfil
-          </span>
-          {activeTab === "profile" && (
-            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("salon")}
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === "salon"
-              ? "text-indigo-600 dark:text-indigo-400"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Store size={16} /> Meu Salão
-          </span>
-          {activeTab === "salon" && (
-            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("security")}
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            activeTab === "security"
-              ? "text-indigo-600 dark:text-indigo-400"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Lock size={16} /> Senha & Segurança
-          </span>
-          {activeTab === "security" && (
-            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></span>
-          )}
-        </button>
-      </div>
+      {/* Main Container - Two Columns */}
+      <div className="flex-1 flex gap-8 overflow-hidden">
+        {/* Left Sidebar Navigation */}
+        <nav className="w-64 flex-shrink-0 flex flex-col gap-1">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex items-start gap-4 p-4 rounded-2xl transition-all text-left group ${
+                activeTab === item.id
+                  ? "bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm"
+                  : "hover:bg-slate-100 dark:hover:bg-white/5 opacity-60 hover:opacity-100"
+              }`}
+            >
+              <div className={`mt-1 p-2 rounded-xl transition-colors ${
+                activeTab === item.id ? "bg-indigo-600 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500 group-hover:bg-indigo-500/10 group-hover:text-indigo-500"
+              }`}>
+                {item.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-bold ${activeTab === item.id ? "text-slate-800 dark:text-white" : "text-slate-600 dark:text-slate-400"}`}>
+                  {item.label}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate">{item.description}</p>
+              </div>
+              {activeTab === item.id && <ChevronRight size={14} className="mt-1.5 text-indigo-500" />}
+            </button>
+          ))}
+        </nav>
 
-      {/* Content Area (Scrollable) */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-10">
+        {/* Right Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-4">
+          <div className="max-w-3xl">
         {activeTab === "profile" && (
-          <>
+          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
             {isLoadingProfile ? (
               <div className="space-y-6">
                 <div className="space-y-2">
@@ -236,11 +226,11 @@ export default function SettingsPage() {
             ) : (
               <div className="py-8 text-center text-slate-400">Erro ao carregar dados do perfil.</div>
             )}
-          </>
+          </div>
         )}
 
         {activeTab === "salon" && (
-          <>
+          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
             {isLoadingSalon ? (
               <div className="space-y-6">
                 <div className="space-y-2">
@@ -318,17 +308,15 @@ export default function SettingsPage() {
                 Nenhum salão selecionado. Selecione um salão no menu superior.
               </div>
             )}
-          </>
+          </div>
         )}
 
         {activeTab === "security" && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                <Lock size={16} className="text-indigo-500" /> Alterar Senha
-              </h3>
+          <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-6">Alterar Senha</h3>
 
-              <form onSubmit={handleChangePassword} className="space-y-4 max-w-lg">
+              <form onSubmit={handleChangePassword} className="space-y-4 max-w-sm">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
                     Senha Atual
@@ -371,7 +359,7 @@ export default function SettingsPage() {
                 <button
                   type="submit"
                   disabled={isPendingPassword}
-                  className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isPendingPassword ? "Alterando..." : "Atualizar Senha"}
                 </button>
@@ -379,6 +367,8 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   )

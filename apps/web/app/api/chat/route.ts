@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai"
-import { streamText, type CoreMessage } from "ai"
+import { streamText, type CoreMessage, convertToModelMessages, type UIMessage } from "ai"
 import { getAvailableSlots } from "@/lib/availability"
 import { chatRequestSchema } from "@/lib/schemas/chat.schema"
 import { 
@@ -11,15 +11,35 @@ import {
   createSalonAssistantPrompt 
 } from "@/lib/services/ai.service"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, chatMessages } from "@repo/db"
+import { db, salons, chatMessages, agents } from "@repo/db"
 import { and, eq } from "drizzle-orm"
+import { findRelevantContext } from "@/app/actions/knowledge"
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { messages, salonId } = chatRequestSchema.parse(body)
+  
+  // Tenta validar como UIMessage[] primeiro (formato do useChat)
+  let messages: CoreMessage[]
+  let salonId: string | undefined
+  
+  // Verifica se são mensagens no formato UIMessage (com parts)
+  if (body.messages && Array.isArray(body.messages) && body.messages[0]?.parts) {
+    // Formato UIMessage do useChat - converte para CoreMessage
+    const uiMessages = body.messages as UIMessage[]
+    messages = convertToModelMessages(uiMessages)
+    salonId = body.salonId
+  } else {
+    // Formato CoreMessage direto - valida com schema
+    const parsed = chatRequestSchema.parse(body)
+    // O schema valida a estrutura correta, então fazemos cast direto para CoreMessage[]
+    // O AI SDK aceita CoreMessage[] que é compatível com ModelMessage[]
+    messages = parsed.messages as CoreMessage[]
+    salonId = parsed.salonId
+  }
 
+  // Para testes, se não houver salonId, retorna erro informativo
   if (!salonId) {
-    return new Response("salonId é obrigatório", { status: 400 })
+    return new Response("salonId é obrigatório. Para testes, inclua salonId no body da requisição.", { status: 400 })
   }
 
   // Busca dados do salão para o prompt
@@ -40,7 +60,46 @@ export async function POST(req: Request) {
   // Se necessário, buscar preferências via phone do cliente na tabela customers
   const preferences: Record<string, unknown> | undefined = undefined
 
-  const systemPrompt = createSalonAssistantPrompt(salonName, preferences)
+  // Busca agente ativo do salão para recuperar contexto de conhecimento
+  let knowledgeContext: string | undefined = undefined
+  const activeAgent = await db.query.agents.findFirst({
+    where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
+    columns: { id: true },
+  })
+
+  // Se houver agente ativo e mensagem do usuário, busca contexto relevante
+  if (activeAgent) {
+    const lastUserMessage = messages[messages.length - 1]
+    if (lastUserMessage && lastUserMessage.role === 'user' && typeof lastUserMessage.content === 'string') {
+      try {
+        const contextResult = await findRelevantContext(
+          activeAgent.id,
+          lastUserMessage.content,
+          3
+        )
+        
+        if (!("error" in contextResult) && contextResult.data && contextResult.data.length > 0) {
+          // Formata o contexto recuperado
+          const contextTexts = contextResult.data.map((item) => item.content).join("\n\n")
+          knowledgeContext = contextTexts
+          console.log(`📚 Contexto RAG recuperado (${contextResult.data.length} itens):`)
+          contextResult.data.forEach((item, index) => {
+            console.log(`  [${index + 1}] ${item.content}`)
+          })
+          console.log(`\n📝 Contexto completo que será injetado no prompt:\n${contextTexts}\n`)
+        } else {
+          console.log("⚠️ Nenhum contexto RAG encontrado ou erro na busca:", contextResult)
+        }
+      } catch (error) {
+        console.error("❌ Erro ao buscar contexto RAG:", error)
+        // Continua sem contexto se houver erro
+      }
+    }
+  } else {
+    console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG")
+  }
+
+  const systemPrompt = createSalonAssistantPrompt(salonName, preferences, knowledgeContext)
 
   const checkAvailability = createAvailabilityTool(
     salonId,
@@ -77,7 +136,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: openai(modelName),
     system: systemPrompt,
-    messages: messages as CoreMessage[],
+    messages: messages,
     tools: {
       checkAvailability,
       bookAppointment,

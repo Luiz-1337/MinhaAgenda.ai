@@ -439,7 +439,7 @@ export const agents = pgTable(
     systemPrompt: text('system_prompt').notNull(),
     model: text('model').notNull(),
     tone: text('tone').notNull(),
-    whatsappNumber: text('whatsapp_number'),
+    whatsappNumber: text('whatsapp_number').notNull(),
     isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
@@ -462,6 +462,22 @@ export const embeddings = pgTable(
   },
   (table) => [
     index('embeddings_agent_idx').on(table.agentId)
+  ]
+)
+
+export const agentKnowledgeBase = pgTable(
+  'agent_knowledge_base',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'cascade' }).notNull(),
+    content: text('content').notNull(),
+    embedding: vector('embedding').notNull(),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('agent_knowledge_base_agent_idx').on(table.agentId)
   ]
 )
 
@@ -546,11 +562,16 @@ export const customersRelations = relations(customers, ({ one }) => ({
 
 export const agentsRelations = relations(agents, ({ one, many }) => ({
   salon: one(salons, { fields: [agents.salonId], references: [salons.id] }),
-  embeddings: many(embeddings)
+  embeddings: many(embeddings),
+  knowledgeBase: many(agentKnowledgeBase)
 }))
 
 export const embeddingsRelations = relations(embeddings, ({ one }) => ({
   agent: one(agents, { fields: [embeddings.agentId], references: [agents.id] })
+}))
+
+export const agentKnowledgeBaseRelations = relations(agentKnowledgeBase, ({ one }) => ({
+  agent: one(agents, { fields: [agentKnowledgeBase.agentId], references: [agents.id] })
 }))
 
 export const paymentsRelations = relations(payments, ({ one }) => ({

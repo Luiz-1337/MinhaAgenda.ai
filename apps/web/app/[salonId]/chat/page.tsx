@@ -61,33 +61,50 @@ export default function ChatPage() {
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isTogglingManual, setIsTogglingManual] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isLoadingRef = useRef(false)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const lastMessageCountRef = useRef<number>(0)
 
   // Busca conversas quando o componente carrega ou salonId muda
   useEffect(() => {
     if (!salonId) return
 
+    let isMounted = true
+
     async function loadConversations() {
       setIsLoading(true)
       try {
         const result = await getChatConversations(salonId)
+        if (!isMounted) return
         if ("error" in result) {
           toast.error(result.error)
           setConversations([])
         } else {
           setConversations(result)
-          if (result.length > 0 && !activeId) {
-            setActiveId(result[0].id)
-          }
+          // Só define activeId se não houver um ativo e houver conversas
+          setActiveId((currentActiveId) => {
+            if (!currentActiveId && result.length > 0) {
+              return result[0].id
+            }
+            return currentActiveId
+          })
         }
       } catch (error) {
+        if (!isMounted) return
         console.error("Erro ao carregar conversas:", error)
         toast.error("Erro ao carregar conversas")
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
 
     loadConversations()
+
+    return () => {
+      isMounted = false
+    }
   }, [salonId])
 
 
@@ -109,50 +126,113 @@ export default function ChatPage() {
   }, [filter, query, conversations])
 
   const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
-  const isManualMode = active?.isManual || false
+  const isManualMode = useMemo(() => {
+    if (!active) return false
+    return active.isManual || false
+  }, [active?.id, active?.isManual])
 
   // Atualiza mensagens quando o chat ativo muda
   useEffect(() => {
     if (!activeId) {
       setMessages([])
+      lastMessageCountRef.current = 0
       return
     }
 
+    let isMounted = true
+
     async function loadMessages() {
+      // Evita carregar se já estiver carregando
+      if (isLoadingRef.current) return
+      
+      isLoadingRef.current = true
       setIsLoadingMessages(true)
       try {
-        if (!activeId) return
+        if (!activeId || !isMounted) return
         const result = await getChatMessages(activeId)
+        if (!isMounted) return
         if ("error" in result) {
           toast.error(result.error)
           setMessages([])
+          lastMessageCountRef.current = 0
         } else {
           setMessages(result)
+          lastMessageCountRef.current = result.length
         }
       } catch (error) {
+        if (!isMounted) return
         console.error("Erro ao carregar mensagens:", error)
         toast.error("Erro ao carregar mensagens")
       } finally {
-        setIsLoadingMessages(false)
+        isLoadingRef.current = false
+        if (isMounted) {
+          setIsLoadingMessages(false)
+        }
       }
     }
 
+    // Carrega mensagens imediatamente
     loadMessages()
     
-    // Polling para atualizar mensagens quando em modo manual (a cada 3 segundos)
-    let interval: NodeJS.Timeout | null = null
-    if (isManualMode) {
-      interval = setInterval(() => {
-        loadMessages()
-      }, 3000)
-    }
-    
     return () => {
-      if (interval) {
-        clearInterval(interval)
+      isMounted = false
+      isLoadingRef.current = false
+    }
+  }, [activeId])
+
+  // Polling separado para modo manual - só atualiza se o número de mensagens mudou
+  useEffect(() => {
+    // Limpa intervalo anterior se existir
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+
+    // Só inicia polling se estiver em modo manual e tiver um chat ativo
+    if (!isManualMode || !activeId) {
+      return
+    }
+
+    let isMounted = true
+
+    async function checkForNewMessages() {
+      // Evita verificar se já estiver carregando
+      if (isLoadingRef.current || !isMounted || !activeId) return
+      
+      isLoadingRef.current = true
+      try {
+        const result = await getChatMessages(activeId)
+        if (!isMounted) return
+        if (!("error" in result)) {
+          // Só atualiza se o número de mensagens mudou
+          if (result.length !== lastMessageCountRef.current) {
+            setMessages(result)
+            lastMessageCountRef.current = result.length
+          }
+        }
+      } catch (error) {
+        if (!isMounted) return
+        console.error("Erro ao verificar novas mensagens:", error)
+      } finally {
+        isLoadingRef.current = false
       }
     }
-  }, [activeId, isManualMode])
+
+    // Polling a cada 3 segundos
+    pollingIntervalRef.current = setInterval(() => {
+      if (isMounted && activeId && !isLoadingRef.current) {
+        checkForNewMessages()
+      }
+    }, 3000)
+    
+    return () => {
+      isMounted = false
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+    }
+  }, [isManualMode, activeId])
 
   async function handleToggleManualMode() {
     if (!activeId) return
@@ -186,16 +266,31 @@ export default function ChatPage() {
     const messageToSend = messageText.trim()
     setMessageText("")
     
+    // Adiciona mensagem otimisticamente ao estado local
+    const optimisticMessage: ChatMessage = {
+      id: `temp-${Date.now()}`,
+      from: "agente",
+      text: messageToSend,
+      time: "Agora"
+    }
+    setMessages(prev => [...prev, optimisticMessage])
+    lastMessageCountRef.current += 1
+    
     try {
       const result = await sendManualMessage(activeId, messageToSend)
       if ("error" in result) {
         toast.error(result.error)
         setMessageText(messageToSend) // Restaura o texto em caso de erro
+        // Remove mensagem otimista em caso de erro
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
+        lastMessageCountRef.current -= 1
       } else {
-        // Recarrega mensagens para mostrar a nova mensagem
+        // Recarrega mensagens apenas uma vez para garantir sincronização
+        // O polling vai manter atualizado depois
         const updatedMessages = await getChatMessages(activeId)
         if (!("error" in updatedMessages)) {
           setMessages(updatedMessages)
+          lastMessageCountRef.current = updatedMessages.length
         }
         if (textareaRef.current) {
           textareaRef.current.focus()
@@ -205,6 +300,9 @@ export default function ChatPage() {
       console.error("Erro ao enviar mensagem:", error)
       toast.error("Erro ao enviar mensagem")
       setMessageText(messageToSend) // Restaura o texto em caso de erro
+      // Remove mensagem otimista em caso de erro
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
+      lastMessageCountRef.current -= 1
     } finally {
       setIsSendingMessage(false)
     }

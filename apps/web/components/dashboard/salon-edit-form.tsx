@@ -118,61 +118,52 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         {/* Identity Card */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-            <Store size={16} className="text-indigo-500" /> Identidade do Salão
-          </h3>
-          <div className="grid grid-cols-1 gap-5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                Nome do Estabelecimento
-              </label>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-6 border-b border-slate-100 dark:border-white/5 pb-4">Dados da Unidade</h3>
+          <div className="space-y-5">
+            <div className="space-y-1.5 w-full">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Nome do Estabelecimento</label>
               <input
                 type="text"
                 {...form.register("name")}
                 placeholder="Ex.: Barber Club"
-                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500/50 transition-all"
               />
               {form.formState.errors.name && (
                 <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                Link Personalizado (Slug)
-              </label>
+            <div className="space-y-1.5 w-full">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Slug da URL</label>
               <div className="flex rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 overflow-hidden focus-within:border-indigo-500/50 transition-all">
-                <span className="px-4 py-2.5 text-slate-500 border-r border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-white/5 select-none text-xs font-mono flex items-center">
-                  minhaagenda.ai/
-                </span>
+                <span className="px-3 py-2 text-slate-400 bg-slate-100 dark:bg-white/5 text-[10px] font-mono flex items-center">minhaagenda.ai/</span>
                 <input
                   type="text"
                   value={salon.slug}
                   disabled
-                  className="flex-1 bg-transparent px-4 py-2.5 text-slate-500 dark:text-slate-400 placeholder-slate-500 focus:outline-none text-sm"
+                  className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none"
                 />
               </div>
-              <p className="text-[10px] text-slate-400">O slug não pode ser alterado.</p>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Descrição</label>
+            <div className="space-y-1.5 w-full">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Bio / Descrição</label>
               <textarea
-                rows={3}
+                rows={2}
                 {...form.register("description")}
                 placeholder="Descreva seu salão..."
-                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
+                className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
               />
             </div>
           </div>
         </div>
 
         {/* Location & Contact Card */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
           <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
             <MapPin size={16} className="text-indigo-500" /> Localização & Contato
           </h3>
@@ -219,7 +210,7 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
         </div>
 
         {/* Work Hours Card */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
           <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
             <Clock size={16} className="text-indigo-500" /> Horário de Funcionamento
           </h3>
@@ -294,51 +285,42 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
         </div>
 
         {/* Rules & Details Card */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-            <AlertCircle size={16} className="text-indigo-500" /> Regras & Comodidades
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CreditCard size={18} className="text-slate-400" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Aceita Cartão</span>
-              </div>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4">Regras de Negócio</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-2"><CreditCard size={14} className="text-slate-400" /><span className="text-xs font-medium">Aceita Cartão</span></div>
               <div
-                className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${
+                className={`w-8 h-4 rounded-full relative cursor-pointer transition-colors ${
                   form.watch("settings.accepts_card")
-                    ? "bg-indigo-500/20"
-                    : "bg-slate-300 dark:bg-slate-700"
+                    ? "bg-emerald-500"
+                    : "bg-slate-200 dark:bg-slate-800"
                 }`}
                 onClick={() =>
                   form.setValue("settings.accepts_card", !form.watch("settings.accepts_card"))
                 }
               >
                 <div
-                  className={`absolute top-0.5 w-4 h-4 bg-white dark:bg-slate-400 rounded-full shadow-sm transition-transform ${
-                    form.watch("settings.accepts_card") ? "translate-x-5" : "translate-x-0.5"
+                  className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                    form.watch("settings.accepts_card") ? "right-0.5" : "left-0.5"
                   }`}
                 ></div>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Car size={18} className="text-slate-400" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Estacionamento</span>
-              </div>
+            <div className="p-3 rounded-xl border border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-2"><Car size={14} className="text-slate-400" /><span className="text-xs font-medium">Estacionamento</span></div>
               <div
-                className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${
+                className={`w-8 h-4 rounded-full relative cursor-pointer transition-colors ${
                   form.watch("settings.parking")
-                    ? "bg-indigo-500/20"
-                    : "bg-slate-300 dark:bg-slate-700"
+                    ? "bg-emerald-500"
+                    : "bg-slate-200 dark:bg-slate-800"
                 }`}
                 onClick={() => form.setValue("settings.parking", !form.watch("settings.parking"))}
               >
                 <div
-                  className={`absolute top-0.5 w-4 h-4 bg-white dark:bg-slate-400 rounded-full shadow-sm transition-transform ${
-                    form.watch("settings.parking") ? "translate-x-5" : "translate-x-0.5"
+                  className={`absolute top-0.5 w-3 h-3 bg-white dark:bg-slate-600 rounded-full transition-transform ${
+                    form.watch("settings.parking") ? "right-0.5" : "left-0.5"
                   }`}
                 ></div>
               </div>
@@ -379,7 +361,7 @@ export function SalonEditForm({ salon, salonId }: SalonEditFormProps) {
         <button
           type="submit"
           disabled={isPending}
-          className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isPending ? "Salvando..." : "Salvar Alterações"}
         </button>

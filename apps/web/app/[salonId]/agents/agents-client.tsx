@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Plus, Bot, BrainCircuit, Phone } from "lucide-react"
+import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap } from "lucide-react"
 import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
@@ -213,6 +213,15 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                     Inativo
                   </span>
                 )}
+
+                <button
+                  onClick={() => router.push(`/${salonId}/agents/${agent.id}/training`)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors"
+                  title="Treinamentos da IA"
+                >
+                  <GraduationCap size={16} />
+                  <span className="hidden sm:inline">Treinamentos</span>
+                </button>
 
                 <AgentActionMenu
                   onEdit={() => handleEditAgent(agent)}
