@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Search, Download, MoreHorizontal, User, Plus } from "lucide-react"
+import { Search, Download, User, Plus } from "lucide-react"
 import { toast } from "sonner"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
-import { getSalonCustomers, type CustomerRow } from "@/app/actions/customers"
+import { getSalonCustomers, deleteSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { useSalon } from "@/contexts/salon-context"
 import { CreateContactDialog } from "@/components/features/create-contact-dialog"
-import { DeleteContactDialog } from "@/components/features/delete-contact-dialog"
+import { ActionMenu } from "@/components/ui/action-menu"
+import { ConfirmModal } from "@/components/ui/confirm-modal"
 
 function exportCustomersToCSV(customers: CustomerRow[]) {
   const headers = ["Nome", "Telefone", "E-mail", "Preferências"]
@@ -86,11 +86,6 @@ export default function ContactsPage() {
     toast.success("Contatos exportados com sucesso")
   }
 
-  function handleViewCustomer(customer: CustomerRow) {
-    toast.info(`Visualizando: ${customer.name}`)
-    // TODO: Implementar modal/dialog para visualizar detalhes do cliente
-  }
-
   function handleEditCustomer(customer: CustomerRow) {
     toast.info(`Editando: ${customer.name}`)
     // TODO: Implementar modal/dialog para editar cliente
@@ -101,12 +96,26 @@ export default function ContactsPage() {
     setIsDeleteDialogOpen(true)
   }
 
-  function handleDeleteSuccess() {
-    // Remove o contato da lista
-    if (customerToDelete) {
+  async function handleDeleteCustomer() {
+    if (!activeSalon || !customerToDelete) {
+      toast.error("Selecione um salão")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await deleteSalonCustomer(customerToDelete.id, activeSalon.id)
+
+      if ("error" in result) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success("Contato removido com sucesso!")
+      // Remove o contato da lista
       setCustomers((prev) => prev.filter((c) => c.id !== customerToDelete.id))
       setCustomerToDelete(null)
-    }
+      setIsDeleteDialogOpen(false)
+    })
   }
 
   // Helper para obter iniciais do nome
@@ -255,23 +264,10 @@ export default function ContactsPage() {
                 </div>
 
                 <div className="col-span-1 flex justify-end pr-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors">
-                        <MoreHorizontal size={18} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleViewCustomer(contact)}>Ver</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEditCustomer(contact)}>Editar</DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-red-600 dark:text-red-400"
-                        onClick={() => handleRemoveCustomer(contact)}
-                      >
-                        Remover
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <ActionMenu
+                    onEdit={() => handleEditCustomer(contact)}
+                    onDelete={() => handleRemoveCustomer(contact)}
+                  />
                 </div>
               </div>
             ))
@@ -320,15 +316,18 @@ export default function ContactsPage() {
       )}
 
       {/* Delete Contact Dialog */}
-      {activeSalon && (
-        <DeleteContactDialog
-          open={isDeleteDialogOpen}
-          onOpenChange={setIsDeleteDialogOpen}
-          customer={customerToDelete}
-          salonId={activeSalon.id}
-          onSuccess={handleDeleteSuccess}
-        />
-      )}
+      <ConfirmModal
+        open={isDeleteDialogOpen}
+        onClose={() => {
+          setIsDeleteDialogOpen(false)
+          setCustomerToDelete(null)
+        }}
+        onConfirm={handleDeleteCustomer}
+        title="Remover Contato"
+        description={customerToDelete ? `Tem certeza que deseja remover o contato "${customerToDelete.name}"? Esta ação não pode ser desfeita.` : ""}
+        confirmText="Remover"
+        type="danger"
+      />
     </div>
   )
 }

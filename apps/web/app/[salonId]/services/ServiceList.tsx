@@ -7,7 +7,9 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
-import { Search, Plus, Zap, Pencil, Trash2, Clock, DollarSign, Tag, X, Save } from "lucide-react"
+import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save } from "lucide-react"
+import { ActionMenu } from "@/components/ui/action-menu"
+import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -563,21 +565,11 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                   )}
                 </div>
 
-                <div className="col-span-2 flex justify-end gap-2 pr-2">
-                  <button
-                    onClick={() => openEdit(service)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
-                  >
-                    <Pencil size={12} />
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => handleDeleteClick(service)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
-                  >
-                    <Trash2 size={12} />
-                    Remover
-                  </button>
+                <div className="col-span-2 flex justify-end pr-2">
+                  <ActionMenu
+                    onEdit={() => openEdit(service)}
+                    onDelete={() => handleDeleteClick(service)}
+                  />
                 </div>
               </div>
             ))
@@ -586,76 +578,18 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       </div>
 
       {/* Dialog de Confirmação de Exclusão */}
-      {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" 
-            onClick={() => {
-              setDeleteConfirmOpen(false)
-              setServiceToDelete(null)
-            }} 
-          />
-          
-          {/* Modal Card */}
-          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
-            
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-500 rounded-lg text-white shadow-lg shadow-red-500/20">
-                  <Trash2 size={18} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">Confirmar Exclusão</h2>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Ação permanente</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => {
-                  setDeleteConfirmOpen(false)
-                  setServiceToDelete(null)
-                }}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-6">
-              <p className="text-slate-700 dark:text-slate-300">
-                Tem certeza que deseja remover o serviço <strong>"{serviceToDelete?.name}"</strong>?
-              </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-                Esta ação não pode ser desfeita. O serviço será removido permanentemente.
-              </p>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
-              <button 
-                type="button"
-                onClick={() => {
-                  setDeleteConfirmOpen(false)
-                  setServiceToDelete(null)
-                }}
-                className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="button"
-                onClick={onDelete}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-red-500/20 flex items-center gap-2 transform active:scale-95 transition-all"
-              >
-                <Trash2 size={18} />
-                Remover
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false)
+          setServiceToDelete(null)
+        }}
+        onConfirm={onDelete}
+        title="Confirmar Exclusão"
+        description={`Tem certeza que deseja remover o serviço "${serviceToDelete?.name}"? Esta ação não pode ser desfeita. O serviço será removido permanentemente.`}
+        confirmText="Remover"
+        type="danger"
+      />
     </div>
   )
 }
