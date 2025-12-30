@@ -1,20 +1,41 @@
 "use client"
 
 import React, { useActionState, useState, useEffect } from 'react';
-import { Bot, ArrowRight, Sun, Moon, Lock, Mail } from 'lucide-react';
+import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFormStatus } from 'react-dom';
 import { useTheme } from 'next-themes';
+import { useLoading } from '@/contexts/loading-context';
 import { login } from '../actions/auth';
 
 function SubmitButton() {
   const { pending } = useFormStatus()
+  const { setLoading } = useLoading()
+
+  useEffect(() => {
+    if (pending) {
+      setLoading(true, "Entrando...")
+    } else {
+      setLoading(false)
+    }
+  }, [pending, setLoading])
+
   return (
     <Button              
     type="submit"
-    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200">
-    <span>Login</span>
-    <ArrowRight size={18} />
+    disabled={pending}
+    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+    {pending ? (
+      <>
+        <Loader2 size={18} className="animate-spin" />
+        <span>Entrando...</span>
+      </>
+    ) : (
+      <>
+        <span>Login</span>
+        <ArrowRight size={18} />
+      </>
+    )}
     </Button>
   )
 }

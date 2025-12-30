@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
+import { LoadingProvider } from "@/contexts/loading-context";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -54,8 +56,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster richColors />
+          <LoadingProvider>
+            {children}
+            <LoadingOverlay />
+            <Toaster richColors />
+          </LoadingProvider>
         </ThemeProvider>
       </body>
     </html>
