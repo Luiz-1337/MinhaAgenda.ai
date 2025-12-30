@@ -85,14 +85,6 @@ export default async function SalonLayout({
             <div className="flex items-center gap-4">
               <MobileSidebar />
               <SalonSelector />
-              <div className="hidden md:block h-4 w-px bg-slate-300 dark:bg-white/10"></div>
-              <div className="hidden md:flex items-center gap-2">
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-xs font-mono text-emerald-600 dark:text-emerald-500 uppercase tracking-widest font-bold">Realtime</span>
-              </div>
             </div>
 
             <div className="flex items-center gap-4">
@@ -104,19 +96,6 @@ export default async function SalonLayout({
           <div className="flex-1 overflow-hidden relative z-10 pt-[25px] pr-[25px] pl-[25px] pb-[5px] min-h-0">
             <div className="h-full overflow-y-auto">
               {children}
-            </div>
-          </div>
-
-          {/* Footer Status Bar */}
-          <div className="h-8 flex-shrink-0 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-white/5 flex items-center justify-between px-6 text-[10px] text-slate-500 dark:text-slate-400 select-none z-20 transition-colors duration-300">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-              <span>Infraestrutura saudável</span>
-              <span className="mx-1 text-slate-300 dark:text-slate-700">|</span>
-              <span>Última sincronização: há alguns segundos</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono">v4.2.0-stable</span>
             </div>
           </div>
         </main>

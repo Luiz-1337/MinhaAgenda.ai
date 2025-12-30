@@ -61,6 +61,37 @@ export const agentConfigSchema = z.object({
 
 export type AgentConfigSchema = z.infer<typeof agentConfigSchema>
 
+// Schema para criação/edição de agentes
+export const agentModelEnum = z.enum([
+  "gpt-5.2",
+  "gpt-5.1",
+  "gpt-5-mini",
+  "gpt-5-nano",
+  "gpt-4.1",
+  "gpt-4o-mini",
+])
+
+export const agentSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(255, "Nome muito longo"),
+  systemPrompt: z.string().min(1, "System prompt é obrigatório").max(10000, "System prompt muito longo"),
+  model: agentModelEnum,
+  tone: z.enum(["formal", "informal"]),
+  whatsappNumber: z.string().optional().or(z.literal("")),
+  isActive: z.boolean(),
+})
+
+export type AgentSchema = z.infer<typeof agentSchema>
+
+// Schema para criação de agente (todos os campos obrigatórios exceto whatsappNumber)
+export const createAgentSchema = agentSchema
+
+export type CreateAgentSchema = z.infer<typeof createAgentSchema>
+
+// Schema para atualização de agente (todos os campos opcionais)
+export const updateAgentSchema = agentSchema.partial()
+
+export type UpdateAgentSchema = z.infer<typeof updateAgentSchema>
+
 // Schema para atualização do perfil
 export const updateProfileSchema = z.object({
   fullName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").optional().or(z.literal("")).or(z.undefined()),

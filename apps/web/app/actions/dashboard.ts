@@ -42,7 +42,6 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     messagesResult,
     chatsResult,
     creditsData,
-    topAgentsData,
     usageStatsData,
   ] = await Promise.all([
     db.query.salons.findFirst({
@@ -90,21 +89,6 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       )
       .groupBy(aiUsageStats.date)
       .orderBy(aiUsageStats.date),
-    // Busca todos os agentes da tabela agents e seus créditos
-    db
-      .select({
-        agentId: agents.id,
-        agentName: agents.name,
-        credits: sql<number>`COALESCE(SUM(${agentStats.totalCredits}), 0)::int`,
-      })
-      .from(agents)
-      .leftJoin(agentStats, and(
-        eq(agents.salonId, agentStats.salonId),
-        eq(agents.name, agentStats.agentName)
-      ))
-      .where(eq(agents.salonId, salonId))
-      .groupBy(agents.id, agents.name)
-      .orderBy(desc(sql`COALESCE(SUM(${agentStats.totalCredits}), 0)`)),
     // Busca créditos por modelo da tabela aiUsageStats (já agregados)
     db
       .select({
@@ -278,39 +262,93 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       return dateA.getTime() - dateB.getTime()
     })
 
-  // Busca modelos mais usados da tabela messages para associar aos agentes
-  const modelUsage = await db
+  // Busca agentes cadastrados e seus créditos reais
+  const salonAgents = await db
+    .select({
+      id: agents.id,
+      name: agents.name,
+      model: agents.model,
+    })
+    .from(agents)
+    .where(eq(agents.salonId, salonId))
+
+  // Para cada agente, busca créditos reais da tabela messages
+  const topAgents = await Promise.all(
+    salonAgents.map(async (agent) => {
+      if (!agent.model) {
+        return {
+          name: agent.name,
+          credits: 0,
+          model: undefined,
+        }
+      }
+
+      const agentCredits = await db
+        .select({
+          credits: sql<number>`SUM(${messages.totalTokens})::int`,
+        })
+        .from(messages)
+        .innerJoin(chats, eq(messages.chatId, chats.id))
+        .where(
+          and(
+            eq(chats.salonId, salonId),
+            eq(messages.role, 'assistant'),
+            eq(messages.model, agent.model),
+            sql`${messages.totalTokens} IS NOT NULL`,
+            sql`${messages.totalTokens} > 0`
+          )
+        )
+
+      return {
+        name: agent.name,
+        credits: Number(agentCredits[0]?.credits) || 0,
+        model: agent.model || undefined,
+      }
+    })
+  )
+
+  // Ordena por créditos (maior primeiro)
+  topAgents.sort((a, b) => b.credits - a.credits)
+
+  // Calcula créditos por modelo usando dados reais da tabela messages
+  const modelUsageReal = await db
     .select({
       model: messages.model,
-      totalTokens: sql<number>`SUM(${messages.totalTokens})::int`,
+      credits: sql<number>`SUM(${messages.totalTokens})::int`,
     })
     .from(messages)
     .innerJoin(chats, eq(messages.chatId, chats.id))
     .where(
       and(
         eq(chats.salonId, salonId),
+        eq(messages.role, 'assistant'),
         sql`${messages.model} IS NOT NULL`,
-        sql`${messages.totalTokens} IS NOT NULL`
+        sql`${messages.totalTokens} IS NOT NULL`,
+        sql`${messages.totalTokens} > 0`,
+        gte(messages.createdAt, sql`CURRENT_DATE - INTERVAL '30 days'`)
       )
     )
     .groupBy(messages.model)
-    .orderBy(desc(sql`SUM(${messages.totalTokens})`))
 
-  // Mapeia agentes com seus modelos mais usados
-  // Por enquanto, usa o modelo mais usado globalmente para todos os agentes
-  const mostUsedModel = modelUsage.length > 0 ? modelUsage[0].model : null
+  // Combina com dados de aiUsageStats para garantir que temos todos os modelos
+  const modelMap = new Map<string, number>()
+  
+  // Adiciona dados reais de messages
+  modelUsageReal.forEach((item) => {
+    if (item.model) {
+      modelMap.set(item.model, (modelMap.get(item.model) || 0) + (Number(item.credits) || 0))
+    }
+  })
 
-  const topAgents = topAgentsData.map((item) => ({
-    name: item.agentName,
-    credits: Number(item.credits) || 0,
-    model: mostUsedModel || undefined,
-  }))
+  // Adiciona dados de aiUsageStats (pode ter dados históricos)
+  usageStatsData.forEach((item) => {
+    modelMap.set(item.model, (modelMap.get(item.model) || 0) + (Number(item.credits) || 0))
+  })
 
-  // Calcula créditos por modelo - calcula total a partir dos dados agrupados
-  const total = usageStatsData.reduce((sum, item) => sum + (Number(item.credits) || 0), 0) || 1
-  const creditsByModel = usageStatsData.map((item) => ({
-    name: item.model,
-    percent: total > 0 ? Math.round((Number(item.credits) / total) * 100) : 0,
+  const total = Array.from(modelMap.values()).reduce((sum, val) => sum + val, 0) || 1
+  const creditsByModel = Array.from(modelMap.entries()).map(([name, credits]) => ({
+    name,
+    percent: total > 0 ? Math.round((credits / total) * 100) : 0,
   }))
 
   return {
@@ -326,7 +364,200 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
 }
 
 /**
+ * Sincroniza dados reais da tabela messages para as tabelas de estatísticas
+ * Agrupa por data e modelo para ai_usage_stats e por agente para agent_stats
+ */
+async function syncRealUsageData(salonId: string): Promise<void> {
+  try {
+    // Busca dados reais da tabela messages (apenas mensagens do assistente com tokens)
+    const realUsageData = await db
+      .select({
+        date: sql<string>`DATE(${messages.createdAt})::text`,
+        model: messages.model,
+        credits: sql<number>`SUM(${messages.totalTokens})::int`,
+      })
+      .from(messages)
+      .innerJoin(chats, eq(messages.chatId, chats.id))
+      .where(
+        and(
+          eq(chats.salonId, salonId),
+          eq(messages.role, 'assistant'),
+          sql`${messages.model} IS NOT NULL`,
+          sql`${messages.totalTokens} IS NOT NULL`,
+          sql`${messages.totalTokens} > 0`
+        )
+      )
+      .groupBy(sql`DATE(${messages.createdAt})`, messages.model)
+
+    // Sincroniza para ai_usage_stats (agrupa por data e modelo)
+    for (const item of realUsageData) {
+      if (!item.model || !item.credits || item.credits <= 0) continue
+
+      const existing = await db
+        .select()
+        .from(aiUsageStats)
+        .where(
+          and(
+            eq(aiUsageStats.salonId, salonId),
+            eq(aiUsageStats.date, item.date),
+            eq(aiUsageStats.model, item.model)
+          )
+        )
+        .limit(1)
+
+      if (existing.length > 0) {
+        // Atualiza se já existe
+        await db
+          .update(aiUsageStats)
+          .set({
+            credits: item.credits,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(aiUsageStats.salonId, salonId),
+              eq(aiUsageStats.date, item.date),
+              eq(aiUsageStats.model, item.model)
+            )
+          )
+      } else {
+        // Insere novo
+        await db.insert(aiUsageStats).values({
+          salonId,
+          date: item.date,
+          model: item.model,
+          credits: item.credits,
+        })
+      }
+    }
+
+    // Busca dados reais por agente (usa o nome do agente da tabela agents ou padrão)
+    // Como não há relação direta, vamos usar os agentes cadastrados e seus modelos
+    const salonAgents = await db
+      .select({
+        id: agents.id,
+        name: agents.name,
+        model: agents.model,
+      })
+      .from(agents)
+      .where(eq(agents.salonId, salonId))
+
+    // Para cada agente, busca tokens das mensagens que usaram o modelo do agente
+    for (const agent of salonAgents) {
+      if (!agent.model) continue
+
+      const agentUsage = await db
+        .select({
+          credits: sql<number>`SUM(${messages.totalTokens})::int`,
+        })
+        .from(messages)
+        .innerJoin(chats, eq(messages.chatId, chats.id))
+        .where(
+          and(
+            eq(chats.salonId, salonId),
+            eq(messages.role, 'assistant'),
+            eq(messages.model, agent.model),
+            sql`${messages.totalTokens} IS NOT NULL`,
+            sql`${messages.totalTokens} > 0`
+          )
+        )
+
+      const totalCredits = agentUsage[0]?.credits || 0
+
+      if (totalCredits > 0) {
+        const existing = await db
+          .select()
+          .from(agentStats)
+          .where(
+            and(
+              eq(agentStats.salonId, salonId),
+              eq(agentStats.agentName, agent.name)
+            )
+          )
+          .limit(1)
+
+        if (existing.length > 0) {
+          await db
+            .update(agentStats)
+            .set({
+              totalCredits: totalCredits,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(agentStats.salonId, salonId),
+                eq(agentStats.agentName, agent.name)
+              )
+            )
+        } else {
+          await db.insert(agentStats).values({
+            salonId,
+            agentName: agent.name,
+            totalCredits: totalCredits,
+          })
+        }
+      }
+    }
+
+    // Também sincroniza para o agente padrão "Assistente IA" se houver mensagens sem agente específico
+    const defaultAgentUsage = await db
+      .select({
+        credits: sql<number>`SUM(${messages.totalTokens})::int`,
+      })
+      .from(messages)
+      .innerJoin(chats, eq(messages.chatId, chats.id))
+      .where(
+        and(
+          eq(chats.salonId, salonId),
+          eq(messages.role, 'assistant'),
+          sql`${messages.totalTokens} IS NOT NULL`,
+          sql`${messages.totalTokens} > 0`
+        )
+      )
+
+    const defaultCredits = defaultAgentUsage[0]?.credits || 0
+    if (defaultCredits > 0) {
+      const existing = await db
+        .select()
+        .from(agentStats)
+        .where(
+          and(
+            eq(agentStats.salonId, salonId),
+            eq(agentStats.agentName, 'Assistente IA')
+          )
+        )
+        .limit(1)
+
+      if (existing.length > 0) {
+        await db
+          .update(agentStats)
+          .set({
+            totalCredits: defaultCredits,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(agentStats.salonId, salonId),
+              eq(agentStats.agentName, 'Assistente IA')
+            )
+          )
+      } else {
+        await db.insert(agentStats).values({
+          salonId,
+          agentName: 'Assistente IA',
+          totalCredits: defaultCredits,
+        })
+      }
+    }
+  } catch (error) {
+    console.error("❌ Erro ao sincronizar dados reais:", error)
+    throw error
+  }
+}
+
+/**
  * Inicializa dados padrão para o salão se não existirem
+ * Agora sincroniza dados reais da tabela messages ao invés de criar dados aleatórios
  */
 export async function initializeDashboardData(salonId: string): Promise<{ success: boolean } | { error: string }> {
   if (!salonId) {
@@ -359,70 +590,14 @@ export async function initializeDashboardData(salonId: string): Promise<{ succes
      return { error: "Salão não encontrado" }
   }
 
-  // Verifica se já existem dados
-  const existingStats = await db
-    .select()
-    .from(aiUsageStats)
-    .where(eq(aiUsageStats.salonId, salonId))
-    .limit(1)
-
-  if (existingStats.length > 0) {
-    return { success: true } // Já tem dados
-  }
-
-  // Cria dados iniciais para os últimos 30 dias
-  const today = new Date()
-  const initialData = []
-  const initialAgents = [
-    { name: "Ana Souza", credits: 124 },
-    { name: "Carlos Lima", credits: 109 },
-    { name: "Beatriz Nunes", credits: 95 },
-    { name: "Diego Ramos", credits: 88 },
-  ]
-  const models = ["gpt-4o-mini", "gpt-4.1", "gpt-4o"]
-
-  for (let i = 0; i < 30; i++) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - i)
-    const dateStr = date.toISOString().split("T")[0]
-
-    for (const model of models) {
-      // Gera valores aleatórios mas realistas
-      const credits = Math.floor(Math.random() * 50) + 10
-      initialData.push({
-        salonId,
-        date: dateStr,
-        model,
-        credits,
-      })
-    }
-  }
-
-  // Insere dados de uso (ignora se já existir)
-  if (initialData.length > 0) {
-    try {
-      await db.insert(aiUsageStats).values(initialData)
-    } catch (error) {
-      // Ignora erros de duplicação
-      console.log("Alguns dados de uso já existem, continuando...")
-    }
-  }
-
-  // Insere dados de agentes (ignora se já existir)
-  const agentData = initialAgents.map((agent) => ({
-    salonId,
-    agentName: agent.name,
-    totalCredits: agent.credits,
-  }))
-
+  // Sincroniza dados reais da tabela messages
   try {
-    await db.insert(agentStats).values(agentData)
+    await syncRealUsageData(salonId)
+    return { success: true }
   } catch (error) {
-    // Ignora erros de duplicação
-    console.log("Alguns dados de agentes já existem, continuando...")
+    console.error("❌ Erro ao inicializar dados do dashboard:", error)
+    return { error: "Erro ao sincronizar dados" }
   }
-
-  return { success: true }
 }
 
 /**

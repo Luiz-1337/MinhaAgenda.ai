@@ -434,10 +434,13 @@ export const agents = pgTable(
   'agents',
   {
     id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).unique().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     name: text('name').notNull(),
     systemPrompt: text('system_prompt').notNull(),
-    isActive: boolean('is_active').default(true).notNull(),
+    model: text('model').notNull(),
+    tone: text('tone').notNull(),
+    whatsappNumber: text('whatsapp_number'),
+    isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },

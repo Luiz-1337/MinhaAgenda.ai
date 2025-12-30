@@ -1,4 +1,5 @@
 import { getCurrentSalon } from "@/app/actions/salon"
+import { getAgents } from "@/app/actions/agents"
 import { AgentsClient } from "./agents-client"
 
 export default async function AgentsPage({ params }: { params: Promise<{ salonId: string }> }) {
@@ -14,18 +15,9 @@ export default async function AgentsPage({ params }: { params: Promise<{ salonId
     )
   }
 
-  const settings = (salon.settings ?? {}) as unknown as Record<string, unknown>
-  const agentConfig = (settings?.agent_config ?? {}) as Record<string, unknown>
+  const agentsResult = await getAgents(salonId)
+  const agents = "error" in agentsResult ? [] : agentsResult.data ?? []
 
-  const system_instructions = typeof agentConfig.system_instructions === "string" ? agentConfig.system_instructions : ""
-  const tone = agentConfig.tone === "formal" ? "formal" : "informal"
-  const isActive = typeof agentConfig.isActive === "boolean" ? agentConfig.isActive : false
-
-  return (
-    <AgentsClient
-      salonId={salonId}
-      initialAgentConfig={{ system_instructions, tone, isActive }}
-    />
-  )
+  return <AgentsClient salonId={salonId} initialAgents={agents} />
 }
 
