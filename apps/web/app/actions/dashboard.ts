@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons, sql } from "@repo/db"
+import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons, sql, messages, agents } from "@repo/db"
 import { eq, and, gte, desc } from "drizzle-orm"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
@@ -13,7 +13,7 @@ export interface DashboardStats {
   responseRate: number
   queueAverageTime: string
   creditsByDay: Array<{ date: string; value: number }>
-  topAgents: Array<{ name: string; credits: number }>
+  topAgents: Array<{ name: string; credits: number; model?: string }>
   creditsByModel: Array<{ name: string; percent: number }>
 }
 
@@ -52,8 +52,9 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       ownerId: true,
     },
     }),
+    // Atendimentos concluídos = chats do WhatsApp com status 'completed'
     supabase
-      .from("appointments")
+      .from("chats")
       .select("id", { count: "exact", head: true })
       .eq("salon_id", salonId)
       .eq("status", "completed"),
@@ -74,6 +75,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       .eq("salon_id", salonId)
       .eq("status", "active")
       .limit(100),
+    // Busca créditos por dia da tabela aiUsageStats
     db
       .select({
         date: aiUsageStats.date,
@@ -88,17 +90,22 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       )
       .groupBy(aiUsageStats.date)
       .orderBy(aiUsageStats.date),
+    // Busca todos os agentes da tabela agents e seus créditos
     db
       .select({
-        name: agentStats.agentName,
-        credits: sql<number>`SUM(${agentStats.totalCredits})::int`,
+        agentId: agents.id,
+        agentName: agents.name,
+        credits: sql<number>`COALESCE(SUM(${agentStats.totalCredits}), 0)::int`,
       })
-      .from(agentStats)
-      .where(eq(agentStats.salonId, salonId))
-      .groupBy(agentStats.agentName)
-      .orderBy(desc(sql`SUM(${agentStats.totalCredits})`))
-      .limit(4),
-    // Busca créditos por modelo
+      .from(agents)
+      .leftJoin(agentStats, and(
+        eq(agents.salonId, agentStats.salonId),
+        eq(agents.name, agentStats.agentName)
+      ))
+      .where(eq(agents.salonId, salonId))
+      .groupBy(agents.id, agents.name)
+      .orderBy(desc(sql`COALESCE(SUM(${agentStats.totalCredits}), 0)`)),
+    // Busca créditos por modelo da tabela aiUsageStats (já agregados)
     db
       .select({
         model: aiUsageStats.model,
@@ -121,32 +128,56 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   const completedAppointments = completedAppointmentsResult.count || 0
   const activeChats = activeChatsResult.count || 0
 
-  // Calcula tempo médio de resposta e taxa de resposta
+  // Calcula tempo médio de resposta usando first_user_message_at e first_agent_response_at
   let averageResponseTime = "0m"
   let responseRate = 0
 
-  if (messagesResult.data && messagesResult.data.length > 0) {
-    const messages = messagesResult.data
+  // Busca chats que têm ambos os timestamps preenchidos
+  const chatsWithTimestamps = await db
+    .select({
+      firstUserMessageAt: chats.firstUserMessageAt,
+      firstAgentResponseAt: chats.firstAgentResponseAt,
+    })
+    .from(chats)
+    .where(
+      and(
+        eq(chats.salonId, salonId),
+        sql`${chats.firstUserMessageAt} IS NOT NULL`,
+        sql`${chats.firstAgentResponseAt} IS NOT NULL`
+      )
+    )
+
+  if (chatsWithTimestamps.length > 0) {
     let totalResponseTime = 0
     let responseCount = 0
 
-    for (let i = 0; i < messages.length - 1; i++) {
-      const current = messages[i]
-      const next = messages[i + 1]
-
-      if (current.role === "user" && next.role === "assistant") {
-        const timeDiff = new Date(current.created_at).getTime() - new Date(next.created_at).getTime()
-        totalResponseTime += Math.abs(timeDiff)
-        responseCount++
+    for (const chat of chatsWithTimestamps) {
+      if (chat.firstUserMessageAt && chat.firstAgentResponseAt) {
+        const timeDiff = new Date(chat.firstAgentResponseAt).getTime() - new Date(chat.firstUserMessageAt).getTime()
+        if (timeDiff > 0) {
+          totalResponseTime += timeDiff
+          responseCount++
+        }
       }
     }
 
     if (responseCount > 0) {
       const avgMs = totalResponseTime / responseCount
-      const avgMinutes = Math.round(avgMs / 60000)
-      averageResponseTime = `${avgMinutes}m`
+      const avgSeconds = Math.round(avgMs / 1000)
+      const minutes = Math.floor(avgSeconds / 60)
+      const seconds = avgSeconds % 60
+      
+      if (minutes > 0) {
+        averageResponseTime = `${minutes}m ${seconds}s`
+      } else {
+        averageResponseTime = `${seconds}s`
+      }
     }
+  }
 
+  // Calcula taxa de resposta (mensagens do assistente / mensagens do usuário)
+  if (messagesResult.data && messagesResult.data.length > 0) {
+    const messages = messagesResult.data
     const userMessages = messages.filter(m => m.role === "user").length
     const assistantMessages = messages.filter(m => m.role === "assistant").length
     responseRate = userMessages > 0 ? Math.round((assistantMessages / userMessages) * 100) : 0
@@ -201,14 +232,78 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     }
   }
 
-  const creditsByDay = creditsData.map((item) => ({
-    date: new Date(item.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-    value: Number(item.credits) || 0,
-  }))
+  // Busca também créditos reais da tabela messages (tokens das mensagens)
+  const messagesCredits = await db
+    .select({
+      date: sql<string>`DATE(${messages.createdAt})::text`,
+      credits: sql<number>`SUM(${messages.totalTokens})::int`,
+    })
+    .from(messages)
+    .innerJoin(chats, eq(messages.chatId, chats.id))
+    .where(
+      and(
+        eq(chats.salonId, salonId),
+        sql`${messages.totalTokens} IS NOT NULL`,
+        sql`${messages.totalTokens} > 0`,
+        gte(messages.createdAt, sql`CURRENT_DATE - INTERVAL '30 days'`)
+      )
+    )
+    .groupBy(sql`DATE(${messages.createdAt})`)
+    .orderBy(sql`DATE(${messages.createdAt})`)
+
+  // Combina créditos de aiUsageStats e messages
+  const creditsMap = new Map<string, number>()
+  
+  // Adiciona créditos de aiUsageStats
+  creditsData.forEach((item) => {
+    const dateStr = new Date(item.date).toISOString().split("T")[0]
+    creditsMap.set(dateStr, (creditsMap.get(dateStr) || 0) + (Number(item.credits) || 0))
+  })
+  
+  // Adiciona créditos de messages (tokens reais)
+  messagesCredits.forEach((item) => {
+    creditsMap.set(item.date, (creditsMap.get(item.date) || 0) + (Number(item.credits) || 0))
+  })
+
+  // Converte para array e formata
+  const creditsByDay = Array.from(creditsMap.entries())
+    .map(([date, value]) => ({
+      date: new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+      value: value || 0,
+    }))
+    .sort((a, b) => {
+      // Ordena por data
+      const dateA = new Date(a.date.split("/").reverse().join("-"))
+      const dateB = new Date(b.date.split("/").reverse().join("-"))
+      return dateA.getTime() - dateB.getTime()
+    })
+
+  // Busca modelos mais usados da tabela messages para associar aos agentes
+  const modelUsage = await db
+    .select({
+      model: messages.model,
+      totalTokens: sql<number>`SUM(${messages.totalTokens})::int`,
+    })
+    .from(messages)
+    .innerJoin(chats, eq(messages.chatId, chats.id))
+    .where(
+      and(
+        eq(chats.salonId, salonId),
+        sql`${messages.model} IS NOT NULL`,
+        sql`${messages.totalTokens} IS NOT NULL`
+      )
+    )
+    .groupBy(messages.model)
+    .orderBy(desc(sql`SUM(${messages.totalTokens})`))
+
+  // Mapeia agentes com seus modelos mais usados
+  // Por enquanto, usa o modelo mais usado globalmente para todos os agentes
+  const mostUsedModel = modelUsage.length > 0 ? modelUsage[0].model : null
 
   const topAgents = topAgentsData.map((item) => ({
-    name: item.name,
+    name: item.agentName,
     credits: Number(item.credits) || 0,
+    model: mostUsedModel || undefined,
   }))
 
   // Calcula créditos por modelo - calcula total a partir dos dados agrupados
@@ -328,4 +423,106 @@ export async function initializeDashboardData(salonId: string): Promise<{ succes
   }
 
   return { success: true }
+}
+
+/**
+ * Atualiza créditos de uso de IA baseado em tokens de uma mensagem
+ * Esta função deve ser chamada após salvar uma mensagem do assistente com tokens
+ */
+export async function updateAgentCredits(
+  salonId: string,
+  agentName: string,
+  model: string,
+  tokens: number
+): Promise<void> {
+  if (!salonId || !agentName || !model || !tokens || tokens <= 0) {
+    console.warn(`⚠️ updateAgentCredits: dados inválidos`, { salonId, agentName, model, tokens });
+    return // Ignora se dados inválidos
+  }
+
+  const today = new Date().toISOString().split("T")[0]
+  console.log(`📊 updateAgentCredits: atualizando créditos para ${salonId} - ${agentName} - ${model} - ${tokens} tokens em ${today}`);
+
+  try {
+    // Atualiza ou insere em aiUsageStats (uso diário por modelo)
+    const existingUsage = await db
+      .select()
+      .from(aiUsageStats)
+      .where(
+        and(
+          eq(aiUsageStats.salonId, salonId),
+          eq(aiUsageStats.date, today),
+          eq(aiUsageStats.model, model)
+        )
+      )
+      .limit(1)
+
+    if (existingUsage.length > 0) {
+      // Atualiza créditos existentes
+      await db
+        .update(aiUsageStats)
+        .set({
+          credits: sql`${aiUsageStats.credits} + ${tokens}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(aiUsageStats.salonId, salonId),
+            eq(aiUsageStats.date, today),
+            eq(aiUsageStats.model, model)
+          )
+        )
+    } else {
+      // Insere novo registro
+      await db.insert(aiUsageStats).values({
+        salonId,
+        date: today,
+        model,
+        credits: tokens,
+      })
+    }
+
+    // Atualiza ou insere em agentStats (total por agente)
+    const existingAgent = await db
+      .select()
+      .from(agentStats)
+      .where(
+        and(
+          eq(agentStats.salonId, salonId),
+          eq(agentStats.agentName, agentName)
+        )
+      )
+      .limit(1)
+
+    if (existingAgent.length > 0) {
+      // Atualiza créditos existentes
+      await db
+        .update(agentStats)
+        .set({
+          totalCredits: sql`${agentStats.totalCredits} + ${tokens}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(agentStats.salonId, salonId),
+            eq(agentStats.agentName, agentName)
+          )
+        )
+    } else {
+      // Insere novo registro
+      await db.insert(agentStats).values({
+        salonId,
+        agentName,
+        totalCredits: tokens,
+      })
+    }
+  } catch (error) {
+    // Log erro mas não interrompe o fluxo
+    console.error("❌ Erro ao atualizar créditos do agente:", error)
+    if (error instanceof Error) {
+      console.error("Stack:", error.stack)
+    }
+  }
+  
+  console.log(`✅ updateAgentCredits: concluído para ${salonId} - ${agentName}`)
 }

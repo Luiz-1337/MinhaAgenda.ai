@@ -1,5 +1,6 @@
 import { and, asc, eq, gte, lte, desc } from "drizzle-orm"
 import { appointments, db, professionals, profiles, services } from "@repo/db"
+import { ProfessionalService } from "@/lib/services/professional.service"
 
 // ============================================================================
 // DTOs (Data Transfer Objects)
@@ -45,6 +46,9 @@ export interface AppointmentsResultDTO {
  */
 export async function getSalonProfessionals(salonId: string): Promise<ProfessionalDTO[]> {
   try {
+    // Garante que salões SOLO tenham profissional criado automaticamente
+    await ProfessionalService.ensureSoloProfessional(salonId)
+
     const professionalsList = await db.query.professionals.findMany({
       where: eq(professionals.salonId, salonId),
       columns: { id: true, name: true, email: true, phone: true, isActive: true, userId: true, role: true },

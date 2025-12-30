@@ -19,7 +19,8 @@ import { MinhaAgendaAITools } from '@repo/mcp-server/MinhaAgendaAI_tools';
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
 import { ensureIsoWithTimezone } from '@/lib/services/ai.service';
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
-import { findOrCreateChat, getChatHistory, saveMessage } from '@/lib/services/chat.service';
+import { findOrCreateChat, getChatHistory, saveMessage, updateChatTimestamps } from '@/lib/services/chat.service';
+import { updateAgentCredits } from '@/app/actions/dashboard';
 import { validateRequest } from "twilio";
 import { eq } from "drizzle-orm";
 import { db, messages } from "@repo/db";
@@ -124,9 +125,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Salva mensagem do usuário
+    // Salva mensagem do usuário e atualiza timestamp
     console.log("💾 Salvando mensagem do usuário...");
     await saveMessage(chat.id, "user", body);
+    await updateChatTimestamps(chat.id, "user");
     console.log("✅ Mensagem salva");
 
     // Busca histórico de mensagens do chat (últimas 20 mensagens)
@@ -214,8 +216,9 @@ export async function POST(req: Request) {
     const impl = new MinhaAgendaAITools();
 
     // Gera resposta usando streamText (mesmo padrão do teste.tsx)
+    const modelName = "gpt-4o-mini"; // Modelo usado
     const result = streamText({
-      model: openai("o4-mini"),
+      model: openai(modelName),
       messages: convertToModelMessages(uiMessages),
       tools: {
         identifyCustomer: {
@@ -367,6 +370,40 @@ export async function POST(req: Request) {
         },
       },
       stopWhen: stepCountIs(5),
+      onFinish: async ({ text, usage }) => {
+        // Captura tokens e salva mensagem do assistente com tokens
+        // Na versão 5.0 do AI SDK: promptTokens → inputTokens, completionTokens → outputTokens
+        const inputTokens = usage?.inputTokens ?? null;
+        const outputTokens = usage?.outputTokens ?? null;
+        const totalTokens = usage?.totalTokens ?? null;
+
+        console.log(`📊 Tokens usados: input=${inputTokens}, output=${outputTokens}, total=${totalTokens}`);
+
+        // Salva mensagem do assistente com tokens
+        if (text) {
+          await saveMessage(chat.id, "assistant", text, {
+            inputTokens: inputTokens ?? undefined,
+            outputTokens: outputTokens ?? undefined,
+            totalTokens: totalTokens ?? undefined,
+            model: modelName,
+          });
+
+          // Atualiza timestamp da primeira resposta do agente
+          await updateChatTimestamps(chat.id, "assistant");
+
+          // Atualiza créditos do agente (usa o nome do agente padrão ou pode ser configurável)
+          if (totalTokens && totalTokens > 0) {
+            const agentName = "Assistente IA"; // Pode ser obtido de configuração do salão
+            console.log(`💰 Atualizando créditos: salonId=${salonId}, agent=${agentName}, model=${modelName}, tokens=${totalTokens}`);
+            await updateAgentCredits(salonId, agentName, modelName, totalTokens).catch(err => {
+              console.error('❌ Erro ao atualizar créditos:', err);
+            });
+            console.log(`✅ Créditos atualizados com sucesso`);
+          } else {
+            console.warn(`⚠️ Total de tokens inválido ou zero: ${totalTokens}`);
+          }
+        }
+      },
     });
 
     // Coleta o texto final do stream
@@ -381,12 +418,13 @@ export async function POST(req: Request) {
     if (!finalText.trim()) {
       console.warn("⚠️ IA não gerou texto final");
       finalText = "Desculpe, tive uma instabilidade para concluir seu pedido agora. Pode repetir sua mensagem ou me dizer o serviço e o dia/horário que você prefere?";
+      
+      // Salva fallback sem tokens (já que não houve uso real)
+      await saveMessage(chat.id, "assistant", finalText);
+      await updateChatTimestamps(chat.id, "assistant");
     }
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);
-
-    // Salva mensagem do assistente
-    await saveMessage(chat.id, "assistant", finalText);
 
     // Envia resposta via WhatsApp
     await sendWhatsAppMessage(from, finalText);

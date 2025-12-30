@@ -2,10 +2,10 @@
 
 import { redirect } from "next/navigation"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { db, profiles, salons, eq, sql } from "@repo/db"
+import { db, profiles, salons, professionals, eq, sql } from "@repo/db"
 import type { ActionResult } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
-import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
+import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 
 interface OnboardingStep1Data {
   salonName: string
@@ -284,6 +284,20 @@ export async function completeOnboardingWithPayment(
           ${newSalon.id}::uuid
         )
       `)
+
+      // Criar profissional automaticamente se for plano SOLO
+      if (data.plan === 'SOLO') {
+        await tx.insert(professionals).values({
+          salonId: newSalon.id,
+          userId: userId,
+          name: normalizeString(fullName),
+          email: normalizeEmail(data.email),
+          phone: emptyStringToNull(data.phone),
+          role: 'MANAGER', // Owner sempre é MANAGER
+          isActive: true,
+          commissionRate: '0',
+        })
+      }
 
       // Marcar onboarding como completo
       await tx.update(profiles)

@@ -13,6 +13,7 @@ import {
   type AppointmentDTO, 
   type ProfessionalDTO 
 } from "@/lib/repositories/appointment.repository"
+import { ProfessionalService } from "@/lib/services/professional.service"
 
 // Re-exportando tipos para compatibilidade com componentes existentes que possam importá-los
 export type { AppointmentDTO, ProfessionalDTO as ProfessionalInfo }
@@ -80,6 +81,9 @@ export async function getAppointments(
   }
 
   try {
+    // Garante que salões SOLO tenham profissional criado automaticamente
+    await ProfessionalService.ensureSoloProfessional(salonId)
+
     // Busca paralela de profissionais e agendamentos
     const [professionalsList, appointmentsList] = await Promise.all([
       getSalonProfessionals(salonId),

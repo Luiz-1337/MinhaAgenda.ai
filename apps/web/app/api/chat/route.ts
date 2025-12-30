@@ -82,8 +82,9 @@ export async function POST(req: Request) {
     })
   }
 
+  const modelName = "gpt-4o-mini";
   const result = streamText({
-    model: openai("gpt-4o-mini"),
+    model: openai(modelName),
     system: systemPrompt,
     messages: messages as CoreMessage[],
     tools: {
@@ -93,8 +94,18 @@ export async function POST(req: Request) {
       getProfessionals,
       saveUserPreferences
     },
-    onFinish: async ({ text }) => {
+    onFinish: async ({ text, usage }) => {
+      // Captura tokens
+      // Na versão 5.0 do AI SDK: promptTokens → inputTokens, completionTokens → outputTokens
+      const inputTokens = usage?.inputTokens ?? null;
+      const outputTokens = usage?.outputTokens ?? null;
+      const totalTokens = usage?.totalTokens ?? null;
+
+      console.log(`📊 Tokens usados: input=${inputTokens}, output=${outputTokens}, total=${totalTokens}`);
+
       // Salva a resposta da IA após o stream terminar
+      // Nota: chatMessages não tem campos de tokens, então salvamos apenas o conteúdo
+      // Os tokens serão rastreados via messages quando houver integração com chats
       await db.insert(chatMessages).values({
         salonId,
         clientId: clientId || null,
@@ -104,6 +115,9 @@ export async function POST(req: Request) {
         // Log erro mas não interrompe o fluxo
         console.error('Erro ao salvar mensagem da IA:', err)
       })
+
+      // TODO: Se houver chatId disponível, salvar tokens na tabela messages também
+      // Por enquanto, chatMessages não suporta tokens diretamente
     },
   })
 

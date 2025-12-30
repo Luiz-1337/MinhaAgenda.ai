@@ -31,7 +31,8 @@ export default function DashboardContent({ stats }: DashboardContentProps) {
     id: `agent-${index}`,
     name: agent.name,
     credits: agent.credits,
-    role: agent.name.toLowerCase().includes('bot') || agent.name.toLowerCase().includes('agent') ? 'bot' as const : 'human' as const,
+    model: agent.model,
+    role: agent.name.toLowerCase().includes('bot') || agent.name.toLowerCase().includes('agent') || agent.name.toLowerCase().includes('ia') ? 'bot' as const : 'human' as const,
   }))
 
   return (

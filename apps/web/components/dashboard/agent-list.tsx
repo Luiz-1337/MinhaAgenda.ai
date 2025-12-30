@@ -6,6 +6,7 @@ interface Agent {
   credits: number;
   role?: 'bot' | 'human';
   id?: string;
+  model?: string;
 }
 
 interface AgentListProps {
@@ -42,7 +43,13 @@ export function AgentList({ agents, creditsByModel = [] }: AgentListProps) {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-white transition-colors">{agent.name}</p>
-                    {agentId && (
+                    {agent.model && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
+                        <BrainCircuit size={10} className="text-indigo-400" />
+                        {agent.model}
+                      </p>
+                    )}
+                    {!agent.model && agentId && (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: {agentId.substring(0, 8)}</p>
                     )}
                   </div>

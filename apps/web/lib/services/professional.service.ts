@@ -122,6 +122,90 @@ export class ProfessionalService {
     
     return updated
   }
+
+  /**
+   * Garante que um salão SOLO tenha um profissional vinculado ao owner
+   * Cria automaticamente se não existir, usando dados do perfil do owner
+   * @param salonId ID do salão
+   * @returns O profissional existente ou recém-criado
+   */
+  static async ensureSoloProfessional(salonId: string) {
+    // 1. Busca informações do salão e tier do owner
+    const salonInfo = await db
+      .select({
+        salonId: salons.id,
+        ownerId: salons.ownerId,
+        ownerTier: profiles.tier,
+      })
+      .from(salons)
+      .innerJoin(profiles, eq(profiles.id, salons.ownerId))
+      .where(eq(salons.id, salonId))
+      .limit(1)
+
+    if (!salonInfo.length) {
+      throw new Error("Salão não encontrado")
+    }
+
+    const { ownerId, ownerTier } = salonInfo[0]
+
+    // 2. Verifica se é plano SOLO
+    if (ownerTier !== 'SOLO') {
+      // Não é SOLO, não precisa criar automaticamente
+      return null
+    }
+
+    // 3. Verifica se já existe profissional vinculado ao owner
+    const existingProfessional = await db.query.professionals.findFirst({
+      where: and(
+        eq(professionals.salonId, salonId),
+        eq(professionals.userId, ownerId)
+      ),
+    })
+
+    if (existingProfessional) {
+      // Já existe, retorna o existente
+      return existingProfessional
+    }
+
+    // 4. Busca dados do perfil do owner para criar o profissional
+    const ownerProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, ownerId),
+      columns: {
+        fullName: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+      },
+    })
+
+    if (!ownerProfile) {
+      throw new Error("Perfil do owner não encontrado")
+    }
+
+    // 5. Prepara nome do profissional (fullName ou firstName + lastName)
+    const professionalName = ownerProfile.fullName || 
+      (ownerProfile.firstName && ownerProfile.lastName 
+        ? `${ownerProfile.firstName} ${ownerProfile.lastName}`.trim()
+        : ownerProfile.firstName || ownerProfile.lastName || 'Profissional')
+
+    // 6. Cria o profissional automaticamente
+    const [newProfessional] = await db
+      .insert(professionals)
+      .values({
+        salonId,
+        userId: ownerId,
+        name: normalizeString(professionalName),
+        email: normalizeEmail(ownerProfile.email),
+        phone: emptyStringToNull(ownerProfile.phone),
+        role: 'MANAGER', // Owner sempre é MANAGER
+        isActive: true,
+        commissionRate: '0',
+      })
+      .returning()
+
+    return newProfessional
+  }
 }
 
 
