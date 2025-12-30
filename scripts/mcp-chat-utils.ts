@@ -6,7 +6,7 @@
  * usados no chat MCP.
  */
 
-import { db, salons, profiles, salonCustomers, professionals, eq, and, ilike } from "@repo/db";
+import { db, salons, profiles, customers, professionals, eq, and, ilike } from "@repo/db";
 
 /**
  * Sanitiza o número de WhatsApp removendo espaços, traços, parênteses e prefixos
@@ -109,10 +109,6 @@ export async function getDataFromClient(
   preferences: Record<string, unknown> | Record<string, Record<string, unknown>>;
       salonCustomers: Array<{
         salonId: string;
-        notes: string | null;
-        birthday: string | null;
-        marketingOptIn: boolean;
-        interactionStatus: string;
         preferences: Record<string, unknown> | null;
       }>;
 }> {
@@ -142,35 +138,40 @@ export async function getDataFromClient(
       throw new Error(`Cliente com ID ${trimmedClientId} não encontrado`);
     }
 
-    // Busca todas as informações do cliente nos salões (preferências, notas, etc.)
-    const customerRecords = await db.query.salonCustomers.findMany({
-      where: eq(salonCustomers.profileId, trimmedClientId),
-      columns: {
-        salonId: true,
-        notes: true,
-        birthday: true,
-        marketingOptIn: true,
-        interactionStatus: true,
-        preferences: true,
-      },
-    });
+    // Busca clientes relacionados a este profile (se houver phone correspondente)
+    let customerRecords: Array<{
+      salonId: string;
+      preferences: Record<string, unknown> | null;
+    }> = [];
+    
+    if (profile.phone) {
+      const normalizedPhone = profile.phone.replace(/\D/g, "");
+      const customersList = await db.query.customers.findMany({
+        where: eq(customers.phone, normalizedPhone),
+        columns: {
+          salonId: true,
+          preferences: true,
+        },
+      });
+      
+      customerRecords = customersList.map((c) => ({
+        salonId: c.salonId || "",
+        preferences: (c.preferences as Record<string, unknown>) || null,
+      }));
+    }
 
     // Processa as preferências
     let preferences: Record<string, unknown> | Record<string, Record<string, unknown>>;
     
     if (customerRecords.length === 0) {
-      // Se não encontrou nenhum registro, retorna objeto vazio
       preferences = {};
     } else if (customerRecords.length === 1) {
-      // Se encontrou apenas um registro, retorna as preferências diretamente
-      preferences = (customerRecords[0].preferences as Record<string, unknown>) || {};
+      preferences = customerRecords[0].preferences || {};
     } else {
-      // Se encontrou múltiplos registros (cliente em múltiplos salões),
-      // retorna um objeto com as preferências agrupadas por salão
       const preferencesBySalon: Record<string, Record<string, unknown>> = {};
       for (const record of customerRecords) {
         if (record.salonId && record.preferences) {
-          preferencesBySalon[record.salonId] = record.preferences as Record<string, unknown>;
+          preferencesBySalon[record.salonId] = record.preferences;
         }
       }
       preferences = preferencesBySalon;
@@ -189,11 +190,7 @@ export async function getDataFromClient(
       preferences,
       salonCustomers: customerRecords.map((record) => ({
         salonId: record.salonId,
-        notes: record.notes,
-        birthday: record.birthday,
-        marketingOptIn: record.marketingOptIn,
-        interactionStatus: record.interactionStatus,
-        preferences: (record.preferences as Record<string, unknown>) || null,
+        preferences: record.preferences,
       })),
     };
   } catch (error) {

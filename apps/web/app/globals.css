@@ -25,6 +25,8 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -59,6 +61,8 @@
   --accent: 210 88% 60%;
   --accent-foreground: 222 47% 12%;
   --destructive: 358 85% 64%;
+  --success: 142 71% 45%;
+  --success-foreground: 210 40% 98%;
   --border: 220 18% 22%;
   --input: 220 18% 22%;
   --ring: 221 83% 58%;
@@ -94,6 +98,8 @@
   --accent: 210 88% 60%;
   --accent-foreground: 222 47% 12%;
   --destructive: 358 85% 64%;
+  --success: 142 71% 45%;
+  --success-foreground: 210 40% 98%;
   --border: 220 18% 22%;
   --input: 220 18% 22%;
   --ring: 221 83% 58%;

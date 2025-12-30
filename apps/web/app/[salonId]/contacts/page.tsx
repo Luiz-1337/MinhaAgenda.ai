@@ -1,16 +1,24 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Search, Download, MoreHorizontal, User } from "lucide-react"
+import { Search, Download, MoreHorizontal, User, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
 import { getSalonCustomers, type CustomerRow } from "@/app/actions/customers"
 import { useSalon } from "@/contexts/salon-context"
+import { CreateContactDialog } from "@/components/features/create-contact-dialog"
+import { DeleteContactDialog } from "@/components/features/delete-contact-dialog"
 
 function exportCustomersToCSV(customers: CustomerRow[]) {
-  const headers = ["Nome", "Telefone", "E-mail"]
-  const rows = customers.map((c) => [c.name, c.phone || "", c.email || ""])
-  const csv = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${cell}"`).join(","))].join("\n")
+  const headers = ["Nome", "Telefone", "E-mail", "Preferências"]
+  const rows = customers.map((c) => {
+    const preferencesText = c.preferences?.notes 
+      ? String(c.preferences.notes) 
+      : (c.preferences ? JSON.stringify(c.preferences) : "")
+    return [c.name, c.phone || "", c.email || "", preferencesText]
+  })
+  const csv = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))].join("\n")
 
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
   const link = document.createElement("a")
@@ -29,6 +37,9 @@ export default function ContactsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [customerToDelete, setCustomerToDelete] = useState<CustomerRow | null>(null)
   const pageSize = 20
   const [, startTransition] = useTransition()
 
@@ -86,9 +97,15 @@ export default function ContactsPage() {
   }
 
   function handleRemoveCustomer(customer: CustomerRow) {
-    if (confirm(`Tem certeza que deseja remover o contato "${customer.name}"?`)) {
-      toast.info(`Removendo: ${customer.name}`)
-      // TODO: Implementar chamada à API para remover cliente
+    setCustomerToDelete(customer)
+    setIsDeleteDialogOpen(true)
+  }
+
+  function handleDeleteSuccess() {
+    // Remove o contato da lista
+    if (customerToDelete) {
+      setCustomers((prev) => prev.filter((c) => c.id !== customerToDelete.id))
+      setCustomerToDelete(null)
     }
   }
 
@@ -99,6 +116,43 @@ export default function ContactsPage() {
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
     }
     return name.substring(0, 2).toUpperCase()
+  }
+
+  // Helper para formatar preferências
+  function formatPreferences(preferences: Record<string, unknown> | null): string {
+    if (!preferences) return "Sem preferências"
+    
+    // Se tiver notes, mostra apenas o notes
+    if (preferences.notes && typeof preferences.notes === "string") {
+      return preferences.notes.length > 50 
+        ? preferences.notes.substring(0, 50) + "..." 
+        : preferences.notes
+    }
+    
+    // Caso contrário, tenta formatar o objeto
+    const text = JSON.stringify(preferences)
+    return text.length > 50 ? text.substring(0, 50) + "..." : text
+  }
+
+  function handleCreateSuccess(newCustomer: CustomerRow) {
+    // Adiciona o novo contato à lista
+    setCustomers((prev) => [newCustomer, ...prev])
+  }
+
+  function refreshCustomers() {
+    if (!activeSalon) return
+    
+    setIsLoading(true)
+    startTransition(async () => {
+      const result = await getSalonCustomers(activeSalon.id)
+      if ("error" in result) {
+        toast.error(result.error)
+        setCustomers([])
+      } else {
+        setCustomers(result.data || [])
+      }
+      setIsLoading(false)
+    })
   }
 
   return (
@@ -125,22 +179,32 @@ export default function ContactsPage() {
           />
         </div>
 
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-medium transition-all"
-        >
-          <Download size={16} />
-          Exportar
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setIsCreateDialogOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus size={16} />
+            Novo Contato
+          </Button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-medium transition-all"
+          >
+            <Download size={16} />
+            Exportar
+          </button>
+        </div>
       </div>
 
       {/* Table Container */}
       <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
         {/* Table Header */}
         <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
-          <div className="col-span-4 pl-2">Nome</div>
-          <div className="col-span-3">Telefone</div>
-          <div className="col-span-4">E-mail</div>
+          <div className="col-span-3 pl-2">Nome</div>
+          <div className="col-span-2">Telefone</div>
+          <div className="col-span-3">E-mail</div>
+          <div className="col-span-3">Preferências</div>
           <div className="col-span-1 text-right pr-2">Ações</div>
         </div>
 
@@ -171,19 +235,23 @@ export default function ContactsPage() {
                   index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
                 }`}
               >
-                <div className="col-span-4 flex items-center gap-3 pl-2">
+                <div className="col-span-3 flex items-center gap-3 pl-2">
                   <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-white/10 font-mono">
                     {getInitials(contact.name)}
                   </div>
                   <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{contact.name}</span>
                 </div>
 
-                <div className="col-span-3 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                <div className="col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
                   {contact.phone || "Não informado"}
                 </div>
 
-                <div className="col-span-4 text-slate-600 dark:text-slate-400 truncate">
+                <div className="col-span-3 text-slate-600 dark:text-slate-400 truncate">
                   {contact.email || "Não informado"}
+                </div>
+
+                <div className="col-span-3 text-slate-600 dark:text-slate-400 text-xs truncate">
+                  {formatPreferences(contact.preferences)}
                 </div>
 
                 <div className="col-span-1 flex justify-end pr-2">
@@ -240,6 +308,27 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      {/* Create Contact Dialog */}
+      {activeSalon && (
+        <CreateContactDialog
+          open={isCreateDialogOpen}
+          onOpenChange={setIsCreateDialogOpen}
+          salonId={activeSalon.id}
+          onSuccess={handleCreateSuccess}
+        />
+      )}
+
+      {/* Delete Contact Dialog */}
+      {activeSalon && (
+        <DeleteContactDialog
+          open={isDeleteDialogOpen}
+          onOpenChange={setIsDeleteDialogOpen}
+          customer={customerToDelete}
+          salonId={activeSalon.id}
+          onSuccess={handleDeleteSuccess}
+        />
+      )}
     </div>
   )
 }

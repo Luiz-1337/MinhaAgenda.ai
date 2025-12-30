@@ -1,7 +1,7 @@
 "use server"
 
 import { and, desc, eq, inArray } from "drizzle-orm"
-import { db, chats, messages, profiles, salonCustomers } from "@repo/db"
+import { db, chats, messages, profiles } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { sendWhatsAppMessage } from "@/lib/services/whatsapp.service"
 import { saveMessage } from "@/lib/services/chat.service"

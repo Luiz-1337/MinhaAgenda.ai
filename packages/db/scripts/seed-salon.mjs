@@ -268,36 +268,8 @@ async function main() {
     // ============================================================================
     // 7. SALON CUSTOMERS (com informações adicionais)
     // ============================================================================
-    console.log('📋 Criando dados de clientes do salão...')
-    
-    const salonCustomersData = [
-      { profileId: client1Id, notes: 'Cliente VIP - Frequência semanal', birthday: '1985-03-15', marketingOptIn: true, status: 'recently_scheduled', preferences: { beverage: 'café', music: 'rock', preferred_professional: professionalIds[0].id } },
-      { profileId: client2Id, notes: 'Prefere cortes mais curtos', birthday: '1990-07-22', marketingOptIn: true, status: 'recently_scheduled', preferences: { beverage: 'água', preferred_professional: professionalIds[1].id } },
-      { profileId: client3Id, notes: 'Alérgico a produtos com amônia', birthday: '1988-11-30', marketingOptIn: false, status: 'new', preferences: { beverage: 'chá', allergies: ['ammonia'] } },
-      { profileId: client4Id, notes: 'Cliente desde 2020', birthday: '1992-05-10', marketingOptIn: true, status: 'recently_scheduled', preferences: { beverage: 'café', preferred_professional: professionalIds[0].id } },
-      { profileId: client5Id, notes: 'Gosta de cortes modernos', birthday: '1995-09-18', marketingOptIn: true, status: 'new', preferences: { beverage: 'refrigerante', style: 'modern' } },
-      { profileId: client6Id, notes: 'Prefere agendar sempre com o mesmo profissional', birthday: '1987-12-25', marketingOptIn: true, status: 'recently_scheduled', preferences: { beverage: 'café', preferred_professional: professionalIds[2].id } },
-      { profileId: client7Id, notes: 'Cliente novo', birthday: '1993-02-14', marketingOptIn: true, status: 'new', preferences: { beverage: 'água' } },
-      { profileId: client8Id, notes: 'Frequência quinzenal', birthday: '1989-08-05', marketingOptIn: false, status: 'recently_scheduled', preferences: { beverage: 'chá', frequency: 'biweekly' } },
-      { profileId: client9Id, notes: 'Cliente corporativo', birthday: '1986-04-20', marketingOptIn: true, status: 'recently_scheduled', preferences: { beverage: 'café', preferred_professional: professionalIds[1].id } },
-      { profileId: client10Id, notes: 'Prefere horários matutinos', birthday: '1991-10-08', marketingOptIn: true, status: 'new', preferences: { beverage: 'água', preferred_time: 'morning' } }
-    ]
-
-    for (const data of salonCustomersData) {
-      await tx`
-        insert into salon_customers (salon_id, profile_id, notes, birthday, marketing_opt_in, interaction_status, preferences)
-        values (
-          ${SALON_ID},
-          ${data.profileId},
-          ${data.notes},
-          ${data.birthday}::date,
-          ${data.marketingOptIn},
-          ${data.status}::lead_status,
-          ${JSON.stringify(data.preferences)}::jsonb
-        )
-        on conflict do nothing
-      `
-    }
+    // Removido: criação de salon_customers (tabela removida)
+    // Clientes agora são criados diretamente na tabela customers
 
     // ============================================================================
     // 8. AGENDAMENTOS (passados e futuros)
@@ -547,7 +519,7 @@ async function main() {
 
     // Adiciona destinatários às campanhas
     const salonCustomerIds = await tx`
-      select id from salon_customers where salon_id = ${SALON_ID} limit 5
+      select id from customers where salon_id = ${SALON_ID} limit 5
     `
     
     for (const sc of salonCustomerIds) {

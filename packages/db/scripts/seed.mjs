@@ -116,11 +116,9 @@ async function main() {
              (${chatId}, 'assistant', 'Claro! Tenho horário amanhã às 10h.')
     `
 
-    const [{ id: salonCustomerId }] = await tx`
-      insert into salon_customers (salon_id, profile_id, notes, birthday, marketing_opt_in, interaction_status, preferences)
-      values (${salonId}, ${clientId}, 'Cliente VIP', '1995-05-20', true, 'new', '{"beverage":"coffee"}'::jsonb)
-      returning id
-    `
+    // Removido: criação de salon_customers (tabela removida)
+    // Clientes agora são criados diretamente na tabela customers
+    const salonCustomerId = null
 
     const [{ id: leadId }] = await tx`
       insert into leads (salon_id, profile_id, phone_number, external_id, name, email, source, status, notes)

@@ -8,7 +8,6 @@ ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE salon_customers ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- PROFILES
@@ -136,15 +135,6 @@ CREATE POLICY "Salon owners can manage customers" ON customers
     EXISTS (
       SELECT 1 FROM salons
       WHERE salons.id = customers.salon_id
-      AND salons.owner_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Salon owners can manage salon_customers" ON salon_customers
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM salons
-      WHERE salons.id = salon_customers.salon_id
       AND salons.owner_id = auth.uid()
     )
   );

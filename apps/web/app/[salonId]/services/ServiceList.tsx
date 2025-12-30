@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
-import { Search, Plus, Zap, Pencil, Trash2, Clock, DollarSign, Tag } from "lucide-react"
+import { Search, Plus, Zap, Pencil, Trash2, Clock, DollarSign, Tag, X, Save } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -226,178 +225,224 @@ export default function ServiceList({ salonId }: ServiceListProps) {
           <Zap size={24} className="text-slate-400" />
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Serviços</h2>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
-            >
-              <Plus size={16} />
-              Criar serviço
-            </button>
-          </DialogTrigger>
-          <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
-            <DialogHeader>
-              <DialogTitle className="text-slate-800 dark:text-white">
-                {editing ? "Editar Serviço" : "Novo Serviço"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nome *</Label>
-                <Input
-                  id="name"
-                  {...form.register("name")}
-                  placeholder="Ex.: Corte Masculino"
-                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                />
-                {form.formState.errors.name && (
-                  <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-slate-700 dark:text-slate-300">Descrição</Label>
-                <Input
-                  id="description"
-                  {...form.register("description")}
-                  placeholder="Descrição do serviço"
-                  className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="duration" className="text-slate-700 dark:text-slate-300">
-                    Duração (minutos) *
-                  </Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    {...form.register("duration", { valueAsNumber: true })}
-                    placeholder="60"
-                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                  />
-                  {form.formState.errors.duration && (
-                    <p className="text-sm text-red-500">{form.formState.errors.duration.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="price" className="text-slate-700 dark:text-slate-300">Preço (R$) *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    {...form.register("price", { valueAsNumber: true })}
-                    placeholder="50.00"
-                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                  />
-                  {form.formState.errors.price && (
-                    <p className="text-sm text-red-500">{form.formState.errors.price.message}</p>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                  <Switch {...form.register("isActive")} checked={form.watch("isActive")} />
-                  Ativo
-                </Label>
-              </div>
-              {!isSolo && (
-                <div className="space-y-2">
-                  <Label htmlFor="professionals" className="text-slate-700 dark:text-slate-300">
-                    Profissionais Habilitados
-                  </Label>
-                  <div className="border border-slate-200 dark:border-white/10 rounded-lg bg-slate-50 dark:bg-slate-950">
-                    {(() => {
-                      const activeProfessionals = professionals.filter((p) => p.is_active)
-                      if (activeProfessionals.length === 0) {
-                        return (
-                          <div className="p-3">
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              Nenhum profissional ativo cadastrado
-                            </p>
-                          </div>
-                        )
-                      }
-                      return (
-                        <>
-                          <div className="p-2 border-b border-slate-200 dark:border-white/10">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const allActiveIds = activeProfessionals.map((p) => p.id)
-                                form.setValue("professionalIds", allActiveIds)
-                              }}
-                              className="w-full text-xs h-7 border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-                            >
-                              Selecionar todos
-                            </Button>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto p-3 space-y-2">
-                            {activeProfessionals.map((professional) => {
-                              const professionalIds = form.watch("professionalIds") || []
-                              const isChecked = professionalIds.includes(professional.id)
-                              return (
-                                <div key={professional.id} className="flex items-center gap-2">
-                                  <Checkbox
-                                    id={`professional-${professional.id}`}
-                                    checked={isChecked}
-                                    onChange={(e) => {
-                                      const currentIds = form.getValues("professionalIds") || []
-                                      if (e.target.checked) {
-                                        form.setValue("professionalIds", [...currentIds, professional.id])
-                                      } else {
-                                        form.setValue(
-                                          "professionalIds",
-                                          currentIds.filter((id) => id !== professional.id)
-                                        )
-                                      }
-                                    }}
-                                  />
-                                  <Label
-                                    htmlFor={`professional-${professional.id}`}
-                                    className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-normal"
-                                  >
-                                    {professional.name}
-                                  </Label>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </>
-                      )
-                    })()}
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+        >
+          <Plus size={16} />
+          Criar serviço
+        </button>
+        
+        {/* Service Modal */}
+        {open && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div 
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" 
+              onClick={() => setOpen(false)} 
+            />
+            
+            {/* Modal Card */}
+            <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
+              
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-500 rounded-lg text-white shadow-lg shadow-emerald-500/20">
+                    <Zap size={18} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
+                      {editing ? "Editar Serviço" : "Novo Serviço"}
+                    </h2>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Configuração de oferta</p>
                   </div>
                 </div>
-              )}
-              {isSolo && (
-                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-                  <p className="text-sm text-indigo-700 dark:text-indigo-300">
-                    No plano SOLO, os serviços são automaticamente vinculados a você.
-                  </p>
-                </div>
-              )}
-              <DialogFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
+                <button 
                   onClick={() => setOpen(false)}
-                  className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
                   disabled={form.formState.isSubmitting}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editing ? "Salvar" : "Criar"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
+                <div className="p-5 space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      Nome do Serviço <span className="text-red-500">*</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="Ex: Corte Degrade" 
+                      {...form.register("name")}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                    />
+                    {form.formState.errors.name && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Descrição Detalhada</label>
+                    <textarea 
+                      rows={3} 
+                      placeholder="Descreva o que está incluso no serviço..." 
+                      {...form.register("description")}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        Duração (min) <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative group">
+                        <Clock size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                        <input 
+                          type="number" 
+                          placeholder="30 min" 
+                          {...form.register("duration", { valueAsNumber: true })}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                        />
+                      </div>
+                      {form.formState.errors.duration && (
+                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.duration.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        Preço (R$) <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative group">
+                        <DollarSign size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                        <input 
+                          type="number"
+                          step="0.01"
+                          placeholder="0,00" 
+                          {...form.register("price", { valueAsNumber: true })}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                        />
+                      </div>
+                      {form.formState.errors.price && (
+                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.price.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      <Switch {...form.register("isActive")} checked={form.watch("isActive")} />
+                      <span>Ativo</span>
+                    </Label>
+                  </div>
+
+                  {!isSolo && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        Profissionais Habilitados
+                      </label>
+                      <div className="border border-slate-200 dark:border-white/10 rounded-xl bg-slate-50 dark:bg-slate-950">
+                        {(() => {
+                          const activeProfessionals = professionals.filter((p) => p.is_active)
+                          if (activeProfessionals.length === 0) {
+                            return (
+                              <div className="p-3">
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                  Nenhum profissional ativo cadastrado
+                                </p>
+                              </div>
+                            )
+                          }
+                          return (
+                            <>
+                              <div className="p-2 border-b border-slate-200 dark:border-white/10">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const allActiveIds = activeProfessionals.map((p) => p.id)
+                                    form.setValue("professionalIds", allActiveIds)
+                                  }}
+                                  className="w-full text-xs h-7 border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
+                                >
+                                  Selecionar todos
+                                </Button>
+                              </div>
+                              <div className="max-h-48 overflow-y-auto p-3 space-y-2">
+                                {activeProfessionals.map((professional) => {
+                                  const professionalIds = form.watch("professionalIds") || []
+                                  const isChecked = professionalIds.includes(professional.id)
+                                  return (
+                                    <div key={professional.id} className="flex items-center gap-2">
+                                      <Checkbox
+                                        id={`professional-${professional.id}`}
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          const currentIds = form.getValues("professionalIds") || []
+                                          if (e.target.checked) {
+                                            form.setValue("professionalIds", [...currentIds, professional.id])
+                                          } else {
+                                            form.setValue(
+                                              "professionalIds",
+                                              currentIds.filter((id) => id !== professional.id)
+                                            )
+                                          }
+                                        }}
+                                      />
+                                      <Label
+                                        htmlFor={`professional-${professional.id}`}
+                                        className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-normal"
+                                      >
+                                        {professional.name}
+                                      </Label>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {isSolo && (
+                    <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                      <p className="text-sm text-indigo-700 dark:text-indigo-300">
+                        No plano SOLO, os serviços são automaticamente vinculados a você.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
+                  <button 
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    disabled={form.formState.isSubmitting}
+                    className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={form.formState.isSubmitting}
+                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    <Save size={18} />
+                    {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Serviço" : "Criar Serviço"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -541,41 +586,76 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       </div>
 
       {/* Dialog de Confirmação de Exclusão */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
-          <DialogHeader>
-            <DialogTitle className="text-slate-800 dark:text-white">Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-slate-700 dark:text-slate-300">
-              Tem certeza que deseja remover o serviço <strong>"{serviceToDelete?.name}"</strong>?
-            </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              Esta ação não pode ser desfeita. O serviço será removido permanentemente.
-            </p>
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" 
+            onClick={() => {
+              setDeleteConfirmOpen(false)
+              setServiceToDelete(null)
+            }} 
+          />
+          
+          {/* Modal Card */}
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500 rounded-lg text-white shadow-lg shadow-red-500/20">
+                  <Trash2 size={18} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">Confirmar Exclusão</h2>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Ação permanente</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setDeleteConfirmOpen(false)
+                  setServiceToDelete(null)
+                }}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <p className="text-slate-700 dark:text-slate-300">
+                Tem certeza que deseja remover o serviço <strong>"{serviceToDelete?.name}"</strong>?
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                Esta ação não pode ser desfeita. O serviço será removido permanentemente.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
+              <button 
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmOpen(false)
+                  setServiceToDelete(null)
+                }}
+                className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={onDelete}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-red-500/20 flex items-center gap-2 transform active:scale-95 transition-all"
+              >
+                <Trash2 size={18} />
+                Remover
+              </button>
+            </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDeleteConfirmOpen(false)
-                setServiceToDelete(null)
-              }}
-              className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={onDelete}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              Remover
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   )
 }

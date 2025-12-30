@@ -328,26 +328,6 @@ export const chatMessages = pgTable(
   ]
 )
 
-export const salonCustomers = pgTable(
-  'salon_customers',
-  {
-    id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-    profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
-    notes: text('notes'),
-    birthday: date('birthday'),
-    marketingOptIn: boolean('marketing_opt_in').default(false).notNull(),
-    interactionStatus: leadStatusEnum('interaction_status').default('new').notNull(),
-    preferences: jsonb('preferences'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull()
-  },
-  (table) => [
-    index('salon_customers_salon_profile_idx').on(table.salonId, table.profileId),
-    index('salon_customers_salon_idx').on(table.salonId)
-  ]
-)
-
 export const leads = pgTable(
   'leads',
   {
@@ -377,7 +357,9 @@ export const customers = pgTable(
     salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     name: text('name').notNull(),
     phone: text('phone').notNull(),
+    email: text('email'),
     aiPreferences: text('ai_preferences'),
+    preferences: jsonb('preferences'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -403,7 +385,7 @@ export const campaigns = pgTable('campaigns', {
 export const campaignRecipients = pgTable('campaign_recipients', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
   campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }).notNull(),
-  salonCustomerId: uuid('salon_customer_id').references(() => salonCustomers.id),
+  customerId: uuid('customer_id').references(() => customers.id),
   leadId: uuid('lead_id').references(() => leads.id),
   profileId: uuid('profile_id').references(() => profiles.id),
   addedAt: timestamp('added_at').defaultNow().notNull()

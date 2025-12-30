@@ -38,7 +38,6 @@ async function truncateAll() {
     'integrations',
     'salon_integrations',
     'leads',
-    'salon_customers',
     'customers',
     'embeddings',
     'agents',

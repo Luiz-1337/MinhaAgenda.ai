@@ -6,7 +6,7 @@ import { openai } from "@ai-sdk/openai"
 import { generateText, tool, type CoreMessage } from "ai"
 import { z } from "zod"
 import { and, eq, ilike } from "drizzle-orm"
-import { db, services, professionals, appointments, professionalServices, salonCustomers } from "@repo/db"
+import { db, services, professionals, appointments, professionalServices, customers, profiles } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
 
 const DEFAULT_MODEL = "gpt-4o"
@@ -347,11 +347,25 @@ export function createSaveUserPreferencesTool(
         }
       }
 
-      // Busca ou cria registro do cliente no salão
-      let customer = await db.query.salonCustomers.findFirst({
+      // Busca o profile para obter o phone
+      const profile = await db.query.profiles.findFirst({
+        where: eq(profiles.id, clientId),
+        columns: { phone: true },
+      })
+
+      if (!profile?.phone) {
+        return {
+          success: false,
+          message: "Preferência não salva: telefone do cliente não encontrado"
+        }
+      }
+
+      // Busca o customer pelo phone no salão
+      const normalizedPhone = profile.phone.replace(/\D/g, "")
+      let customer = await db.query.customers.findFirst({
         where: and(
-          eq(salonCustomers.salonId, salonId),
-          eq(salonCustomers.profileId, clientId)
+          eq(customers.salonId, salonId),
+          eq(customers.phone, normalizedPhone)
         ),
         columns: { id: true, preferences: true },
       })
@@ -367,19 +381,18 @@ export function createSaveUserPreferencesTool(
       if (customer) {
         // Atualiza existente
         await db
-          .update(salonCustomers)
+          .update(customers)
           .set({ 
             preferences: updatedPreferences,
             updatedAt: new Date()
           })
-          .where(eq(salonCustomers.id, customer.id))
+          .where(eq(customers.id, customer.id))
       } else {
-        // Cria novo registro
-        await db.insert(salonCustomers).values({
-          salonId,
-          profileId: clientId,
-          preferences: updatedPreferences,
-        })
+        // Não cria customer automaticamente - deve ser criado antes
+        return {
+          success: false,
+          message: "Preferência não salva: cliente não encontrado no salão"
+        }
       }
 
       return {

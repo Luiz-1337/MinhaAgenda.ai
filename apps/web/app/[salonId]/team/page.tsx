@@ -175,9 +175,9 @@ export default function TeamPage() {
                 Convidar membro
               </button>
             </DialogTrigger>
-            <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
+            <DialogContent>
               <DialogHeader>
-                <DialogTitle className="text-slate-800 dark:text-white">
+                <DialogTitle>
                   {editing ? "Editar Profissional" : "Novo Profissional"}
                 </DialogTitle>
               </DialogHeader>
@@ -268,8 +268,8 @@ export default function TeamPage() {
                   </Button>
                   <Button
                     type="submit"
+                    variant="success"
                     disabled={form.formState.isSubmitting}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
                     {editing ? "Salvar" : "Criar"}
                   </Button>
@@ -447,9 +447,9 @@ export default function TeamPage() {
 
       {/* Dialog de Confirmação de Exclusão */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-slate-200 dark:border-white/10 rounded-2xl shadow-xl">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-slate-800 dark:text-white">Confirmar Exclusão</DialogTitle>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p className="text-slate-700 dark:text-slate-300">
@@ -473,8 +473,8 @@ export default function TeamPage() {
             </Button>
             <Button
               type="button"
+              variant="destructive"
               onClick={onDelete}
-              className="bg-red-600 hover:bg-red-700 text-white"
             >
               Remover
             </Button>

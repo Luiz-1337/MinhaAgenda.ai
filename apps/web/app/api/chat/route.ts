@@ -11,7 +11,7 @@ import {
   createSalonAssistantPrompt 
 } from "@/lib/services/ai.service"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, salonCustomers, chatMessages } from "@repo/db"
+import { db, salons, chatMessages } from "@repo/db"
 import { and, eq } from "drizzle-orm"
 
 export async function POST(req: Request) {
@@ -36,18 +36,9 @@ export async function POST(req: Request) {
   // Usa ID do usuário logado ou undefined se não houver login
   const clientId = user?.id
 
-  // Busca preferências do cliente no CRM
-  let preferences: Record<string, unknown> | undefined = undefined
-  if (clientId) {
-    const customer = await db.query.salonCustomers.findFirst({
-      where: and(
-        eq(salonCustomers.salonId, salonId),
-        eq(salonCustomers.profileId, clientId)
-      ),
-      columns: { preferences: true },
-    })
-    preferences = (customer?.preferences as Record<string, unknown>) || undefined
-  }
+  // Preferências do cliente não são mais buscadas via profileId
+  // Se necessário, buscar preferências via phone do cliente na tabela customers
+  const preferences: Record<string, unknown> | undefined = undefined
 
   const systemPrompt = createSalonAssistantPrompt(salonName, preferences)
 

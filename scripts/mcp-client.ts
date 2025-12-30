@@ -26,7 +26,7 @@ import { openai } from "@ai-sdk/openai"
 import { generateText, jsonSchema, tool, stepCountIs, type CoreMessage, type ToolChoice } from "ai"
 
 import { getSalonIdByWhatsapp, sanitizeWhatsApp } from "./mcp-chat-utils.js"
-import { db, salons, salonCustomers, eq, and } from "@repo/db"
+import { db, salons, customers, profiles, eq, and } from "@repo/db"
 
 import { createSalonAssistantPrompt } from "../apps/web/lib/services/ai.service"
 import { createMCPTools as createVercelTools } from "../packages/mcp-server/tools/vercel-ai"
@@ -128,11 +128,27 @@ async function getSalonName(salonId: string): Promise<string> {
 }
 
 async function getPreferencesForProfile(salonId: string, profileId: string): Promise<Record<string, unknown> | undefined> {
-  const row = await db.query.salonCustomers.findFirst({
-    where: and(eq(salonCustomers.salonId, salonId), eq(salonCustomers.profileId, profileId)),
+  // Busca o profile para obter o phone
+  const profile = await db.query.profiles.findFirst({
+    where: eq(profiles.id, profileId),
+    columns: { phone: true },
+  })
+
+  if (!profile?.phone) {
+    return undefined
+  }
+
+  // Busca o customer pelo phone no salão
+  const normalizedPhone = profile.phone.replace(/\D/g, "")
+  const customer = await db.query.customers.findFirst({
+    where: and(
+      eq(customers.salonId, salonId),
+      eq(customers.phone, normalizedPhone)
+    ),
     columns: { preferences: true },
   })
-  return (row?.preferences as Record<string, unknown>) || undefined
+  
+  return (customer?.preferences as Record<string, unknown>) || undefined
 }
 
 function trimChatHistory(history: CoreMessage[], maxMessages: number) {

@@ -1,5 +1,5 @@
 import { and, asc, eq, gt, ilike } from "drizzle-orm"
-import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, salonCustomers, salonIntegrations, salons, services, availability, professionalServices, fromBrazilTime } from "@repo/db"
+import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, availability, professionalServices, fromBrazilTime } from "@repo/db"
 
 export class MinhaAgendaAITools {
 
@@ -32,25 +32,6 @@ export class MinhaAgendaAITools {
         } else {
             // Cliente não encontrado e sem nome para criar
             return JSON.stringify({ found: false })
-        }
-
-        // Se salonId foi fornecido, garante que existe salonCustomer
-        if (salonId && profileId) {
-            const salonCustomer = await db.query.salonCustomers.findFirst({
-                where: and(
-                    eq(salonCustomers.salonId, salonId),
-                    eq(salonCustomers.profileId, profileId)
-                ),
-                columns: { id: true },
-            })
-
-            if (!salonCustomer) {
-                // Cria registro em salonCustomers se não existir
-                await db.insert(salonCustomers).values({
-                    salonId,
-                    profileId,
-                })
-            }
         }
 
         return JSON.stringify({
@@ -90,21 +71,23 @@ export class MinhaAgendaAITools {
             profileId = newProfile.id;
         }
 
-        // Se salonId foi fornecido, garante que existe salonCustomer
-        if (salonId && profileId) {
-            const salonCustomer = await db.query.salonCustomers.findFirst({
+        // Se salonId foi fornecido, garante que existe customer
+        if (salonId && phone) {
+            const normalizedPhone = phone.replace(/\D/g, "")
+            const existingCustomer = await db.query.customers.findFirst({
                 where: and(
-                    eq(salonCustomers.salonId, salonId),
-                    eq(salonCustomers.profileId, profileId)
+                    eq(customers.salonId, salonId),
+                    eq(customers.phone, normalizedPhone)
                 ),
                 columns: { id: true },
             })
 
-            if (!salonCustomer) {
-                // Cria registro em salonCustomers se não existir
-                await db.insert(salonCustomers).values({
+            if (!existingCustomer) {
+                // Cria registro em customers se não existir
+                await db.insert(customers).values({
                     salonId,
-                    profileId,
+                    name: existing?.fullName || name,
+                    phone: normalizedPhone,
                 })
             }
         }
@@ -590,14 +573,25 @@ export class MinhaAgendaAITools {
     }
 
     public async saveCustomerPreference(salonId: string, customerId: string, key: string, value: string | number | boolean) {
-        // Busca ou cria registro do cliente no salão
-        let customer = await db.query.salonCustomers.findFirst({
+        // Busca registro do cliente no salão (customerId pode ser ID do customer ou phone)
+        let customer = await db.query.customers.findFirst({
             where: and(
-                eq(salonCustomers.salonId, salonId),
-                eq(salonCustomers.profileId, customerId)
+                eq(customers.salonId, salonId),
+                eq(customers.id, customerId)
             ),
             columns: { id: true, preferences: true },
         })
+
+        // Se não encontrou por ID, tenta buscar por phone (caso customerId seja phone)
+        if (!customer) {
+            customer = await db.query.customers.findFirst({
+                where: and(
+                    eq(customers.salonId, salonId),
+                    eq(customers.phone, customerId.replace(/\D/g, ""))
+                ),
+                columns: { id: true, preferences: true },
+            })
+        }
 
         const currentPreferences = (customer?.preferences as Record<string, unknown>) || {}
 
@@ -610,15 +604,16 @@ export class MinhaAgendaAITools {
         if (customer) {
             // Atualiza existente
             await db
-                .update(salonCustomers)
-                .set({ preferences: updatedPreferences })
-                .where(eq(salonCustomers.id, customer.id))
+                .update(customers)
+                .set({ 
+                    preferences: updatedPreferences,
+                    updatedAt: new Date()
+                })
+                .where(eq(customers.id, customer.id))
         } else {
-            // Cria novo registro
-            await db.insert(salonCustomers).values({
-                salonId,
-                profileId: customerId,
-                preferences: updatedPreferences,
+            // Não cria customer automaticamente aqui - deve ser criado antes
+            return JSON.stringify({
+                error: "Cliente não encontrado no salão",
             })
         }
 

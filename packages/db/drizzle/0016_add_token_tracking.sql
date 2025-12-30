@@ -17,3 +17,5 @@ CREATE INDEX IF NOT EXISTS "messages_model_idx" ON "messages" USING btree ("mode
 CREATE INDEX IF NOT EXISTS "chats_timestamps_idx" ON "chats" USING btree ("first_user_message_at", "first_agent_response_at");
 
 
+
+
