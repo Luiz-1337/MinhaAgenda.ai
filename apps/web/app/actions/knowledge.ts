@@ -7,6 +7,11 @@ import type { ActionResult } from "@/lib/types/common"
 import { db, agentKnowledgeBase, agents, postgresClient } from "@repo/db"
 import { eq, and, desc, sql } from "drizzle-orm"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
+import {
+  extractTextFromFile,
+  splitIntelligentChunks,
+  type FileProcessingResult,
+} from "@/lib/utils/file-processor"
 
 export type KnowledgeItem = {
   id: string
@@ -211,6 +216,206 @@ export async function deleteKnowledgeItem(
   } catch (error) {
     console.error("Erro ao remover item de conhecimento:", error)
     return { error: "Falha ao remover item de conhecimento." }
+  }
+}
+
+/**
+ * Processa e vetoriza um arquivo (PDF ou TXT) para o conhecimento do agente
+ */
+export async function uploadKnowledgeFile(
+  agentId: string,
+  fileData: {
+    name: string
+    type: string
+    size: number
+    buffer: ArrayBuffer
+  }
+): Promise<ActionResult<{ chunksCreated: number; fileName: string }>> {
+  try {
+    if (!agentId || !fileData) {
+      return { error: "agentId e fileData são obrigatórios" }
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Não autenticado" }
+    }
+
+    // Busca o agente para obter o salonId
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      columns: { salonId: true },
+    })
+
+    if (!agent) {
+      return { error: "Agente não encontrado" }
+    }
+
+    // Verifica permissões
+    const hasAccess = await hasSalonPermission(agent.salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // Cria um objeto File-like para usar com extractTextFromFile
+    const file = new File([fileData.buffer], fileData.name, {
+      type: fileData.type,
+    })
+
+    // Extrai texto do arquivo
+    const processingResult: FileProcessingResult = await extractTextFromFile(file)
+
+    // Divide em chunks inteligentes
+    const chunks = splitIntelligentChunks(processingResult.text)
+
+    if (chunks.length === 0) {
+      return { error: "Nenhum conteúdo válido encontrado no arquivo" }
+    }
+
+    const uploadedAt = new Date().toISOString()
+
+    // Processa cada chunk e salva no banco
+    let chunksCreated = 0
+    const errors: string[] = []
+
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const chunk = chunks[i]
+
+        // Gera o embedding do chunk
+        const { embedding: embeddingVector } = await embed({
+          model: openai.embedding("text-embedding-3-small"),
+          value: chunk,
+        })
+
+        // Formata o vetor como string PostgreSQL array
+        const embeddingString = `[${embeddingVector.join(",")}]`
+
+        // Metadados do chunk
+        const metadata = {
+          source: "file",
+          fileName: processingResult.fileName,
+          fileType: processingResult.fileType,
+          chunkIndex: i,
+          totalChunks: chunks.length,
+          uploadedAt,
+        }
+
+        // Salva no banco
+        await postgresClient`
+          INSERT INTO agent_knowledge_base (agent_id, content, embedding, metadata)
+          VALUES (${agentId}, ${chunk}, ${embeddingString}::vector, ${JSON.stringify(metadata)}::jsonb)
+        `
+
+        chunksCreated++
+      } catch (error) {
+        const errorMsg = `Erro ao processar chunk ${i + 1}/${chunks.length}: ${
+          error instanceof Error ? error.message : "Erro desconhecido"
+        }`
+        console.error(errorMsg, error)
+        errors.push(errorMsg)
+      }
+    }
+
+    if (chunksCreated === 0) {
+      return {
+        error: `Falha ao processar arquivo. Erros: ${errors.join("; ")}`,
+      }
+    }
+
+    if (errors.length > 0) {
+      console.warn(
+        `Arquivo processado com alguns erros: ${chunksCreated}/${chunks.length} chunks criados. Erros: ${errors.join("; ")}`
+      )
+    }
+
+    return {
+      success: true,
+      data: {
+        chunksCreated,
+        fileName: processingResult.fileName,
+      },
+    }
+  } catch (error) {
+    console.error("Erro ao processar arquivo:", error)
+    return {
+      error:
+        error instanceof Error
+          ? `Falha ao processar arquivo: ${error.message}`
+          : "Falha ao processar arquivo.",
+    }
+  }
+}
+
+/**
+ * Remove todos os chunks de um arquivo específico
+ */
+export async function deleteKnowledgeFile(
+  agentId: string,
+  fileName: string
+): Promise<ActionResult<{ deletedCount: number }>> {
+  try {
+    if (!agentId || !fileName) {
+      return { error: "agentId e fileName são obrigatórios" }
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Não autenticado" }
+    }
+
+    // Busca o agente para obter o salonId
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      columns: { salonId: true },
+    })
+
+    if (!agent) {
+      return { error: "Agente não encontrado" }
+    }
+
+    // Verifica permissões
+    const hasAccess = await hasSalonPermission(agent.salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // Busca todos os chunks do arquivo usando SQL raw
+    const items = await postgresClient`
+      SELECT id
+      FROM agent_knowledge_base
+      WHERE agent_id = ${agentId}
+        AND metadata->>'fileName' = ${fileName}
+    ` as Array<{ id: string }>
+
+    if (items.length === 0) {
+      return { error: "Nenhum chunk encontrado para este arquivo" }
+    }
+
+    // Remove todos os chunks usando SQL raw
+    await postgresClient`
+      DELETE FROM agent_knowledge_base
+      WHERE agent_id = ${agentId}
+        AND metadata->>'fileName' = ${fileName}
+    `
+
+    return {
+      success: true,
+      data: { deletedCount: items.length },
+    }
+  } catch (error) {
+    console.error("Erro ao remover arquivo:", error)
+    return { error: "Falha ao remover arquivo." }
   }
 }
 

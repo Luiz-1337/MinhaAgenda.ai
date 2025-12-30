@@ -453,7 +453,7 @@ export default function ChatPage() {
               >
                 <UserRound size={16} />
                 <span className="hidden sm:inline">
-                  {isManualMode ? "Modo Manual" : "Assumir Manualmente"}
+                  {isManualMode ? "Passar para a IA" : "Assumir Manualmente"}
                 </span>
               </Button>
               <div className="text-right hidden sm:block">
