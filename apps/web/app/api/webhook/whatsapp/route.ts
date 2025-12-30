@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
 import { createSalonAssistantPrompt } from '@/lib/services/ai.service';
 import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
-import { db, salons, customers } from "@repo/db";
+import { db, salons, customers, chats } from "@repo/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
 import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage } from '@/lib/services/chat.service';
@@ -123,14 +123,26 @@ export async function POST(req: Request) {
     const chat = await findOrCreateChat(clientPhone, salonId);
     console.log(`✅ Chat ID: ${chat.id}`);
 
-    // Idempotência: verifica se a mensagem já foi processada
-    // (verificação removida - não salvamos markers no banco para evitar poluição)
-    // Se necessário, pode ser implementada com cache/Redis ou tabela separada
+    // Verifica se o chat está em modo manual
+    const chatRecord = await db.query.chats.findFirst({
+      where: eq(chats.id, chat.id),
+      columns: { isManual: true },
+    });
 
     // Salva mensagem do usuário
     console.log("💾 Salvando mensagem do usuário...");
     await saveMessage(chat.id, "user", body);
     console.log("✅ Mensagem salva");
+
+    // Se estiver em modo manual, apenas salva a mensagem e retorna sem processar pela IA
+    if (chatRecord?.isManual) {
+      console.log("👤 Chat em modo manual - mensagem salva, sem resposta automática da IA");
+      return new Response("", { status: 200 });
+    }
+
+    // Idempotência: verifica se a mensagem já foi processada
+    // (verificação removida - não salvamos markers no banco para evitar poluição)
+    // Se necessário, pode ser implementada com cache/Redis ou tabela separada
 
     // Busca histórico de mensagens do chat (últimas 20 mensagens)
     console.log("📜 Buscando histórico de mensagens...");

@@ -3,6 +3,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm"
 import { db, chats, messages, profiles, salonCustomers } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
+import { sendWhatsAppMessage } from "@/lib/services/whatsapp.service"
+import { saveMessage } from "@/lib/services/chat.service"
 
 export interface ChatConversation {
   id: string
@@ -14,6 +16,7 @@ export interface ChatConversation {
   preview: string
   status: "Ativo" | "Finalizado" | "Aguardando humano"
   assignedTo: string
+  isManual: boolean
 }
 
 export interface ChatMessage {
@@ -158,6 +161,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           preview: lastMessage.content?.substring(0, 50) || "Sem mensagens",
           status: (chat.status === "active" ? "Ativo" : "Finalizado") as "Ativo" | "Finalizado" | "Aguardando humano",
           assignedTo: "IA Assistente",
+          isManual: chat.isManual || false,
         }
       })
 
@@ -214,6 +218,100 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[] | {
     return chatMessagesList
   } catch (error) {
     console.error("Erro ao buscar mensagens:", error)
+    return { error: error instanceof Error ? error.message : "Erro desconhecido" }
+  }
+}
+
+/**
+ * Atualiza o modo manual de um chat
+ */
+export async function setChatManualMode(
+  chatId: string,
+  isManual: boolean
+): Promise<{ success: true } | { error: string }> {
+  if (!chatId) {
+    return { error: "chatId é obrigatório" }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  try {
+    await db
+      .update(chats)
+      .set({ 
+        isManual,
+        updatedAt: new Date()
+      })
+      .where(eq(chats.id, chatId))
+
+    return { success: true }
+  } catch (error) {
+    console.error("Erro ao atualizar modo manual do chat:", error)
+    return { error: error instanceof Error ? error.message : "Erro desconhecido" }
+  }
+}
+
+/**
+ * Envia uma mensagem manual do humano via WhatsApp
+ */
+export async function sendManualMessage(
+  chatId: string,
+  content: string
+): Promise<{ success: true } | { error: string }> {
+  if (!chatId || !content.trim()) {
+    return { error: "chatId e content são obrigatórios" }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  try {
+    // Busca o chat para obter o clientPhone
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: {
+        id: true,
+        clientPhone: true,
+        isManual: true,
+      },
+    })
+
+    if (!chat) {
+      return { error: "Chat não encontrado" }
+    }
+
+    if (!chat.isManual) {
+      return { error: "Chat não está em modo manual" }
+    }
+
+    // Salva a mensagem como assistant (mensagem do agente humano)
+    await saveMessage(chat.id, "assistant", content.trim())
+
+    // Envia via WhatsApp
+    await sendWhatsAppMessage(chat.clientPhone, content.trim())
+
+    // Atualiza updatedAt do chat
+    await db
+      .update(chats)
+      .set({ updatedAt: new Date() })
+      .where(eq(chats.id, chatId))
+
+    return { success: true }
+  } catch (error) {
+    console.error("Erro ao enviar mensagem manual:", error)
     return { error: error instanceof Error ? error.message : "Erro desconhecido" }
   }
 }

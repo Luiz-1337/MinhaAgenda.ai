@@ -4,9 +4,9 @@ import { useMemo, useState, useRef, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Search, MoreHorizontal, Send, Loader2 } from "lucide-react"
+import { Search, MoreHorizontal, Send, Loader2, UserRound } from "lucide-react"
 import { toast } from "sonner"
-import { getChatConversations, getChatMessages, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
+import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
 
 type ConversationStatus = "Ativo" | "Finalizado" | "Aguardando humano"
 
@@ -58,6 +58,8 @@ export default function ChatPage() {
   const [messageText, setMessageText] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isTogglingManual, setIsTogglingManual] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Busca conversas quando o componente carrega ou salonId muda
@@ -88,7 +90,28 @@ export default function ChatPage() {
     loadConversations()
   }, [salonId])
 
-  // Busca mensagens quando o chat ativo muda
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    let list = conversations
+    if (filter === "waiting") {
+      list = list.filter((c) => c.status === "Aguardando humano")
+    }
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.customer.name.toLowerCase().includes(q) ||
+          c.preview.toLowerCase().includes(q) ||
+          c.customer.phone.replace(/\D/g, "").includes(q.replace(/\D/g, ""))
+      )
+    }
+    return list
+  }, [filter, query, conversations])
+
+  const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
+  const isManualMode = active?.isManual || false
+
+  // Atualiza mensagens quando o chat ativo muda
   useEffect(() => {
     if (!activeId) {
       setMessages([])
@@ -115,36 +138,75 @@ export default function ChatPage() {
     }
 
     loadMessages()
-  }, [activeId])
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    let list = conversations
-    if (filter === "waiting") {
-      list = list.filter((c) => c.status === "Aguardando humano")
-    }
-    if (q) {
-      list = list.filter(
-        (c) =>
-          c.customer.name.toLowerCase().includes(q) ||
-          c.preview.toLowerCase().includes(q) ||
-          c.customer.phone.replace(/\D/g, "").includes(q.replace(/\D/g, ""))
-      )
-    }
-    return list
-  }, [filter, query, conversations])
-
-  const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
-
-  function handleSendMessage(e: React.FormEvent) {
-    e.preventDefault()
-    if (!messageText.trim()) return
     
-    // TODO: Implementar envio de mensagem via API
-    toast.success("Mensagem enviada")
+    // Polling para atualizar mensagens quando em modo manual (a cada 3 segundos)
+    let interval: NodeJS.Timeout | null = null
+    if (isManualMode) {
+      interval = setInterval(() => {
+        loadMessages()
+      }, 3000)
+    }
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [activeId, isManualMode])
+
+  async function handleToggleManualMode() {
+    if (!activeId) return
+    
+    setIsTogglingManual(true)
+    try {
+      const result = await setChatManualMode(activeId, !isManualMode)
+      if ("error" in result) {
+        toast.error(result.error)
+      } else {
+        toast.success(isManualMode ? "Modo automático ativado" : "Modo manual ativado")
+        // Atualiza a lista de conversas para refletir a mudança
+        const updatedConversations = await getChatConversations(salonId)
+        if (!("error" in updatedConversations)) {
+          setConversations(updatedConversations)
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao alternar modo manual:", error)
+      toast.error("Erro ao alternar modo manual")
+    } finally {
+      setIsTogglingManual(false)
+    }
+  }
+
+  async function handleSendMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!messageText.trim() || !activeId || !isManualMode) return
+    
+    setIsSendingMessage(true)
+    const messageToSend = messageText.trim()
     setMessageText("")
-    if (textareaRef.current) {
-      textareaRef.current.focus()
+    
+    try {
+      const result = await sendManualMessage(activeId, messageToSend)
+      if ("error" in result) {
+        toast.error(result.error)
+        setMessageText(messageToSend) // Restaura o texto em caso de erro
+      } else {
+        // Recarrega mensagens para mostrar a nova mensagem
+        const updatedMessages = await getChatMessages(activeId)
+        if (!("error" in updatedMessages)) {
+          setMessages(updatedMessages)
+        }
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error)
+      toast.error("Erro ao enviar mensagem")
+      setMessageText(messageToSend) // Restaura o texto em caso de erro
+    } finally {
+      setIsSendingMessage(false)
     }
   }
 
@@ -283,7 +345,19 @@ export default function ChatPage() {
                 <p className="text-xs text-slate-500 font-mono">{active.customer.phone}</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleToggleManualMode}
+                disabled={isTogglingManual}
+                variant={isManualMode ? "default" : "outline"}
+                size="sm"
+                className={isManualMode ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+              >
+                <UserRound size={16} />
+                <span className="hidden sm:inline">
+                  {isManualMode ? "Modo Manual" : "Assumir Manualmente"}
+                </span>
+              </Button>
               <div className="text-right hidden sm:block">
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Atendente</p>
                 <p className="text-xs text-slate-600 dark:text-slate-300">{active.assignedTo}</p>
@@ -352,23 +426,29 @@ export default function ChatPage() {
 
         {/* Input Area */}
         <div className="p-6 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-white/5 z-10">
-          <form onSubmit={handleSendMessage} className="relative">
-            <textarea
-              ref={textareaRef}
-              rows={3}
-              placeholder="Digite sua mensagem..."
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
-            />
-            <button
-              type="submit"
-              disabled={!messageText.trim()}
-              className="absolute right-3 bottom-3 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Send size={18} />
-            </button>
-          </form>
+          {isManualMode ? (
+            <form onSubmit={handleSendMessage} className="relative">
+              <textarea
+                ref={textareaRef}
+                rows={3}
+                placeholder="Digite sua mensagem..."
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
+              />
+              <button
+                type="submit"
+                disabled={!messageText.trim() || isSendingMessage}
+                className="absolute right-3 bottom-3 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSendingMessage ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+              </button>
+            </form>
+          ) : (
+            <div className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+              Ative o modo manual para enviar mensagens
+            </div>
+          )}
         </div>
       </div>
     </div>
