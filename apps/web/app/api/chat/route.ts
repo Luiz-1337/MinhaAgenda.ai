@@ -8,7 +8,8 @@ import {
   createGetServicesTool, 
   createGetProfessionalsTool,
   createSaveUserPreferencesTool,
-  createSalonAssistantPrompt 
+  createSalonAssistantPrompt, 
+  getActiveAgentInfo
 } from "@/lib/services/ai.service"
 import { createClient } from "@/lib/supabase/server"
 import { db, salons, chatMessages, agents } from "@repo/db"
@@ -99,7 +100,7 @@ export async function POST(req: Request) {
     console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG")
   }
 
-  const systemPrompt = createSalonAssistantPrompt(salonName, preferences, knowledgeContext)
+  const systemPrompt = await createSalonAssistantPrompt(salonName, salonId, preferences, knowledgeContext)
 
   const checkAvailability = createAvailabilityTool(
     salonId,
@@ -132,7 +133,8 @@ export async function POST(req: Request) {
     })
   }
 
-  const modelName = "gpt-4o-mini";
+  const agentInfo = await getActiveAgentInfo(salonId)
+  const modelName = agentInfo?.model || "gpt-4o-mini";
   const result = streamText({
     model: openai(modelName),
     system: systemPrompt,

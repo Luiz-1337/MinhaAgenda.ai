@@ -6,7 +6,7 @@ import { openai } from "@ai-sdk/openai"
 import { generateText, tool, type CoreMessage } from "ai"
 import { z } from "zod"
 import { and, eq, ilike } from "drizzle-orm"
-import { db, services, professionals, appointments, professionalServices, customers, profiles } from "@repo/db"
+import { db, services, professionals, appointments, professionalServices, customers, profiles, agents } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
 
 const DEFAULT_MODEL = "gpt-4o"
@@ -427,13 +427,47 @@ function isPhoneFormattedName(name: string): boolean {
   return phonePattern.test(name.trim())
 }
 
-export function createSalonAssistantPrompt(
+/**
+ * Busca todas as informações do agente ativo de um salão
+ * @param salonId ID do salão
+ * @returns Objeto com todas as informações do agente ativo ou null se não houver agente ativo
+ */
+export async function getActiveAgentInfo(salonId: string) {
+  try {
+    const activeAgent = await db.query.agents.findFirst({
+      where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
+    })
+
+    if (!activeAgent) {
+      return null
+    }
+
+    return {
+      id: activeAgent.id,
+      salonId: activeAgent.salonId,
+      name: activeAgent.name,
+      systemPrompt: activeAgent.systemPrompt,
+      model: activeAgent.model,
+      tone: activeAgent.tone,
+      whatsappNumber: activeAgent.whatsappNumber,
+      isActive: activeAgent.isActive,
+      createdAt: activeAgent.createdAt,
+      updatedAt: activeAgent.updatedAt,
+    }
+  } catch (error) {
+    console.error("Erro ao buscar agente ativo:", error)
+    return null
+  }
+}
+
+export async function createSalonAssistantPrompt(
   salonName: string, 
+  salonId: string,
   preferences?: Record<string, unknown>,
   knowledgeContext?: string,
   customerName?: string,
   customerId?: string
-): string {
+): Promise<string> {
   // Obtém data e hora atual em pt-BR com timezone America/Sao_Paulo
   const now = new Date()
   const timeZone = 'America/Sao_Paulo'
@@ -510,7 +544,16 @@ export function createSalonAssistantPrompt(
     }
   }
 
+  const agentInfoText = await getActiveAgentInfo(salonId);
+
+
   return `Você é o assistente virtual do salão ${salonName}.
+
+  Seu nome é: ${agentInfoText?.name}
+  Seu tom na conversa é: ${agentInfoText?.tone}
+  Sempre Inicie a conversa se apresentando como o assistente virtual do salão ${salonName} e como ${agentInfoText?.name}. Se houver (cópia) no nome, retire
+
+  #VOCÊ É UM ASSISTENTE DE UM SALÃO DE CABELEIREIRO. NUNCA RESPONDA NADA QUE NÃO SEJA RELACIONADO A CABELEIREIRO, CABELO, SAÚDE OU BELEZA.
 
 CONTEXTO TEMPORAL:
 - HOJE É: ${formattedDate}
@@ -520,7 +563,7 @@ CONTEXTO TEMPORAL:
 REGRAS CRÍTICAS:
 1. O cliente NÃO sabe IDs de serviço ou profissional. Nunca peça IDs.
 2. NUNCA invente ou assuma informações sobre profissionais, serviços ou disponibilidade.
-3. SEMPRE use as tools disponíveis antes de responder sobre profissionais, serviços ou horários.
+3. SEMPRE use as tools disponíveis antes de responder sobre profissionais, serviços ou horários. Casoa tool utilizada retornar apenas 1 opção, não pergunte ao usuário se é ela que quer utilizar, use-a diretamente.
 4. Se uma tool retornar vazia ou erro, diga claramente que não encontrou a informação solicitada.
 5. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas tools.
 6. Se houver ambiguidade em nomes, peça esclarecimento listando as opções encontradas pela tool (ela retornará erro com sugestões).
@@ -528,6 +571,9 @@ REGRAS CRÍTICAS:
 8. Antes de agendar, SEMPRE verifique disponibilidade (checkAvailability). Para criar o agendamento, use a tool de agendamento que estiver disponível no contexto (ex: createAppointment no WhatsApp/MCP ou bookAppointment no chat web).
 9. Seja educado, conciso e use português brasileiro.
 10. SEMPRE gere uma resposta de texto após executar qualquer tool. NUNCA retorne apenas resultados de tools sem uma resposta explicativa e amigável ao usuário. Mesmo que tenha executado tools, você DEVE sempre fornecer uma resposta final em texto.
+11. Podem ter casos de ter duas tools para marcar o horário, sendo um para o Google Calendar e outro para a Trix. Nesse caso, utilize as duas tools para marcar os horários e não pergunte ao usuário se é para o Google Calendar ou para a Trix.
+
+As preferências do usuário são: ${agentInfoText?.systemPrompt}	
 
 MEMÓRIA DE PREFERÊNCIAS:
 - Quando o cliente mencionar uma preferência (ex: "Só corto com o João", "Tenho alergia a lâmina", "Prefiro corte tradicional"), use a tool saveUserPreferences PROATIVAMENTE em background para salvar essa informação.

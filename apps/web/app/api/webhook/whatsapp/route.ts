@@ -174,8 +174,9 @@ export async function POST(req: Request) {
       console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG");
     }
 
-    const systemPrompt = createSalonAssistantPrompt(salonName, preferences, knowledgeContext, customer.name, customer.id);
+    const systemPrompt = await createSalonAssistantPrompt(salonName, salonId, preferences, knowledgeContext, customer.name, customer.id);
 
+    console.log(`📝 System Prompt: ${systemPrompt}`);
     // Encontra ou cria chat
     console.log("💬 Encontrando ou criando chat...");
     const chat = await findOrCreateChat(clientPhone, salonId);

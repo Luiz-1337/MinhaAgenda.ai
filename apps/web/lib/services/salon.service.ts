@@ -123,9 +123,12 @@ export async function getSalonIdByWhatsapp(
   }
 
   try {
-    // Busca o agente pelo número de WhatsApp sanitizado
+    // Busca o agente ATIVO pelo número de WhatsApp sanitizado
     const agent = await db.query.agents.findFirst({
-      where: eq(agents.whatsappNumber, sanitizedWhatsapp),
+      where: and(
+        eq(agents.whatsappNumber, sanitizedWhatsapp),
+        eq(agents.isActive, true)
+      ),
       columns: { salonId: true },
     })
 
