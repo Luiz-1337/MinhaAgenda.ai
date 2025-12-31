@@ -3,8 +3,52 @@
  */
 
 import { and, asc, desc, eq } from "drizzle-orm"
-import { db, chats, messages, salons, chatMessages, profiles } from "@repo/db"
+import { db, chats, messages, salons, chatMessages, profiles, customers } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
+
+/**
+ * Encontra ou cria um customer na tabela customers
+ * Se não existir, cria com nome baseado no telefone formatado
+ */
+export async function findOrCreateCustomer(
+  clientPhone: string,
+  salonId: string
+): Promise<{ id: string; name: string }> {
+  // Normaliza telefone (remove caracteres não numéricos)
+  // clientPhone vem no formato E.164 (ex: +5511986049295)
+  const normalizedPhone = clientPhone.replace(/\D/g, "")
+  
+  // Busca customer existente
+  let customer = await db.query.customers.findFirst({
+    where: and(
+      eq(customers.salonId, salonId),
+      eq(customers.phone, normalizedPhone)
+    ),
+    columns: { id: true, name: true }
+  })
+  
+  // Se não existir, cria com nome baseado no telefone formatado
+  if (!customer) {
+    // Formata telefone para exibição (mesmo padrão usado em getChatConversations)
+    const formattedName = normalizedPhone.length === 11
+      ? `(${normalizedPhone.slice(0, 2)}) ${normalizedPhone.slice(2, 7)}-${normalizedPhone.slice(7)}`
+      : clientPhone
+    
+    const [newCustomer] = await db.insert(customers).values({
+      salonId,
+      name: formattedName,
+      phone: normalizedPhone,
+    }).returning({ id: customers.id, name: customers.name })
+    
+    if (!newCustomer) {
+      throw new Error("Falha ao criar customer")
+    }
+    
+    customer = newCustomer
+  }
+  
+  return { id: customer.id, name: customer.name }
+}
 
 /**
  * Encontra ou cria um chat ativo para um cliente

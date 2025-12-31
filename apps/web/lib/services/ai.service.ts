@@ -418,10 +418,21 @@ export function ensureIsoWithTimezone(input: unknown): unknown {
   return s
 }
 
+/**
+ * Verifica se o nome é um telefone formatado (ex: (11) 98604-9295)
+ */
+function isPhoneFormattedName(name: string): boolean {
+  // Padrão: (XX) XXXXX-XXXX ou (XX) XXXXX-XXX (formato brasileiro)
+  const phonePattern = /^\(\d{2}\)\s\d{4,5}-\d{4}$/
+  return phonePattern.test(name.trim())
+}
+
 export function createSalonAssistantPrompt(
   salonName: string, 
   preferences?: Record<string, unknown>,
-  knowledgeContext?: string
+  knowledgeContext?: string,
+  customerName?: string,
+  customerId?: string
 ): string {
   // Obtém data e hora atual em pt-BR com timezone America/Sao_Paulo
   const now = new Date()
@@ -484,12 +495,27 @@ export function createSalonAssistantPrompt(
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
   }
 
+  let customerInfoText = ""
+  if (customerName) {
+    const isGenericName = isPhoneFormattedName(customerName)
+    if (isGenericName && customerId) {
+      customerInfoText = `\n\nINFORMAÇÃO DO CLIENTE:
+- O cliente está cadastrado apenas com o número de telefone: ${customerName}
+- IMPORTANTE: Este não é o nome real do cliente. Você DEVE perguntar educadamente o nome do cliente na primeira oportunidade (ex: "Olá! Para personalizar melhor o atendimento, qual é o seu nome?").
+- Quando o cliente fornecer o nome, use a tool updateCustomerName para atualizar o cadastro com o nome real.
+- O customerId é: ${customerId}`
+    } else {
+      customerInfoText = `\n\nINFORMAÇÃO DO CLIENTE:
+- Nome: ${customerName}`
+    }
+  }
+
   return `Você é o assistente virtual do salão ${salonName}.
 
 CONTEXTO TEMPORAL:
 - HOJE É: ${formattedDate}
 - HORA ATUAL: ${formattedTime}
-- Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${preferencesText}${knowledgeContextText}
+- Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${customerInfoText}${preferencesText}${knowledgeContextText}
 
 REGRAS CRÍTICAS:
 1. O cliente NÃO sabe IDs de serviço ou profissional. Nunca peça IDs.

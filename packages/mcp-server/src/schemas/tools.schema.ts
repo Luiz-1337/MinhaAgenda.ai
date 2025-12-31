@@ -129,6 +129,16 @@ export const createCustomerSchema = z.object({
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>
 
 /**
+ * Schema para atualizar nome do cliente
+ */
+export const updateCustomerNameSchema = z.object({
+  customerId: z.string().uuid("customerId deve ser um UUID válido"),
+  name: z.string().min(1, "name é obrigatório").describe("Novo nome completo do cliente"),
+})
+
+export type UpdateCustomerNameInput = z.infer<typeof updateCustomerNameSchema>
+
+/**
  * Schema para buscar agendamentos futuros do cliente
  */
 export const getCustomerUpcomingAppointmentsSchema = z.object({

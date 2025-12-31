@@ -104,6 +104,46 @@ export class MinhaAgendaAITools {
         })
     }
 
+    public async updateCustomerName(customerId: string, name: string) {
+        // Valida nome
+        if (!name || name.trim() === "") {
+            throw new Error("Nome não pode ser vazio")
+        }
+
+        const trimmedName = name.trim()
+
+        // Verifica se o customer existe
+        const customer = await db.query.customers.findFirst({
+            where: eq(customers.id, customerId),
+            columns: { id: true, name: true, phone: true },
+        })
+
+        if (!customer) {
+            throw new Error(`Cliente com ID ${customerId} não encontrado`)
+        }
+
+        // Atualiza o nome na tabela customers
+        const [updatedCustomer] = await db
+            .update(customers)
+            .set({
+                name: trimmedName,
+                updatedAt: new Date(),
+            })
+            .where(eq(customers.id, customerId))
+            .returning({
+                id: customers.id,
+                name: customers.name,
+                phone: customers.phone,
+            })
+
+        return JSON.stringify({
+            id: updatedCustomer.id,
+            name: updatedCustomer.name,
+            phone: updatedCustomer.phone,
+            message: "Nome atualizado com sucesso",
+        })
+    }
+
     public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number) {
         // Valida se professionalId foi fornecido
         if (!professionalId || professionalId.trim() === "") {

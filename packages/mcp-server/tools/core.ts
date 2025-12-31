@@ -11,6 +11,7 @@ import {
   identifyCustomerSchema,
   qualifyLeadSchema,
   saveCustomerPreferenceSchema,
+  updateCustomerNameSchema,
 } from "../src/schemas/tools.schema"
 
 type JsonValue =
@@ -182,6 +183,16 @@ export function createCoreTools(salonId: string, clientPhone: string) {
       inputSchema: getProfessionalAvailabilityRulesInputSchema,
       execute: async (input: z.infer<typeof getProfessionalAvailabilityRulesInputSchema>) => {
         const result = await impl.getProfessionalAvailabilityRules(salonId, input.professionalName)
+        return maybeParseJson(result)
+      },
+    }),
+
+    updateCustomerName: tool({
+      description:
+        "Atualiza o nome de um cliente no sistema. Use esta tool quando o cliente fornecer seu nome ou quando quiser corrigir o nome cadastrado. IMPORTANTE: Se o nome atual do cliente for apenas um número de telefone formatado (ex: '(11) 98604-9295'), pergunte o nome ao cliente e use esta tool para atualizar.",
+      inputSchema: updateCustomerNameSchema,
+      execute: async (input: z.infer<typeof updateCustomerNameSchema>) => {
+        const result = await impl.updateCustomerName(input.customerId, input.name)
         return maybeParseJson(result)
       },
     }),

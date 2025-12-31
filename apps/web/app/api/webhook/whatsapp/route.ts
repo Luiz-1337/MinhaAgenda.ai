@@ -6,7 +6,7 @@ import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
 import { db, salons, customers, chats, agents } from "@repo/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
-import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage } from '@/lib/services/chat.service';
+import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage, findOrCreateCustomer } from '@/lib/services/chat.service';
 import { validateRequest } from "twilio";
 import { findRelevantContext } from "@/app/actions/knowledge";
 
@@ -115,19 +115,24 @@ export async function POST(req: Request) {
     });
     const salonName = salon?.name || "nosso salão";
 
-    // Busca preferências do cliente (se existir no CRM)
-    const customer = await db.query.customers.findFirst({
+    // Encontra ou cria o customer (garante que existe na tabela customers)
+    console.log("👤 Encontrando ou criando customer...");
+    const customer = await findOrCreateCustomer(clientPhone, salonId);
+    console.log(`✅ Customer ID: ${customer.id}, Nome: ${customer.name}`);
+
+    // Busca preferências do cliente (após garantir que o customer existe)
+    let preferences: Record<string, unknown> | undefined = undefined;
+    const customerRecord = await db.query.customers.findFirst({
       where: and(
         eq(customers.salonId, salonId),
-        eq(customers.phone, clientPhone)
+        eq(customers.id, customer.id)
       ),
       columns: { aiPreferences: true }
     });
 
-    let preferences: Record<string, unknown> | undefined = undefined;
-    if (customer?.aiPreferences) {
+    if (customerRecord?.aiPreferences) {
       try {
-        preferences = JSON.parse(customer.aiPreferences);
+        preferences = JSON.parse(customerRecord.aiPreferences);
       } catch (e) {
         console.error("Erro ao fazer parse das preferências do cliente:", e);
       }
@@ -169,7 +174,7 @@ export async function POST(req: Request) {
       console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG");
     }
 
-    const systemPrompt = createSalonAssistantPrompt(salonName, preferences, knowledgeContext);
+    const systemPrompt = createSalonAssistantPrompt(salonName, preferences, knowledgeContext, customer.name, customer.id);
 
     // Encontra ou cria chat
     console.log("💬 Encontrando ou criando chat...");
