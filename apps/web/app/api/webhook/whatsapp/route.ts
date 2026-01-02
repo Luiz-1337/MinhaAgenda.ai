@@ -19,16 +19,9 @@ export async function POST(req: Request) {
   console.log("🔔 Webhook Twilio chamado - início do processamento");
 
   try {
-    // Verifica Content-Type para suportar tanto form-data (Twilio) quanto JSON (testes)
+    // Verifica Content-Type
     const contentType = req.headers.get("content-type") || "";
     const isFormData = contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded");
-    const isJson = contentType.includes("application/json");
-    
-    // Se for JSON, provavelmente é uma requisição de teste - retorna erro informando para usar /api/chat
-    if (isJson) {
-      console.log("⚠️ Requisição JSON recebida. Para testes de chat, use /api/chat");
-      return new Response("Este endpoint é para webhooks do Twilio (form-data). Para testes de chat, use /api/chat", { status: 400 });
-    }
     
     if (!isFormData) {
       console.error(`❌ Content-Type inválido: ${contentType}. Esperado: multipart/form-data ou application/x-www-form-urlencoded`);
@@ -239,9 +232,12 @@ export async function POST(req: Request) {
       messages: convertToModelMessages(uiMessages),
       tools: mcpTools,
       stopWhen: stepCountIs(5),
+      onFinish: async ({ text }) => {
+        // Esta callback não é usada no modo normal (stream é consumido antes)
+      },
     });
 
-    // Coleta o texto final do stream
+    // Coleta texto e envia via WhatsApp (comportamento original)
     let finalText = '';
     const textStream = result.textStream;
     

@@ -170,3 +170,26 @@ export const getProfessionalAvailabilityRulesSchema = z.object({
 
 export type GetProfessionalAvailabilityRulesInput = z.infer<typeof getProfessionalAvailabilityRulesSchema>
 
+/**
+ * Schema para atualizar agendamento
+ * IMPORTANTE: Sempre chame getMyFutureAppointments primeiro para obter o appointmentId.
+ */
+export const updateAppointmentSchema = z.object({
+  appointmentId: z.uuid("appointmentId deve ser um UUID válido. Obtenha-o chamando getMyFutureAppointments primeiro."),
+  professionalId: z.uuid("professionalId deve ser um UUID válido").optional(),
+  serviceId: z.uuid("serviceId deve ser um UUID válido").optional(),
+  date: z.iso.datetime("date deve ser uma data ISO válida").optional(),
+  notes: z.string().optional(),
+})
+
+export type UpdateAppointmentInput = z.infer<typeof updateAppointmentSchema>
+
+/**
+ * Schema para deletar agendamento
+ * IMPORTANTE: Sempre chame getMyFutureAppointments primeiro para obter o appointmentId.
+ */
+export const deleteAppointmentSchema = z.object({
+  appointmentId: z.uuid("appointmentId deve ser um UUID válido. Obtenha-o chamando getMyFutureAppointments primeiro."),
+})
+
+export type DeleteAppointmentInput = z.infer<typeof deleteAppointmentSchema>

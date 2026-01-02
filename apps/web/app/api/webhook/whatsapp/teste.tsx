@@ -8,7 +8,7 @@ import {
 import { useState } from 'react';
 
 export default function Chat() {
-  const { messages, sendMessage, addToolOutput } = useChat({
+  const { messages, sendMessage } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
     }),

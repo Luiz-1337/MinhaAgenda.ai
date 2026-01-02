@@ -198,7 +198,7 @@ export function splitIntelligentChunks(
 
     // Move o índice para o próximo chunk (com overlap)
     currentIndex = breakPoint - CHUNK_OVERLAP
-    if (currentIndex <= chunks.length > 0 ? currentIndex - CHUNK_OVERLAP : 0) {
+    if (currentIndex <= 0) {
       // Previne loop infinito
       currentIndex = breakPoint
     }

@@ -1,7 +1,12 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { MinhaAgendaAITools } from "../src/MinhaAgendaAI_tools"
-import { checkAvailabilitySchema } from "../src/schemas/tools.schema"
+import { 
+  checkAvailabilitySchema, 
+  createAppointmentSchema,
+  updateAppointmentSchema,
+  deleteAppointmentSchema,
+} from "../src/schemas/tools.schema"
 import { ensureIsoWithTimezone } from "@/lib/services/ai.service"
 
 type JsonValue =
@@ -24,7 +29,7 @@ function maybeParseJson(value: unknown): JsonValue | unknown {
 }
 
 /**
- * Cria tools de agendamento básicas (não dependem de integrações externas)
+ * Cria tools de agendamento
  */
 export function createAppointmentTools(salonId: string, clientPhone: string) {
   const impl = new MinhaAgendaAITools()
@@ -39,6 +44,23 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
         .describe("Data/hora ISO (ex: 2025-12-27T09:00:00-03:00). Se faltar timezone, será normalizado."),
     })
 
+  const createAppointmentInputSchema = createAppointmentSchema
+    .omit({ salonId: true, phone: true })
+    .extend({
+      date: z
+        .string()
+        .min(1)
+        .describe("Data/hora ISO (ex: 2025-12-27T09:00:00-03:00). Se faltar timezone, será normalizado."),
+    })
+
+  const updateAppointmentInputSchema = updateAppointmentSchema.extend({
+    date: z
+      .string()
+      .min(1)
+      .describe("Data/hora ISO (ex: 2025-12-27T09:00:00-03:00). Se faltar timezone, será normalizado.")
+      .optional(),
+  })
+
   return {
     checkAvailability: tool({
       description:
@@ -52,6 +74,49 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
           input.serviceId,
           input.serviceDuration
         )
+        return maybeParseJson(result)
+      },
+    }),
+
+    addAppointment: tool({
+      description:
+        "Adiciona um novo agendamento no sistema. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
+      inputSchema: createAppointmentInputSchema,
+      execute: async (input: z.infer<typeof createAppointmentInputSchema>) => {
+        const result = await impl.createAppointment(
+          salonId,
+          input.professionalId,
+          clientPhone,
+          input.serviceId,
+          String(ensureIsoWithTimezone(input.date)),
+          input.notes
+        )
+        return maybeParseJson(result)
+      },
+    }),
+
+    updateAppointment: tool({
+      description:
+        "Atualiza um agendamento existente. Pode atualizar profissional, serviço, data/hora ou notas. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
+      inputSchema: updateAppointmentInputSchema,
+      execute: async (input: z.infer<typeof updateAppointmentInputSchema>) => {
+        const result = await impl.updateAppointment(
+          input.appointmentId,
+          input.professionalId,
+          input.serviceId,
+          input.date ? String(ensureIsoWithTimezone(input.date)) : undefined,
+          input.notes
+        )
+        return maybeParseJson(result)
+      },
+    }),
+
+    removeAppointment: tool({
+      description:
+        "Remove um agendamento do sistema. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
+      inputSchema: deleteAppointmentSchema,
+      execute: async (input: z.infer<typeof deleteAppointmentSchema>) => {
+        const result = await impl.deleteAppointment(input.appointmentId)
         return maybeParseJson(result)
       },
     }),

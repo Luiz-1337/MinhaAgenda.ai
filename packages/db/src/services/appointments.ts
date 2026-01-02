@@ -240,3 +240,315 @@ export async function createAppointmentService(input: {
 
   return { success: true, data: { appointmentId: newAppointment.id } }
 }
+
+/**
+ * Atualiza um agendamento existente no sistema.
+ *
+ * **Regras de Negócio:**
+ * - Valida que o agendamento existe e não está cancelado
+ * - Se professionalId for fornecido: valida que o profissional existe, está ativo e pertence ao salão
+ * - Se serviceId for fornecido: valida que o serviço existe, está ativo e pertence ao salão
+ * - Se serviceId mudar: verifica se o novo profissional executa o serviço
+ * - Se date for fornecido: verifica se o horário está dentro do expediente do profissional
+ * - Se date for fornecido: verifica conflitos com agendamentos existentes (exceto o próprio agendamento e cancelados)
+ * - Converte a data/hora do horário de Brasília para UTC antes de salvar
+ *
+ * @param input - Dados do agendamento a ser atualizado
+ * @param input.appointmentId - ID do agendamento (UUID)
+ * @param input.professionalId - ID do profissional (UUID, opcional)
+ * @param input.serviceId - ID do serviço (UUID, opcional)
+ * @param input.date - Data/hora do agendamento (string ISO ou Date, opcional) - interpretada como horário de Brasília
+ * @param input.notes - Notas opcionais do agendamento (máx. 1000 caracteres, opcional)
+ *
+ * @returns Resultado da operação com o ID do agendamento atualizado em caso de sucesso
+ *
+ * @throws Não lança exceções, retorna erro via ActionResult
+ */
+export async function updateAppointmentService(input: {
+  appointmentId: string
+  professionalId?: string
+  serviceId?: string
+  date?: string | Date
+  notes?: string
+}): Promise<ActionResult<{ appointmentId: string }>> {
+  const schema = z.object({
+    appointmentId: z.string().uuid(),
+    professionalId: z.string().uuid().optional(),
+    serviceId: z.string().uuid().optional(),
+    date: z.union([
+      z.string().refine((v) => !Number.isNaN(new Date(v).getTime()), "Data inválida"),
+      z.date(),
+    ]).optional(),
+    notes: z.string().max(1000).optional(),
+  })
+
+  const parse = schema.safeParse(input)
+  if (!parse.success) {
+    return { success: false, error: formatZodError(parse.error) }
+  }
+
+  // Busca agendamento existente
+  const existingAppointment = await db.query.appointments.findFirst({
+    where: eq(appointments.id, parse.data.appointmentId),
+    columns: {
+      id: true,
+      salonId: true,
+      professionalId: true,
+      serviceId: true,
+      date: true,
+      endTime: true,
+      status: true,
+      notes: true,
+    },
+  })
+
+  if (!existingAppointment) {
+    return { success: false, error: "Agendamento não encontrado" }
+  }
+
+  if (existingAppointment.status === "cancelled") {
+    return { success: false, error: "Não é possível atualizar um agendamento cancelado" }
+  }
+
+  // Determina os valores finais (usa novos se fornecidos, senão mantém os existentes)
+  const finalProfessionalId = parse.data.professionalId || existingAppointment.professionalId
+  const finalServiceId = parse.data.serviceId || existingAppointment.serviceId
+  const finalNotes = parse.data.notes !== undefined ? parse.data.notes : existingAppointment.notes
+
+  // Se serviço mudou, busca o novo serviço para obter duração
+  // Se não mudou, busca o serviço existente
+  const service = await db.query.services.findFirst({
+    where: eq(services.id, finalServiceId),
+    columns: { id: true, salonId: true, duration: true, isActive: true },
+  })
+
+  if (!service || service.salonId !== existingAppointment.salonId || !service.isActive) {
+    return { success: false, error: "Serviço inválido ou inativo" }
+  }
+
+  // Se profissional mudou, valida o novo profissional
+  const professional = await db.query.professionals.findFirst({
+    where: eq(professionals.id, finalProfessionalId),
+    columns: { id: true, salonId: true, isActive: true },
+  })
+
+  if (!professional || professional.salonId !== existingAppointment.salonId || !professional.isActive) {
+    return { success: false, error: "Profissional inválido ou inativo" }
+  }
+
+  // Verifica se o profissional executa o serviço (se mudou serviço ou profissional)
+  if (finalServiceId !== existingAppointment.serviceId || finalProfessionalId !== existingAppointment.professionalId) {
+    const proService = await db.query.professionalServices.findFirst({
+      where: and(eq(professionalServices.professionalId, finalProfessionalId), eq(professionalServices.serviceId, finalServiceId)),
+      columns: { id: true },
+    })
+    if (!proService) {
+      return { success: false, error: "Profissional não executa este serviço" }
+    }
+  }
+
+  // Se date foi fornecido, precisa recalcular tudo relacionado ao horário
+  let startUtc: Date = existingAppointment.date
+  let endUtc: Date = existingAppointment.endTime
+  let dateComponents: { year: number; month: number; day: number; hour: number; minute: number; second: number } | null = null
+
+  if (parse.data.date !== undefined) {
+    // Processa a nova data (mesma lógica do createAppointmentService)
+    if (typeof parse.data.date === "string") {
+      const dateStr = parse.data.date.trim()
+      const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/)
+      if (!match) {
+        return { success: false, error: `Formato de data inválido: ${dateStr}. Esperado formato ISO (ex: 2024-01-15T14:00:00 ou 2024-01-15T14:00)` }
+      }
+      const [, year, month, day, hour, minute, second = "0"] = match
+      dateComponents = {
+        year: parseInt(year, 10),
+        month: parseInt(month, 10) - 1,
+        day: parseInt(day, 10),
+        hour: parseInt(hour, 10),
+        minute: parseInt(minute, 10),
+        second: parseInt(second, 10)
+      }
+
+      // Valida os componentes
+      if (dateComponents.month < 0 || dateComponents.month > 11) {
+        return { success: false, error: `Mês inválido: ${parseInt(month, 10)}` }
+      }
+      if (dateComponents.day < 1 || dateComponents.day > 31) {
+        return { success: false, error: `Dia inválido: ${dateComponents.day}` }
+      }
+      if (dateComponents.hour < 0 || dateComponents.hour > 23) {
+        return { success: false, error: `Hora inválida: ${dateComponents.hour}` }
+      }
+      if (dateComponents.minute < 0 || dateComponents.minute > 59) {
+        return { success: false, error: `Minuto inválido: ${dateComponents.minute}` }
+      }
+      if (dateComponents.second < 0 || dateComponents.second > 59) {
+        return { success: false, error: `Segundo inválido: ${dateComponents.second}` }
+      }
+
+      const yearStr = dateComponents.year.toString().padStart(4, '0')
+      const monthStr = (dateComponents.month + 1).toString().padStart(2, '0')
+      const dayStr = dateComponents.day.toString().padStart(2, '0')
+      const hourStr = dateComponents.hour.toString().padStart(2, '0')
+      const minuteStr = dateComponents.minute.toString().padStart(2, '0')
+      const secondStr = dateComponents.second.toString().padStart(2, '0')
+
+      const dateWithTimezone = `${yearStr}-${monthStr}-${dayStr}T${hourStr}:${minuteStr}:${secondStr}-03:00`
+      startUtc = new Date(dateWithTimezone)
+
+      if (Number.isNaN(startUtc.getTime())) {
+        return { success: false, error: `Não foi possível criar a data a partir de: ${dateStr} (processado como: ${dateWithTimezone})` }
+      }
+    } else {
+      dateComponents = {
+        year: parse.data.date.getFullYear(),
+        month: parse.data.date.getMonth(),
+        day: parse.data.date.getDate(),
+        hour: parse.data.date.getHours(),
+        minute: parse.data.date.getMinutes(),
+        second: parse.data.date.getSeconds()
+      }
+      startUtc = fromZonedTime(parse.data.date, BRAZIL_TIMEZONE)
+
+      if (Number.isNaN(startUtc.getTime())) {
+        return { success: false, error: "Data inválida (objeto Date)" }
+      }
+    }
+
+    endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
+  } else {
+    // Se date não mudou mas serviceId mudou, precisa recalcular endTime
+    if (finalServiceId !== existingAppointment.serviceId) {
+      endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
+    }
+  }
+
+  // Se date foi fornecido, valida horário dentro do expediente
+  if (parse.data.date !== undefined && dateComponents) {
+    const requestedStartBrazil = new Date(
+      dateComponents.year,
+      dateComponents.month,
+      dateComponents.day,
+      dateComponents.hour,
+      dateComponents.minute,
+      dateComponents.second
+    )
+    const dayOfWeek = requestedStartBrazil.getDay()
+
+    const proDayRules = await db
+      .select({ startTime: availability.startTime, endTime: availability.endTime, isBreak: availability.isBreak })
+      .from(availability)
+      .where(and(eq(availability.professionalId, finalProfessionalId), eq(availability.dayOfWeek, dayOfWeek)))
+
+    const workSpans = proDayRules.filter((r) => !r.isBreak)
+
+    if (workSpans.length === 0) {
+      return { success: false, error: "Profissional não possui horários cadastrados neste dia" }
+    }
+
+    const withinWork = workSpans.some((span) => {
+      const [sh, sm] = String(span.startTime).split(":").map(Number)
+      const [eh, em] = String(span.endTime).split(":").map(Number)
+
+      const startSpanStr = `${dateComponents!.year.toString().padStart(4, '0')}-${(dateComponents!.month + 1).toString().padStart(2, '0')}-${dateComponents!.day.toString().padStart(2, '0')}T${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}:00-03:00`
+      const startSpanUtc = new Date(startSpanStr)
+
+      const endSpanStr = `${dateComponents!.year.toString().padStart(4, '0')}-${(dateComponents!.month + 1).toString().padStart(2, '0')}-${dateComponents!.day.toString().padStart(2, '0')}T${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}:00-03:00`
+      const endSpanUtc = new Date(endSpanStr)
+
+      return startUtc.getTime() >= startSpanUtc.getTime() && endUtc.getTime() <= endSpanUtc.getTime()
+    })
+
+    if (!withinWork) {
+      return { success: false, error: "Horário fora do expediente do profissional" }
+    }
+
+    // Verifica conflitos com outros agendamentos (exceto o próprio e cancelados)
+    const overlappingAppointment = await db.query.appointments.findFirst({
+      where: and(
+        eq(appointments.professionalId, finalProfessionalId),
+        ne(appointments.id, parse.data.appointmentId), // Exclui o próprio agendamento
+        ne(appointments.status, 'cancelled'),
+        lt(appointments.date, endUtc), // existing_start < new_end
+        gt(appointments.endTime, startUtc) // existing_end > new_start
+      ),
+    })
+
+    if (overlappingAppointment) {
+      return { success: false, error: "Horário indisponível (conflito de agenda)" }
+    }
+  } else if (finalProfessionalId !== existingAppointment.professionalId) {
+    // Se profissional mudou mas date não, ainda precisa verificar conflitos no novo profissional
+    const overlappingAppointment = await db.query.appointments.findFirst({
+      where: and(
+        eq(appointments.professionalId, finalProfessionalId),
+        ne(appointments.id, parse.data.appointmentId),
+        ne(appointments.status, 'cancelled'),
+        lt(appointments.date, endUtc),
+        gt(appointments.endTime, startUtc)
+      ),
+    })
+
+    if (overlappingAppointment) {
+      return { success: false, error: "Horário indisponível (conflito de agenda)" }
+    }
+  }
+
+  // Atualiza o agendamento
+  await db
+    .update(appointments)
+    .set({
+      professionalId: finalProfessionalId,
+      serviceId: finalServiceId,
+      date: startUtc,
+      endTime: endUtc,
+      notes: finalNotes,
+      updatedAt: new Date(),
+    })
+    .where(eq(appointments.id, parse.data.appointmentId))
+
+  return { success: true, data: { appointmentId: parse.data.appointmentId } }
+}
+
+/**
+ * Deleta um agendamento do sistema.
+ *
+ * **Regras de Negócio:**
+ * - Valida que o agendamento existe
+ * - Deleta completamente do banco de dados (não apenas cancela)
+ *
+ * @param input - Dados do agendamento a ser deletado
+ * @param input.appointmentId - ID do agendamento (UUID)
+ *
+ * @returns Resultado da operação em caso de sucesso
+ *
+ * @throws Não lança exceções, retorna erro via ActionResult
+ */
+export async function deleteAppointmentService(input: {
+  appointmentId: string
+}): Promise<ActionResult<void>> {
+  const schema = z.object({
+    appointmentId: z.string().uuid(),
+  })
+
+  const parse = schema.safeParse(input)
+  if (!parse.success) {
+    return { success: false, error: formatZodError(parse.error) }
+  }
+
+  // Verifica se o agendamento existe
+  const existingAppointment = await db.query.appointments.findFirst({
+    where: eq(appointments.id, parse.data.appointmentId),
+    columns: { id: true },
+  })
+
+  if (!existingAppointment) {
+    return { success: false, error: "Agendamento não encontrado" }
+  }
+
+  // Deleta o agendamento
+  await db.delete(appointments).where(eq(appointments.id, parse.data.appointmentId))
+
+  return { success: true, data: undefined }
+}

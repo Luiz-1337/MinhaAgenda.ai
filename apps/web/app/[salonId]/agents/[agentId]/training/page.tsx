@@ -266,7 +266,7 @@ export default function TrainingPage({ params }: PageProps) {
         return
       }
 
-      toast.success(`Arquivo removido com sucesso (${res.data.deletedCount} chunks removidos)`)
+      toast.success(`Arquivo removido com sucesso (${res.data?.deletedCount ?? 0} chunks removidos)`)
       setIsDeleteFileDialogOpen(false)
       setFileToDelete(null)
 

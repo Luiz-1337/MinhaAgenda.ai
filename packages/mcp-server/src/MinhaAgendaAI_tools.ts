@@ -208,27 +208,13 @@ export class MinhaAgendaAITools {
 
         const appointmentId = result.data.appointmentId
 
-        // Sincroniza com Google Calendar (não bloqueia se falhar)
+        // Sincroniza com sistemas externos (não bloqueia se falhar)
         try {
-            console.log("🔄 Iniciando sincronização com Google Calendar para agendamento:", appointmentId)
-            // Importa dinamicamente para evitar dependência obrigatória
-            const dbModule = await import("@repo/db")
-            if (dbModule.createGoogleEvent) {
-                const result = await dbModule.createGoogleEvent(appointmentId)
-                if (result) {
-                    console.log("✅ Agendamento sincronizado com Google Calendar:", {
-                        eventId: result.eventId,
-                        htmlLink: result.htmlLink,
-                    })
-                } else {
-                    console.warn("⚠️ Sincronização com Google Calendar retornou null. Integração pode não estar configurada.")
-                }
-            } else {
-                console.warn("⚠️ Função createGoogleEvent não está disponível no módulo @repo/db")
-            }
+            const { syncCreateAppointment } = await import("./services/external-sync")
+            await syncCreateAppointment(appointmentId)
         } catch (error: any) {
             // Loga erro mas não falha a operação principal
-            console.error("❌ Erro ao sincronizar agendamento com Google Calendar:", {
+            console.error("❌ Erro ao sincronizar criação de agendamento:", {
                 error: error?.message || error,
                 stack: error?.stack,
             })
@@ -255,174 +241,95 @@ export class MinhaAgendaAITools {
 
     }
 
-    public async cancelAppointment(appointmentId: string, reason?: string) {
-        const appointment = await db.query.appointments.findFirst({
+    public async updateAppointment(
+        appointmentId: string,
+        professionalId?: string,
+        serviceId?: string,
+        date?: string,
+        notes?: string
+    ) {
+        // Busca agendamento existente para validar
+        const existingAppointment = await db.query.appointments.findFirst({
             where: eq(appointments.id, appointmentId),
-            columns: { id: true, status: true, notes: true },
+            columns: { id: true, status: true },
         })
 
-        if (!appointment) {
+        if (!existingAppointment) {
             throw new Error(`Agendamento com ID ${appointmentId} não encontrado`)
         }
 
-        if (appointment.status === "cancelled") {
-            return JSON.stringify({ message: "Agendamento já estava cancelado" })
+        if (existingAppointment.status === "cancelled") {
+            throw new Error("Não é possível atualizar um agendamento cancelado")
         }
 
-        // Atualiza status para cancelado
-        await db
-            .update(appointments)
-            .set({
-                status: "cancelled",
-                notes: reason
-                    ? `${appointment.notes || ""}\n[Cancelado] ${reason}`.trim()
-                    : appointment.notes,
-            })
-            .where(eq(appointments.id, appointmentId))
+        // Usa serviço centralizado
+        const result = await sharedServices.updateAppointmentService({
+            appointmentId,
+            professionalId,
+            serviceId,
+            date: date ? date : undefined,
+            notes,
+        })
 
-        // Remove evento do Google Calendar se houver googleEventId (não bloqueia se falhar)
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+
+        // Sincroniza com sistemas externos (não bloqueia se falhar)
         try {
-            console.log("🔄 Iniciando remoção de evento do Google Calendar para agendamento:", appointmentId)
-            const dbModule = await import("@repo/db")
-            if (dbModule.deleteGoogleEvent) {
-                const result = await dbModule.deleteGoogleEvent(appointmentId)
-                if (result === true) {
-                    console.log("✅ Evento removido com sucesso do Google Calendar")
-                } else if (result === false) {
-                    console.log("ℹ️ Agendamento não tinha evento no Google Calendar")
-                } else {
-                    console.warn("⚠️ Não foi possível remover evento do Google Calendar. Integração pode não estar configurada.")
-                }
-            }
+            const { syncUpdateAppointment } = await import("./services/external-sync")
+            await syncUpdateAppointment(appointmentId)
         } catch (error: any) {
             // Loga erro mas não falha a operação principal
-            console.error("❌ Erro ao remover evento do Google Calendar:", {
+            console.error("❌ Erro ao sincronizar atualização de agendamento:", {
                 error: error?.message || error,
                 stack: error?.stack,
             })
         }
 
         return JSON.stringify({
-            message: `Agendamento ${appointmentId} cancelado com sucesso`,
+            appointmentId: appointmentId,
+            message: "Agendamento atualizado com sucesso",
         })
     }
 
-    public async rescheduleAppointment(appointmentId: string, newDate: string) {
-        // Busca agendamento existente
-        const appointment = await db.query.appointments.findFirst({
+    public async deleteAppointment(appointmentId: string) {
+        // Busca agendamento existente para validar
+        const existingAppointment = await db.query.appointments.findFirst({
             where: eq(appointments.id, appointmentId),
-            columns: {
-                id: true,
-                salonId: true,
-                serviceId: true,
-                professionalId: true,
-                clientId: true,
-                date: true,
-                status: true,
-            },
+            columns: { id: true },
         })
 
-        if (!appointment) {
+        if (!existingAppointment) {
             throw new Error(`Agendamento com ID ${appointmentId} não encontrado`)
         }
 
-        if (appointment.status === "cancelled") {
-            throw new Error("Não é possível reagendar um agendamento cancelado")
-        }
-
-        // Busca duração do serviço
-        const service = await db.query.services.findFirst({
-            where: eq(services.id, appointment.serviceId),
-            columns: { duration: true },
-        })
-
-        const serviceDuration = service?.duration || 60
-
-        // Verifica disponibilidade no novo horário
-        const slots = await sharedServices.getAvailableSlots({
-            date: newDate,
-            salonId: appointment.salonId,
-            serviceDuration,
-            professionalId: appointment.professionalId,
-        })
-
-        const newDateObj = new Date(newDate)
-        const isSlotAvailable = slots.some(
-            (slot) => Math.abs(new Date(slot).getTime() - newDateObj.getTime()) < 60000 // 1 minuto de tolerância
-        )
-
-        if (!isSlotAvailable) {
-            throw new Error("Horário não disponível. Por favor, escolha outro horário.")
-        }
-
-        // Transação: cancela antigo e cria novo
-        const endTime = new Date(newDateObj.getTime() + serviceDuration * 60 * 1000)
-
-        // Deleta evento do Google Calendar do agendamento antigo antes de cancelar
+        // Sincroniza deleção com sistemas externos ANTES de deletar (para poder buscar dados)
         try {
-            console.log("🔄 Deletando evento do Google Calendar do agendamento antigo antes de reagendar:", appointmentId)
-            const dbModule = await import("@repo/db")
-            if (dbModule.deleteGoogleEvent) {
-                await dbModule.deleteGoogleEvent(appointmentId)
-            }
-        } catch (error: any) {
-            // Loga erro mas não bloqueia o reagendamento
-            console.error("❌ Erro ao deletar evento do Google Calendar do agendamento antigo:", {
-                error: error?.message || error,
-            })
-        }
-
-        // Cancela o agendamento antigo
-        await db
-            .update(appointments)
-            .set({ status: "cancelled" })
-            .where(eq(appointments.id, appointmentId))
-
-        // Cria novo agendamento
-        const [newAppointment] = await db
-            .insert(appointments)
-            .values({
-                salonId: appointment.salonId,
-                professionalId: appointment.professionalId,
-                clientId: appointment.clientId,
-                serviceId: appointment.serviceId,
-                date: newDateObj,
-                endTime,
-                status: "confirmed",
-                notes: `Reagendado do agendamento ${appointmentId}`,
-            })
-            .returning({ id: appointments.id })
-
-        // Sincroniza novo agendamento com Google Calendar (não bloqueia se falhar)
-        try {
-            console.log("🔄 Criando evento no Google Calendar para o novo agendamento:", newAppointment.id)
-            // Importa dinamicamente para evitar dependência obrigatória
-            const dbModule = await import("@repo/db")
-            if (dbModule.createGoogleEvent) {
-                const result = await dbModule.createGoogleEvent(newAppointment.id)
-                if (result) {
-                    console.log("✅ Evento criado com sucesso no Google Calendar para o reagendamento:", {
-                        eventId: result.eventId,
-                        htmlLink: result.htmlLink,
-                    })
-                } else {
-                    console.warn("⚠️ Não foi possível criar evento no Google Calendar. Integração pode não estar configurada.")
-                }
-            }
+            const { syncDeleteAppointment } = await import("./services/external-sync")
+            await syncDeleteAppointment(appointmentId)
         } catch (error: any) {
             // Loga erro mas não falha a operação principal
-            console.error("❌ Erro ao sincronizar reagendamento com Google Calendar:", {
+            console.error("❌ Erro ao sincronizar deleção de agendamento:", {
                 error: error?.message || error,
                 stack: error?.stack,
             })
         }
 
-        return JSON.stringify({
-            appointmentId: newAppointment.id,
-            message: `Agendamento reagendado com sucesso para ${newDateObj.toLocaleString("pt-BR")}`,
+        // Usa serviço centralizado para deletar
+        const result = await sharedServices.deleteAppointmentService({
+            appointmentId,
         })
 
+        if (!result.success) {
+            throw new Error(result.error)
+        }
+
+        return JSON.stringify({
+            message: `Agendamento ${appointmentId} removido com sucesso`,
+        })
     }
+
 
     public async getCustomerUpcomingAppointments(salonId: string, customerPhone: string) {
         // Busca perfil pelo telefone
