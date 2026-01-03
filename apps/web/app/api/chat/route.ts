@@ -9,12 +9,14 @@ import {
   createGetProfessionalsTool,
   createSaveUserPreferencesTool,
   createSalonAssistantPrompt, 
-  getActiveAgentInfo
+  getActiveAgentInfo,
+  mapModelToOpenAI
 } from "@/lib/services/ai.service"
 import { createClient } from "@/lib/supabase/server"
 import { db, salons, chatMessages, agents } from "@repo/db"
 import { and, eq } from "drizzle-orm"
 import { findRelevantContext } from "@/app/actions/knowledge"
+import { findOrCreateWebChat, saveMessage } from "@/lib/services/chat.service"
 
 export async function POST(req: Request) {
   const body = await req.json()
@@ -119,9 +121,30 @@ export async function POST(req: Request) {
   const getProfessionals = createGetProfessionalsTool(salonId)
   const saveUserPreferences = createSaveUserPreferencesTool(salonId, clientId)
 
+  // Encontra ou cria chat para o usuário web (se houver clientId)
+  let chatId: string | null = null
+  if (clientId) {
+    try {
+      const chat = await findOrCreateWebChat(clientId, salonId)
+      chatId = chat.id
+      console.log(`✅ Chat ID encontrado/criado: ${chatId}`)
+    } catch (err) {
+      console.error('Erro ao encontrar/criar chat:', err)
+      // Continua sem chatId - ainda salva em chatMessages
+    }
+  }
+
   // Salva a última mensagem do usuário antes de iniciar o stream
   const lastUserMessage = messages[messages.length - 1]
   if (lastUserMessage && lastUserMessage.role === 'user' && typeof lastUserMessage.content === 'string') {
+    // Salva na tabela messages se houver chatId
+    if (chatId) {
+      await saveMessage(chatId, "user", lastUserMessage.content).catch((err) => {
+        console.error('Erro ao salvar mensagem do usuário na tabela messages:', err)
+      })
+    }
+    
+    // Também salva em chatMessages para compatibilidade
     await db.insert(chatMessages).values({
       salonId,
       clientId: clientId || null,
@@ -129,12 +152,17 @@ export async function POST(req: Request) {
       content: lastUserMessage.content,
     }).catch((err) => {
       // Log erro mas não interrompe o fluxo
-      console.error('Erro ao salvar mensagem do usuário:', err)
+      console.error('Erro ao salvar mensagem do usuário em chatMessages:', err)
     })
   }
 
   const agentInfo = await getActiveAgentInfo(salonId)
-  const modelName = agentInfo?.model || "gpt-4o-mini";
+  const agentModel = agentInfo?.model || "gpt-4o-mini";
+  const modelName = mapModelToOpenAI(agentModel);
+  
+  // Variável para armazenar tokens
+  let usageData: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null = null;
+  
   const result = streamText({
     model: openai(modelName),
     system: systemPrompt,
@@ -149,15 +177,28 @@ export async function POST(req: Request) {
     onFinish: async ({ text, usage }) => {
       // Captura tokens
       // Na versão 5.0 do AI SDK: promptTokens → inputTokens, completionTokens → outputTokens
-      const inputTokens = usage?.inputTokens ?? null;
-      const outputTokens = usage?.outputTokens ?? null;
-      const totalTokens = usage?.totalTokens ?? null;
+      if (usage) {
+        usageData = {
+          inputTokens: usage.inputTokens ?? undefined,
+          outputTokens: usage.outputTokens ?? undefined,
+          totalTokens: usage.totalTokens ?? undefined,
+        };
+        console.log(`📊 Tokens capturados no onFinish: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+      }
 
-      console.log(`📊 Tokens usados: input=${inputTokens}, output=${outputTokens}, total=${totalTokens}`);
+      // Salva a resposta da IA na tabela messages com tokens (se houver chatId)
+      if (chatId) {
+        await saveMessage(chatId, "assistant", text, {
+          inputTokens: usageData?.inputTokens,
+          outputTokens: usageData?.outputTokens,
+          totalTokens: usageData?.totalTokens,
+          model: agentModel, // Salva o modelo original do agente, não o mapeado
+        }).catch((err) => {
+          console.error('Erro ao salvar mensagem da IA na tabela messages:', err)
+        })
+      }
 
-      // Salva a resposta da IA após o stream terminar
-      // Nota: chatMessages não tem campos de tokens, então salvamos apenas o conteúdo
-      // Os tokens serão rastreados via messages quando houver integração com chats
+      // Também salva em chatMessages para compatibilidade (sem tokens)
       await db.insert(chatMessages).values({
         salonId,
         clientId: clientId || null,
@@ -165,13 +206,20 @@ export async function POST(req: Request) {
         content: text,
       }).catch((err) => {
         // Log erro mas não interrompe o fluxo
-        console.error('Erro ao salvar mensagem da IA:', err)
+        console.error('Erro ao salvar mensagem da IA em chatMessages:', err)
       })
-
-      // TODO: Se houver chatId disponível, salvar tokens na tabela messages também
-      // Por enquanto, chatMessages não suporta tokens diretamente
     },
   })
+  
+  // Tenta obter usage do result se não foi capturado no onFinish
+  if (!usageData && result.usage) {
+    usageData = {
+      inputTokens: result.usage.inputTokens ?? undefined,
+      outputTokens: result.usage.outputTokens ?? undefined,
+      totalTokens: result.usage.totalTokens ?? undefined,
+    };
+    console.log(`📊 Tokens obtidos do result: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+  }
 
   return result.toTextStreamResponse()
 }

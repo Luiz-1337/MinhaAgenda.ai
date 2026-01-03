@@ -14,6 +14,23 @@ const DEFAULT_MIN_MODEL = "gpt-4o-mini"
 const DEFAULT_SERVICE_DURATION = 30 // Duração padrão em minutos
 
 /**
+ * Mapeia nomes de modelos do agente para nomes válidos do OpenAI SDK
+ * Modelos GPT-5 ainda não existem, então mapeamos para modelos disponíveis
+ */
+export function mapModelToOpenAI(model: string): string {
+  const modelMap: Record<string, string> = {
+    "gpt-5.2": "gpt-4o", // Mapeia para o modelo mais avançado disponível
+    "gpt-5.1": "gpt-4o",
+    "gpt-5-mini": "gpt-4o-mini",
+    "gpt-5-nano": "gpt-4o-mini",
+    "gpt-4.1": "gpt-4o",
+    "gpt-4o-mini": "gpt-4o-mini",
+  }
+  
+  return modelMap[model] || DEFAULT_MIN_MODEL
+}
+
+/**
  * Helper para busca fuzzy de serviço
  */
 async function findServiceByName(salonId: string, name: string) {

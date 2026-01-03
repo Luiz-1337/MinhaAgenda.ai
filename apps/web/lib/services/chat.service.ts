@@ -96,6 +96,26 @@ export async function findOrCreateChat(
 }
 
 /**
+ * Encontra ou cria um chat ativo para um usuário web (baseado em clientId)
+ * Usa o telefone do perfil se disponível, caso contrário usa um identificador único
+ */
+export async function findOrCreateWebChat(
+  clientId: string,
+  salonId: string
+): Promise<{ id: string }> {
+  // Busca o telefone do perfil do usuário
+  const profile = await db.query.profiles.findFirst({
+    where: eq(profiles.id, clientId),
+    columns: { phone: true },
+  })
+
+  // Usa o telefone do perfil se disponível, caso contrário usa um identificador único baseado no clientId
+  const clientPhone = profile?.phone || `web-${clientId}`
+
+  return findOrCreateChat(clientPhone, salonId)
+}
+
+/**
  * Salva uma mensagem no banco de dados (tabela messages)
  */
 export async function saveMessage(

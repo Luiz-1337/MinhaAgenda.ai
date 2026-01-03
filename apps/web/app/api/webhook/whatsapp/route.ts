@@ -1,7 +1,7 @@
 import { convertToModelMessages, streamText, UIMessage, stepCountIs } from 'ai';
 import { openai } from "@ai-sdk/openai";
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
-import { createSalonAssistantPrompt } from '@/lib/services/ai.service';
+import { createSalonAssistantPrompt, getActiveAgentInfo, mapModelToOpenAI } from '@/lib/services/ai.service';
 import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
 import { db, salons, customers, chats, agents } from "@repo/db";
 import { eq, and } from "drizzle-orm";
@@ -225,24 +225,68 @@ export async function POST(req: Request) {
     const mcpTools = await createMCPTools(salonId, clientPhone);
     console.log(`✅ ${Object.keys(mcpTools).length} tools criadas`);
 
-    // Gera resposta usando streamText (mesmo padrão do teste.tsx)
-    const result = streamText({
-      model: openai("o4-mini"),
-      system: systemPrompt,
-      messages: convertToModelMessages(uiMessages),
-      tools: mcpTools,
-      stopWhen: stepCountIs(5),
-      onFinish: async ({ text }) => {
-        // Esta callback não é usada no modo normal (stream é consumido antes)
-      },
-    });
+    // Busca informações do agente ativo para obter o modelo configurado
+    const agentInfo = await getActiveAgentInfo(salonId);
+    const agentModel = agentInfo?.model || "gpt-4o-mini";
+    const modelName = mapModelToOpenAI(agentModel);
+    console.log(`🤖 Modelo do agente ativo: ${agentModel} → ${modelName} (OpenAI)`);
 
-    // Coleta texto e envia via WhatsApp (comportamento original)
+    // Variáveis para armazenar tokens e modelo
+    let usageData: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null = null;
+
+    // Gera resposta usando streamText (mesmo padrão do teste.tsx)
     let finalText = '';
-    const textStream = result.textStream;
-    
-    for await (const chunk of textStream) {
-      finalText += chunk;
+    try {
+      const result = streamText({
+        model: openai(modelName),
+        system: systemPrompt,
+        messages: convertToModelMessages(uiMessages),
+        tools: mcpTools,
+        stopWhen: stepCountIs(5),
+        onFinish: async ({ text, usage }) => {
+          // Captura tokens do usage
+          if (usage) {
+            usageData = {
+              inputTokens: usage.inputTokens ?? undefined,
+              outputTokens: usage.outputTokens ?? undefined,
+              totalTokens: usage.totalTokens ?? undefined,
+            };
+            console.log(`📊 Tokens capturados no onFinish: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+          }
+        },
+      });
+
+      // Coleta texto e envia via WhatsApp (comportamento original)
+      const textStream = result.textStream;
+      
+      for await (const chunk of textStream) {
+        finalText += chunk;
+      }
+
+      // Aguarda o onFinish ser executado e tenta obter usage do result se não foi capturado
+      if (!usageData) {
+        try {
+          const usage = await result.usage;
+          if (usage) {
+            usageData = {
+              inputTokens: usage.inputTokens ?? undefined,
+              outputTokens: usage.outputTokens ?? undefined,
+              totalTokens: usage.totalTokens ?? undefined,
+            };
+            console.log(`📊 Tokens obtidos do result: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+          }
+        } catch (err) {
+          console.warn("⚠️ Erro ao obter usage do result:", err);
+        }
+      }
+    } catch (error) {
+      console.error("❌ Erro ao gerar resposta da IA:", error);
+      if (error instanceof Error) {
+        console.error("Erro detalhado:", error.message);
+        console.error("Stack:", error.stack);
+      }
+      // Usa fallback se houver erro
+      finalText = "Desculpe, tive uma instabilidade para processar sua mensagem. Por favor, tente novamente.";
     }
 
     // Se não houver texto final, usa fallback
@@ -253,8 +297,13 @@ export async function POST(req: Request) {
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);
 
-    // Salva mensagem do assistente
-    await saveMessage(chat.id, "assistant", finalText);
+    // Salva mensagem do assistente com tokens
+    await saveMessage(chat.id, "assistant", finalText, {
+      inputTokens: usageData?.inputTokens,
+      outputTokens: usageData?.outputTokens,
+      totalTokens: usageData?.totalTokens,
+      model: agentModel, // Salva o modelo original do agente, não o mapeado
+    });
     // Salva também na tabela chatMessages
     await saveChatMessage(salonId, clientPhone, "assistant", finalText).catch(err => {
       console.warn("⚠️ Erro ao salvar mensagem do assistente em chatMessages (continuando):", err);
