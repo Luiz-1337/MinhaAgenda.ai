@@ -5,6 +5,7 @@ import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons
 import { eq, and, gte, desc } from "drizzle-orm"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { calculateCredits } from "@/lib/utils/credits"
 
 export interface DashboardStats {
   completedAppointments: number
@@ -216,11 +217,12 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     }
   }
 
-  // Busca também créditos reais da tabela messages (tokens das mensagens)
-  const messagesCredits = await db
+  // Busca também créditos reais da tabela messages (tokens das mensagens) para aplicar pesos
+  const messagesRaw = await db
     .select({
       date: sql<string>`DATE(${messages.createdAt})::text`,
-      credits: sql<number>`SUM(${messages.totalTokens})::int`,
+      totalTokens: messages.totalTokens,
+      model: messages.model,
     })
     .from(messages)
     .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -232,21 +234,21 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
         gte(messages.createdAt, sql`CURRENT_DATE - INTERVAL '30 days'`)
       )
     )
-    .groupBy(sql`DATE(${messages.createdAt})`)
-    .orderBy(sql`DATE(${messages.createdAt})`)
 
-  // Combina créditos de aiUsageStats e messages
+  // Combina créditos de aiUsageStats e messages (aplicando pesos)
   const creditsMap = new Map<string, number>()
   
-  // Adiciona créditos de aiUsageStats
+  // Adiciona créditos de aiUsageStats (já ponderados)
   creditsData.forEach((item) => {
     const dateStr = new Date(item.date).toISOString().split("T")[0]
     creditsMap.set(dateStr, (creditsMap.get(dateStr) || 0) + (Number(item.credits) || 0))
   })
   
-  // Adiciona créditos de messages (tokens reais)
-  messagesCredits.forEach((item) => {
-    creditsMap.set(item.date, (creditsMap.get(item.date) || 0) + (Number(item.credits) || 0))
+  // Adiciona créditos de messages aplicando pesos
+  messagesRaw.forEach((msg) => {
+    if (!msg.date || !msg.totalTokens) return
+    const credits = calculateCredits(msg.totalTokens, msg.model)
+    creditsMap.set(msg.date, (creditsMap.get(msg.date) || 0) + credits)
   })
 
   // Converte para array e formata
@@ -283,9 +285,9 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
         }
       }
 
-      const agentCredits = await db
+      const agentMessages = await db
         .select({
-          credits: sql<number>`SUM(${messages.totalTokens})::int`,
+          totalTokens: messages.totalTokens,
         })
         .from(messages)
         .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -299,9 +301,14 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
           )
         )
 
+      // Calcula créditos ponderados para cada mensagem
+      const credits = agentMessages.reduce((sum, msg) => {
+        return sum + calculateCredits(msg.totalTokens || 0, agent.model)
+      }, 0)
+
       return {
         name: agent.name,
-        credits: Number(agentCredits[0]?.credits) || 0,
+        credits: credits,
         model: agent.model || undefined,
       }
     })
@@ -310,11 +317,11 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   // Ordena por créditos (maior primeiro)
   topAgents.sort((a, b) => b.credits - a.credits)
 
-  // Calcula créditos por modelo usando dados reais da tabela messages
-  const modelUsageReal = await db
+  // Calcula créditos por modelo usando dados reais da tabela messages (aplicando pesos)
+  const modelUsageRaw = await db
     .select({
       model: messages.model,
-      credits: sql<number>`SUM(${messages.totalTokens})::int`,
+      totalTokens: messages.totalTokens,
     })
     .from(messages)
     .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -328,19 +335,19 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
         gte(messages.createdAt, sql`CURRENT_DATE - INTERVAL '30 days'`)
       )
     )
-    .groupBy(messages.model)
 
   // Combina com dados de aiUsageStats para garantir que temos todos os modelos
   const modelMap = new Map<string, number>()
   
-  // Adiciona dados reais de messages
-  modelUsageReal.forEach((item) => {
-    if (item.model) {
-      modelMap.set(item.model, (modelMap.get(item.model) || 0) + (Number(item.credits) || 0))
+  // Adiciona dados reais de messages aplicando pesos
+  modelUsageRaw.forEach((msg) => {
+    if (msg.model && msg.totalTokens) {
+      const credits = calculateCredits(msg.totalTokens, msg.model)
+      modelMap.set(msg.model, (modelMap.get(msg.model) || 0) + credits)
     }
   })
 
-  // Adiciona dados de aiUsageStats (pode ter dados históricos)
+  // Adiciona dados de aiUsageStats (já ponderados, pode ter dados históricos)
   usageStatsData.forEach((item) => {
     modelMap.set(item.model, (modelMap.get(item.model) || 0) + (Number(item.credits) || 0))
   })
@@ -369,12 +376,12 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
  */
 async function syncRealUsageData(salonId: string): Promise<void> {
   try {
-    // Busca dados reais da tabela messages (apenas mensagens do assistente com tokens)
-    const realUsageData = await db
+    // Busca dados individuais da tabela messages para aplicar pesos
+    const rawMessages = await db
       .select({
         date: sql<string>`DATE(${messages.createdAt})::text`,
         model: messages.model,
-        credits: sql<number>`SUM(${messages.totalTokens})::int`,
+        totalTokens: messages.totalTokens,
       })
       .from(messages)
       .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -387,11 +394,23 @@ async function syncRealUsageData(salonId: string): Promise<void> {
           sql`${messages.totalTokens} > 0`
         )
       )
-      .groupBy(sql`DATE(${messages.createdAt})`, messages.model)
+
+    // Agrupa por data e modelo, aplicando pesos aos tokens
+    const creditsByDateAndModel = new Map<string, number>()
+    
+    for (const msg of rawMessages) {
+      if (!msg.model || !msg.totalTokens) continue
+      
+      const key = `${msg.date}|${msg.model}`
+      const credits = calculateCredits(msg.totalTokens, msg.model)
+      creditsByDateAndModel.set(key, (creditsByDateAndModel.get(key) || 0) + credits)
+    }
 
     // Sincroniza para ai_usage_stats (agrupa por data e modelo)
-    for (const item of realUsageData) {
-      if (!item.model || !item.credits || item.credits <= 0) continue
+    for (const [key, credits] of creditsByDateAndModel.entries()) {
+      const [date, model] = key.split('|')
+      
+      if (!date || !model || credits <= 0) continue
 
       const existing = await db
         .select()
@@ -399,8 +418,8 @@ async function syncRealUsageData(salonId: string): Promise<void> {
         .where(
           and(
             eq(aiUsageStats.salonId, salonId),
-            eq(aiUsageStats.date, item.date),
-            eq(aiUsageStats.model, item.model)
+            eq(aiUsageStats.date, date),
+            eq(aiUsageStats.model, model)
           )
         )
         .limit(1)
@@ -410,23 +429,23 @@ async function syncRealUsageData(salonId: string): Promise<void> {
         await db
           .update(aiUsageStats)
           .set({
-            credits: item.credits,
+            credits: credits,
             updatedAt: new Date(),
           })
           .where(
             and(
               eq(aiUsageStats.salonId, salonId),
-              eq(aiUsageStats.date, item.date),
-              eq(aiUsageStats.model, item.model)
+              eq(aiUsageStats.date, date),
+              eq(aiUsageStats.model, model)
             )
           )
       } else {
         // Insere novo
         await db.insert(aiUsageStats).values({
           salonId,
-          date: item.date,
-          model: item.model,
-          credits: item.credits,
+          date,
+          model,
+          credits: credits,
         })
       }
     }
@@ -446,9 +465,9 @@ async function syncRealUsageData(salonId: string): Promise<void> {
     for (const agent of salonAgents) {
       if (!agent.model) continue
 
-      const agentUsage = await db
+      const agentMessages = await db
         .select({
-          credits: sql<number>`SUM(${messages.totalTokens})::int`,
+          totalTokens: messages.totalTokens,
         })
         .from(messages)
         .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -462,7 +481,10 @@ async function syncRealUsageData(salonId: string): Promise<void> {
           )
         )
 
-      const totalCredits = agentUsage[0]?.credits || 0
+      // Calcula créditos ponderados para cada mensagem
+      const totalCredits = agentMessages.reduce((sum, msg) => {
+        return sum + calculateCredits(msg.totalTokens || 0, agent.model)
+      }, 0)
 
       if (totalCredits > 0) {
         const existing = await db
@@ -500,9 +522,10 @@ async function syncRealUsageData(salonId: string): Promise<void> {
     }
 
     // Também sincroniza para o agente padrão "Assistente IA" se houver mensagens sem agente específico
-    const defaultAgentUsage = await db
+    const defaultAgentMessages = await db
       .select({
-        credits: sql<number>`SUM(${messages.totalTokens})::int`,
+        totalTokens: messages.totalTokens,
+        model: messages.model,
       })
       .from(messages)
       .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -515,7 +538,10 @@ async function syncRealUsageData(salonId: string): Promise<void> {
         )
       )
 
-    const defaultCredits = defaultAgentUsage[0]?.credits || 0
+    // Calcula créditos ponderados para cada mensagem
+    const defaultCredits = defaultAgentMessages.reduce((sum, msg) => {
+      return sum + calculateCredits(msg.totalTokens || 0, msg.model)
+    }, 0)
     if (defaultCredits > 0) {
       const existing = await db
         .select()
@@ -615,8 +641,11 @@ export async function updateAgentCredits(
     return // Ignora se dados inválidos
   }
 
+  // Aplica peso do modelo aos tokens para calcular créditos
+  const credits = calculateCredits(tokens, model)
+
   const today = new Date().toISOString().split("T")[0]
-  console.log(`📊 updateAgentCredits: atualizando créditos para ${salonId} - ${agentName} - ${model} - ${tokens} tokens em ${today}`);
+  console.log(`📊 updateAgentCredits: atualizando créditos para ${salonId} - ${agentName} - ${model} - ${tokens} tokens (${credits} créditos) em ${today}`);
 
   try {
     // Atualiza ou insere em aiUsageStats (uso diário por modelo)
@@ -637,7 +666,7 @@ export async function updateAgentCredits(
       await db
         .update(aiUsageStats)
         .set({
-          credits: sql`${aiUsageStats.credits} + ${tokens}`,
+          credits: sql`${aiUsageStats.credits} + ${credits}`,
           updatedAt: new Date(),
         })
         .where(
@@ -653,7 +682,7 @@ export async function updateAgentCredits(
         salonId,
         date: today,
         model,
-        credits: tokens,
+        credits: credits,
       })
     }
 
@@ -674,7 +703,7 @@ export async function updateAgentCredits(
       await db
         .update(agentStats)
         .set({
-          totalCredits: sql`${agentStats.totalCredits} + ${tokens}`,
+          totalCredits: sql`${agentStats.totalCredits} + ${credits}`,
           updatedAt: new Date(),
         })
         .where(
@@ -688,7 +717,7 @@ export async function updateAgentCredits(
       await db.insert(agentStats).values({
         salonId,
         agentName,
-        totalCredits: tokens,
+        totalCredits: credits,
       })
     }
   } catch (error) {

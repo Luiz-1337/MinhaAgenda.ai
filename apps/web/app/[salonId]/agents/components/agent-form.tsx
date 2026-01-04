@@ -1,11 +1,12 @@
 "use client"
 
-import { useTransition, useEffect } from "react"
+import { useTransition, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
-import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle } from "lucide-react"
+import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle, HelpCircle, ArrowLeft, Cpu, AlertTriangle } from "lucide-react"
 import { agentSchema, createAgentSchema, type AgentSchema } from "@/lib/schemas"
 import { createAgent, updateAgent } from "@/app/actions/agents"
 import { Button } from "@/components/ui/button"
@@ -17,9 +18,211 @@ const AGENT_MODELS = [
   { value: "gpt-5.1", label: "GPT-5.1" },
   { value: "gpt-5-mini", label: "GPT-5 Mini" },
   { value: "gpt-5-nano", label: "GPT-5 Nano" },
-  { value: "gpt-4.1", label: "GPT-4.1" },
-  { value: "gpt-4o-mini", label: "GPT-4o Mini" },
 ] as const
+
+function ToneTooltip() {
+  const [isVisible, setIsVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const iconRef = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (isVisible && iconRef.current) {
+      const updatePosition = () => {
+        if (iconRef.current) {
+          const rect = iconRef.current.getBoundingClientRect()
+          setPosition({
+            top: rect.bottom + 8,
+            left: rect.left,
+          })
+        }
+      }
+      
+      updatePosition()
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+      
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
+      }
+    }
+  }, [isVisible])
+
+  const tooltipContent = isVisible && mounted ? (
+    <div
+      ref={tooltipRef}
+      className="fixed w-80 px-4 py-3 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs rounded-lg shadow-lg border border-slate-300 dark:border-slate-700 z-[99999]"
+      style={{
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+      }}
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      <h4 className="font-bold text-sm mb-2 text-slate-900 dark:text-slate-100">Tipos de Tom</h4>
+      
+      {/* Tabela */}
+      <div className="mb-3 overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-slate-300 dark:border-slate-700">
+              <th className="text-left py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Tom</th>
+              <th className="text-left py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Características</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-slate-200 dark:border-slate-700/50">
+              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400 font-medium">Formal</td>
+              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">Linguagem profissional e respeitosa</td>
+            </tr>
+            <tr>
+              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400 font-medium">Informal</td>
+              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">Linguagem descontraída e amigável</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Explicações */}
+      <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+        <p><strong className="text-slate-700 dark:text-slate-300">Formal:</strong> Use para ambientes profissionais, clientes corporativos ou situações que exigem maior formalidade. O agente usará linguagem mais polida, evita gírias e mantém um tom respeitoso e profissional.</p>
+        <p><strong className="text-slate-700 dark:text-slate-300">Informal:</strong> Ideal para criar uma conexão mais próxima com os clientes. O agente será mais descontraído, pode usar emojis ocasionalmente e terá uma comunicação mais natural e amigável.</p>
+      </div>
+      
+      {/* Seta do tooltip */}
+      <div className="absolute bottom-full left-4 -mb-1">
+        <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      <HelpCircle
+        ref={iconRef}
+        size={12}
+        className="text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 cursor-help transition-colors"
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+      />
+      
+      {mounted && tooltipContent && createPortal(tooltipContent, document.body)}
+    </>
+  )
+}
+
+function ModelTooltip() {
+  const [isVisible, setIsVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const iconRef = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (isVisible && iconRef.current) {
+      const updatePosition = () => {
+        if (iconRef.current) {
+          const rect = iconRef.current.getBoundingClientRect()
+          setPosition({
+            top: rect.bottom + 8,
+            left: rect.left,
+          })
+        }
+      }
+      
+      updatePosition()
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+      
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true)
+        window.removeEventListener('resize', updatePosition)
+      }
+    }
+  }, [isVisible])
+
+  const tooltipContent = isVisible && mounted ? (
+    <div
+      ref={tooltipRef}
+      className="fixed w-80 px-4 py-3 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs rounded-lg shadow-lg border border-slate-300 dark:border-slate-700 z-[99999]"
+      style={{
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+      }}
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+          <h4 className="font-bold text-sm mb-2 text-slate-900 dark:text-slate-100">Pesos dos Modelos</h4>
+          
+          {/* Tabela */}
+          <div className="mb-3 overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-300 dark:border-slate-700">
+                  <th className="text-left py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Modelo</th>
+                  <th className="text-right py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-200 dark:border-slate-700/50">
+                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5 Nano</td>
+                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 0.2</td>
+                </tr>
+                <tr className="border-b border-slate-200 dark:border-slate-700/50">
+                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5 Mini</td>
+                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 1.0</td>
+                </tr>
+                <tr className="border-b border-slate-200 dark:border-slate-700/50">
+                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5.1</td>
+                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 5.0</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5.2</td>
+                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 7.0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          {/* Explicações */}
+          <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5 Nano:</strong> Modelo mais leve, ideal para tarefas simples. Consome 5x menos créditos que o modelo base.</p>
+            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5 Mini:</strong> Modelo padrão, balanceado entre qualidade e custo.</p>
+            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5.1:</strong> Modelo mais avançado, oferece melhor qualidade mas consome 5x mais créditos.</p>
+            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5.2 (7.0):</strong> Modelo mais potente, máxima qualidade mas consome 7x mais créditos que o modelo base.</p>
+          </div>
+          
+          {/* Seta do tooltip */}
+          <div className="absolute bottom-full left-4 -mb-1">
+            <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>
+          </div>
+        </div>
+      ) : null
+
+  return (
+    <>
+      <HelpCircle
+        ref={iconRef}
+        size={12}
+        className="text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 cursor-help transition-colors"
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+      />
+      
+      {mounted && tooltipContent && createPortal(tooltipContent, document.body)}
+    </>
+  )
+}
 
 interface AgentFormProps {
   salonId: string
@@ -94,229 +297,257 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     })
   }
 
+  const handleBack = () => {
+    if (onCancel) {
+      onCancel()
+    } else {
+      router.push(`/${salonId}/agents`)
+    }
+  }
+
   return (
     <div className="flex flex-col h-full gap-6">
       {/* Header */}
-      <div className="flex justify-between items-center flex-shrink-0">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
-            {mode === "create" ? "Criar Agente" : "Editar Agente"}
-          </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {mode === "create"
-              ? "Configure um novo agente de IA para seu salão"
-              : "Atualize as configurações do agente"}
-          </p>
+      <div className="flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleBack}
+            disabled={isPending}
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Voltar"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
+              {mode === "create" ? "Criar Agente" : "Editar Agente"}
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              {mode === "create"
+                ? "Configure um novo agente de IA para seu salão"
+                : "Atualize as configurações do agente"}
+            </p>
+          </div>
         </div>
-        {onCancel && (
-          <Button variant="ghost" size="icon" onClick={onCancel} disabled={isPending}>
-            <X size={20} />
-          </Button>
-        )}
+        <Button 
+          type="submit" 
+          form="agent-form"
+          disabled={isPending}
+          className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20 px-5 py-2.5 flex items-center gap-2"
+        >
+          {isPending ? (
+            "Salvando..."
+          ) : (
+            <>
+              <Save size={18} />
+              {mode === "create" ? "Criar Agente" : "Salvar Alterações"}
+            </>
+          )}
+        </Button>
       </div>
 
-      {/* Form */}
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto custom-scrollbar space-y-6">
-        {/* Nome do Agente */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Bot size={20} className="text-indigo-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">Informações Básicas</h3>
-          </div>
+      {/* Form - Grid Layout */}
+      <form id="agent-form" onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Coluna Esquerda - Configurações Rápidas (33%) */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Card 1 - Informações Gerais */}
+            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Bot size={18} className="text-indigo-500" />
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white">Informações Gerais</h3>
+              </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-              Nome do Agente
-            </label>
-            <input
-              type="text"
-              {...form.register("name")}
-              placeholder="Ex.: Assistente de Atendimento"
-              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
-            />
-            {form.formState.errors.name && (
-              <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
-            )}
-          </div>
-        </div>
+              <div className="space-y-4">
+                {/* Nome do Agente */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Nome do Agente
+                  </label>
+                  <input
+                    type="text"
+                    {...form.register("name")}
+                    placeholder="Ex.: Assistente de Atendimento"
+                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  />
+                  {form.formState.errors.name && (
+                    <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
+                  )}
+                </div>
 
-        {/* System Prompt */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <MessageSquareText size={20} className="text-indigo-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">System Prompt</h3>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Instruções que definem o comportamento e personalidade do agente. Este prompt será enviado para o Vercel
-            como system prompt base do agente.
-          </p>
+                {/* Modelo e Tom - Lado a Lado */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Modelo</label>
+                      <ModelTooltip />
+                    </div>
+                    <Controller
+                      control={form.control}
+                      name="model"
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
+                            <SelectValue placeholder="Modelo" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg">
+                            {AGENT_MODELS.map((model) => (
+                              <SelectItem
+                                key={model.value}
+                                value={model.value}
+                                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                              >
+                                {model.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    {form.formState.errors.model && (
+                      <p className="text-xs text-red-500">{form.formState.errors.model.message}</p>
+                    )}
+                  </div>
 
-          <div className="space-y-1.5">
-            <textarea
-              rows={8}
-              {...form.register("systemPrompt")}
-              placeholder="Ex.: Você é um assistente do salão. Seja objetivo, confirme data/horário e peça nome/telefone quando necessário..."
-              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
-            />
-            {form.formState.errors.systemPrompt && (
-              <p className="text-xs text-red-500">{form.formState.errors.systemPrompt.message}</p>
-            )}
-          </div>
-        </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tom</label>
+                      <ToneTooltip />
+                    </div>
+                    <Controller
+                      control={form.control}
+                      name="tone"
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
+                            <SelectValue placeholder="Tom" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg">
+                            <SelectItem value="formal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                              Formal
+                            </SelectItem>
+                            <SelectItem value="informal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                              Informal
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    {form.formState.errors.tone && (
+                      <p className="text-xs text-red-500">{form.formState.errors.tone.message}</p>
+                    )}
+                  </div>
+                </div>
 
-        {/* Configurações do Modelo */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <BrainCircuit size={20} className="text-indigo-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">Configurações do Modelo</h3>
-          </div>
+                {/* Toggle Agente Ativo */}
+                <div className="pt-2 border-t border-slate-200 dark:border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Agente Ativo</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Ativa este agente e desativa os outros automaticamente
+                      </p>
+                    </div>
+                    <Controller
+                      control={form.control}
+                      name="isActive"
+                      render={({ field }) => (
+                        <Switch checked={!!field.value} onCheckedChange={(v) => field.onChange(v)} />
+                      )}
+                    />
+                  </div>
+                  {isActive && (
+                    <div className="mt-3 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
+                      <p className="text-xs text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                        <AlertTriangle size={14} />
+                        <span>Ao salvar, outros agentes serão desativados</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Modelo</label>
-              <Controller
-                control={form.control}
-                name="model"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
-                      <SelectValue placeholder="Selecione o modelo" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-lg">
-                      {AGENT_MODELS.map((model) => (
-                        <SelectItem
-                          key={model.value}
-                          value={model.value}
-                          className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800"
-                        >
-                          {model.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {/* Card 2 - Integrações */}
+            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Phone size={18} className="text-indigo-500" />
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white">Integrações</h3>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Número do WhatsApp
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    {...form.register("whatsappNumber")}
+                    placeholder="Ex.: +5511986049295"
+                    className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    pattern="^\+[1-9]\d{10,14}$"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // TODO: Implementar função de conexão do WhatsApp
+                      toast.info("Funcionalidade de conexão em desenvolvimento")
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                  >
+                    Conectar
+                  </button>
+                </div>
+                {form.formState.errors.whatsappNumber && (
+                  <p className="text-xs text-red-500">{form.formState.errors.whatsappNumber.message}</p>
                 )}
-              />
-              {form.formState.errors.model && (
-                <p className="text-xs text-red-500">{form.formState.errors.model.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Tom</label>
-              <Controller
-                control={form.control}
-                name="tone"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
-                      <SelectValue placeholder="Selecione o tom" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-lg">
-                      <SelectItem
-                        value="formal"
-                        className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800"
-                      >
-                        Formal
-                      </SelectItem>
-                      <SelectItem
-                        value="informal"
-                        className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800"
-                      >
-                        Informal
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {form.formState.errors.tone && (
-                <p className="text-xs text-red-500">{form.formState.errors.tone.message}</p>
-              )}
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Formato:ex: +5511999999999
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* WhatsApp */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Phone size={20} className="text-indigo-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">Integração WhatsApp</h3>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Número do WhatsApp que será integrado com o Twilio. Quando este número receber mensagens, o agente
-            específico irá responder.
-          </p>
+          {/* Coluna Direita - System Prompt (66%) */}
+          <div className="lg:col-span-8">
+            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-6 shadow-sm flex flex-col h-full min-h-[600px]">
+              <div className="flex items-center gap-2 mb-4">
+                <Cpu size={18} className="text-indigo-500" />
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white">System Prompt</h3>
+              </div>
 
-          <div className="space-y-1.5">
-            <input
-              type="text"
-              {...form.register("whatsappNumber")}
-              placeholder="Ex.: +5511999999999"
-              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
-            />
-            {form.formState.errors.whatsappNumber && (
-              <p className="text-xs text-red-500">{form.formState.errors.whatsappNumber.message}</p>
-            )}
-          </div>
-        </div>
+              <div className="flex-1 flex flex-col space-y-3">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 block">
+                    Instruções do Agente
+                  </label>
+                  <textarea
+                    {...form.register("systemPrompt")}
+                    placeholder="Ex.: Você é um assistente do salão. Seja objetivo, confirme data/horário e peça nome/telefone quando necessário..."
+                    className="w-full h-full min-h-[500px] bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none font-mono"
+                  />
+                  {form.formState.errors.systemPrompt && (
+                    <p className="text-xs text-red-500 mt-2">{form.formState.errors.systemPrompt.message}</p>
+                  )}
+                </div>
 
-        {/* Treinamentos */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Sparkles size={20} className="text-indigo-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">Treinamentos</h3>
-          </div>
-          <div className="flex items-center gap-2 p-4 rounded-xl bg-slate-50/50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5">
-            <AlertCircle size={16} className="text-slate-400" />
-            <p className="text-sm text-slate-500 dark:text-slate-400">Funcionalidade em desenvolvimento</p>
-          </div>
-        </div>
-
-        {/* Status Ativo */}
-        <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-          <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Ativo</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Apenas um agente pode estar ativo por vez. Ao ativar este agente, os outros serão desativados
-                automaticamente.
-              </p>
+                {/* Footer do Card - Avisos */}
+                <div className="pt-4 border-t border-slate-200 dark:border-white/5 space-y-2">
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30">
+                    <AlertCircle size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-700 dark:text-blue-300">
+                      <p className="font-semibold mb-1">Mudanças levam até 5 minutos para propagar</p>
+                      <p>O prompt será enviado como system prompt base do agente</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <MessageSquareText size={14} />
+                    <span>Este campo aceita formatação Markdown</span>
+                  </p>
+                </div>
+              </div>
             </div>
-
-            <Controller
-              control={form.control}
-              name="isActive"
-              render={({ field }) => (
-                <Switch checked={!!field.value} onCheckedChange={(v) => field.onChange(v)} />
-              )}
-            />
           </div>
-          {isActive && (
-            <div className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30">
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                <strong>Atenção:</strong> Ao salvar, todos os outros agentes deste salão serão desativados
-                automaticamente.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pb-6">
-          {onCancel && (
-            <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-              Cancelar
-            </Button>
-          )}
-          <Button type="submit" disabled={isPending} className="min-w-[120px]">
-            {isPending ? (
-              "Salvando..."
-            ) : (
-              <>
-                <Save size={16} className="mr-2" />
-                {mode === "create" ? "Criar Agente" : "Salvar Alterações"}
-              </>
-            )}
-          </Button>
         </div>
       </form>
     </div>

@@ -31,7 +31,7 @@ export default async function NewAgentPage({
   }
 
   return (
-    <div className="h-full p-6">
+    <div className="h-full">
       <AgentForm
         salonId={salonId}
         mode="create"

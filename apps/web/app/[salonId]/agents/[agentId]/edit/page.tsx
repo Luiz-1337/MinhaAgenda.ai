@@ -24,7 +24,7 @@ export default async function EditAgentPage({
   const agent = agentResult.data
 
   return (
-    <div className="h-full p-6">
+    <div className="h-full">
       <AgentForm
         salonId={salonId}
         mode="edit"

@@ -421,12 +421,14 @@ export async function deleteKnowledgeFile(
 
 /**
  * Busca contexto relevante para uma query usando similaridade de embeddings
+ * @param similarityThreshold Threshold de similaridade (0-1). Valores acima deste threshold serão retornados. Padrão: 0.7 (70%)
  */
 export async function findRelevantContext(
   agentId: string,
   query: string,
-  limit = 3
-): Promise<ActionResult<Array<{ content: string; metadata?: Record<string, unknown> }>>> {
+  limit = 3,
+  similarityThreshold = 0.7
+): Promise<ActionResult<Array<{ content: string; similarity: number; metadata?: Record<string, unknown> }>>> {
   try {
     if (!agentId || !query?.trim()) {
       return { error: "agentId e query são obrigatórios" }
@@ -440,24 +442,29 @@ export async function findRelevantContext(
 
     // Busca por similaridade usando SQL raw (pgvector)
     // O operador <=> calcula a distância cosseno (menor = mais similar)
+    // Similaridade = 1 - distância (1 = idêntico, 0 = completamente diferente)
     // Converte o array de embedding para formato PostgreSQL array string
     // O formato correto é: '[0.1,0.2,0.3,...]'::vector
     const embeddingArrayString = `[${queryEmbedding.join(",")}]`
     
     // Usa o cliente postgres diretamente porque o Drizzle não suporta operador <=> do pgvector
+    // Filtra apenas resultados com similaridade >= threshold
     const results = await postgresClient`
-      SELECT content, metadata
+      SELECT content, metadata, 1 - (embedding <=> ${embeddingArrayString}::vector) as similarity
       FROM agent_knowledge_base
       WHERE agent_id = ${agentId}
+        AND (1 - (embedding <=> ${embeddingArrayString}::vector)) >= ${similarityThreshold}
       ORDER BY embedding <=> ${embeddingArrayString}::vector
       LIMIT ${limit}
     ` as Array<{
       content: string
       metadata: Record<string, unknown> | null
+      similarity: number
     }>
 
     const formattedResults = results.map((row) => ({
       content: row.content,
+      similarity: row.similarity,
       metadata: row.metadata as Record<string, unknown> | undefined,
     }))
 

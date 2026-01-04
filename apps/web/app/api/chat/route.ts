@@ -75,23 +75,26 @@ export async function POST(req: Request) {
     const lastUserMessage = messages[messages.length - 1]
     if (lastUserMessage && lastUserMessage.role === 'user' && typeof lastUserMessage.content === 'string') {
       try {
+        const similarityThreshold = 0.7; // Threshold de 70% de similaridade
         const contextResult = await findRelevantContext(
           activeAgent.id,
           lastUserMessage.content,
-          3
+          3,
+          similarityThreshold
         )
         
         if (!("error" in contextResult) && contextResult.data && contextResult.data.length > 0) {
+          // Os resultados já foram filtrados pelo threshold na query SQL
           // Formata o contexto recuperado
           const contextTexts = contextResult.data.map((item) => item.content).join("\n\n")
           knowledgeContext = contextTexts
-          console.log(`📚 Contexto RAG recuperado (${contextResult.data.length} itens):`)
+          console.log(`📚 Contexto RAG relevante encontrado (${contextResult.data.length} itens acima do threshold de ${(similarityThreshold * 100).toFixed(0)}%):`)
           contextResult.data.forEach((item, index) => {
-            console.log(`  [${index + 1}] ${item.content}`)
+            console.log(`  [${index + 1}] (similaridade: ${(item.similarity * 100).toFixed(1)}%) ${item.content.substring(0, 100)}${item.content.length > 100 ? '...' : ''}`)
           })
           console.log(`\n📝 Contexto completo que será injetado no prompt:\n${contextTexts}\n`)
         } else {
-          console.log("⚠️ Nenhum contexto RAG encontrado ou erro na busca:", contextResult)
+          console.log(`⚠️ Nenhum contexto RAG relevante encontrado (todos abaixo do threshold de ${(similarityThreshold * 100).toFixed(0)}% ou erro na busca):`, contextResult)
         }
       } catch (error) {
         console.error("❌ Erro ao buscar contexto RAG:", error)
@@ -214,9 +217,9 @@ export async function POST(req: Request) {
   // Tenta obter usage do result se não foi capturado no onFinish
   if (!usageData && result.usage) {
     usageData = {
-      inputTokens: result.usage.inputTokens ?? undefined,
-      outputTokens: result.usage.outputTokens ?? undefined,
-      totalTokens: result.usage.totalTokens ?? undefined,
+      inputTokens: (await result.usage).inputTokens ?? undefined,
+      outputTokens: (await result.usage).outputTokens ?? undefined,
+      totalTokens: (await result.usage).totalTokens ?? undefined,
     };
     console.log(`📊 Tokens obtidos do result: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
   }

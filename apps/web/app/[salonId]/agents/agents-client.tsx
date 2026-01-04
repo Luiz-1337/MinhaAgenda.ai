@@ -102,7 +102,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   }
 
   return (
-    <div className="flex flex-col h-full gap-6">
+    <div className="flex flex-col h-full gap-6 pt-[5px] pr-[5px] pl-[5px]">
       {/* Header */}
       <div className="flex justify-between items-center flex-shrink-0">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Agentes</h2>

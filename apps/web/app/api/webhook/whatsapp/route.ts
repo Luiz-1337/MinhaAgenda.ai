@@ -1,4 +1,4 @@
-import { convertToModelMessages, streamText, UIMessage, stepCountIs } from 'ai';
+import { convertToModelMessages, generateText, UIMessage, stepCountIs } from 'ai';
 import { openai } from "@ai-sdk/openai";
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
 import { createSalonAssistantPrompt, getActiveAgentInfo, mapModelToOpenAI } from '@/lib/services/ai.service';
@@ -15,6 +15,7 @@ export const maxDuration = 120;
 /**
  * Processa webhook do WhatsApp via Twilio usando o mesmo padrão de chat com tools
  */
+
 export async function POST(req: Request) {
   console.log("🔔 Webhook Twilio chamado - início do processamento");
 
@@ -75,7 +76,6 @@ export async function POST(req: Request) {
     const from = typeof fromValue === "string" ? fromValue : "";
     const body = typeof bodyValue === "string" ? bodyValue : "";
     const to = typeof toValue === "string" ? toValue : "";
-    const messageSid = typeof messageSidValue === "string" ? messageSidValue : null;
 
     console.log(`📥 Webhook WhatsApp recebido: From=${from}, To=${to}, Body=${body?.substring(0, 100)}...`);
 
@@ -106,7 +106,12 @@ export async function POST(req: Request) {
       where: eq(salons.id, salonId),
       columns: { name: true }
     });
-    const salonName = salon?.name || "nosso salão";
+    const salonName = salon?.name;
+
+    if (!salonName) {
+      console.error("❌ Nome do salão não encontrado");
+      return new Response("Salão não encontrado", { status: 404 });
+    }
 
     // Encontra ou cria o customer (garante que existe na tabela customers)
     console.log("👤 Encontrando ou criando customer...");
@@ -141,23 +146,26 @@ export async function POST(req: Request) {
     // Se houver agente ativo e mensagem do usuário, busca contexto relevante
     if (activeAgent && body) {
       try {
+        const similarityThreshold = 0.7; // Threshold de 70% de similaridade
         const contextResult = await findRelevantContext(
           activeAgent.id,
           body,
-          3
+          3,
+          similarityThreshold
         );
         
         if (!("error" in contextResult) && contextResult.data && contextResult.data.length > 0) {
+          // Os resultados já foram filtrados pelo threshold na query SQL
           // Formata o contexto recuperado
           const contextTexts = contextResult.data.map((item) => item.content).join("\n\n");
           knowledgeContext = contextTexts;
-          console.log(`📚 Contexto RAG recuperado (${contextResult.data.length} itens):`);
+          console.log(`📚 Contexto RAG relevante encontrado (${contextResult.data.length} itens acima do threshold de ${(similarityThreshold * 100).toFixed(0)}%):`);
           contextResult.data.forEach((item, index) => {
-            console.log(`  [${index + 1}] ${item.content}`);
+            console.log(`  [${index + 1}] (similaridade: ${(item.similarity * 100).toFixed(1)}%) ${item.content.substring(0, 100)}${item.content.length > 100 ? '...' : ''}`);
           });
           console.log(`\n📝 Contexto completo que será injetado no prompt:\n${contextTexts}\n`);
         } else {
-          console.log("⚠️ Nenhum contexto RAG encontrado ou erro na busca:", contextResult);
+          console.log(`⚠️ Nenhum contexto RAG relevante encontrado (todos abaixo do threshold de ${(similarityThreshold * 100).toFixed(0)}% ou erro na busca):`, contextResult);
         }
       } catch (error) {
         console.error("❌ Erro ao buscar contexto RAG:", error);
@@ -227,57 +235,101 @@ export async function POST(req: Request) {
 
     // Busca informações do agente ativo para obter o modelo configurado
     const agentInfo = await getActiveAgentInfo(salonId);
-    const agentModel = agentInfo?.model || "gpt-4o-mini";
+    const agentModel = agentInfo?.model || "gpt-5-mini";
     const modelName = mapModelToOpenAI(agentModel);
     console.log(`🤖 Modelo do agente ativo: ${agentModel} → ${modelName} (OpenAI)`);
 
-    // Variáveis para armazenar tokens e modelo
+    // Gera resposta usando generateText (mais adequado para WhatsApp, não precisa de streaming)
+    let finalText = '';
     let usageData: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null = null;
 
-    // Gera resposta usando streamText (mesmo padrão do teste.tsx)
-    let finalText = '';
     try {
-      const result = streamText({
+      const { text, usage, steps } = await generateText({
         model: openai(modelName),
         system: systemPrompt,
         messages: convertToModelMessages(uiMessages),
         tools: mcpTools,
-        stopWhen: stepCountIs(5),
-        onFinish: async ({ text, usage }) => {
-          // Captura tokens do usage
-          if (usage) {
-            usageData = {
-              inputTokens: usage.inputTokens ?? undefined,
-              outputTokens: usage.outputTokens ?? undefined,
-              totalTokens: usage.totalTokens ?? undefined,
-            };
-            console.log(`📊 Tokens capturados no onFinish: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
-          }
-        },
+        stopWhen: stepCountIs(10),
       });
 
-      // Coleta texto e envia via WhatsApp (comportamento original)
-      const textStream = result.textStream;
-      
-      for await (const chunk of textStream) {
-        finalText += chunk;
-      }
+      // Aqui o 'text' já é a resposta final completa
+      finalText = text;
 
-      // Aguarda o onFinish ser executado e tenta obter usage do result se não foi capturado
-      if (!usageData) {
-        try {
-          const usage = await result.usage;
-          if (usage) {
-            usageData = {
-              inputTokens: usage.inputTokens ?? undefined,
-              outputTokens: usage.outputTokens ?? undefined,
-              totalTokens: usage.totalTokens ?? undefined,
-            };
-            console.log(`📊 Tokens obtidos do result: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+      // O 'usage' já vem preenchido, sem precisar de malabarismos
+      if (usage) {
+        usageData = {
+          inputTokens: usage.inputTokens ?? undefined,
+          outputTokens: usage.outputTokens ?? undefined,
+          totalTokens: usage.totalTokens ?? undefined,
+        };
+        console.log(`📊 Tokens: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+        console.log(`\n🔄 Total de steps executados: ${steps.length}\n`);
+        
+        // Log detalhado de cada step
+        steps.forEach((step, index) => {
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`📝 Step ${index + 1}/${steps.length}:`);
+          
+          // Verifica se há tool calls neste step
+          if (step.toolCalls && step.toolCalls.length > 0) {
+            step.toolCalls.forEach((toolCall: any) => {
+              console.log(`  🔧 Tool chamada: ${toolCall.toolName || 'N/A'}`);
+              if (toolCall.args !== undefined && toolCall.args !== null) {
+                try {
+                  console.log(`  📥 Parâmetros passados:`, JSON.stringify(toolCall.args, null, 2));
+                } catch (err) {
+                  console.log(`  📥 Parâmetros passados:`, toolCall.args);
+                }
+              } else {
+                console.log(`  📥 Parâmetros passados: (nenhum parâmetro)`);
+              }
+            });
           }
-        } catch (err) {
-          console.warn("⚠️ Erro ao obter usage do result:", err);
-        }
+          
+          // Verifica se há tool results (resultado da execução)
+          if (step.toolResults && step.toolResults.length > 0) {
+            step.toolResults.forEach((toolResult: any, toolIndex: number) => {
+              console.log(`  ✅ Tool result ${toolIndex + 1}:`);
+              console.log(`     Tool: ${toolResult.toolName || 'N/A'}`);
+              if (toolResult.result !== undefined && toolResult.result !== null) {
+                try {
+                  const resultStr = JSON.stringify(toolResult.result, null, 2);
+                  const preview = resultStr.length > 500 ? resultStr.substring(0, 500) + '...' : resultStr;
+                  console.log(`     Resultado:`, preview);
+                } catch (err) {
+                  console.log(`     Resultado:`, toolResult.result);
+                }
+              } else {
+                console.log(`     Resultado: (sem resultado)`);
+              }
+            });
+          }
+          
+          // Mostra conteúdo de texto se houver (pode ser string ou array)
+          const content: any = step.content;
+          if (content !== null && content !== undefined) {
+            if (typeof content === 'string') {
+              const trimmedContent = content.trim();
+              if (trimmedContent) {
+                const preview = trimmedContent.length > 200 ? trimmedContent.substring(0, 200) + '...' : trimmedContent;
+                console.log(`  💬 Conteúdo de texto: ${preview}`);
+              }
+            } else if (Array.isArray(content)) {
+              const textParts = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join(' ');
+              if (textParts) {
+                const preview = textParts.length > 200 ? textParts.substring(0, 200) + '...' : textParts;
+                console.log(`  💬 Conteúdo de texto: ${preview}`);
+              }
+            }
+          }
+          
+          // Mostra tokens deste step se houver
+          if (step.usage) {
+            console.log(`  📊 Tokens deste step: input=${step.usage.inputTokens || 0}, output=${step.usage.outputTokens || 0}, total=${step.usage.totalTokens || 0}`);
+          }
+        });
+        
+        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
       }
     } catch (error) {
       console.error("❌ Erro ao gerar resposta da IA:", error);

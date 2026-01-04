@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { CreditsBadge } from "@/components/dashboard/credits-badge"
 import { LogOut, Search, Bell, Sun, Moon } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -66,6 +67,9 @@ export function UserNav() {
       >
         {isDark ? <Sun size={18} /> : <Moon size={18} />}
       </button>
+
+      {/* Credits Badge */}
+      <CreditsBadge />
 
       {/* Search */}
       <div className="relative group">

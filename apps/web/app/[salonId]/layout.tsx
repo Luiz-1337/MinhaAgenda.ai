@@ -93,7 +93,7 @@ export default async function SalonLayout({
           </header>
 
           {/* Conteúdo da Página */}
-          <div className="flex-1 overflow-hidden relative z-10 pt-[25px] pr-[25px] pl-[25px] pb-[5px] min-h-0">
+          <div className="flex-1 overflow-hidden relative z-10 pt-[25px] pr-[25px] pl-[25px] pb-[25px] min-h-0">
             <div className="h-full overflow-y-auto">
               {children}
             </div>
