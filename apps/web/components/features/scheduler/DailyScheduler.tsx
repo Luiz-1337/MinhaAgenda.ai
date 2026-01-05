@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
-import { formatBrazilTime, startOfDayBrazil } from "@/lib/utils/timezone.utils"
+import { formatBrazilTime, startOfDayBrazil, getBrazilHours } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
@@ -28,11 +28,12 @@ function calculateAppointmentPosition(
   const startTime = appointment.startTime
   const endTime = appointment.endTime
 
-  // Cria uma data de referência no início do dia (00:00)
-  const referenceTime = new Date(dayStart)
-  referenceTime.setHours(0, 0, 0, 0)
+  // dayStart já é o início do dia no timezone de Brasília (convertido para UTC)
+  // Não precisamos fazer setHours pois dayStart já está no início do dia
+  const referenceTime = dayStart
 
   // Calcula minutos desde o início do dia (00:00)
+  // getTime() retorna timestamp UTC, então a diferença funciona corretamente
   const startMinutes = Math.max(
     0,
     Math.round((startTime.getTime() - referenceTime.getTime()) / (1000 * 60))
@@ -144,7 +145,7 @@ export function DailyScheduler({
                 <div className="flex-1 relative hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
                   {selectedProfessionalAppointments
                     .filter(apt => {
-                      const aptHour = apt.startTime.getHours()
+                      const aptHour = getBrazilHours(apt.startTime)
                       return aptHour >= hour && aptHour < hour + 1
                     })
                     .map((appointment) => {

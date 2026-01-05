@@ -113,6 +113,13 @@
       "when": 1766538000000,
       "tag": "0015_create_payments_table",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1767571200048,
+      "tag": "0016_friendly_iron_lad",
+      "breakpoints": true
     }
   ]
 }

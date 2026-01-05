@@ -395,12 +395,30 @@ export class MinhaAgendaAITools {
             throw new Error("É necessário fornecer clientId ou phone")
         }
 
-        let resolvedClientId: string | undefined = clientId
+        // Helper para validar se uma string é um UUID válido
+        const isValidUUID = (str: string): boolean => {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            return uuidRegex.test(str)
+        }
 
-        // Se não tiver clientId, busca pelo phone
-        if (!resolvedClientId && phone) {
+        let resolvedClientId: string | undefined = undefined
+        let phoneToSearch: string | undefined = undefined
+
+        // Se clientId foi fornecido, verifica se é UUID válido ou telefone
+        if (clientId) {
+            if (isValidUUID(clientId)) {
+                resolvedClientId = clientId
+            } else {
+                // Se não é UUID válido, trata como telefone
+                phoneToSearch = clientId
+            }
+        }
+
+        // Se phone foi fornecido diretamente ou se clientId era na verdade um telefone
+        if (!resolvedClientId && (phone || phoneToSearch)) {
+            const searchPhone = phone || phoneToSearch
             const profile = await db.query.profiles.findFirst({
-                where: eq(profiles.phone, phone),
+                where: eq(profiles.phone, searchPhone!),
                 columns: { id: true },
             })
 

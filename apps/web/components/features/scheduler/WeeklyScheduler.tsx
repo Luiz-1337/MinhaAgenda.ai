@@ -1,9 +1,9 @@
 "use client"
 
 import { useMemo } from "react"
-import { format, eachDayOfInterval, isSameDay } from "date-fns"
+import { eachDayOfInterval, isSameDay } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
-import { formatBrazilTime, startOfWeekBrazil, endOfWeekBrazil, startOfDayBrazil, getBrazilNow, fromBrazilTime } from "@/lib/utils/timezone.utils"
+import { formatBrazilTime, startOfWeekBrazil, endOfWeekBrazil, startOfDayBrazil, getBrazilNow, getBrazilHours } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
@@ -27,9 +27,12 @@ function calculateAppointmentPosition(
   const startTime = appointment.startTime
   const endTime = appointment.endTime
 
-  const referenceTime = new Date(dayStart)
-  referenceTime.setHours(0, 0, 0, 0)
+  // dayStart já é o início do dia no timezone de Brasília (convertido para UTC)
+  // Não precisamos fazer setHours pois dayStart já está no início do dia
+  const referenceTime = dayStart
 
+  // Calcula minutos desde o início do dia (00:00)
+  // getTime() retorna timestamp UTC, então a diferença funciona corretamente
   const startMinutes = Math.max(
     0,
     Math.round((startTime.getTime() - referenceTime.getTime()) / (1000 * 60))
@@ -101,8 +104,8 @@ export function WeeklyScheduler({
 
     appointments.forEach((apt) => {
       // apt.startTime já está em horário de Brasília (convertido por fromBrazilTime)
-      // Usa format diretamente para evitar dupla conversão
-      const dayKey = format(apt.startTime, "yyyy-MM-dd")
+      // Usa formatBrazilTime para garantir que a chave do dia seja no timezone de Brasília
+      const dayKey = formatBrazilTime(apt.startTime, "yyyy-MM-dd")
       const existing = map.get(dayKey) || []
       map.set(dayKey, [...existing, apt])
     })
@@ -168,8 +171,7 @@ export function WeeklyScheduler({
                 </div>
                 {weekDays.map((day, dayIndex) => {
                   // Converte day para horário de Brasília para comparação consistente
-                  const dayInBrazil = fromBrazilTime(day)
-                  const dayKey = format(dayInBrazil, "yyyy-MM-dd")
+                  const dayKey = formatBrazilTime(day, "yyyy-MM-dd")
                   const dayAppointments = appointmentsByDay.get(dayKey) || []
                   const dayStart = startOfDayBrazil(day)
 
@@ -177,7 +179,7 @@ export function WeeklyScheduler({
                     <div key={dayIndex} className={`flex-1 relative ${dayIndex < weekDays.length - 1 ? 'border-r border-slate-200 dark:border-white/5' : ''} hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors`}>
                       {dayAppointments
                         .filter(apt => {
-                          const aptHour = apt.startTime.getHours()
+                          const aptHour = getBrazilHours(apt.startTime)
                           return aptHour >= hour && aptHour < hour + 1
                         })
                         .map((appointment) => {

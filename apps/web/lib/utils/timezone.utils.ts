@@ -106,3 +106,39 @@ export function endOfMonthBrazil(date: Date | string): Date {
   return fromZonedTime(end, BRAZIL_TIMEZONE)
 }
 
+/**
+ * Obtém a hora no timezone de Brasília (0-23)
+ */
+export function getBrazilHours(date: Date | string): number {
+  const dateObj = typeof date === "string" ? new Date(date) : date
+  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
+  return zonedDate.getHours()
+}
+
+/**
+ * Obtém os minutos no timezone de Brasília (0-59)
+ */
+export function getBrazilMinutes(date: Date | string): number {
+  const dateObj = typeof date === "string" ? new Date(date) : date
+  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
+  return zonedDate.getMinutes()
+}
+
+/**
+ * Obtém o dia do mês no timezone de Brasília (1-31)
+ */
+export function getBrazilDate(date: Date | string): number {
+  const dateObj = typeof date === "string" ? new Date(date) : date
+  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
+  return zonedDate.getDate()
+}
+
+/**
+ * Obtém o dia da semana no timezone de Brasília (0 = domingo, 6 = sábado)
+ */
+export function getBrazilDay(date: Date | string): number {
+  const dateObj = typeof date === "string" ? new Date(date) : date
+  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
+  return zonedDate.getDay()
+}
+

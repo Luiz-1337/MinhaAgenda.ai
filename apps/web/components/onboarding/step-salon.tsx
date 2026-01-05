@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { MapPin, Phone, MessageCircle, Clock, ArrowRight, ArrowLeft } from "lucide-react"
+import { Store, MapPin, Phone, MessageCircle, Clock, ArrowRight, ArrowLeft } from "lucide-react"
 import { useOnboardingStore } from "@/lib/stores/onboarding-store"
 
 const DAYS_OF_WEEK = [
@@ -25,6 +25,7 @@ const workHoursDaySchema = z.object({
 })
 
 const salonSchema = z.object({
+  salonName: z.string().min(3, "Nome do salão deve ter pelo menos 3 caracteres"),
   address: z.string().optional(),
   phone: z.string().optional(),
   whatsapp: z.string().optional(),
@@ -51,6 +52,7 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
   } = useForm<SalonFormData>({
     resolver: zodResolver(salonSchema),
     defaultValues: {
+      salonName: data.salonName || "",
       address: data.address || "",
       phone: data.salonPhone || data.phone || "", // Usar salonPhone se existir, senão phone como fallback
       whatsapp: data.whatsapp || "",
@@ -67,6 +69,7 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
     setData({
       ...rest,
       salonPhone: phone,
+      salonName: formData.salonName,
     })
     onNext()
   }
@@ -92,6 +95,27 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div className="space-y-1.5">
+          <label htmlFor="salonName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Nome do Salão <span className="text-indigo-500">*</span>
+          </label>
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Store size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+            </div>
+            <input
+              id="salonName"
+              type="text"
+              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              placeholder="Barbearia do Silva"
+              {...register("salonName")}
+            />
+          </div>
+          {errors.salonName && (
+            <p className="text-xs text-red-500 dark:text-red-400 mt-1">{errors.salonName.message}</p>
+          )}
+        </div>
+
         <div className="space-y-1.5">
           <label htmlFor="address" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Endereço

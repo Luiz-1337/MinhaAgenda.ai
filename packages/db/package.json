@@ -12,6 +12,8 @@
     "smoke": "node scripts/smoke.mjs",
     "seed": "node scripts/seed.mjs",
     "seed:salon": "node scripts/seed-salon.mjs",
+    "clean:solo": "node scripts/clean-solo-account.mjs",
+    "seed:solo:complete": "node scripts/seed-solo-complete.mjs",
     "migrate:manual": "node scripts/migrate.mjs",
     "migrate:manual:002": "node scripts/migrate_002.mjs",
     "migrate:manual:003": "node scripts/migrate_003.mjs",

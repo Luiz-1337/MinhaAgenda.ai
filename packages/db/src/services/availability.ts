@@ -51,17 +51,19 @@ export async function getAvailableSlots({
     .select({
       startTime: availability.startTime,
       endTime: availability.endTime,
+      isBreak: availability.isBreak,
     })
     .from(availability)
     .where(
       and(
         eq(availability.professionalId, professionalId!),
-        eq(availability.dayOfWeek, dayOfWeek),
-        eq(availability.isBreak, false)
+        eq(availability.dayOfWeek, dayOfWeek)
       )
     )
 
-  if (professionalAvailability.length === 0) {
+  const workSpans = professionalAvailability.filter((r) => !r.isBreak)
+
+  if (workSpans.length === 0) {
     return []
   }
 
@@ -70,7 +72,7 @@ export async function getAvailableSlots({
   const nowBrazil = getBrazilNow()
   const isToday = isSameDay(targetDateBrazil, nowBrazil)
 
-  for (const workPeriod of professionalAvailability) {
+  for (const workPeriod of workSpans) {
     const startTimeStr = String(workPeriod.startTime)
     const endTimeStr = String(workPeriod.endTime)
 

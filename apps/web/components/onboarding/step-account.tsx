@@ -3,12 +3,11 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Store, User, ArrowRight, Phone, MapPin, Building, FileText, ArrowLeft } from "lucide-react"
+import { User, ArrowRight, Phone, MapPin, Building, FileText, ArrowLeft } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOnboardingStore } from "@/lib/stores/onboarding-store"
 
 const accountSchema = z.object({
-  salonName: z.string().min(3, "Nome do salão deve ter pelo menos 3 caracteres"),
   firstName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   lastName: z.string().min(2, "Sobrenome deve ter pelo menos 2 caracteres"),
   phone: z.string().min(10, "Telefone inválido").regex(/^[\d\s\(\)\-\+]+$/, "Telefone deve conter apenas números e caracteres de formatação"),
@@ -58,7 +57,6 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
   } = useForm<AccountFormData>({
     resolver: zodResolver(accountSchema),
     defaultValues: {
-      salonName: data.salonName || "",
       firstName: data.firstName || "",
       lastName: data.lastName || "",
       phone: data.phone || "",
@@ -98,31 +96,10 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
     <div className="space-y-6">
       <div>
         <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Informações Pessoais</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Preencha seus dados pessoais e do salão.</p>
+        <p className="text-slate-500 dark:text-slate-400 text-sm">Preencha seus dados pessoais.</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        <div className="space-y-1.5">
-          <label htmlFor="salonName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Nome do Salão <span className="text-indigo-500">*</span>
-          </label>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Store size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-            </div>
-            <input
-              id="salonName"
-              type="text"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-              placeholder="Barbearia do Silva"
-              {...register("salonName")}
-            />
-          </div>
-          {errors.salonName && (
-            <p className="text-xs text-red-500 dark:text-red-400 mt-1">{errors.salonName.message}</p>
-          )}
-        </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label htmlFor="firstName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

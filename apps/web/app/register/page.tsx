@@ -118,7 +118,7 @@ export default function RegisterPage() {
 
   // Step 2: Preencher dados pessoais (apenas salva no store)
   const handleStep2Next = async () => {
-    if (!data.salonName || !data.firstName || !data.lastName || !data.phone || 
+    if (!data.firstName || !data.lastName || !data.phone || 
         !data.billingAddress || !data.billingPostalCode || !data.billingCity || !data.billingState ||
         !data.documentType || !data.document) {
       toast.error("Preencha todos os campos obrigatórios")
@@ -131,6 +131,10 @@ export default function RegisterPage() {
 
   // Step 3: Preencher dados do salão (apenas salva no store)
   const handleStep3Next = async () => {
+    if (!data.salonName) {
+      toast.error("Preencha o nome do salão")
+      return
+    }
     // Dados já foram salvos no store pelo StepSalon, apenas avança
     setStep(4)
   }

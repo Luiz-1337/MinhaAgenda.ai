@@ -1,8 +1,8 @@
 "use client"
 
 import { useMemo } from "react"
-import { format, eachDayOfInterval, isSameDay, isSameMonth } from "date-fns"
-import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow, fromBrazilTime } from "@/lib/utils/timezone.utils"
+import { eachDayOfInterval, isSameDay, isSameMonth } from "date-fns"
+import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
 
@@ -77,8 +77,8 @@ export function MonthlyScheduler({
 
     appointments.forEach((apt) => {
       // apt.startTime já está em horário de Brasília (convertido por fromBrazilTime)
-      // Usa format diretamente para evitar dupla conversão
-      const dayKey = format(apt.startTime, "yyyy-MM-dd")
+      // Usa formatBrazilTime para garantir que a chave do dia seja no timezone de Brasília
+      const dayKey = formatBrazilTime(apt.startTime, "yyyy-MM-dd")
       const existing = map.get(dayKey) || []
       map.set(dayKey, [...existing, apt])
     })
@@ -122,8 +122,7 @@ export function MonthlyScheduler({
             ))}
             {calendarDays.map((day) => {
               // Converte day para horário de Brasília para comparação consistente
-              const dayInBrazil = fromBrazilTime(day)
-              const dayKey = format(dayInBrazil, "yyyy-MM-dd")
+              const dayKey = formatBrazilTime(day, "yyyy-MM-dd")
               const dayAppointments = appointmentsByDay.get(dayKey) || []
               const isCurrentMonth = isSameMonth(day, currentDate)
               const isToday = isSameDay(day, getBrazilNow())

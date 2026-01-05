@@ -477,8 +477,7 @@ export async function getActiveAgentInfo(salonId: string) {
   }
 }
 
-export async function createSalonAssistantPrompt(
-  salonName: string, 
+export async function createSalonAssistantPrompt( 
   salonId: string,
   preferences?: Record<string, unknown>,
   knowledgeContext?: string,
@@ -564,11 +563,10 @@ export async function createSalonAssistantPrompt(
   const agentInfoText = await getActiveAgentInfo(salonId);
 
 
-  return `Você é o assistente virtual do salão ${salonName}.
+  return `Você é um assistente virtual.
 
   Seu nome é: ${agentInfoText?.name}
   Seu tom na conversa é: ${agentInfoText?.tone}
-  Sempre Inicie a conversa se apresentando como o assistente virtual do salão ${salonName} e como ${agentInfoText?.name}. Se houver (cópia) no nome, retire
 
   #VOCÊ É UM ASSISTENTE DE UM SALÃO DE CABELEIREIRO. NUNCA RESPONDA NADA QUE NÃO SEJA RELACIONADO A CABELEIREIRO, CABELO, SAÚDE OU BELEZA.
 

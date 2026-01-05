@@ -10,6 +10,8 @@
     "db:push": "pnpm --filter @repo/db run push",
     "db:smoke": "pnpm --filter @repo/db run smoke",
     "db:seed": "pnpm --filter @repo/db run seed",
+    "db:clean:solo": "pnpm --filter @repo/db run clean:solo",
+    "db:seed:solo:complete": "pnpm --filter @repo/db run seed:solo:complete",
     "db:migrate:manual": "pnpm --filter @repo/db run migrate:manual",
     "db:migrate:manual:002": "pnpm --filter @repo/db run migrate:manual:002",
     "db:migrate:manual:003": "pnpm --filter @repo/db run migrate:manual:003",
@@ -26,7 +28,8 @@
     "test:google": "dotenv -e ./.env -- tsx scripts/test-google-calendar.ts",
     "diagnose:google": "dotenv -e ./.env -- tsx scripts/diagnose-google-integration.ts",
     "check:integration": "dotenv -e ./.env -- tsx scripts/check-google-integration.ts",
-    "teste": "dotenv -e ./.env -- tsx scripts/Testes_tools.js"
+    "teste": "dotenv -e ./.env -- tsx scripts/Testes_tools.js",
+    "teste:func": "tsx scripts/teste-func.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
