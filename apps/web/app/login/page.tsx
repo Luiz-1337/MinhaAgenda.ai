@@ -1,31 +1,18 @@
 "use client"
 
-import React, { useActionState, useState, useEffect } from 'react';
+import React, { useActionState, useState, useEffect, useTransition } from 'react';
 import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useFormStatus } from 'react-dom';
 import { useTheme } from 'next-themes';
-import { useLoading } from '@/contexts/loading-context';
 import { login } from '../actions/auth';
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  const { setLoading } = useLoading()
-
-  useEffect(() => {
-    if (pending) {
-      setLoading(true, "Entrando...")
-    } else {
-      setLoading(false)
-    }
-  }, [pending, setLoading])
-
+function SubmitButton({ isLoading }: { isLoading: boolean }) {
   return (
     <Button              
     type="submit"
-    disabled={pending}
+    disabled={isLoading}
     className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-    {pending ? (
+    {isLoading ? (
       <>
         <Loader2 size={18} className="animate-spin" />
         <span>Entrando...</span>
@@ -42,6 +29,7 @@ function SubmitButton() {
 
 export default function LoginPage() {
   const [state, formAction] = useActionState(login, { error: "" })
+  const [isPending, startTransition] = useTransition()
   const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isDark, setIsDark] = useState(false)
@@ -55,6 +43,20 @@ export default function LoginPage() {
     const newTheme = isDark ? 'light' : 'dark'
     setTheme(newTheme)
     setIsDark(!isDark)
+  }
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    
+    try {
+      startTransition(() => {
+        formAction(formData)
+      })
+    } finally {
+      // O finally garante que qualquer erro síncrono seja tratado
+      // O isPending do useTransition já gerencia o estado de loading automaticamente
+    }
   }
 
   return (
@@ -117,7 +119,7 @@ export default function LoginPage() {
             <p className="text-slate-500 dark:text-slate-400">Digite suas credenciais para acessar o painel.</p>
           </div>
 
-          <form action={formAction} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Email Corporativo</label>
               <div className="relative group">
@@ -153,7 +155,7 @@ export default function LoginPage() {
                 />
               </div>
             </div>
-            <SubmitButton />
+            <SubmitButton isLoading={isPending} />
           </form>
           {state?.error && <p className="text-red-500 text-sm">{state.error}</p>}
           <p className="mt-8 text-center text-sm text-slate-500">

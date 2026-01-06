@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { LoadingProvider } from "@/contexts/loading-context";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -62,6 +63,7 @@ export default function RootLayout({
             <Toaster richColors />
           </LoadingProvider>
         </ThemeProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
