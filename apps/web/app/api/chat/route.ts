@@ -105,7 +105,7 @@ export async function POST(req: Request) {
     console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG")
   }
 
-  const systemPrompt = await createSalonAssistantPrompt(salonName, salonId, preferences, knowledgeContext)
+  const systemPrompt = await createSalonAssistantPrompt(salonId, preferences, knowledgeContext)
 
   const checkAvailability = createAvailabilityTool(
     salonId,

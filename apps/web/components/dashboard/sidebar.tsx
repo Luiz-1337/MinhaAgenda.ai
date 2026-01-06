@@ -20,6 +20,7 @@ import {
   Calendar,
   Briefcase,
   Zap,
+  Package,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import { createBrowserClient } from "@supabase/ssr"
@@ -69,6 +70,7 @@ const menuGroups = [
     items: [
       { href: "billing", label: "Faturamento", icon: CreditCard },
       { href: "services", label: "Serviços", icon: Zap },
+      { href: "products", label: "Produtos", icon: Package },
       { href: "settings", label: "Configurações", icon: Settings },
     ]
   }

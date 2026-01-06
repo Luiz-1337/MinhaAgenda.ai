@@ -228,6 +228,15 @@ export function createBookAppointmentTool(
         console.error('Erro ao sincronizar agendamento com Google Calendar:', error)
       }
 
+      // Sincroniza com Trinks (não bloqueia se falhar)
+      try {
+        const { createTrinksAppointment } = await import('@repo/db')
+        await createTrinksAppointment(appointment.id)
+      } catch (error) {
+        // Loga erro mas não falha o agendamento - nosso banco é a fonte da verdade
+        console.error('Erro ao sincronizar agendamento com Trinks:', error)
+      }
+
       return {
         success: true,
         appointmentId: appointment.id,

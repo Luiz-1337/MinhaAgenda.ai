@@ -146,6 +146,22 @@ export const services = pgTable(
   ]
 )
 
+export const products = pgTable(
+  'products',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('products_salon_idx').on(table.salonId)
+  ]
+)
+
 export const professionals = pgTable(
   'professionals',
   {
@@ -229,6 +245,7 @@ export const appointments = pgTable(
     endTime: timestamp('end_time').notNull(),
     status: statusEnum('status').default('pending').notNull(),
     googleEventId: text('google_event_id'),
+    trinksEventId: text('trinks_event_id'),
     notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
@@ -237,6 +254,7 @@ export const appointments = pgTable(
     index('appt_salon_date_idx').on(table.salonId, table.date),
     index('appt_client_idx').on(table.clientId),
     index('appt_google_event_idx').on(table.googleEventId),
+    index('appt_trinks_event_idx').on(table.trinksEventId),
     index('appt_prof_time_idx').on(table.professionalId, table.date, table.endTime),
     index('appt_service_idx').on(table.serviceId)
   ]
@@ -264,7 +282,7 @@ export const salonIntegrations = pgTable(
   'salon_integrations',
   {
     id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).unique().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     provider: text('provider').default('google').notNull(),
     refreshToken: text('refresh_token').notNull(),
     accessToken: text('access_token'),
@@ -274,7 +292,8 @@ export const salonIntegrations = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    index('salon_integrations_salon_idx').on(table.salonId)
+    index('salon_integrations_salon_idx').on(table.salonId),
+    uniqueIndex('salon_integrations_salon_provider_unique').on(table.salonId, table.provider)
   ]
 )
 
@@ -494,6 +513,7 @@ export const profilesRelations = relations(profiles, ({ many, one }) => ({
 export const salonsRelations = relations(salons, ({ one, many }) => ({
   owner: one(profiles, { fields: [salons.ownerId], references: [profiles.id] }),
   services: many(services),
+  products: many(products),
   professionals: many(professionals),
   appointments: many(appointments),
   chats: many(chats),
@@ -510,6 +530,10 @@ export const servicesRelations = relations(services, ({ one, many }) => ({
   salon: one(salons, { fields: [services.salonId], references: [salons.id] }),
   appointments: many(appointments),
   professionalServices: many(professionalServices)
+}))
+
+export const productsRelations = relations(products, ({ one }) => ({
+  salon: one(salons, { fields: [products.salonId], references: [salons.id] })
 }))
 
 export const professionalsRelations = relations(professionals, ({ one, many }) => ({

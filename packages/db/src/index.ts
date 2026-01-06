@@ -39,4 +39,6 @@ export * as domainServices from './services'
 export { fromBrazilTime, toBrazilTime, getBrazilNow, formatBrazilTime, BRAZIL_TIMEZONE } from './utils/timezone.utils'
 // Re-export Google Calendar services
 export { getOAuth2Client, getSalonGoogleClient, ensureProfessionalCalendar, createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from './services/google-calendar'
+// Re-export Trinks services
+export { isTrinksIntegrationActive, createTrinksAppointment, updateTrinksAppointment, deleteTrinksAppointment, getTrinksProfessionals, getTrinksServices, getTrinksProducts } from './services/trinks'
 

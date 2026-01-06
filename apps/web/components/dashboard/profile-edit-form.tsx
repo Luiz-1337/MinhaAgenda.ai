@@ -1,76 +1,130 @@
 "use client"
 
-import { useTransition } from "react"
+import { useTransition, forwardRef, useImperativeHandle, useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { updateProfile } from "@/app/actions/profile"
 import { updateProfileSchema, type UpdateProfileSchema } from "@/lib/schemas"
-import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { User, Mail, Phone, Camera, Globe, Calendar, Check } from "lucide-react"
+import { User, Mail, Phone, Camera, Shield } from "lucide-react"
 import type { ProfileDetails } from "@/app/actions/profile"
-import { useParams } from "next/navigation"
+import { createBrowserClient } from "@supabase/ssr"
 
-function GoogleCalendarConnectButton({ isConnected }: { isConnected: boolean }) {
-  const params = useParams()
-  const salonId = params?.salonId as string | undefined
-  
-  const handleConnect = () => {
-    if (!salonId) {
-      toast.error("Não foi possível identificar o salão. Tente novamente.")
-      return
-    }
-    
-    // Passa o salonId como query parameter
-    window.location.href = `/api/google/auth?salonId=${salonId}`
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleConnect}
-      className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
-    >
-      <Calendar size={16} />
-      {isConnected ? "Reconectar Google Calendar" : "Conectar Google Calendar"}
-    </button>
-  )
+export interface ProfileEditFormRef {
+  submit: () => void
 }
 
 interface ProfileEditFormProps {
   profile: ProfileDetails
+  onPendingChange?: (isPending: boolean) => void
 }
 
-export function ProfileEditForm({ profile }: ProfileEditFormProps) {
-  const [isPending, startTransition] = useTransition()
+export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormProps>(
+  ({ profile, onPendingChange }, ref) => {
+    const [isPending, startTransition] = useTransition()
+    const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" })
+    const [isPendingPassword, startPasswordTransition] = useTransition()
 
-  const form = useForm<UpdateProfileSchema>({
-    resolver: zodResolver(updateProfileSchema),
-    defaultValues: {
-      fullName: profile.fullName || "",
-      phone: profile.phone || "",
-      calendarSyncEnabled: profile.calendarSyncEnabled,
-    },
-    mode: "onChange",
-  })
+    // Notifica o componente pai sobre mudanças no estado isPending
+    useEffect(() => {
+      onPendingChange?.(isPending || isPendingPassword)
+    }, [isPending, isPendingPassword, onPendingChange])
 
-  function onSubmit(values: UpdateProfileSchema) {
-    startTransition(async () => {
-      const res = await updateProfile({
-        fullName: values.fullName?.trim() || undefined,
-        phone: values.phone?.trim() || undefined,
-        calendarSyncEnabled: values.calendarSyncEnabled,
+    const form = useForm<Omit<UpdateProfileSchema, "calendarSyncEnabled">>({
+      resolver: zodResolver(updateProfileSchema.omit({ calendarSyncEnabled: true })),
+      defaultValues: {
+        fullName: profile.fullName || "",
+        phone: profile.phone || "",
+      },
+      mode: "onChange",
+    })
+
+    function onSubmit(values: Omit<UpdateProfileSchema, "calendarSyncEnabled">) {
+      startTransition(async () => {
+        const res = await updateProfile({
+          fullName: values.fullName?.trim() || undefined,
+          phone: values.phone?.trim() || undefined,
+        })
+
+        if ("error" in res) {
+          toast.error(res.error)
+          return
+        }
+
+        toast.success("Perfil atualizado com sucesso")
+        window.location.reload()
       })
+    }
 
-      if ("error" in res) {
-        toast.error(res.error)
+    async function handleChangePassword(e: React.FormEvent) {
+      e.preventDefault()
+      
+      if (!passwordData.current || !passwordData.new || !passwordData.confirm) {
+        toast.error("Preencha todos os campos")
         return
       }
 
-      toast.success("Perfil atualizado com sucesso")
-      window.location.reload()
-    })
-  }
+      if (passwordData.new !== passwordData.confirm) {
+        toast.error("As senhas não coincidem")
+        return
+      }
+
+      if (passwordData.new.length < 6) {
+        toast.error("A nova senha deve ter pelo menos 6 caracteres")
+        return
+      }
+
+      startPasswordTransition(async () => {
+        try {
+          const supabase = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          )
+
+          // Obtém o usuário atual para pegar o email
+          const { data: { user }, error: userError } = await supabase.auth.getUser()
+          
+          if (userError || !user || !user.email) {
+            toast.error("Erro ao obter informações do usuário")
+            return
+          }
+
+          // Verifica a senha atual tentando fazer login
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: user.email,
+            password: passwordData.current,
+          })
+
+          if (signInError) {
+            toast.error("Senha atual incorreta")
+            return
+          }
+
+          // Se a senha atual estiver correta, atualiza para a nova senha
+          const { error: updateError } = await supabase.auth.updateUser({
+            password: passwordData.new,
+          })
+
+          if (updateError) {
+            toast.error("Erro ao alterar senha. Tente novamente.")
+            return
+          }
+
+          toast.success("Senha alterada com sucesso")
+          setPasswordData({ current: "", new: "", confirm: "" })
+        } catch (error) {
+          console.error("Erro ao alterar senha:", error)
+          toast.error("Erro ao alterar senha. Verifique a senha atual.")
+        }
+      })
+    }
+
+    // Expõe métodos para o componente pai
+    useImperativeHandle(ref, () => ({
+      submit: () => {
+        form.handleSubmit(onSubmit)()
+      },
+    }))
 
   // Helper para obter iniciais
   const getInitials = (name: string | null | undefined): string => {
@@ -159,40 +213,64 @@ export function ProfileEditForm({ profile }: ProfileEditFormProps) {
             </div>
           </div>
         </div>
-
-        {/* Integrations Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-            <Globe size={16} className="text-indigo-500" /> Integrações Ativas
-          </h3>
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center"><Calendar size={16} /></div>
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Google Calendar</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch id="calendarSyncEnabled" {...form.register("calendarSyncEnabled")} />
-              {form.watch("calendarSyncEnabled") && (
-                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1">
-                  <Check size={10} /> Conectado
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="mt-3">
-            <GoogleCalendarConnectButton isConnected={!!form.watch("calendarSyncEnabled")} />
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isPending}
-          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isPending ? "Salvando..." : "Salvar Alterações"}
-        </button>
       </form>
+
+      {/* Security Card - Fora do formulário principal para evitar form aninhado */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+          <Shield size={16} className="text-indigo-500" />
+          Segurança
+        </h3>
+
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Senha Atual
+            </label>
+            <input
+              type="password"
+              placeholder="Digite sua senha atual"
+              value={passwordData.current}
+              onChange={(e) => setPasswordData((prev) => ({ ...prev, current: e.target.value }))}
+              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Nova Senha</label>
+            <input
+              type="password"
+              placeholder="Digite sua nova senha"
+              value={passwordData.new}
+              onChange={(e) => setPasswordData((prev) => ({ ...prev, new: e.target.value }))}
+              minLength={6}
+              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Confirmar Nova Senha
+            </label>
+            <input
+              type="password"
+              placeholder="Confirme sua nova senha"
+              value={passwordData.confirm}
+              onChange={(e) => setPasswordData((prev) => ({ ...prev, confirm: e.target.value }))}
+              minLength={6}
+              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isPendingPassword}
+            className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isPendingPassword ? "Alterando..." : "Atualizar Senha"}
+          </button>
+        </form>
+      </div>
     </div>
   )
-}
+})
+
+ProfileEditForm.displayName = "ProfileEditForm"
 

@@ -1,66 +1,36 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect, useTransition, useRef } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { SalonEditForm } from "@/components/dashboard/salon-edit-form"
-import { ProfileEditForm } from "@/components/dashboard/profile-edit-form"
-import { getCurrentSalon } from "@/app/actions/salon"
+import { ProfileEditForm, type ProfileEditFormRef } from "@/components/dashboard/profile-edit-form"
+import { GoogleCalendarIntegration } from "@/components/dashboard/google-calendar-integration"
 import { getCurrentProfile } from "@/app/actions/profile"
-import { useSalon } from "@/contexts/salon-context"
 import { toast } from "sonner"
-import { User, Store, Shield, Save, ChevronRight } from "lucide-react"
-import type { SalonDetails } from "@/app/actions/salon"
+import { saveTrinksToken, getTrinksIntegration, deleteTrinksIntegration, syncTrinksData } from "@/app/actions/integrations"
+import { User, Store, Save, ChevronRight, ArrowRight, Plug } from "lucide-react"
 import type { ProfileDetails } from "@/app/actions/profile"
+import Link from "next/link"
+import { useParams } from "next/navigation"
 
-type TabType = "profile" | "salon" | "security"
+type TabType = "profile" | "integrations"
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("profile")
-  const { activeSalon } = useSalon()
-  const [salonData, setSalonData] = useState<SalonDetails | null>(null)
-  const [isLoadingSalon, setIsLoadingSalon] = useState(false)
-  const [lastLoadedSalonId, setLastLoadedSalonId] = useState<string | null>(null)
+  const params = useParams()
+  const salonId = params?.salonId as string | undefined
   const [profileData, setProfileData] = useState<ProfileDetails | null>(null)
   const [isLoadingProfile, setIsLoadingProfile] = useState(false)
-  const [passwordData, setPasswordData] = useState({ current: "", new: "", confirm: "" })
-  const [isPendingPassword, startPasswordTransition] = useTransition()
+  const [isPending, setIsPending] = useState(false)
+  const [trinksToken, setTrinksToken] = useState("")
+  const [trinksIntegrationStatus, setTrinksIntegrationStatus] = useState<{ isActive: boolean; hasToken: boolean } | null>(null)
+  const [isLoadingTrinks, setIsLoadingTrinks] = useState(false)
+  const [isPendingTrinks, startTrinksTransition] = useTransition()
+  const profileFormRef = useRef<ProfileEditFormRef>(null)
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode; description: string }[] = [
-    { id: "profile", label: "Meu Perfil", icon: <User size={18} />, description: "Informações pessoais e avatar" },
-    { id: "salon", label: "Meu Salão", icon: <Store size={18} />, description: "Dados do estabelecimento e regras" },
-    { id: "security", label: "Segurança", icon: <Shield size={18} />, description: "Senha e sessões ativas" },
+    { id: "profile", label: "Meu Perfil", icon: <User size={18} />, description: "Informações pessoais e segurança" },
+    { id: "integrations", label: "Integrações", icon: <Plug size={18} />, description: "Conectar serviços externos" },
   ]
-
-  // Função para carregar dados do salão
-  const loadSalonData = async (salonId: string) => {
-    if (lastLoadedSalonId === salonId && salonData?.id === salonId) {
-      return // Já temos os dados corretos
-    }
-    
-    setIsLoadingSalon(true)
-    setSalonData(null)
-    
-    try {
-      const result = await getCurrentSalon(salonId)
-      if ("error" in result) {
-        console.error("Erro ao carregar salão:", result.error)
-        setSalonData(null)
-        setLastLoadedSalonId(null)
-      } else {
-        setSalonData(result)
-        setLastLoadedSalonId(salonId)
-      }
-    } catch (error) {
-      console.error("Erro ao carregar salão:", error)
-      setSalonData(null)
-      setLastLoadedSalonId(null)
-    } finally {
-      setIsLoadingSalon(false)
-    }
-  }
 
   // Função para carregar dados do perfil
   const loadProfileData = async () => {
@@ -85,60 +55,109 @@ export default function SettingsPage() {
     }
   }
 
-  // Carrega os dados do perfil quando a aba "profile" é selecionada
+  // Carrega os dados do perfil quando necessário
   useEffect(() => {
-    if (activeTab === "profile") {
-      loadProfileData()
+    if (activeTab === "profile" || activeTab === "integrations") {
+      if (!profileData) {
+        loadProfileData()
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
-  // Carrega os dados do salão quando a aba "salon" é selecionada ou quando o salão ativo muda
+  // Carrega status da integração Trinks quando a aba "integrations" é selecionada
   useEffect(() => {
-    if (activeTab === "salon" && activeSalon) {
-      loadSalonData(activeSalon.id)
-    } else if (activeTab !== "salon") {
-      // Limpa os dados quando sair da aba
-      setSalonData(null)
-      setLastLoadedSalonId(null)
+    if (activeTab === "integrations" && salonId) {
+      loadTrinksIntegration()
     }
-  }, [activeTab, activeSalon?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, salonId])
 
-  // Limpa os campos de senha quando sair da aba
-  useEffect(() => {
-    if (activeTab !== "security") {
-      setPasswordData({ current: "", new: "", confirm: "" })
+  async function loadTrinksIntegration() {
+    if (!salonId) return
+    setIsLoadingTrinks(true)
+    try {
+      const result = await getTrinksIntegration(salonId)
+      if ("error" in result) {
+        console.error("Erro ao carregar integração Trinks:", result.error)
+        setTrinksIntegrationStatus(null)
+      } else {
+        setTrinksIntegrationStatus(result.data || null)
+      }
+    } catch (error) {
+      console.error("Erro ao carregar integração Trinks:", error)
+      setTrinksIntegrationStatus(null)
+    } finally {
+      setIsLoadingTrinks(false)
     }
-  }, [activeTab])
+  }
 
-  async function handleChangePassword(e: React.FormEvent) {
+  async function handleSaveTrinksToken(e: React.FormEvent) {
     e.preventDefault()
-    
-    if (!passwordData.current || !passwordData.new || !passwordData.confirm) {
-      toast.error("Preencha todos os campos")
+    if (!salonId || !trinksToken.trim()) {
+      toast.error("Token é obrigatório")
       return
     }
 
-    if (passwordData.new !== passwordData.confirm) {
-      toast.error("As senhas não coincidem")
-      return
-    }
-
-    if (passwordData.new.length < 6) {
-      toast.error("A nova senha deve ter pelo menos 6 caracteres")
-      return
-    }
-
-    startPasswordTransition(async () => {
+    startTrinksTransition(async () => {
       try {
-        // TODO: Implementar chamada à API para alterar senha
-        // const result = await changePassword(passwordData.current, passwordData.new)
-        toast.success("Senha alterada com sucesso")
-        setPasswordData({ current: "", new: "", confirm: "" })
+        const result = await saveTrinksToken(salonId, trinksToken.trim())
+        if ("error" in result) {
+          toast.error(result.error)
+          return
+        }
+        toast.success("Token salvo com sucesso")
+        setTrinksToken("")
+        await loadTrinksIntegration()
       } catch (error) {
-        toast.error("Erro ao alterar senha. Verifique a senha atual.")
+        console.error("Erro ao salvar token Trinks:", error)
+        toast.error("Erro ao salvar token")
       }
     })
   }
+
+  async function handleDeleteTrinksIntegration() {
+    if (!salonId) return
+
+    if (!confirm("Tem certeza que deseja remover a integração Trinks?")) {
+      return
+    }
+
+    startTrinksTransition(async () => {
+      try {
+        const result = await deleteTrinksIntegration(salonId)
+        if ("error" in result) {
+          toast.error(result.error)
+          return
+        }
+        toast.success("Integração removida com sucesso")
+        setTrinksToken("")
+        await loadTrinksIntegration()
+      } catch (error) {
+        console.error("Erro ao remover integração Trinks:", error)
+        toast.error("Erro ao remover integração")
+      }
+    })
+  }
+
+  async function handleSyncTrinksData(dataType: "professionals" | "services" | "products") {
+    if (!salonId) return
+
+    startTrinksTransition(async () => {
+      try {
+        const result = await syncTrinksData(salonId, dataType)
+        if ("error" in result) {
+          toast.error(result.error)
+          return
+        }
+        toast.success(`Dados ${dataType === "professionals" ? "profissionais" : dataType === "services" ? "serviços" : "produtos"} sincronizados com sucesso`)
+      } catch (error) {
+        console.error(`Erro ao sincronizar ${dataType}:`, error)
+        toast.error(`Erro ao sincronizar ${dataType}`)
+      }
+    })
+  }
+
 
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
@@ -148,10 +167,16 @@ export default function SettingsPage() {
           <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
           <p className="text-xs text-slate-500">Personalize seu ambiente de IA.</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
-          <Save size={16} />
-          Salvar Alterações
-        </button>
+        {activeTab === "profile" && (
+          <button
+            onClick={() => profileFormRef.current?.submit()}
+            disabled={isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save size={16} />
+            {isPending ? "Salvando..." : "Salvar Alterações"}
+          </button>
+        )}
       </div>
 
       {/* Main Container - Two Columns */}
@@ -188,7 +213,28 @@ export default function SettingsPage() {
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-4">
           <div className="max-w-3xl">
         {activeTab === "profile" && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+          <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+            {/* Link para Configurações do Salão */}
+            {salonId && (
+              <Link
+                href={`/${salonId}/salon-settings`}
+                className="block bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-500 group-hover:bg-indigo-500/20 transition-colors">
+                      <Store size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-white">Configurações do Salão</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Gerencie dados do estabelecimento e regras</p>
+                    </div>
+                  </div>
+                  <ArrowRight size={18} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                </div>
+              </Link>
+            )}
+
             {isLoadingProfile ? (
               <div className="space-y-6">
                 <div className="space-y-2">
@@ -222,148 +268,131 @@ export default function SettingsPage() {
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : profileData ? (
-              <ProfileEditForm profile={profileData} />
+              <ProfileEditForm 
+                ref={profileFormRef}
+                profile={profileData}
+                onPendingChange={setIsPending}
+              />
             ) : (
               <div className="py-8 text-center text-slate-400">Erro ao carregar dados do perfil.</div>
             )}
           </div>
         )}
 
-        {activeTab === "salon" && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            {isLoadingSalon ? (
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-12" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-3 w-48" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-20 w-full" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-16" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-                <div className="space-y-4">
-                  <Skeleton className="h-4 w-40" />
-                  <div className="space-y-3">
-                    {Array.from({ length: 7 }).map((_, i) => (
-                      <div key={i} className="flex items-center gap-4 rounded-md border p-3">
-                        <Skeleton className="h-6 w-11 rounded-full" />
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-10 flex-1" />
-                        <Skeleton className="h-4 w-8" />
-                        <Skeleton className="h-10 flex-1" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <Skeleton className="h-4 w-28" />
-                  <div className="space-y-4 rounded-md border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2 flex-1">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-3 w-48" />
-                      </div>
-                      <Skeleton className="h-6 w-11 rounded-full" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2 flex-1">
-                        <Skeleton className="h-4 w-28" />
-                        <Skeleton className="h-3 w-40" />
-                      </div>
-                      <Skeleton className="h-6 w-11 rounded-full" />
-                    </div>
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-48" />
-                      <Skeleton className="h-10 w-full" />
-                    </div>
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-40" />
-                      <Skeleton className="h-20 w-full" />
-                    </div>
-                  </div>
-                </div>
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : salonData && activeSalon ? (
-              <SalonEditForm salon={salonData} salonId={activeSalon.id} />
-            ) : (
-              <div className="py-8 text-center text-slate-400">
-                Nenhum salão selecionado. Selecione um salão no menu superior.
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "security" && (
+        {activeTab === "integrations" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-6">Alterar Senha</h3>
+            {/* Google Calendar Integration */}
+            {isLoadingProfile ? (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+                <div className="space-y-4">
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              </div>
+            ) : profileData ? (
+              <GoogleCalendarIntegration profile={profileData} />
+            ) : null}
 
-              <form onSubmit={handleChangePassword} className="space-y-4 max-w-sm">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Senha Atual
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="Digite sua senha atual"
-                    value={passwordData.current}
-                    onChange={(e) => setPasswordData((prev) => ({ ...prev, current: e.target.value }))}
-                    required
-                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  />
+            {/* Integração Trinks */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-white">Integração Trinks</h3>
+                  <p className="text-xs text-slate-500 mt-1">Sincronize agendamentos e dados com a plataforma Trinks</p>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Nova Senha</label>
-                  <input
-                    type="password"
-                    placeholder="Digite sua nova senha"
-                    value={passwordData.new}
-                    onChange={(e) => setPasswordData((prev) => ({ ...prev, new: e.target.value }))}
-                    required
-                    minLength={6}
-                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  />
+                {trinksIntegrationStatus?.isActive && (
+                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+                    Ativa
+                  </span>
+                )}
+              </div>
+
+              {isLoadingTrinks ? (
+                <div className="space-y-4">
+                  <div className="h-10 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-xl" />
+                  <div className="h-10 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-xl" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                    Confirmar Nova Senha
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="Confirme sua nova senha"
-                    value={passwordData.confirm}
-                    onChange={(e) => setPasswordData((prev) => ({ ...prev, confirm: e.target.value }))}
-                    required
-                    minLength={6}
-                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={isPendingPassword}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isPendingPassword ? "Alterando..." : "Atualizar Senha"}
-                </button>
-              </form>
+              ) : (
+                <form onSubmit={handleSaveTrinksToken} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                      Token da API Trinks
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Cole aqui o token da API Trinks"
+                      value={trinksToken}
+                      onChange={(e) => setTrinksToken(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                    />
+                    <p className="text-xs text-slate-400">
+                      Obtenha o token em:{" "}
+                      <a
+                        href="https://www.trinks.com/MinhaArea/MeuCadastro"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-500 hover:text-indigo-600 underline"
+                      >
+                        Minha Área Trinks
+                      </a>
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="submit"
+                      disabled={isPendingTrinks || !trinksToken.trim()}
+                      className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isPendingTrinks ? "Salvando..." : trinksIntegrationStatus?.hasToken ? "Atualizar Token" : "Salvar Token"}
+                    </button>
+
+                    {trinksIntegrationStatus?.hasToken && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteTrinksIntegration}
+                        disabled={isPendingTrinks}
+                        className="px-5 py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Remover Integração
+                      </button>
+                    )}
+                  </div>
+
+                  {trinksIntegrationStatus?.isActive && (
+                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-white/5">
+                      <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-4">Sincronizar Dados</h4>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleSyncTrinksData("professionals")}
+                          disabled={isPendingTrinks}
+                          className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Sincronizar Profissionais
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSyncTrinksData("services")}
+                          disabled={isPendingTrinks}
+                          className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Sincronizar Serviços
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSyncTrinksData("products")}
+                          disabled={isPendingTrinks}
+                          className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Sincronizar Produtos
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              )}
             </div>
           </div>
         )}

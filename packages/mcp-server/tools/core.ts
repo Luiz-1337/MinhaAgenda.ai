@@ -66,6 +66,7 @@ export function createCoreTools(salonId: string, clientPhone: string) {
         .optional()
         .describe("Número do lead (opcional; padrão = telefone do WhatsApp)"),
     })
+
   const getCustomerUpcomingAppointmentsInputSchema = getCustomerUpcomingAppointmentsSchema
     .omit({ salonId: true, customerPhone: true })
     .extend({
@@ -103,15 +104,6 @@ export function createCoreTools(salonId: string, clientPhone: string) {
       },
     }),
 
-    getColorHairCuts: tool({
-      description: "Retorna lista de cortes de cabelo disponíveis no salão.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        const result = "Cortes de cabelo disponíveis: COR A, COR J E COR K"
-        return maybeParseJson(result)
-      },
-    }),
-
     getServices: tool({
       description: "Busca lista de serviços disponíveis em um salão com preços e durações.",
       inputSchema: getServicesInputSchema,
@@ -145,15 +137,6 @@ export function createCoreTools(salonId: string, clientPhone: string) {
       inputSchema: qualifyLeadInputSchema,
       execute: async (input: z.infer<typeof qualifyLeadInputSchema>) => {
         const result = await impl.qualifyLead(salonId, input.phoneNumber || clientPhone, input.interest, input.notes)
-        return maybeParseJson(result)
-      },
-    }),
-
-    getCustomerUpcomingAppointments: tool({
-      description: "Lista agendamentos futuros de um cliente pelo número de telefone.",
-      inputSchema: getCustomerUpcomingAppointmentsInputSchema,
-      execute: async (input: z.infer<typeof getCustomerUpcomingAppointmentsInputSchema>) => {
-        const result = await impl.getCustomerUpcomingAppointments(salonId, input.customerPhone || clientPhone)
         return maybeParseJson(result)
       },
     }),

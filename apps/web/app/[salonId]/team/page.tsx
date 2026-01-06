@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { Search, Plus, User, Pencil, Clock, Trash2, AlertCircle } from "lucide-react"
+import { Search, Plus, User, Pencil, Clock, Trash2, AlertCircle, X, Save } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -165,118 +165,157 @@ export default function TeamPage() {
         </div>
         
         {canCreate ? (
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <button
-                onClick={openCreate}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
-              >
-                <Plus size={16} />
-                Convidar membro
-              </button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>
-                  {editing ? "Editar Profissional" : "Novo Profissional"}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nome</Label>
-                  <Input
-                    id="name"
-                    {...form.register("name")}
-                    placeholder="Ex.: Ana Souza"
-                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                  />
-                  {form.formState.errors.name && (
-                    <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">E-mail</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    {...form.register("email")}
-                    placeholder="ana@empresa.com"
-                    className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    Se este e-mail já estiver cadastrado no sistema, o usuário será vinculado automaticamente.
-                  </p>
-                  {form.formState.errors.email && (
-                    <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="text-slate-700 dark:text-slate-300">Telefone</Label>
-                    <Input
-                      id="phone"
-                      {...form.register("phone")}
-                      placeholder="(11) 9XXXX-XXXX"
-                      className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10 focus:border-indigo-500/50"
-                    />
-                  </div>
-                  
-                  {/* Seletor de Role apenas para Manager */}
-                  {isManager && (
-                    <div className="space-y-2">
-                      <Label htmlFor="role" className="text-slate-700 dark:text-slate-300">Permissão</Label>
-                      <Controller
-                        name="role"
-                        control={form.control}
-                        render={({ field }) => (
-                          <Select onValueChange={field.onChange} value={field.value || "STAFF"}>
-                            <SelectTrigger className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10">
-                              <SelectValue placeholder="Selecione..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="STAFF">Staff (Padrão)</SelectItem>
-                              <SelectItem value="MANAGER">Gerente</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                   <Controller
-                    name="isActive"
-                    control={form.control}
-                    render={({ field }) => (
-                      <Label className="flex items-center gap-2 text-slate-700 dark:text-slate-300 cursor-pointer">
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                        Profissional Ativo
-                      </Label>
-                    )}
-                  />
-                </div>
+          <>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+            >
+              <Plus size={16} />
+              Convidar membro
+            </button>
+            
+            {/* Professional Modal */}
+            {open && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                {/* Backdrop */}
+                <div 
+                  className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" 
+                  onClick={() => setOpen(false)} 
+                />
                 
-                <DialogFooter className="gap-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setOpen(false)}
-                    className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="success"
-                    disabled={form.formState.isSubmitting}
-                  >
-                    {editing ? "Salvar" : "Criar"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                {/* Modal Card */}
+                <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
+                  
+                  {/* Header */}
+                  <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-500 rounded-lg text-white shadow-lg shadow-emerald-500/20">
+                        <User size={18} />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
+                          {editing ? "Editar Profissional" : "Novo Profissional"}
+                        </h2>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Configuração de membro</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setOpen(false)}
+                      disabled={form.formState.isSubmitting}
+                      className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
+                    <div className="p-5 space-y-5">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                          Nome Completo <span className="text-red-500">*</span>
+                        </label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: Ana Souza" 
+                          {...form.register("name")}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                        />
+                        {form.formState.errors.name && (
+                          <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                          E-mail <span className="text-red-500">*</span>
+                        </label>
+                        <input 
+                          type="email" 
+                          placeholder="ana@empresa.com" 
+                          {...form.register("email")}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Se este e-mail já estiver cadastrado no sistema, o usuário será vinculado automaticamente.
+                        </p>
+                        {form.formState.errors.email && (
+                          <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Telefone</label>
+                          <input 
+                            type="text" 
+                            placeholder="(11) 9XXXX-XXXX" 
+                            {...form.register("phone")}
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                          />
+                        </div>
+                        
+                        {/* Seletor de Role apenas para Manager */}
+                        {isManager && (
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Permissão</label>
+                            <Controller
+                              name="role"
+                              control={form.control}
+                              render={({ field }) => (
+                                <Select onValueChange={field.onChange} value={field.value || "STAFF"}>
+                                  <SelectTrigger className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10">
+                                    <SelectValue placeholder="Selecione..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="STAFF">Staff (Padrão)</SelectItem>
+                                    <SelectItem value="MANAGER">Gerente</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Controller
+                          name="isActive"
+                          control={form.control}
+                          render={({ field }) => (
+                            <Label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 cursor-pointer">
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
+                              <span>Profissional Ativo</span>
+                            </Label>
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
+                      <button 
+                        type="button"
+                        onClick={() => setOpen(false)}
+                        disabled={form.formState.isSubmitting}
+                        className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="submit"
+                        disabled={form.formState.isSubmitting}
+                        className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                      >
+                        <Save size={18} />
+                        {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Profissional" : "Criar Profissional"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 dark:border-amber-500/20">
             <AlertCircle size={16} />
