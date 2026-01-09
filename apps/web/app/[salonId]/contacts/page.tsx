@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { getSalonCustomers, deleteSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { useSalon } from "@/contexts/salon-context"
 import { CreateContactDialog } from "@/components/features/create-contact-dialog"
+import { EditContactDialog } from "@/components/features/edit-contact-dialog"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 
@@ -38,7 +39,9 @@ export default function ContactsPage() {
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [customerToEdit, setCustomerToEdit] = useState<CustomerRow | null>(null)
   const [customerToDelete, setCustomerToDelete] = useState<CustomerRow | null>(null)
   const pageSize = 20
   const [, startTransition] = useTransition()
@@ -87,8 +90,8 @@ export default function ContactsPage() {
   }
 
   function handleEditCustomer(customer: CustomerRow) {
-    toast.info(`Editando: ${customer.name}`)
-    // TODO: Implementar modal/dialog para editar cliente
+    setCustomerToEdit(customer)
+    setIsEditDialogOpen(true)
   }
 
   function handleRemoveCustomer(customer: CustomerRow) {
@@ -146,6 +149,13 @@ export default function ContactsPage() {
   function handleCreateSuccess(newCustomer: CustomerRow) {
     // Adiciona o novo contato à lista
     setCustomers((prev) => [newCustomer, ...prev])
+  }
+
+  function handleEditSuccess(updatedCustomer: CustomerRow) {
+    // Atualiza o contato na lista
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c))
+    )
   }
 
   function refreshCustomers() {
@@ -312,6 +322,22 @@ export default function ContactsPage() {
           onOpenChange={setIsCreateDialogOpen}
           salonId={activeSalon.id}
           onSuccess={handleCreateSuccess}
+        />
+      )}
+
+      {/* Edit Contact Dialog */}
+      {activeSalon && (
+        <EditContactDialog
+          open={isEditDialogOpen}
+          onOpenChange={(open) => {
+            setIsEditDialogOpen(open)
+            if (!open) {
+              setCustomerToEdit(null)
+            }
+          }}
+          salonId={activeSalon.id}
+          customer={customerToEdit}
+          onSuccess={handleEditSuccess}
         />
       )}
 

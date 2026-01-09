@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap } from "lucide-react"
+import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
@@ -106,13 +106,22 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       {/* Header */}
       <div className="flex justify-between items-center flex-shrink-0">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Agentes</h2>
-        <button
-          onClick={handleCreateAgent}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
-        >
-          <Plus size={16} />
-          Criar agente
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push(`/${salonId}/agents/templates`)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold transition-colors border border-slate-200 dark:border-white/10"
+          >
+            <FileText size={16} />
+            Templates
+          </button>
+          <button
+            onClick={handleCreateAgent}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+          >
+            <Plus size={16} />
+            Criar agente
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}

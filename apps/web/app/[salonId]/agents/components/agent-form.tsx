@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
-import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle, HelpCircle, ArrowLeft, Cpu, AlertTriangle } from "lucide-react"
+import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle, HelpCircle, ArrowLeft, Cpu, AlertTriangle, FileText } from "lucide-react"
 import { agentSchema, createAgentSchema, type AgentSchema } from "@/lib/schemas"
 import { createAgent, updateAgent } from "@/app/actions/agents"
+import { getSystemPromptTemplates, updateSystemPromptTemplate } from "@/app/actions/system-prompt-templates"
+import type { SystemPromptTemplateRow } from "@/lib/types/system-prompt-template"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
 
 const AGENT_MODELS = [
   { value: "gpt-5.2", label: "GPT-5.2" },
@@ -234,6 +236,12 @@ interface AgentFormProps {
 export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [templates, setTemplates] = useState<SystemPromptTemplateRow[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<SystemPromptTemplateRow | null>(null)
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [hasPromptChanged, setHasPromptChanged] = useState(false)
 
   const form = useForm<AgentSchema>({
     resolver: zodResolver(mode === "create" ? createAgentSchema : agentSchema),
@@ -247,6 +255,19 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     },
     mode: "onChange",
   })
+
+  // Carrega templates disponíveis
+  useEffect(() => {
+    async function loadTemplates() {
+      setIsLoadingTemplates(true)
+      const result = await getSystemPromptTemplates(salonId)
+      if ("data" in result && result.data) {
+        setTemplates(result.data)
+      }
+      setIsLoadingTemplates(false)
+    }
+    loadTemplates()
+  }, [salonId])
 
   // Atualiza o formulário quando initialData mudar (útil para duplicação)
   useEffect(() => {
@@ -262,7 +283,72 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     }
   }, [initialData, form])
 
+  // Monitora mudanças no systemPrompt
+  const systemPromptValue = form.watch("systemPrompt")
+  
+  useEffect(() => {
+    if (selectedTemplate) {
+      const promptChanged = systemPromptValue !== selectedTemplate.systemPrompt
+      setHasPromptChanged(promptChanged)
+    } else {
+      setHasPromptChanged(false)
+    }
+  }, [systemPromptValue, selectedTemplate])
+
+  // Handler para quando um template é selecionado
+  const handleTemplateSelect = (templateId: string) => {
+    const template = templates.find((t) => t.id === templateId)
+    if (template) {
+      setSelectedTemplateId(templateId)
+      setSelectedTemplate(template)
+      form.setValue("systemPrompt", template.systemPrompt)
+      setHasPromptChanged(false)
+      toast.success(`Template "${template.name}" carregado`)
+    }
+  }
+
+  // Handler para limpar seleção de template
+  const handleClearTemplate = () => {
+    setSelectedTemplateId(null)
+    setSelectedTemplate(null)
+    setHasPromptChanged(false)
+    // Não limpa o campo, permite editar o prompt carregado
+  }
+
+  // Handler para salvar/atualizar template
+  const handleSaveTemplate = async () => {
+    if (!selectedTemplate || !selectedTemplateId) {
+      return
+    }
+
+    setIsSavingTemplate(true)
+    
+    const result = await updateSystemPromptTemplate(salonId, selectedTemplateId, {
+      systemPrompt: systemPromptValue,
+    })
+
+    if ("error" in result) {
+      toast.error(result.error)
+      setIsSavingTemplate(false)
+      return
+    }
+
+    // Atualiza o template localmente
+    const updatedTemplate = { ...selectedTemplate, systemPrompt: systemPromptValue }
+    setSelectedTemplate(updatedTemplate)
+    setTemplates(templates.map((t) => (t.id === selectedTemplateId ? updatedTemplate : t)))
+    setHasPromptChanged(false)
+    
+    toast.success(`Template "${selectedTemplate.name}" atualizado com sucesso`)
+    setIsSavingTemplate(false)
+    router.refresh()
+  }
+
   const isActive = form.watch("isActive")
+  
+  // Separa templates globais e do salão
+  const globalTemplates = templates.filter((t) => t.salonId === null)
+  const salonTemplates = templates.filter((t) => t.salonId === salonId)
 
   async function onSubmit(values: AgentSchema) {
     startTransition(async () => {
@@ -517,10 +603,121 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
               </div>
 
               <div className="flex-1 flex flex-col space-y-3">
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2 block">
-                    Instruções do Agente
+                {/* Dropdown de Templates */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Usar um Template (opcional)
                   </label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={selectedTemplateId || undefined}
+                      onValueChange={handleTemplateSelect}
+                      disabled={isLoadingTemplates}
+                    >
+                      <SelectTrigger className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
+                        <SelectValue placeholder={isLoadingTemplates ? "Carregando templates..." : "Escolher um template..."} />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg max-h-[300px]">
+                        {globalTemplates.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Templates Globais</SelectLabel>
+                            {globalTemplates.map((template) => (
+                              <SelectItem
+                                key={template.id}
+                                value={template.id}
+                                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{template.name}</span>
+                                  {template.description && (
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">{template.description}</span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {salonTemplates.length > 0 && (
+                          <>
+                            {globalTemplates.length > 0 && <SelectSeparator />}
+                            <SelectGroup>
+                              <SelectLabel>Templates do Salão</SelectLabel>
+                              {salonTemplates.map((template) => (
+                                <SelectItem
+                                  key={template.id}
+                                  value={template.id}
+                                  className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{template.name}</span>
+                                    {template.description && (
+                                      <span className="text-xs text-slate-500 dark:text-slate-400">{template.description}</span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </>
+                        )}
+                        {templates.length === 0 && !isLoadingTemplates && (
+                          <SelectItem value="no-templates" disabled>
+                            Nenhum template disponível
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {selectedTemplateId && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleClearTemplate}
+                        className="h-9 px-3"
+                      >
+                        Limpar
+                      </Button>
+                    )}
+                  </div>
+                  {selectedTemplateId && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <FileText size={12} />
+                        {selectedTemplate && (
+                          <>
+                            Template: <span className="font-medium">{selectedTemplate.name}</span>
+                            {hasPromptChanged && (
+                              <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">
+                                (modificado)
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </p>
+                      {hasPromptChanged && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleSaveTemplate}
+                          disabled={isSavingTemplate || isPending}
+                          className="h-7 px-3 text-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                        >
+                          {isSavingTemplate ? "Salvando..." : "Salvar no Template"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Instruções do Agente
+                    </label>
+                    {selectedTemplateId && hasPromptChanged && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400">
+                        Você pode salvar as alterações no template acima
+                      </span>
+                    )}
+                  </div>
                   <textarea
                     {...form.register("systemPrompt")}
                     placeholder="Ex.: Você é um assistente do salão. Seja objetivo, confirme data/horário e peça nome/telefone quando necessário..."

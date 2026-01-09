@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
 import { createSalonAssistantPrompt, getActiveAgentInfo, mapModelToOpenAI } from '@/lib/services/ai.service';
 import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
-import { db, salons, customers, chats, agents } from "@repo/db";
+import { db, salons, customers, chats, agents, appointments, profiles } from "@repo/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
 import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage, findOrCreateCustomer } from '@/lib/services/chat.service';
@@ -118,6 +118,26 @@ export async function POST(req: Request) {
     const customer = await findOrCreateCustomer(clientPhone, salonId);
     console.log(`✅ Customer ID: ${customer.id}, Nome: ${customer.name}`);
 
+    // Verifica se cliente é novo ou recorrente (tem histórico de agendamentos)
+    // Busca profileId pelo telefone para verificar histórico em appointments
+    const profile = await db.query.profiles.findFirst({
+      where: eq(profiles.phone, clientPhone),
+      columns: { id: true }
+    });
+    
+    let isNewCustomer = true;
+    if (profile) {
+      const hasAppointmentHistory = await db.query.appointments.findFirst({
+        where: and(
+          eq(appointments.salonId, salonId),
+          eq(appointments.clientId, profile.id)
+        ),
+        columns: { id: true }
+      });
+      isNewCustomer = !hasAppointmentHistory;
+    }
+    console.log(`📋 Cliente ${isNewCustomer ? 'NOVO' : 'RECORRENTE'} (tem histórico: ${!isNewCustomer})`);
+
     // Busca preferências do cliente (após garantir que o customer existe)
     let preferences: Record<string, unknown> | undefined = undefined;
     const customerRecord = await db.query.customers.findFirst({
@@ -175,7 +195,7 @@ export async function POST(req: Request) {
       console.log("⚠️ Nenhum agente ativo encontrado para buscar contexto RAG");
     }
 
-    const systemPrompt = await createSalonAssistantPrompt(salonId, preferences, knowledgeContext, customer.name, customer.id);
+    const systemPrompt = await createSalonAssistantPrompt(salonId, preferences, knowledgeContext, customer.name, customer.id, isNewCustomer);
 
     console.log(`📝 System Prompt: ${systemPrompt}`);
     // Encontra ou cria chat

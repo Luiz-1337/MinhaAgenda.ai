@@ -500,6 +500,25 @@ export const agentKnowledgeBase = pgTable(
   ]
 )
 
+export const systemPromptTemplates = pgTable(
+  'system_prompt_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }), // null = template global
+    name: text('name').notNull(),
+    description: text('description'),
+    systemPrompt: text('system_prompt').notNull(),
+    category: text('category'),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('system_prompt_templates_salon_idx').on(table.salonId),
+    index('system_prompt_templates_active_idx').on(table.isActive)
+  ]
+)
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
@@ -519,7 +538,8 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   chats: many(chats),
   customers: many(customers),
   integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] }),
-  agent: one(agents, { fields: [salons.id], references: [agents.salonId] })
+  agent: one(agents, { fields: [salons.id], references: [agents.salonId] }),
+  systemPromptTemplates: many(systemPromptTemplates)
 }))
 
 export const salonIntegrationsRelations = relations(salonIntegrations, ({ one }) => ({
@@ -596,6 +616,10 @@ export const embeddingsRelations = relations(embeddings, ({ one }) => ({
 
 export const agentKnowledgeBaseRelations = relations(agentKnowledgeBase, ({ one }) => ({
   agent: one(agents, { fields: [agentKnowledgeBase.agentId], references: [agents.id] })
+}))
+
+export const systemPromptTemplatesRelations = relations(systemPromptTemplates, ({ one }) => ({
+  salon: one(salons, { fields: [systemPromptTemplates.salonId], references: [salons.id] })
 }))
 
 export const paymentsRelations = relations(payments, ({ one }) => ({

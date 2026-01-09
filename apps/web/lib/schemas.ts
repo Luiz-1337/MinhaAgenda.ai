@@ -113,3 +113,25 @@ export const updateProfileSchema = z.object({
 
 export type UpdateProfileSchema = z.infer<typeof updateProfileSchema>
 
+// Schema para templates de system prompts
+export const systemPromptTemplateSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório").max(255, "Nome muito longo"),
+  description: z.string().max(500, "Descrição muito longa").optional().or(z.literal("")),
+  systemPrompt: z.string().min(1, "System prompt é obrigatório").max(10000, "System prompt muito longo"),
+  category: z.string().max(100, "Categoria muito longa").optional().or(z.literal("")),
+  isActive: z.boolean(),
+  isGlobal: z.boolean().optional(), // Campo auxiliar para indicar se é template global
+})
+
+export type SystemPromptTemplateSchema = z.infer<typeof systemPromptTemplateSchema>
+
+// Schema para criação de template
+export const createSystemPromptTemplateSchema = systemPromptTemplateSchema
+
+export type CreateSystemPromptTemplateSchema = z.infer<typeof createSystemPromptTemplateSchema>
+
+// Schema para atualização de template (todos os campos opcionais)
+export const updateSystemPromptTemplateSchema = systemPromptTemplateSchema.partial()
+
+export type UpdateSystemPromptTemplateSchema = z.infer<typeof updateSystemPromptTemplateSchema>
+

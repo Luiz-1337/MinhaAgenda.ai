@@ -14,6 +14,7 @@
     "seed:salon": "node scripts/seed-salon.mjs",
     "clean:solo": "node scripts/clean-solo-account.mjs",
     "seed:solo:complete": "node scripts/seed-solo-complete.mjs",
+    "seed:templates": "node scripts/seed-templates.mjs",
     "migrate:manual": "node scripts/migrate.mjs",
     "migrate:manual:002": "node scripts/migrate_002.mjs",
     "migrate:manual:003": "node scripts/migrate_003.mjs",

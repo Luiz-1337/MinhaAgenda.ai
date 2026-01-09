@@ -165,18 +165,25 @@ export class MinhaAgendaAITools {
         }
 
         // Chama o serviço compartilhado
-        const slots = await sharedServices.getAvailableSlots({
+        const allSlots = await sharedServices.getAvailableSlots({
             date,
             salonId,
             serviceDuration: finalServiceDuration,
             professionalId: professionalId,
         })
 
+        // REGRA DE OURO: Retorna no máximo 2 slots (os dois primeiros melhores)
+        // Isso garante que sempre teremos opções concretas para oferecer à cliente
+        const slots = allSlots.slice(0, 2)
+
         return JSON.stringify({
             slots,
+            totalAvailable: allSlots.length,
             message:
                 slots.length > 0
-                    ? `Encontrados ${slots.length} horário(s) disponível(is)`
+                    ? slots.length === 2
+                        ? `Encontrados ${slots.length} horários disponíveis (mostrando os 2 melhores)`
+                        : `Encontrado ${slots.length} horário disponível${allSlots.length > 1 ? ` (existem ${allSlots.length} no total)` : ''}`
                     : "Nenhum horário disponível para esta data",
         })
     }

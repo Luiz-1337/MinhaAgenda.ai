@@ -287,3 +287,154 @@ export async function deleteSalonCustomer(
     return { error: "Falha ao remover contato." }
   }
 }
+
+export type UpdateSalonCustomerInput = {
+  customerId: string
+  salonId: string
+  name?: string
+  phone?: string
+  email?: string
+  preferences?: string
+}
+
+/**
+ * Atualiza um contato existente no salão
+ */
+export async function updateSalonCustomer(
+  input: UpdateSalonCustomerInput
+): Promise<ActionResult<CustomerRow>> {
+  try {
+    // 1. Validação de entrada
+    if (!input.customerId || !input.salonId) {
+      return { error: "ID do contato e do salão são obrigatórios" }
+    }
+
+    // 2. Auth Check
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Não autenticado" }
+    }
+
+    // 3. Permission Check
+    const hasAccess = await hasSalonPermission(input.salonId, user.id)
+
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // 4. Verifica se o contato existe e pertence ao salão
+    const existingCustomer = await db.query.customers.findFirst({
+      where: and(
+        eq(customers.id, input.customerId),
+        eq(customers.salonId, input.salonId)
+      ),
+      columns: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        preferences: true,
+      },
+    })
+
+    if (!existingCustomer) {
+      return { error: "Contato não encontrado ou não pertence a este salão" }
+    }
+
+    // 5. Prepara os dados para atualização
+    const updates: {
+      name?: string
+      phone?: string
+      email?: string | null
+      preferences?: Record<string, unknown> | null
+      updatedAt?: Date
+    } = {}
+
+    if (input.name !== undefined && input.name.trim() !== existingCustomer.name) {
+      if (input.name.trim().length < 2) {
+        return { error: "Nome deve ter pelo menos 2 caracteres" }
+      }
+      updates.name = input.name.trim()
+    }
+
+    if (input.phone !== undefined) {
+      const normalizedPhone = input.phone.replace(/\D/g, "")
+      if (normalizedPhone !== existingCustomer.phone) {
+        if (!normalizedPhone) {
+          return { error: "Telefone é obrigatório" }
+        }
+        updates.phone = normalizedPhone
+      }
+    }
+
+    if (input.email !== undefined) {
+      const emailToSet = input.email.trim() || null
+      if (emailToSet && !emailToSet.includes("@")) {
+        return { error: "E-mail inválido" }
+      }
+      if (emailToSet !== existingCustomer.email) {
+        updates.email = emailToSet
+      }
+    }
+
+    if (input.preferences !== undefined) {
+      const preferencesData: Record<string, unknown> | null = input.preferences.trim()
+        ? { notes: input.preferences.trim() }
+        : null
+      
+      // Mescla com preferências existentes se houver
+      const currentPreferences = (existingCustomer.preferences as Record<string, unknown>) || {}
+      updates.preferences = preferencesData
+        ? { ...currentPreferences, ...preferencesData }
+        : null
+    }
+
+    // 6. Atualiza apenas se houver mudanças
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = new Date()
+      await db
+        .update(customers)
+        .set(updates)
+        .where(eq(customers.id, input.customerId))
+    }
+
+    // 7. Busca o contato atualizado para retornar
+    const updatedCustomer = await db.query.customers.findFirst({
+      where: eq(customers.id, input.customerId),
+      columns: {
+        id: true,
+        salonId: true,
+        name: true,
+        email: true,
+        phone: true,
+        preferences: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    if (!updatedCustomer) {
+      return { error: "Falha ao recuperar contato atualizado" }
+    }
+
+    const mappedCustomer: CustomerRow = {
+      id: updatedCustomer.id,
+      salonId: updatedCustomer.salonId,
+      name: updatedCustomer.name,
+      email: updatedCustomer.email || null,
+      phone: updatedCustomer.phone || null,
+      preferences: updatedCustomer.preferences as Record<string, unknown> | null,
+      createdAt: updatedCustomer.createdAt.toISOString(),
+      updatedAt: updatedCustomer.updatedAt.toISOString(),
+    }
+
+    return { success: true, data: mappedCustomer }
+  } catch (error) {
+    console.error("Erro ao atualizar contato:", error)
+    return { error: "Falha ao atualizar contato." }
+  }
+}

@@ -6,7 +6,7 @@ import { openai } from "@ai-sdk/openai"
 import { generateText, tool, type CoreMessage } from "ai"
 import { z } from "zod"
 import { and, eq, ilike } from "drizzle-orm"
-import { db, services, professionals, appointments, professionalServices, customers, profiles, agents } from "@repo/db"
+import { db, services, professionals, appointments, professionalServices, customers, profiles, agents, salons } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
 
 const DEFAULT_MODEL = "gpt-4o"
@@ -491,7 +491,8 @@ export async function createSalonAssistantPrompt(
   preferences?: Record<string, unknown>,
   knowledgeContext?: string,
   customerName?: string,
-  customerId?: string
+  customerId?: string,
+  isNewCustomer?: boolean
 ): Promise<string> {
   // Obtém data e hora atual em pt-BR com timezone America/Sao_Paulo
   const now = new Date()
@@ -562,15 +563,34 @@ export async function createSalonAssistantPrompt(
 - O cliente está cadastrado apenas com o número de telefone: ${customerName}
 - IMPORTANTE: Este não é o nome real do cliente. Você DEVE perguntar educadamente o nome do cliente na primeira oportunidade (ex: "Olá! Para personalizar melhor o atendimento, qual é o seu nome?").
 - Quando o cliente fornecer o nome, use a tool updateCustomerName para atualizar o cadastro com o nome real.
-- O customerId é: ${customerId}`
+- O customerId é: ${customerId}
+- Tipo: CLIENTE NOVA - Cadastro incompleto, precisa solicitar dados básicos primeiro`
     } else {
       customerInfoText = `\n\nINFORMAÇÃO DO CLIENTE:
-- Nome: ${customerName}`
+- Nome: ${customerName}
+- Tipo: ${isNewCustomer === true ? 'CLIENTE NOVA' : isNewCustomer === false ? 'CLIENTE RECORRENTE' : 'Cliente'}${isNewCustomer === false ? ' - Tem histórico de atendimentos, pode personalizar conversa lembrando preferências anteriores' : ''}`
     }
+  } else if (customerId) {
+    customerInfoText = `\n\nINFORMAÇÃO DO CLIENTE:
+- Tipo: ${isNewCustomer === true ? 'CLIENTE NOVA' : isNewCustomer === false ? 'CLIENTE RECORRENTE' : 'Cliente'}
+- O customerId é: ${customerId}`
   }
 
   const agentInfoText = await getActiveAgentInfo(salonId);
 
+  // Busca informações do salão (settings, tolerância de atraso, etc.)
+  const salonInfo = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { name: true, settings: true },
+  });
+
+  const salonSettings = (salonInfo?.settings as Record<string, unknown>) || {};
+  const lateToleranceMinutes = salonSettings.late_tolerance_minutes as number | undefined;
+
+  let salonInfoText = "";
+  if (lateToleranceMinutes !== undefined) {
+    salonInfoText = `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${lateToleranceMinutes} minutos`;
+  }
 
   return `Você é um assistente virtual.
 
@@ -582,12 +602,12 @@ export async function createSalonAssistantPrompt(
 CONTEXTO TEMPORAL:
 - HOJE É: ${formattedDate}
 - HORA ATUAL: ${formattedTime}
-- Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${customerInfoText}${preferencesText}${knowledgeContextText}
+- Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${customerInfoText}${preferencesText}${salonInfoText}${knowledgeContextText}
 
 REGRAS CRÍTICAS:
 1. O cliente NÃO sabe IDs de serviço ou profissional. Nunca peça IDs.
 2. NUNCA invente ou assuma informações sobre profissionais, serviços ou disponibilidade.
-3. SEMPRE use as tools disponíveis antes de responder sobre profissionais, serviços ou horários. Casoa tool utilizada retornar apenas 1 opção, não pergunte ao usuário se é ela que quer utilizar, use-a diretamente.
+3. SEMPRE use as tools disponíveis antes de responder sobre profissionais, serviços ou horários. Caso uma tool utilizada retornar apenas 1 opção, não pergunte ao usuário se é ela que quer utilizar, use-a diretamente.
 4. Se uma tool retornar vazia ou erro, diga claramente que não encontrou a informação solicitada.
 5. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas tools.
 6. Se houver ambiguidade em nomes, peça esclarecimento listando as opções encontradas pela tool (ela retornará erro com sugestões).
@@ -597,10 +617,60 @@ REGRAS CRÍTICAS:
 10. SEMPRE gere uma resposta de texto após executar qualquer tool. NUNCA retorne apenas resultados de tools sem uma resposta explicativa e amigável ao usuário. Mesmo que tenha executado tools, você DEVE sempre fornecer uma resposta final em texto.
 11. Podem ter casos de ter duas tools para marcar o horário, sendo um para o Google Calendar e outro para a Trix. Nesse caso, utilize as duas tools para marcar os horários e não pergunte ao usuário se é para o Google Calendar ou para a Trix.
 
+REGRA DE OURO DO AGENDAMENTO (OBRIGATÓRIO):
+- SEMPRE ofereça exatamente DUAS opções de horário concretas para a cliente escolher.
+- NUNCA diga apenas "não tem horário" ou pergunte "qual horário você quer?" sem oferecer opções específicas.
+- A tool checkAvailability já retorna no máximo 2 slots. Use-os para oferecer as 2 opções.
+- Se a tool retornar apenas 1 horário disponível, busque disponibilidade em outra data próxima para ter a segunda opção.
+- Apresente as duas opções de forma clara: "Tenho duas opções para você: [opção 1] ou [opção 2]. Qual prefere?"
+
+FLUXO DE ATENDIMENTO:
+
+1. TRIAGEM E CADASTRO:
+   - Se o cliente não tiver nome válido cadastrado (apenas telefone), pergunte educadamente o nome na primeira oportunidade.
+   - Use a tool updateCustomerName quando o cliente fornecer o nome.
+   - Verifique se é cliente nova ou recorrente consultando o histórico.
+
+2. OPORTUNIDADES E PREFERÊNCIAS (antes de agendar):
+   - ANTES de partir para a data, verifique se há "Oportunidades" disponíveis (serviços da semana, novidades, tratamentos complementares).
+   - Oferte essas oportunidades à cliente de forma natural e educada.
+   - Em seguida, defina a preferência técnica:
+     * Se a cliente tem profissional preferido salvo nas preferências, SEMPRE consulte a agenda dele primeiro.
+     * Se NÃO tiver preferência salva:
+       - Para CLIENTE RECORRENTE: Use a tool getMyFutureAppointments ou busque o histórico para identificar o "Profissional da Vez" (último profissional que atendeu a cliente nos agendamentos anteriores). Priorize esse profissional ao consultar disponibilidade.
+       - Para CLIENTE NOVA: Se não mencionar preferência, distribua igualmente entre profissionais disponíveis ou ofereça opções de profissionais.
+
+REGRA DO PROFISSIONAL DA VEZ:
+- A regra do "Profissional da Vez" aplica-se quando:
+  * Cliente é RECORRENTE (tem histórico de agendamentos)
+  * Cliente NÃO tem preferência explícita de profissional salva
+- Para identificar o Profissional da Vez: use getMyFutureAppointments para ver o histórico. O último profissional que atendeu é o "Profissional da Vez".
+- Sempre priorize consultar disponibilidade do Profissional da Vez quando aplicável.
+
+3. FECHAMENTO E ALINHAMENTO DE EXPECTATIVAS:
+   - Quando a cliente escolher o horário:
+     * IMPORTANTE: Se o serviço for de CORTE, SEMPRE alerte que não está inclusa a finalização/escova (ex: "Lembrando que o serviço de corte não inclui finalização/escova. Para evitar surpresas, essa informação é importante!").
+     * Pergunte explicitamente: "Você confirma a presença para [data/hora] com [profissional]?"
+   - Ao receber confirmação ("Sim", "Confirmo", "Pode ser", "Ok", etc.):
+     * ANTES de criar o agendamento, envie as informações completas formatadas:
+       - Data e horário completos (ex: "segunda-feira, 15 de janeiro às 14h")
+       - Nome do profissional
+       - Serviço e valor (se disponível)
+       - Lembrete sobre finalização não inclusa (se for corte): "Lembrando: o serviço de corte não inclui finalização/escova."
+     * Informe sobre o tempo de tolerância para atrasos${lateToleranceMinutes !== undefined ? ` (${lateToleranceMinutes} minutos)` : ''}:
+       "Importante: Pedimos que chegue pontualmente. Temos uma tolerância de ${lateToleranceMinutes !== undefined ? lateToleranceMinutes : 'X'} minutos para atrasos."
+     * Após enviar essas informações, proceda com o agendamento usando a tool addAppointment.
+   - Após efetivar o agendamento com sucesso, confirme: "Agendamento confirmado! Te vejo [data/hora]. Qualquer dúvida, é só chamar!"
+
+4. PÓS-ATENDIMENTO:
+   - Após efetivar o agendamento, confirme que foi realizado com sucesso.
+   - Envie mensagem de confirmação final com todos os detalhes formatados.
+
 As preferências do usuário são: ${agentInfoText?.systemPrompt}	
 
 MEMÓRIA DE PREFERÊNCIAS:
 - Quando o cliente mencionar uma preferência (ex: "Só corto com o João", "Tenho alergia a lâmina", "Prefiro corte tradicional"), use a tool saveUserPreferences PROATIVAMENTE em background para salvar essa informação.
 - Não mencione ao cliente que está salvando a preferência - faça isso silenciosamente enquanto responde normalmente.
-- Use essas preferências salvas para personalizar futuras recomendações e agendamentos.`
+- Use essas preferências salvas para personalizar futuras recomendações e agendamentos.
+- Quando verificar histórico de agendamentos, identifique qual foi o último profissional que atendeu a cliente para sugerir como "Profissional da Vez" se não houver preferência explícita.`
 }
