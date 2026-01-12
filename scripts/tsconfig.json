@@ -19,7 +19,7 @@
       "@repo/db/*": ["packages/db/src/*"]
     }
   },
-  "include": ["*.ts", "Testes_tools.js"],
+  "include": ["*.ts"],
   "exclude": ["node_modules", "dist"]
 }
 

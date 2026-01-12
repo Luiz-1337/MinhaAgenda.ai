@@ -1,221 +1,72 @@
 "use server"
 
+// ============================================================================
+// INFRASTRUCTURE LAYER - Framework/External Dependencies
+// ============================================================================
+
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
-import { and, asc, eq, inArray } from "drizzle-orm"
-import { createClient } from "@/lib/supabase/server"
-import { db, professionalServices, professionals, salons, services, profiles } from "@repo/db"
-import { formatZodError, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
-import { extractErrorMessage } from "@/lib/services/error.service"
-import type { ServiceRow, UpsertServiceInput, ServicePayload } from "@/lib/types/service"
+import type { ServiceRow, UpsertServiceInput } from "@/lib/types/service"
 import type { ActionResult } from "@/lib/types/common"
 
-import { hasSalonPermission } from "@/lib/services/permissions.service"
+// ============================================================================
+// APPLICATION LAYER - Use Cases and Services
+// ============================================================================
 
-const upsertServiceSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().min(2),
-  description: z.string().optional().or(z.literal("")),
-  duration: z.number().int().positive(),
-  price: z.number().positive(),
-  isActive: z.boolean().default(true),
-  professionalIds: z.array(z.string().uuid()).default([]),
-})
+import { BaseAuthenticatedAction } from "@/lib/services/actions/base-authenticated-action.service"
+import { ServiceRepository } from "@/lib/services/services/service.repository"
+import { ServiceUseCase } from "@/lib/services/services/service-usecase.service"
 
-export type { UpsertServiceInput }
-
-type ServiceSelect = Pick<
-  typeof services.$inferSelect,
-  "id" | "salonId" | "name" | "description" | "duration" | "price" | "isActive"
->
+// ============================================================================
+// Server Actions
+// ============================================================================
 
 /**
  * Obtém todos os serviços de um salão
  */
 export async function getServices(salonId: string): Promise<ActionResult<ServiceRow[]>> {
   try {
-    if (!salonId) {
-      return { error: "salonId é obrigatório" }
+    BaseAuthenticatedAction.validateSalonId(salonId)
+
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
+    if ("error" in authResult) {
+      return authResult
     }
 
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const rows = await ServiceRepository.findBySalonId(salonId)
 
-    if (!user) {
-      return { error: "Unauthorized" }
-    }
-
-    // Permission Check: Verify if user has access to the salon (Owner/Manager)
-    const hasAccess = await hasSalonPermission(salonId, user.id)
-
-    if (!hasAccess) {
-      return { error: "Acesso negado a este salão" }
-    }
-
-    const rows: ServiceSelect[] = await db.query.services.findMany({
-      where: eq(services.salonId, salonId),
-      columns: {
-        id: true,
-        salonId: true,
-        name: true,
-        description: true,
-        duration: true,
-        price: true,
-        isActive: true,
-      },
-      orderBy: asc(services.name),
-    })
-
-    const formattedRows = rows.map((row) => ({
-      id: row.id,
-      salon_id: row.salonId,
-      name: row.name,
-      description: row.description ?? null,
-      duration: row.duration,
-      price: row.price ?? "0",
-      is_active: row.isActive,
-    }))
-
-    return { success: true, data: formattedRows }
+    return { success: true, data: rows }
   } catch (error) {
-    console.error("Erro ao buscar serviços:", error)
-    return { error: "Falha ao buscar serviços." }
-  }
-}
-
-/**
- * Prepara o payload do serviço para inserção/atualização
- */
-function prepareServicePayload(data: z.infer<typeof upsertServiceSchema>): ServicePayload {
-  return {
-    name: normalizeString(data.name),
-    description: emptyStringToNull(data.description),
-    duration: data.duration,
-    price: data.price.toFixed(2),
-    isActive: data.isActive,
+    const errorMessage =
+      error instanceof Error ? error.message : "Falha ao buscar serviços."
+    return { error: errorMessage }
   }
 }
 
 /**
  * Cria ou atualiza um serviço
  */
-export async function upsertService(input: UpsertServiceInput & { salonId: string }): Promise<ActionResult> {
+export async function upsertService(
+  input: UpsertServiceInput & { salonId: string }
+): Promise<ActionResult> {
   try {
-    // 1. Auth Check
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return { error: "Unauthorized" }
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(
+      input.salonId
+    )
+    if ("error" in authResult) {
+      return { error: authResult.error }
     }
 
-    // 2. Input Validation (Zod)
-    const parsed = upsertServiceSchema.safeParse(input)
-    if (!parsed.success) {
-      return { error: formatZodError(parsed.error) }
+    const result = await ServiceUseCase.upsert(input)
+
+    if (!("error" in result)) {
+      revalidatePath("/dashboard/services")
     }
 
-    if (!input.salonId) {
-      return { error: "salonId é obrigatório" }
-    }
-
-    // 3. Permission Check
-    const hasAccess = await hasSalonPermission(input.salonId, user.id)
-
-    if (!hasAccess) {
-      return { error: "Acesso negado a este salão" }
-    }
-
-    // 4. DB Operation
-    const payload = prepareServicePayload(parsed.data)
-    let serviceId = parsed.data.id
-
-    // Atualiza serviço existente
-    if (serviceId) {
-      await db
-        .update(services)
-        .set(payload)
-        .where(and(eq(services.id, serviceId), eq(services.salonId, input.salonId)))
-    } else {
-      // Cria novo serviço
-      const inserted = await db
-        .insert(services)
-        .values({ ...payload, salonId: input.salonId })
-        .returning({ id: services.id })
-
-      serviceId = inserted[0]?.id
-    }
-
-    if (!serviceId) {
-      return { error: "Não foi possível salvar o serviço" }
-    }
-
-    // Verifica se é plano SOLO
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.id, input.salonId),
-      columns: { ownerId: true },
-    })
-
-    const ownerProfile = salon ? await db.query.profiles.findFirst({
-      where: eq(profiles.id, salon.ownerId),
-      columns: { tier: true },
-    }) : null
-
-    const isSolo = ownerProfile?.tier === 'SOLO'
-
-    // Remove associações existentes com profissionais
-    await db.delete(professionalServices).where(eq(professionalServices.serviceId, serviceId))
-
-    // No plano SOLO, vincula automaticamente ao profissional do usuário (owner)
-    if (isSolo && salon) {
-      const userProfessional = await db.query.professionals.findFirst({
-        where: and(
-          eq(professionals.salonId, input.salonId),
-          eq(professionals.userId, salon.ownerId)
-        ),
-        columns: { id: true },
-      })
-
-      if (userProfessional) {
-        await db.insert(professionalServices).values({
-          professionalId: userProfessional.id,
-          serviceId,
-        })
-      }
-    } else {
-      // Para outros planos, usa os profissionais selecionados
-      if (parsed.data.professionalIds.length > 0) {
-        const validProfessionals = await db.query.professionals.findMany({
-          where: and(
-            eq(professionals.salonId, input.salonId),
-            inArray(professionals.id, parsed.data.professionalIds)
-          ),
-          columns: { id: true },
-        })
-
-        const professionalIds = validProfessionals.map((p) => p.id)
-
-        if (professionalIds.length > 0) {
-          await db.insert(professionalServices).values(
-            professionalIds.map((professionalId) => ({
-              professionalId,
-              serviceId,
-            }))
-          )
-        }
-      }
-    }
-
-    revalidatePath("/dashboard/services")
-    return { success: true, data: undefined } // Explicitly return data: undefined for void
-
+    return result
   } catch (error) {
-    console.error("Erro ao salvar serviço:", error)
-    return { error: "Falha ao salvar serviço." }
+    const errorMessage =
+      error instanceof Error ? error.message : "Falha ao salvar serviço."
+    return { error: errorMessage }
   }
 }
 
@@ -224,42 +75,22 @@ export async function upsertService(input: UpsertServiceInput & { salonId: strin
  */
 export async function deleteService(id: string, salonId: string): Promise<ActionResult> {
   try {
-    // 1. Auth Check
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return { error: "Unauthorized" }
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
+    if ("error" in authResult) {
+      return authResult
     }
 
-    if (!salonId) {
-      return { error: "salonId é obrigatório" }
+    const result = await ServiceUseCase.delete(id, salonId)
+
+    if (!("error" in result)) {
+      revalidatePath("/dashboard/services")
     }
 
-    // 2. Permission Check
-    const hasAccess = await hasSalonPermission(salonId, user.id)
-
-    if (!hasAccess) {
-      return { error: "Acesso negado a este salão" }
-    }
-
-    // 3. DB Operation
-    // Remove primeiro as associações com profissionais (cascade)
-    await db.delete(professionalServices).where(eq(professionalServices.serviceId, id))
-    
-    // Remove o serviço definitivamente
-    await db
-      .delete(services)
-      .where(and(eq(services.id, id), eq(services.salonId, salonId)))
-
-    revalidatePath("/dashboard/services")
-    return { success: true, data: undefined }
-
+    return result
   } catch (error) {
-    console.error("Erro ao excluir serviço:", error)
-    return { error: "Falha ao excluir serviço." }
+    const errorMessage =
+      error instanceof Error ? error.message : "Falha ao excluir serviço."
+    return { error: errorMessage }
   }
 }
 
@@ -271,37 +102,22 @@ export async function getServiceLinkedProfessionals(
   salonId: string
 ): Promise<ActionResult<string[]>> {
   try {
-    // 1. Auth Check
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return { error: "Unauthorized" }
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
+    if ("error" in authResult) {
+      return authResult
     }
 
-    if (!salonId) {
-      return { error: "salonId é obrigatório" }
-    }
+    const professionalIds = await ServiceRepository.findLinkedProfessionalIds(serviceId)
 
-    // 2. Permission Check
-    const hasAccess = await hasSalonPermission(salonId, user.id)
-
-    if (!hasAccess) {
-      return { error: "Acesso negado a este salão" }
-    }
-
-    // 3. DB Operation
-    const links = await db.query.professionalServices.findMany({
-      where: eq(professionalServices.serviceId, serviceId),
-      columns: { professionalId: true },
-    })
-
-    return { success: true, data: links.map((link) => link.professionalId) }
-
+    return { success: true, data: professionalIds }
   } catch (error) {
-    console.error("Erro ao buscar profissionais vinculados:", error)
-    return { error: "Falha ao buscar profissionais vinculados." }
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Falha ao buscar profissionais vinculados."
+    return { error: errorMessage }
   }
 }
+
+// Re-export types
+export type { UpsertServiceInput }

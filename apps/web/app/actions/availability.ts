@@ -1,22 +1,25 @@
 "use server"
 
+// ============================================================================
+// INFRASTRUCTURE LAYER - Framework/External Dependencies
+// ============================================================================
+
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
-import { createClient } from "@/lib/supabase/server"
-import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
-import { formatZodError, isValidTimeRange } from "@/lib/services/validation.service"
 import type { AvailabilityItem, ScheduleItem } from "@/lib/types/availability"
 import type { ActionResult } from "@/lib/types/common"
 
-import { hasSalonPermission } from "@/lib/services/permissions.service"
+// ============================================================================
+// APPLICATION LAYER - Use Cases and Services
+// ============================================================================
 
-const scheduleItemSchema = z.object({
-  dayOfWeek: z.number().int().min(0).max(6),
-  startTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
-  endTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
-  isActive: z.boolean(),
-})
+import { BaseAuthenticatedAction } from "@/lib/services/actions/base-authenticated-action.service"
+import { AvailabilityRepository } from "@/lib/services/availability/availability.repository"
+import { ScheduleValidator } from "@/lib/services/availability/schedule-validator.service"
+import { AvailabilityMapper } from "@/lib/services/availability/availability-mapper.service"
+
+// ============================================================================
+// Server Actions
+// ============================================================================
 
 /**
  * Obtém a disponibilidade de um profissional
@@ -25,61 +28,32 @@ export async function getAvailability(
   professionalId: string,
   salonId: string
 ): Promise<AvailabilityItem[] | { error: string }> {
-  if (!salonId) {
-    return { error: "salonId é obrigatório" }
+  try {
+    BaseAuthenticatedAction.validateSalonId(salonId)
+
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
+    if ("error" in authResult) {
+      return authResult
+    }
+
+    const belongsToSalon = await AvailabilityRepository.professionalBelongsToSalon(
+      professionalId,
+      salonId
+    )
+
+    if (!belongsToSalon) {
+      return { error: "Profissional inválido" }
+    }
+
+    const rows = await AvailabilityRepository.findActiveByProfessionalId(professionalId)
+    const items = AvailabilityMapper.toAvailabilityItems(rows)
+
+    return items
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Falha ao buscar disponibilidade."
+    return { error: errorMessage }
   }
-
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: "Não autenticado" }
-  }
-
-  // Verifica se o usuário tem acesso ao salão (Owner ou Manager)
-  const hasAccess = await hasSalonPermission(salonId, user.id)
-
-  if (!hasAccess) {
-    return { error: "Acesso negado a este salão" }
-  }
-
-  // Verifica se o profissional pertence ao salão
-  const profResult = await supabase
-    .from("professionals")
-    .select("id")
-    .eq("id", professionalId)
-    .eq("salon_id", salonId)
-    .single()
-
-  if (profResult.error || !profResult.data) {
-    return { error: "Profissional inválido" }
-  }
-
-  // Busca horários de disponibilidade
-  const availabilityResult = await supabase
-    .from("availability")
-    .select("day_of_week,start_time,end_time,is_break")
-    .eq("professional_id", professionalId)
-    .eq("is_break", false)
-    .order("day_of_week", { ascending: true })
-
-  if (availabilityResult.error) {
-    return { error: availabilityResult.error.message }
-  }
-
-  const availabilityData = (availabilityResult.data || []) as Array<{
-    day_of_week: number
-    start_time: string
-    end_time: string
-  }>
-
-  return availabilityData.map((item) => ({
-    dayOfWeek: item.day_of_week,
-    startTime: item.start_time,
-    endTime: item.end_time,
-  }))
 }
 
 /**
@@ -90,78 +64,49 @@ export async function updateAvailability(
   schedule: ScheduleItem[],
   salonId: string
 ): Promise<ActionResult> {
-  if (!salonId) {
-    return { error: "salonId é obrigatório" }
-  }
+  try {
+    BaseAuthenticatedAction.validateSalonId(salonId)
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: "Não autenticado" }
-  }
-
-  // Validação dos dados de entrada
-  const parsed = z.array(scheduleItemSchema).safeParse(schedule)
-  if (!parsed.success) {
-    return { error: formatZodError(parsed.error) }
-  }
-
-  // Validação de horários
-  for (const item of parsed.data) {
-    if (item.isActive && !isValidTimeRange(item.startTime, item.endTime)) {
-      return { error: "Horário inválido: início deve ser anterior ao fim" }
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
+    if ("error" in authResult) {
+      return authResult
     }
-  }
 
-  // Verifica se o usuário tem acesso ao salão (Owner ou Manager)
-  const hasAccess = await hasSalonPermission(salonId, user.id)
-
-  if (!hasAccess) {
-    return { error: "Acesso negado a este salão" }
-  }
-
-  // Verifica se o profissional pertence ao salão
-  const profResult = await supabase
-    .from("professionals")
-    .select("id")
-    .eq("id", professionalId)
-    .eq("salon_id", salonId)
-    .single()
-
-  if (profResult.error || !profResult.data) {
-    return { error: "Profissional inválido" }
-  }
-
-  // Remove disponibilidade existente
-  const deleteResult = await supabase
-    .from("availability")
-    .delete()
-    .eq("professional_id", professionalId)
-
-  if (deleteResult.error) {
-    return { error: deleteResult.error.message }
-  }
-
-  // Insere novos horários ativos
-  const activeSchedules = parsed.data.filter((item) => item.isActive)
-  if (activeSchedules.length > 0) {
-    const toInsert = activeSchedules.map((item) => ({
-      professional_id: professionalId,
-      day_of_week: item.dayOfWeek,
-      start_time: item.startTime,
-      end_time: item.endTime,
-      is_break: false,
-    }))
-
-    const insertResult = await supabase.from("availability").insert(toInsert)
-    if (insertResult.error) {
-      return { error: insertResult.error.message }
+    // Validação dos dados de entrada
+    try {
+      ScheduleValidator.validateSchedule(schedule)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erro ao validar horários"
+      return { error: errorMessage }
     }
-  }
 
-  revalidatePath("/dashboard/team")
-  return { success: true }
+    const belongsToSalon = await AvailabilityRepository.professionalBelongsToSalon(
+      professionalId,
+      salonId
+    )
+
+    if (!belongsToSalon) {
+      return { error: "Profissional inválido" }
+    }
+
+    // Remove disponibilidade existente
+    await AvailabilityRepository.deleteByProfessionalId(professionalId)
+
+    // Filtra apenas horários ativos e insere novos
+    const activeSchedules = ScheduleValidator.filterActive(schedule)
+    if (activeSchedules.length > 0) {
+      const toInsert = activeSchedules.map((item) =>
+        AvailabilityMapper.toInsert(professionalId, item)
+      )
+      await AvailabilityRepository.insertMany(toInsert)
+    }
+
+    revalidatePath("/dashboard/team")
+    return { success: true, data: undefined }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Falha ao atualizar disponibilidade."
+    return { error: errorMessage }
+  }
 }
+

@@ -21,6 +21,7 @@ import {
   Briefcase,
   Zap,
   Package,
+  Megaphone,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import { createBrowserClient } from "@supabase/ssr"
@@ -71,6 +72,7 @@ const menuGroups = [
       { href: "billing", label: "Faturamento", icon: CreditCard },
       { href: "services", label: "Serviços", icon: Zap },
       { href: "products", label: "Produtos", icon: Package },
+      { href: "marketing", label: "Marketing", icon: Megaphone },
       { href: "settings", label: "Configurações", icon: Settings },
     ]
   }

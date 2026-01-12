@@ -2,6 +2,12 @@
  * Serviço compartilhado para integração com Google Calendar
  * Centraliza a lógica de autenticação OAuth e criação de eventos
  * Pode ser usado tanto pelo mcp-server quanto pelo apps/web
+ * 
+ * @deprecated This file is deprecated. Use the new Clean Architecture implementation:
+ * - GoogleCalendarIntegration from infrastructure/integrations/google-calendar/google-calendar-integration
+ * - Use cases from application/use-cases/google-calendar/
+ * 
+ * This file is kept for backward compatibility but will be removed in future versions.
  */
 
 import { google } from 'googleapis'
@@ -11,6 +17,8 @@ import { eq } from 'drizzle-orm'
 
 /**
  * Obtém o cliente OAuth2 configurado
+ * 
+ * @deprecated Use GoogleOAuth2Client from infrastructure/integrations/google-calendar/google-oauth2-client instead
  */
 export function getOAuth2Client(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID

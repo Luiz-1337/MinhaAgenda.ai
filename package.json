@@ -25,11 +25,8 @@
     "mcp:debug:vercel": "dotenv -e ./.env -v MCP_CLIENT_TOOL_SOURCE=vercel -- tsx scripts/mcp-client.ts",
     "mcp:debug:mcp": "dotenv -e ./.env -v MCP_CLIENT_TOOL_SOURCE=mcp -- tsx scripts/mcp-client.ts",
     "mcp:chat": "dotenv -e ./.env -- tsx scripts/mcp-chat.ts",
-    "test:google": "dotenv -e ./.env -- tsx scripts/test-google-calendar.ts",
     "diagnose:google": "dotenv -e ./.env -- tsx scripts/diagnose-google-integration.ts",
-    "check:integration": "dotenv -e ./.env -- tsx scripts/check-google-integration.ts",
-    "teste": "dotenv -e ./.env -- tsx scripts/Testes_tools.js",
-    "teste:func": "tsx scripts/teste-func.ts"
+    "check:integration": "dotenv -e ./.env -- tsx scripts/check-google-integration.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

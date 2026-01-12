@@ -2,6 +2,12 @@
  * Serviço compartilhado para integração com API Trinks
  * Centraliza a lógica de autenticação e operações com a API Trinks
  * Pode ser usado tanto pelo mcp-server quanto pelo apps/web
+ * 
+ * @deprecated This file is deprecated. Use the new Clean Architecture implementation:
+ * - TrinksApiClient from application/use-cases/trinks/services/trinks-api-client
+ * - Use cases from application/use-cases/trinks/
+ * 
+ * This file is kept for backward compatibility but will be removed in future versions.
  */
 
 import { db, salonIntegrations, appointments, services, professionals, profiles } from '../index'
@@ -31,6 +37,8 @@ async function getTrinksToken(salonId: string): Promise<string | null> {
 
 /**
  * Verifica se a integração Trinks está ativa para um salão
+ * 
+ * @deprecated Use TrinksApiClient.isActive() instead
  */
 export async function isTrinksIntegrationActive(salonId: string): Promise<boolean> {
   const token = await getTrinksToken(salonId)
