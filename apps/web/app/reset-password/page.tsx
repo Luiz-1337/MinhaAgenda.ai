@@ -1,46 +1,59 @@
 "use client"
 
 import React, { useActionState, useState, useEffect, useTransition } from 'react';
-import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2, CheckCircle } from 'lucide-react';
+import { Bot, ArrowRight, Sun, Moon, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
-import { login } from '../actions/auth';
-import { useSearchParams } from 'next/navigation';
+import { resetPassword } from '../actions/auth';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 function SubmitButton({ isLoading }: { isLoading: boolean }) {
   return (
     <Button              
-    type="submit"
-    disabled={isLoading}
-    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-    {isLoading ? (
-      <>
-        <Loader2 size={18} className="animate-spin" />
-        <span>Entrando...</span>
-      </>
-    ) : (
-      <>
-        <span>Login</span>
-        <ArrowRight size={18} />
-      </>
-    )}
+      type="submit"
+      disabled={isLoading}
+      className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+      {isLoading ? (
+        <>
+          <Loader2 size={18} className="animate-spin" />
+          <span>Redefinindo...</span>
+        </>
+      ) : (
+        <>
+          <span>Redefinir senha</span>
+          <ArrowRight size={18} />
+        </>
+      )}
     </Button>
   )
 }
 
-export default function LoginPage() {
-  const [state, formAction] = useActionState(login, { error: "" })
+export default function ResetPasswordPage() {
+  const [state, formAction] = useActionState(resetPassword, { error: "" })
   const [isPending, startTransition] = useTransition()
   const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isDark, setIsDark] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const searchParams = useSearchParams()
-  const passwordResetSuccess = searchParams.get('passwordReset') === 'success'
+  const router = useRouter()
 
   useEffect(() => {
     setMounted(true)
     setIsDark(resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
   }, [theme, resolvedTheme])
+
+  useEffect(() => {
+    // Verificar se há um token na URL (o Supabase adiciona automaticamente)
+    // Se não houver, pode ser que o link tenha expirado
+    const hash = searchParams.get('hash') || window.location.hash
+    if (!hash && !searchParams.toString()) {
+      // Não há token, mas vamos deixar o Supabase verificar a sessão
+      // A validação será feita no server action
+    }
+  }, [searchParams])
 
   const toggleTheme = () => {
     const newTheme = isDark ? 'light' : 'dark'
@@ -58,7 +71,6 @@ export default function LoginPage() {
       })
     } finally {
       // O finally garante que qualquer erro síncrono seja tratado
-      // O isPending do useTransition já gerencia o estado de loading automaticamente
     }
   }
 
@@ -79,13 +91,13 @@ export default function LoginPage() {
         <div className="absolute bottom-12 left-12 z-30 max-w-lg">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur-md text-white text-xs font-medium mb-4">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Disponível 24/7
+            Segurança em primeiro lugar
           </div>
           <h1 className="text-4xl font-bold text-white mb-4 leading-tight">
-            Revolucione a gestão do seu salão com Inteligência Artificial.
+            Defina uma nova senha segura.
           </h1>
           <p className="text-slate-200 text-lg leading-relaxed">
-            Agendamentos automáticos, atendimento humanizado e insights financeiros em tempo real. O futuro da beleza é agora.
+            Escolha uma senha forte para proteger sua conta. Use pelo menos 6 caracteres.
           </p>
         </div>
       </div>
@@ -118,63 +130,74 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Bem-vindo de volta</h2>
-            <p className="text-slate-500 dark:text-slate-400">Digite suas credenciais para acessar o painel.</p>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Redefinir senha</h2>
+            <p className="text-slate-500 dark:text-slate-400">
+              Digite sua nova senha abaixo.
+            </p>
           </div>
-
-          {passwordResetSuccess && (
-            <div className="mb-6 flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-              <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={20} />
-              <p className="text-sm text-emerald-700 dark:text-emerald-300">
-                Senha redefinida com sucesso! Faça login com sua nova senha.
-              </p>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Email Corporativo</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                </div>
-                <input 
-                  type="email" 
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-                  placeholder="nome@empresa.com"
-                  id="email" name="email" 
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Senha</label>
-                <a href="/forgot-password" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500">Esqueceu?</a>
-              </div>
+              <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Nova Senha
+              </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Lock size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                 </div>
                 <input 
-                  type="password" 
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                  type={showPassword ? "text" : "password"}
+                  className="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
                   placeholder="••••••••"
                   id="password" 
                   name="password"
                   required
+                  minLength={6}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Confirmar Senha
+              </label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                </div>
+                <input 
+                  type={showConfirmPassword ? "text" : "password"}
+                  className="w-full pl-10 pr-10 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                  placeholder="••••••••"
+                  id="confirmPassword" 
+                  name="confirmPassword"
+                  required
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
             <SubmitButton isLoading={isPending} />
           </form>
-          {state?.error && <p className="text-red-500 text-sm">{state.error}</p>}
+          {state?.error && <p className="text-red-500 text-sm mt-2">{state.error}</p>}
           <p className="mt-8 text-center text-sm text-slate-500">
-            Não tem uma conta?{' '}
-            <a href="/register" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
-              Cadastre-se
-            </a>
+            Lembrou sua senha?{' '}
+            <Link href="/login" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+              Fazer login
+            </Link>
           </p>
         </div>
         

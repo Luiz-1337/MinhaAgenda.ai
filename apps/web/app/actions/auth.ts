@@ -1,6 +1,7 @@
 "use server"
 
 import { redirect } from "next/navigation"
+import { headers } from "next/headers"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import type { ActionState } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
@@ -270,4 +271,81 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
 
   // Novos usuários sempre precisam fazer onboarding
   redirect("/onboarding")
+}
+
+/**
+ * Solicita recuperação de senha
+ * Envia email com link para redefinição
+ */
+export async function resetPasswordRequest(prevState: ActionState, formData: FormData): Promise<ActionState> {
+  const email = normalizeEmail(String(formData.get("email") || ""))
+
+  if (!email) {
+    return { error: "Email é obrigatório." }
+  }
+
+  const supabase = await createClient()
+  
+  // Obter a URL base do ambiente
+  const headersList = await headers()
+  const host = headersList.get('host') || 'localhost:3000'
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`
+  const redirectUrl = `${baseUrl}/reset-password`
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: redirectUrl,
+  })
+
+  if (error) {
+    // Por segurança, não revelamos se o email existe ou não
+    // Sempre retornamos sucesso, mas logamos o erro para debug
+    console.error("Erro ao solicitar recuperação de senha:", error)
+    // Retornamos mensagem genérica mesmo em caso de erro
+    // Isso previne enumeração de emails
+  }
+
+  // Sempre retornamos sucesso para não revelar se o email existe
+  return { error: "" }
+}
+
+/**
+ * Atualiza a senha do usuário
+ * Deve ser chamado após o usuário clicar no link do email
+ */
+export async function resetPassword(prevState: ActionState, formData: FormData): Promise<ActionState> {
+  const password = normalizeString(String(formData.get("password") || ""))
+  const confirmPassword = normalizeString(String(formData.get("confirmPassword") || ""))
+
+  if (!password) {
+    return { error: "Senha é obrigatória." }
+  }
+
+  if (password.length < 6) {
+    return { error: "A senha deve ter no mínimo 6 caracteres." }
+  }
+
+  if (password !== confirmPassword) {
+    return { error: "As senhas não coincidem." }
+  }
+
+  const supabase = await createClient()
+  
+  // Verificar se há uma sessão ativa (criada pelo link do email)
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session) {
+    return { error: "Link inválido ou expirado. Por favor, solicite um novo link de recuperação." }
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: password,
+  })
+
+  if (error) {
+    return { error: formatAuthError(error) }
+  }
+
+  // Senha atualizada com sucesso, redirecionar para login
+  redirect("/login?passwordReset=success")
 }
