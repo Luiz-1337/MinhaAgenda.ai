@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useActionState, useState, useEffect, useTransition } from 'react';
-import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2, CheckCircle } from 'lucide-react';
+import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { login } from '../actions/auth';
@@ -159,7 +159,11 @@ export default function LoginPage() {
                 </div>
                 <input 
                   type="password" 
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                  className={`w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border rounded-xl text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 transition-all shadow-sm ${
+                    state?.error 
+                      ? 'border-red-500 dark:border-red-500 focus:ring-red-500/20 focus:border-red-500' 
+                      : 'border-slate-200 dark:border-slate-800 focus:ring-indigo-500/20 focus:border-indigo-500'
+                  }`}
                   placeholder="••••••••"
                   id="password" 
                   name="password"
@@ -169,7 +173,16 @@ export default function LoginPage() {
             </div>
             <SubmitButton isLoading={isPending} />
           </form>
-          {state?.error && <p className="text-red-500 text-sm">{state.error}</p>}
+          
+          {state?.error && (
+            <div className="mt-4 flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
+              <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" size={20} />
+              <p className="text-sm text-red-700 dark:text-red-300 font-medium">
+                {state.error}
+              </p>
+            </div>
+          )}
+          
           <p className="mt-8 text-center text-sm text-slate-500">
             Não tem uma conta?{' '}
             <a href="/register" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
