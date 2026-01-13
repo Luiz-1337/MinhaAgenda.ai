@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users } from "lucide-react"
+import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus } from "lucide-react"
 import { DailyScheduler } from "./DailyScheduler"
 import { WeeklyScheduler } from "./WeeklyScheduler"
 import { MonthlyScheduler } from "./MonthlyScheduler"
+import { CreateAppointmentDialog } from "./CreateAppointmentDialog"
 import { getAppointments, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
@@ -50,6 +51,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   // Estado de UI
   const [selectedProId, setSelectedProId] = useState<string | null>(null)
   const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   // Carrega dados unificados (Agendamentos + Profissionais)
   useEffect(() => {
@@ -193,6 +195,49 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     setCurrentDate(new Date())
   }
 
+  // Função para recarregar dados após criar agendamento
+  const handleAppointmentCreated = async () => {
+    setLoading(true)
+    setError(null)
+    
+    let start: Date
+    let end: Date
+
+    // Calcula range baseado na view
+    switch (viewType) {
+      case 'daily':
+        start = startOfDayBrazil(currentDate)
+        end = endOfDayBrazil(currentDate)
+        break
+      case 'weekly':
+        start = startOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+        end = endOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+        break
+      case 'monthly':
+        start = startOfMonthBrazil(currentDate)
+        end = endOfMonthBrazil(currentDate)
+        break
+    }
+
+    try {
+      const result = await getAppointments(salonId, start, end)
+      
+      if ('error' in result) {
+        setError(result.error)
+        setAppointments([])
+        setProfessionals([])
+      } else {
+        setAppointments(result.appointments)
+        setProfessionals(result.professionals)
+      }
+    } catch (err) {
+      console.error('Erro ao buscar dados:', err)
+      setError('Falha ao carregar agendamentos')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const getDateLabel = () => {
     switch (viewType) {
       case 'daily':
@@ -235,6 +280,13 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           className="px-3 py-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 rounded-lg text-sm font-medium border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
         >
           Hoje
+        </button>
+        <button 
+          onClick={() => setIsCreateDialogOpen(true)}
+          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm shadow-indigo-500/20 flex items-center gap-2 transition-colors"
+        >
+          <Plus size={16} />
+          Novo Agendamento
         </button>
       </div>
 
@@ -347,6 +399,15 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           />
         )}
       </div>
+      
+      {/* Create Appointment Dialog */}
+      <CreateAppointmentDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        salonId={salonId}
+        professionals={professionals}
+        onSuccess={handleAppointmentCreated}
+      />
     </div>
   )
 }
