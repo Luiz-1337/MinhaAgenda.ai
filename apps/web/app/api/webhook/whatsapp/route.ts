@@ -259,6 +259,44 @@ export async function POST(req: Request) {
     const modelName = mapModelToOpenAI(agentModel);
     console.log(`🤖 Modelo do agente ativo: ${agentModel} → ${modelName} (OpenAI)`);
 
+    // Funções helper para detectar e extrair erros de tools
+    function hasToolErrors(steps: any[]): boolean {
+      return steps.some(step => 
+        step.toolResults?.some((result: any) => 
+          result.error || 
+          result.isError || 
+          (result.result && typeof result.result === 'object' && 'error' in result.result) ||
+          (result.result && typeof result.result === 'string' && result.result.toLowerCase().includes('error'))
+        )
+      )
+    }
+
+    function extractToolErrors(steps: any[]): Array<{toolName: string, error: string}> {
+      const errors: Array<{toolName: string, error: string}> = []
+      steps.forEach(step => {
+        step.toolResults?.forEach((result: any) => {
+          if (result.error || result.isError) {
+            const errorMessage = result.error?.message || result.error || 'Erro desconhecido'
+            errors.push({
+              toolName: result.toolName || 'Unknown',
+              error: errorMessage
+            })
+          } else if (result.result && typeof result.result === 'object' && 'error' in result.result) {
+            errors.push({
+              toolName: result.toolName || 'Unknown',
+              error: result.result.error || 'Erro desconhecido'
+            })
+          } else if (result.result && typeof result.result === 'string' && result.result.toLowerCase().includes('error')) {
+            errors.push({
+              toolName: result.toolName || 'Unknown',
+              error: result.result
+            })
+          }
+        })
+      })
+      return errors
+    }
+
     // Gera resposta usando generateText (mais adequado para WhatsApp, não precisa de streaming)
     let finalText = '';
     let usageData: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null = null;
@@ -274,6 +312,92 @@ export async function POST(req: Request) {
 
       // Aqui o 'text' já é a resposta final completa
       finalText = text;
+
+      // Verifica se há erros de tools nos steps
+      if (hasToolErrors(steps)) {
+        console.warn("⚠️ Erros detectados em tools durante a execução");
+        const toolErrors = extractToolErrors(steps);
+        
+        console.error(`📊 Resumo de erros: ${toolErrors.length} tool(s) falharam`);
+        toolErrors.forEach(({ toolName, error }, index) => {
+          console.error(`  [${index + 1}] Tool: ${toolName}`);
+          console.error(`      Erro: ${error}`);
+        });
+
+        // Sanitiza mensagens de erro para não expor detalhes técnicos sensíveis
+        const sanitizedErrors = toolErrors.map(({ toolName, error }) => {
+          // Remove informações sensíveis como UUIDs, paths, etc.
+          let sanitizedError = error
+            .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[ID]')
+            .replace(/\/[^\s]+/g, '[path]')
+            .substring(0, 200); // Limita tamanho
+          
+          return { toolName, error: sanitizedError };
+        });
+
+        // Constrói mensagem de sistema explicando o erro
+        const errorContext = sanitizedErrors.map(({ toolName, error }) => 
+          `- Tool "${toolName}": ${error}`
+        ).join('\n');
+
+        const errorSystemMessage = `[ERRO DE TOOL DETECTADO]
+
+As seguintes ferramentas encontraram dificuldades durante a execução:
+${errorContext}
+
+Por favor, responda ao cliente de forma educada e profissional. Explique que houve uma dificuldade técnica momentânea e ofereça alternativas quando possível. Seja empático e mantenha o tom amigável. Não mencione detalhes técnicos específicos.`;
+
+        console.log("🔄 Fazendo nova chamada ao generateText com contexto de erro...");
+        console.log(`📝 Contexto de erro que será enviado à IA (${errorSystemMessage.length} caracteres)`);
+        
+        try {
+          // Cria mensagens atualizadas com contexto de erro
+          const errorMessages = [
+            ...convertToModelMessages(uiMessages),
+            {
+              role: 'system' as const,
+              content: errorSystemMessage
+            }
+          ];
+
+          // Nova chamada ao generateText com contexto de erro (limitado a 1 step para evitar loops)
+          const { text: errorResponseText, usage: errorUsage } = await generateText({
+            model: openai(modelName),
+            system: systemPrompt,
+            messages: errorMessages,
+            tools: mcpTools,
+            stopWhen: stepCountIs(1), // Limita a 1 step para evitar loops
+          });
+
+          if (errorResponseText && errorResponseText.trim()) {
+            finalText = errorResponseText;
+            console.log("✅ IA gerou resposta educada sobre o erro");
+            console.log(`📝 Resposta gerada (${errorResponseText.length} caracteres): ${errorResponseText.substring(0, 100)}...`);
+            
+            // Atualiza usage data se disponível
+            if (errorUsage) {
+              const previousUsage: { inputTokens: number; outputTokens: number; totalTokens: number } = usageData || { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+              usageData = {
+                inputTokens: (previousUsage.inputTokens || 0) + (errorUsage.inputTokens ?? 0),
+                outputTokens: (previousUsage.outputTokens || 0) + (errorUsage.outputTokens ?? 0),
+                totalTokens: (previousUsage.totalTokens || 0) + (errorUsage.totalTokens ?? 0),
+              };
+              console.log(`📊 Tokens atualizados após tratamento de erro: input=${usageData.inputTokens}, output=${usageData.outputTokens}, total=${usageData.totalTokens}`);
+            }
+          } else {
+            console.warn("⚠️ IA não gerou resposta mesmo com contexto de erro");
+            console.warn("⚠️ Usando texto original ou fallback");
+          }
+        } catch (errorRetryError) {
+          console.error("❌ Erro ao tentar gerar resposta com contexto de erro:", errorRetryError);
+          if (errorRetryError instanceof Error) {
+            console.error("   Mensagem:", errorRetryError.message);
+            console.error("   Stack:", errorRetryError.stack?.substring(0, 300));
+          }
+          console.warn("⚠️ Continuando com texto original ou fallback");
+          // Continua com o texto original ou usa fallback
+        }
+      }
 
       // O 'usage' já vem preenchido, sem precisar de malabarismos
       if (usage) {
@@ -309,8 +433,22 @@ export async function POST(req: Request) {
           // Verifica se há tool results (resultado da execução)
           if (step.toolResults && step.toolResults.length > 0) {
             step.toolResults.forEach((toolResult: any, toolIndex: number) => {
-              console.log(`  ✅ Tool result ${toolIndex + 1}:`);
+              const hasError = toolResult.error || toolResult.isError || 
+                (toolResult.result && typeof toolResult.result === 'object' && 'error' in toolResult.result) ||
+                (toolResult.result && typeof toolResult.result === 'string' && toolResult.result.toLowerCase().includes('error'));
+              
+              const logPrefix = hasError ? '  ❌ Tool result (ERRO)' : '  ✅ Tool result';
+              console.log(`${logPrefix} ${toolIndex + 1}:`);
               console.log(`     Tool: ${toolResult.toolName || 'N/A'}`);
+              
+              if (toolResult.error || toolResult.isError) {
+                const errorMsg = toolResult.error?.message || toolResult.error || 'Erro desconhecido';
+                console.error(`     ⚠️ ERRO DETECTADO: ${errorMsg}`);
+                if (toolResult.error?.stack) {
+                  console.error(`     Stack trace: ${toolResult.error.stack.substring(0, 300)}...`);
+                }
+              }
+              
               if (toolResult.result !== undefined && toolResult.result !== null) {
                 try {
                   const resultStr = JSON.stringify(toolResult.result, null, 2);
@@ -357,14 +495,14 @@ export async function POST(req: Request) {
         console.error("Erro detalhado:", error.message);
         console.error("Stack:", error.stack);
       }
-      // Usa fallback se houver erro
-      finalText = "Desculpe, tive uma instabilidade para processar sua mensagem. Por favor, tente novamente.";
+      // Usa fallback específico para erros não relacionados a tools
+      finalText = "Desculpe, encontrei uma dificuldade técnica ao processar sua mensagem. Por favor, tente novamente em alguns instantes. Se o problema persistir, entre em contato conosco diretamente.";
     }
 
-    // Se não houver texto final, usa fallback
+    // Se não houver texto final após todo o processamento, usa fallback específico
     if (!finalText.trim()) {
-      console.warn("⚠️ IA não gerou texto final");
-      finalText = "Desculpe, tive uma instabilidade para concluir seu pedido agora. Tente novamente mais tarde.";
+      console.warn("⚠️ IA não gerou texto final após processamento completo");
+      finalText = "Desculpe, não consegui processar sua solicitação no momento. Nossa equipe foi notificada e entrará em contato em breve. Obrigado pela compreensão!";
     }
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);
