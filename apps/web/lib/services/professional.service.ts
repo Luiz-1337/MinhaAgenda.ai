@@ -52,6 +52,7 @@ export class ProfessionalService {
     const result = await db
       .select({
         salonId: salons.id,
+        ownerId: salons.ownerId,
         ownerTier: profiles.tier,
       })
       .from(salons)
@@ -63,14 +64,27 @@ export class ProfessionalService {
       throw new Error("Salão não encontrado")
     }
 
-    // 2. Verifica limites do plano
-    const currentCount = await this.countActiveProfessionals(salonId)
     const tier = result[0].ownerTier as PlanTier
+    const ownerId = result[0].ownerId
 
-    if (!canAddProfessional(tier, currentCount)) {
-      if (tier === 'SOLO') {
-        throw new Error("O plano SOLO permite apenas 1 profissional (você). Faça upgrade para o plano BUSINESS para adicionar equipe.")
+    // 2. Bloqueio explícito para plano SOLO
+    // No plano SOLO, apenas o owner pode existir como profissional
+    if (tier === 'SOLO') {
+      // Se está tentando criar um profissional diferente do owner, bloquear
+      if (data.userId && data.userId !== ownerId) {
+        throw new Error("O plano SOLO permite apenas você como profissional. Não é possível adicionar outros usuários ao salão. Faça upgrade para adicionar membros à equipe.")
       }
+      
+      // Verifica se já existe algum profissional (deve ser apenas o owner)
+      const currentCount = await this.countActiveProfessionals(salonId)
+      if (currentCount >= 1) {
+        throw new Error("O plano SOLO permite apenas 1 profissional (você). Faça upgrade para o plano PRO ou ENTERPRISE para adicionar equipe.")
+      }
+    }
+
+    // 3. Verifica limites do plano para outros tiers
+    const currentCount = await this.countActiveProfessionals(salonId)
+    if (!canAddProfessional(tier, currentCount)) {
       throw new Error(`Limite de profissionais atingido para o plano ${tier}.`)
     }
 

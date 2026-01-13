@@ -140,6 +140,31 @@ export async function upsertProfessional(
     return { error: "Acesso negado. Apenas Gerentes e Proprietários podem gerenciar a equipe." }
   }
 
+  // Verifica se o salão é SOLO e bloqueia criação/edição de profissionais extras
+  if (!parsed.data.id) {
+    // Apenas para criação (não edição)
+    const salonInfo = await db
+      .select({
+        ownerId: salons.ownerId,
+        ownerTier: profiles.tier,
+      })
+      .from(salons)
+      .innerJoin(profiles, eq(profiles.id, salons.ownerId))
+      .where(eq(salons.id, input.salonId))
+      .limit(1)
+
+    if (salonInfo.length > 0 && salonInfo[0].ownerTier === 'SOLO') {
+      // Verifica se está tentando criar um profissional diferente do owner
+      const existingUser = await db.query.profiles.findFirst({
+        where: eq(profiles.email, normalizeEmail(parsed.data.email))
+      })
+      
+      if (existingUser && existingUser.id !== salonInfo[0].ownerId) {
+        return { error: "O plano SOLO permite apenas você como profissional. Não é possível adicionar outros usuários ao salão. Faça upgrade para adicionar membros à equipe." }
+      }
+    }
+  }
+
   // Busca userId pelo email, se existir
   let userIdToLink: string | undefined = undefined
   const existingUser = await db.query.profiles.findFirst({
@@ -192,6 +217,29 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
 
   if (!hasAccess) {
     return { error: "Acesso negado" }
+  }
+
+  // Verifica se é salão SOLO e bloqueia remoção do profissional do owner
+  const salonInfo = await db
+    .select({
+      ownerId: salons.ownerId,
+      ownerTier: profiles.tier,
+    })
+    .from(salons)
+    .innerJoin(profiles, eq(profiles.id, salons.ownerId))
+    .where(eq(salons.id, salonId))
+    .limit(1)
+
+  if (salonInfo.length > 0 && salonInfo[0].ownerTier === 'SOLO') {
+    // Busca o profissional para verificar se é o owner
+    const professional = await db.query.professionals.findFirst({
+      where: eq(professionals.id, id),
+      columns: { userId: true }
+    })
+
+    if (professional?.userId === salonInfo[0].ownerId) {
+      return { error: "Não é possível remover o profissional do owner em um salão SOLO." }
+    }
   }
 
   try {

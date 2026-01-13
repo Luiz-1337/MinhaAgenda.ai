@@ -62,6 +62,7 @@ export default function TeamPage() {
   // Calcula contagem de ativos
   const activeCount = useMemo(() => list.filter(p => p.is_active).length, [list])
   const canCreate = canAddProfessional(planTier, activeCount)
+  const isSolo = planTier === 'SOLO'
 
   useEffect(() => {
     if (!activeSalon) return
@@ -164,7 +165,12 @@ export default function TeamPage() {
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Equipe</h2>
         </div>
         
-        {canCreate ? (
+        {isSolo ? (
+          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 dark:border-slate-700">
+            <AlertCircle size={16} />
+            <span>Plano SOLO: Apenas você tem acesso. Faça upgrade para adicionar equipe.</span>
+          </div>
+        ) : canCreate ? (
           <>
             <button
               onClick={openCreate}
@@ -442,13 +448,23 @@ export default function TeamPage() {
                 </div>
 
                 <div className="col-span-3 flex justify-end gap-2 pr-2">
-                  <button
-                    onClick={() => openEdit(member)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
-                  >
-                    <Pencil size={12} />
-                    Editar
-                  </button>
+                  {!isSolo && (
+                    <>
+                      <button
+                        onClick={() => openEdit(member)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                      >
+                        <Pencil size={12} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClick(member)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={() => {
                       setSelectedProfessional(member)
@@ -458,13 +474,6 @@ export default function TeamPage() {
                   >
                     <Clock size={12} />
                     Horários
-                  </button>
-                  <button
-                    onClick={() => handleDeleteClick(member)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
-                  >
-                    <Trash2 size={12} />
-                    
                   </button>
                 </div>
               </div>

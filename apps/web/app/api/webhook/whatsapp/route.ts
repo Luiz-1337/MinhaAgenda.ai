@@ -79,8 +79,73 @@ export async function POST(req: Request) {
 
     console.log(`📥 Webhook WhatsApp recebido: From=${from}, To=${to}, Body=${body?.substring(0, 100)}...`);
 
-    if (!from || !body || !to) {
-      console.error("Missing required fields: From, Body, or To");
+    if (!from || !to) {
+      console.error("Missing required fields: From or To");
+      return new Response("Missing required fields", { status: 400 });
+    }
+
+    // Função helper para detectar tipo de mídia
+    function detectMediaType(formData: FormData): 'image' | 'audio' | 'video' | null {
+      const numMedia = parseInt(formData.get('NumMedia')?.toString() || '0', 10);
+      if (numMedia === 0) return null;
+      
+      // Verifica o primeiro tipo de mídia (MediaContentType0)
+      const contentType = formData.get('MediaContentType0')?.toString().toLowerCase() || '';
+      
+      if (contentType.startsWith('image/')) return 'image';
+      if (contentType.startsWith('audio/')) return 'audio';
+      if (contentType.startsWith('video/')) return 'video';
+      
+      return null; // Tipo desconhecido, mas ainda é mídia
+    }
+
+    // Verifica se a mensagem contém mídia
+    const numMedia = parseInt(formData.get('NumMedia')?.toString() || '0', 10);
+    const mediaType = detectMediaType(formData);
+
+    if (numMedia > 0) {
+      console.log(`📷 Mídia detectada: tipo=${mediaType || 'desconhecido'}, NumMedia=${numMedia}`);
+      
+      // Busca salão para enviar resposta
+      const salonId = await getSalonIdByWhatsapp(to);
+      
+      if (!salonId) {
+        console.error(`❌ Salão não encontrado para o número de WhatsApp: ${to}`);
+        return new Response(
+          `Salão não encontrado para o número de WhatsApp: ${to}`,
+          { status: 404 }
+        );
+      }
+
+      // Normaliza número do cliente
+      const clientPhone = normalizePhoneNumber(from);
+      
+      // Encontra ou cria o customer
+      const customer = await findOrCreateCustomer(clientPhone, salonId);
+      
+      // Encontra ou cria chat
+      const chat = await findOrCreateChat(clientPhone, salonId);
+      
+      // Salva mensagem do usuário indicando que foi mídia
+      const mediaTypeLabel = mediaType === 'image' ? 'imagem' : 
+                            mediaType === 'audio' ? 'áudio' : 
+                            mediaType === 'video' ? 'vídeo' : 'mídia';
+      await saveMessage(chat.id, "user", `[${mediaTypeLabel.toUpperCase()}] Mensagem de mídia não suportada`);
+      
+      // Envia resposta automática informando que apenas texto é aceito
+      const autoResponse = "Olá! No momento, aceitamos apenas mensagens de texto. Por favor, envie sua mensagem digitada. Obrigado!";
+      
+      await sendWhatsAppMessage(from, autoResponse, salonId);
+      await saveMessage(chat.id, "assistant", autoResponse);
+      
+      console.log(`✅ Resposta automática enviada para mídia não suportada`);
+      
+      return new Response("", { status: 200 });
+    }
+
+    // Valida Body apenas se não houver mídia (mensagens de texto)
+    if (!body) {
+      console.error("Missing required field: Body");
       return new Response("Missing required fields", { status: 400 });
     }
 

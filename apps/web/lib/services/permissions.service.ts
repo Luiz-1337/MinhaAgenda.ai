@@ -1,10 +1,10 @@
-import { db, salons, professionals } from "@repo/db"
+import { db, salons, professionals, profiles } from "@repo/db"
 import { eq, and, or, inArray } from "drizzle-orm"
 
 /**
  * Verifica se o usuário tem permissão de gerenciamento no salão.
  * Permite acesso para:
- * 1. Dono do salão (salon.ownerId)
+ * 1. Dono do salão (salon.ownerId) - SEMPRE tem acesso total se tier for SOLO
  * 2. Profissionais com cargo de MANAGER ou OWNER
  */
 export async function hasSalonPermission(salonId: string, userId: string): Promise<boolean> {
@@ -15,7 +15,21 @@ export async function hasSalonPermission(salonId: string, userId: string): Promi
 
   if (!salon) return false
 
-  if (salon.ownerId === userId) return true
+  // Se é o owner, verificar se tem tier SOLO para dar acesso total
+  if (salon.ownerId === userId) {
+    const ownerProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, userId),
+      columns: { tier: true }
+    })
+    
+    // Se o owner tem tier SOLO, sempre retorna true (acesso total como administrador)
+    if (ownerProfile?.tier === 'SOLO') {
+      return true
+    }
+    
+    // Owner de outros planos também tem acesso
+    return true
+  }
 
   const pro = await db.query.professionals.findFirst({
     where: and(
