@@ -49,6 +49,16 @@ export const getServicesSchema = z.object({
 export type GetServicesInput = z.infer<typeof getServicesSchema>
 
 /**
+ * Schema para buscar produtos
+ */
+export const getProductsSchema = z.object({
+  salonId: z.uuid("salonId deve ser um UUID válido"),
+  includeInactive: z.boolean().default(false).optional(),
+})
+
+export type GetProductsInput = z.infer<typeof getProductsSchema>
+
+/**
  * Schema para salvar preferência do cliente
  */
 export const saveCustomerPreferenceSchema = z.object({

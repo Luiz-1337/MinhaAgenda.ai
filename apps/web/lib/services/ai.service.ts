@@ -21,6 +21,7 @@ export { SystemPromptBuilder, createSalonAssistantPrompt } from "./ai/system-pro
 export { AvailabilityToolFactory } from "./ai/tools/availability-tool-factory.service"
 export { AppointmentToolFactory } from "./ai/tools/appointment-tool-factory.service"
 export { ServicesToolFactory } from "./ai/tools/services-tool-factory.service"
+export { ProductsToolFactory } from "./ai/tools/products-tool-factory.service"
 export { ProfessionalsToolFactory } from "./ai/tools/professionals-tool-factory.service"
 export { PreferencesToolFactory } from "./ai/tools/preferences-tool-factory.service"
 
@@ -31,6 +32,7 @@ export { PreferencesToolFactory } from "./ai/tools/preferences-tool-factory.serv
 import { AvailabilityToolFactory } from "./ai/tools/availability-tool-factory.service"
 import { AppointmentToolFactory } from "./ai/tools/appointment-tool-factory.service"
 import { ServicesToolFactory } from "./ai/tools/services-tool-factory.service"
+import { ProductsToolFactory } from "./ai/tools/products-tool-factory.service"
 import { ProfessionalsToolFactory } from "./ai/tools/professionals-tool-factory.service"
 import { PreferencesToolFactory } from "./ai/tools/preferences-tool-factory.service"
 import { mapModelToOpenAI } from "./ai/model-mapper.service"
@@ -67,6 +69,14 @@ export function createBookAppointmentTool(salonId: string, clientId?: string) {
  */
 export function createGetServicesTool(salonId: string) {
   return ServicesToolFactory.create(salonId)
+}
+
+/**
+ * Tool para buscar produtos do salão
+ * @deprecated Use ProductsToolFactory.create() instead
+ */
+export function createGetProductsTool(salonId: string) {
+  return ProductsToolFactory.create(salonId)
 }
 
 /**

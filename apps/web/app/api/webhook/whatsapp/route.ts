@@ -364,7 +364,7 @@ export async function POST(req: Request) {
     // Se não houver texto final, usa fallback
     if (!finalText.trim()) {
       console.warn("⚠️ IA não gerou texto final");
-      finalText = "Desculpe, tive uma instabilidade para concluir seu pedido agora";
+      finalText = "Desculpe, tive uma instabilidade para concluir seu pedido agora. Tente novamente mais tarde.";
     }
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);

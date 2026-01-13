@@ -7,6 +7,7 @@ import {
   createAvailabilityTool,
   createBookAppointmentTool,
   createGetServicesTool,
+  createGetProductsTool,
   createGetProfessionalsTool,
   createSaveUserPreferencesTool,
   createSalonAssistantPrompt,
@@ -150,6 +151,7 @@ export class ProcessChatMessageUseCase {
       }),
       bookAppointment: createBookAppointmentTool(this.salonId, this.clientId),
       getServices: createGetServicesTool(this.salonId),
+      getProducts: createGetProductsTool(this.salonId),
       getProfessionals: createGetProfessionalsTool(this.salonId),
       saveUserPreferences: createSaveUserPreferencesTool(this.salonId, this.clientId),
     }

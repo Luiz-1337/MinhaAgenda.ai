@@ -1,5 +1,5 @@
 import { and, asc, eq, gt, ilike } from "drizzle-orm"
-import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, availability, professionalServices, fromBrazilTime } from "@repo/db"
+import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, products, availability, professionalServices, fromBrazilTime } from "@repo/db"
 
 export class MinhaAgendaAITools {
 
@@ -540,6 +540,33 @@ export class MinhaAgendaAITools {
                 price: s.price.toString(),
             })),
             message: `Encontrados ${servicesList.length} serviço(s) disponível(is)`,
+        })
+
+    }
+
+    public async getProducts(salonId: string, includeInactive?: boolean) {
+        const productsList = await db
+            .select({
+                id: products.id,
+                name: products.name,
+                description: products.description,
+                price: products.price,
+                isActive: products.isActive,
+            })
+            .from(products)
+            .where(
+                and(
+                    eq(products.salonId, salonId),
+                    includeInactive ? undefined : eq(products.isActive, true)
+                )
+            )
+
+        return JSON.stringify({
+            products: productsList.map((p) => ({
+                ...p,
+                price: p.price.toString(),
+            })),
+            message: `Encontrados ${productsList.length} produto(s) disponível(is)`,
         })
 
     }

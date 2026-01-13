@@ -7,6 +7,7 @@ import {
   getMyFutureAppointmentsSchema,
   getProfessionalAvailabilityRulesSchema,
   getProfessionalsSchema,
+  getProductsSchema,
   getServicesSchema,
   identifyCustomerSchema,
   qualifyLeadSchema,
@@ -52,6 +53,7 @@ export function createCoreTools(salonId: string, clientPhone: string) {
     })
 
   const getServicesInputSchema = getServicesSchema.omit({ salonId: true })
+  const getProductsInputSchema = getProductsSchema.omit({ salonId: true })
   const saveCustomerPreferenceInputSchema = saveCustomerPreferenceSchema
     .omit({ salonId: true })
     .extend({
@@ -109,6 +111,15 @@ export function createCoreTools(salonId: string, clientPhone: string) {
       inputSchema: getServicesInputSchema,
       execute: async (input: z.infer<typeof getServicesInputSchema>) => {
         const result = await impl.getServices(salonId, input.includeInactive)
+        return maybeParseJson(result)
+      },
+    }),
+
+    getProducts: tool({
+      description: "Busca lista de produtos disponíveis em um salão com preços.",
+      inputSchema: getProductsInputSchema,
+      execute: async (input: z.infer<typeof getProductsInputSchema>) => {
+        const result = await impl.getProducts(salonId, input.includeInactive)
         return maybeParseJson(result)
       },
     }),
