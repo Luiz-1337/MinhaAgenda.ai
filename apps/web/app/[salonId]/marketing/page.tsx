@@ -238,13 +238,6 @@ export default function MarketingPage() {
                       className="w-full flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-4 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-violet-500 transition-all resize-none min-h-[200px]"
                     />
                   </div>
-
-                  <div className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl">
-                    <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer" id="coupon" />
-                    <label htmlFor="coupon" className="text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer flex items-center gap-2">
-                      <Sparkles size={14} className="text-amber-500" /> Incluir cupom de desconto gerado por IA?
-                    </label>
-                  </div>
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/5">

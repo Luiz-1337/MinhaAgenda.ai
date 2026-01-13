@@ -395,6 +395,11 @@ export const campaigns = pgTable('campaigns', {
   name: text('name').notNull(),
   description: text('description'),
   status: text('status'),
+  messageTemplate: text('message_template'),
+  segmentationCriteria: jsonb('segmentation_criteria'),
+  includeAiCoupon: boolean('include_ai_coupon').default(false).notNull(),
+  sentCount: integer('sent_count').default(0).notNull(),
+  totalRecipients: integer('total_recipients').default(0).notNull(),
   startsAt: timestamp('starts_at'),
   endsAt: timestamp('ends_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -409,6 +414,64 @@ export const campaignRecipients = pgTable('campaign_recipients', {
   profileId: uuid('profile_id').references(() => profiles.id),
   addedAt: timestamp('added_at').defaultNow().notNull()
 })
+
+export const recoveryFlows = pgTable(
+  'recovery_flows',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('recovery_flows_salon_idx').on(table.salonId),
+    index('recovery_flows_active_idx').on(table.isActive)
+  ]
+)
+
+export const recoverySteps = pgTable(
+  'recovery_steps',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    recoveryFlowId: uuid('recovery_flow_id').references(() => recoveryFlows.id, { onDelete: 'cascade' }).notNull(),
+    stepOrder: integer('step_order').notNull(),
+    daysAfterInactivity: integer('days_after_inactivity').notNull(),
+    messageTemplate: text('message_template').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('recovery_steps_flow_idx').on(table.recoveryFlowId),
+    index('recovery_steps_order_idx').on(table.recoveryFlowId, table.stepOrder),
+    uniqueIndex('recovery_steps_flow_order_unique').on(table.recoveryFlowId, table.stepOrder)
+  ]
+)
+
+export const campaignMessages = pgTable(
+  'campaign_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'set null' }),
+    phoneNumber: text('phone_number').notNull(),
+    messageSent: text('message_sent').notNull(),
+    status: text('status').default('pending').notNull(),
+    sentAt: timestamp('sent_at'),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('campaign_messages_campaign_idx').on(table.campaignId),
+    index('campaign_messages_status_idx').on(table.status),
+    index('campaign_messages_customer_idx').on(table.customerId),
+    index('campaign_messages_phone_idx').on(table.phoneNumber)
+  ]
+)
 
 // ============================================================================
 // TABLES - Dashboard Statistics
@@ -537,6 +600,8 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   appointments: many(appointments),
   chats: many(chats),
   customers: many(customers),
+  campaigns: many(campaigns),
+  recoveryFlows: many(recoveryFlows),
   integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] }),
   agent: one(agents, { fields: [salons.id], references: [agents.salonId] }),
   systemPromptTemplates: many(systemPromptTemplates)
@@ -624,4 +689,33 @@ export const systemPromptTemplatesRelations = relations(systemPromptTemplates, (
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
   user: one(profiles, { fields: [payments.userId], references: [profiles.id] })
+}))
+
+export const recoveryFlowsRelations = relations(recoveryFlows, ({ one, many }) => ({
+  salon: one(salons, { fields: [recoveryFlows.salonId], references: [salons.id] }),
+  steps: many(recoverySteps)
+}))
+
+export const recoveryStepsRelations = relations(recoverySteps, ({ one }) => ({
+  recoveryFlow: one(recoveryFlows, { fields: [recoverySteps.recoveryFlowId], references: [recoveryFlows.id] })
+}))
+
+export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
+  salon: one(salons, { fields: [campaigns.salonId], references: [salons.id] }),
+  recipients: many(campaignRecipients),
+  messages: many(campaignMessages)
+}))
+
+export const campaignRecipientsRelations = relations(campaignRecipients, ({ one }) => ({
+  campaign: one(campaigns, { fields: [campaignRecipients.campaignId], references: [campaigns.id] }),
+  customer: one(customers, { fields: [campaignRecipients.customerId], references: [customers.id] }),
+  lead: one(leads, { fields: [campaignRecipients.leadId], references: [leads.id] }),
+  profile: one(profiles, { fields: [campaignRecipients.profileId], references: [profiles.id] })
+}))
+
+export const campaignMessagesRelations = relations(campaignMessages, ({ one }) => ({
+  campaign: one(campaigns, { fields: [campaignMessages.campaignId], references: [campaigns.id] }),
+  customer: one(customers, { fields: [campaignMessages.customerId], references: [customers.id] }),
+  lead: one(leads, { fields: [campaignMessages.leadId], references: [leads.id] }),
+  profile: one(profiles, { fields: [campaignMessages.profileId], references: [profiles.id] })
 }))
