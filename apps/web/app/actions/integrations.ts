@@ -15,6 +15,70 @@ import {
   getTrinksProducts,
 } from "@repo/db"
 
+const updateSalonIntegrationSchema = z.object({
+  salonId: z.string().uuid(),
+  isActive: z.boolean(),
+})
+
+/**
+ * Atualiza o campo isActive de uma integração do salão (ex: Google Calendar)
+ */
+export async function updateSalonIntegration(
+  salonId: string,
+  isActive: boolean
+): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Não autenticado" }
+    }
+
+    // Validação
+    const parsed = updateSalonIntegrationSchema.safeParse({ salonId, isActive })
+    if (!parsed.success) {
+      return { error: formatZodError(parsed.error) }
+    }
+
+    // Permission Check
+    const hasAccess = await hasSalonPermission(salonId, user.id)
+    if (!hasAccess) {
+      return { error: "Acesso negado a este salão" }
+    }
+
+    // Busca integração Google do salão
+    const integration = await db.query.salonIntegrations.findFirst({
+      where: and(
+        eq(salonIntegrations.salonId, salonId),
+        eq(salonIntegrations.provider, "google")
+      ),
+    })
+
+    if (!integration) {
+      return { error: "Integração Google Calendar não encontrada para este salão" }
+    }
+
+    // Atualiza isActive
+    await db
+      .update(salonIntegrations)
+      .set({
+        isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(salonIntegrations.id, integration.id))
+
+    revalidatePath(`/${salonId}/dashboard`)
+    revalidatePath(`/${salonId}/settings`)
+    return { success: true }
+  } catch (error) {
+    console.error("Erro ao atualizar integração do salão:", error)
+    return { error: "Falha ao atualizar integração" }
+  }
+}
+
 const saveTrinksTokenSchema = z.object({
   salonId: z.string().uuid(),
   token: z.string().min(1, "Token é obrigatório"),

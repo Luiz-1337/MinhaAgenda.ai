@@ -93,15 +93,26 @@ export async function GET(req: NextRequest) {
       expiry_date: tokens.expiry_date,
     })
 
-    // Busca informações do usuário Google (opcional - pode falhar, mas não é crítico)
+    // Busca informações do usuário Google
     let email: string | null = null
     try {
+      console.log('📧 Buscando email do usuário Google...')
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client })
       const userInfo = await oauth2.userinfo.get()
       email = userInfo.data.email || null
+      
+      if (email) {
+        console.log('✅ Email obtido com sucesso:', email)
+      } else {
+        console.warn('⚠️ Email não encontrado na resposta do Google')
+      }
     } catch (emailError: any) {
       // Não é crítico se falhar - podemos continuar sem o email
-      console.warn('Não foi possível obter email do usuário Google:', emailError.message)
+      console.error('❌ Erro ao obter email do usuário Google:', {
+        message: emailError.message,
+        code: emailError.code,
+        response: emailError.response?.data,
+      })
       // O email pode ser null, não é obrigatório
     }
 
@@ -124,7 +135,7 @@ export async function GET(req: NextRequest) {
     })
 
     if (existingIntegration) {
-      // Atualiza existente
+      // Atualiza existente (mantém isActive atual, não sobrescreve)
       const updateResult = await db
         .update(salonIntegrations)
         .set({
@@ -133,6 +144,7 @@ export async function GET(req: NextRequest) {
           expiresAt,
           email,
           updatedAt: new Date(),
+          // isActive não é atualizado aqui - mantém o valor atual
         })
         .where(eq(salonIntegrations.id, existingIntegration.id))
         .returning({ id: salonIntegrations.id, refreshToken: salonIntegrations.refreshToken })
@@ -150,7 +162,7 @@ export async function GET(req: NextRequest) {
       
       console.log('✅ Integração atualizada com sucesso. Refresh token salvo e verificado.')
     } else {
-      // Cria novo
+      // Cria novo (isActive será true por padrão)
       const result = await db.insert(salonIntegrations).values({
         salonId,
         provider: 'google',
@@ -158,6 +170,7 @@ export async function GET(req: NextRequest) {
         accessToken: tokens.access_token || null,
         expiresAt,
         email,
+        isActive: true, // Ativa sincronização automática por padrão ao conectar
       }).returning({ id: salonIntegrations.id })
       
       // Verifica se o refresh token foi salvo corretamente

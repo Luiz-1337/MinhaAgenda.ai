@@ -68,7 +68,13 @@ export async function getSalonGoogleClient(salonId: string): Promise<{ client: O
     return null
   }
 
-  console.log('✅ Integração encontrada. Configurando OAuth2Client...')
+  // Verifica se a integração está ativa
+  if (integration.isActive === false) {
+    console.log('ℹ️ Integração está desativada (isActive=false) para salão:', salonId)
+    return null
+  }
+
+  console.log('✅ Integração encontrada e ativa. Configurando OAuth2Client...')
   const oauth2Client = getOAuth2Client()
   
   // Configura tokens

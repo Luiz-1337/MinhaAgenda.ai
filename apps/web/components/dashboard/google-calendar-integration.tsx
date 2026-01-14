@@ -8,8 +8,9 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { updateProfile } from "@/app/actions/profile"
 import { updateProfileSchema, type UpdateProfileSchema } from "@/lib/schemas"
-import { useTransition } from "react"
+import { useTransition, useEffect, useState } from "react"
 import type { ProfileDetails } from "@/app/actions/profile"
+import { updateSalonIntegration } from "@/app/actions/integrations"
 
 function GoogleCalendarConnectButton({ isConnected }: { isConnected: boolean }) {
   const params = useParams()
@@ -43,28 +44,76 @@ interface GoogleCalendarIntegrationProps {
 
 export function GoogleCalendarIntegration({ profile }: GoogleCalendarIntegrationProps) {
   const [isPending, startTransition] = useTransition()
+  const params = useParams()
+  const salonId = params?.salonId as string | undefined
+  const [integrationIsActive, setIntegrationIsActive] = useState<boolean | null>(null)
+
+  // Busca integração do salão ao carregar
+  useEffect(() => {
+    async function fetchIntegration() {
+      if (!salonId) return
+
+      try {
+        const response = await fetch(`/api/integrations/google?salonId=${salonId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setIntegrationIsActive(data.isActive ?? false)
+        }
+      } catch (error) {
+        console.error("Erro ao buscar integração:", error)
+      }
+    }
+
+    fetchIntegration()
+  }, [salonId])
+
+  // Usa isActive da integração se disponível, senão usa calendarSyncEnabled do profile
+  const initialValue = integrationIsActive !== null ? integrationIsActive : profile.calendarSyncEnabled
 
   const form = useForm<Pick<UpdateProfileSchema, "calendarSyncEnabled">>({
     resolver: zodResolver(updateProfileSchema.pick({ calendarSyncEnabled: true })),
     defaultValues: {
-      calendarSyncEnabled: profile.calendarSyncEnabled,
+      calendarSyncEnabled: initialValue,
     },
     mode: "onChange",
   })
 
+  // Atualiza form quando integrationIsActive mudar
+  useEffect(() => {
+    if (integrationIsActive !== null) {
+      form.setValue("calendarSyncEnabled", integrationIsActive)
+    }
+  }, [integrationIsActive, form])
+
   function handleToggleChange(checked: boolean) {
     form.setValue("calendarSyncEnabled", checked)
     startTransition(async () => {
-      const res = await updateProfile({
-        calendarSyncEnabled: checked,
-      })
-
-      if ("error" in res) {
-        toast.error(res.error)
+      if (!salonId) {
+        toast.error("Não foi possível identificar o salão. Tente novamente.")
         form.setValue("calendarSyncEnabled", !checked)
         return
       }
 
+      // Atualiza isActive na integração do salão
+      const integrationRes = await updateSalonIntegration(salonId, checked)
+
+      if ("error" in integrationRes) {
+        toast.error(integrationRes.error)
+        form.setValue("calendarSyncEnabled", !checked)
+        return
+      }
+
+      // Mantém compatibilidade: também atualiza calendarSyncEnabled no profile
+      const profileRes = await updateProfile({
+        calendarSyncEnabled: checked,
+      })
+
+      if ("error" in profileRes) {
+        // Se falhar no profile, não reverte a integração (já foi atualizada)
+        console.warn("Erro ao atualizar profile, mas integração foi atualizada:", profileRes.error)
+      }
+
+      setIntegrationIsActive(checked)
       toast.success("Configuração do Google Calendar atualizada")
     })
   }
@@ -79,7 +128,7 @@ export function GoogleCalendarIntegration({ profile }: GoogleCalendarIntegration
           </h3>
           <p className="text-xs text-slate-500 mt-1">Sincronize seus agendamentos com o Google Calendar</p>
         </div>
-        {form.watch("calendarSyncEnabled") && (
+        {(integrationIsActive ?? form.watch("calendarSyncEnabled")) && (
           <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
             Ativa
           </span>
@@ -109,7 +158,7 @@ export function GoogleCalendarIntegration({ profile }: GoogleCalendarIntegration
           </div>
         </div>
 
-        <GoogleCalendarConnectButton isConnected={!!form.watch("calendarSyncEnabled")} />
+        <GoogleCalendarConnectButton isConnected={!!(integrationIsActive ?? form.watch("calendarSyncEnabled"))} />
       </div>
     </div>
   )

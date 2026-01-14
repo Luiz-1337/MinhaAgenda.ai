@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
       scope: [
         'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/userinfo.email',
       ],
       prompt: 'consent', // Força mostrar tela de consentimento para garantir refresh_token
       state: salon.id, // Passa o salonId no state para recuperar no callback

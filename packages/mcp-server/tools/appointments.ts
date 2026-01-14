@@ -7,7 +7,6 @@ import {
   updateAppointmentSchema,
   deleteAppointmentSchema,
 } from "../src/schemas/tools.schema"
-import { ensureIsoWithTimezone } from "@/lib/services/ai.service"
 
 type JsonValue =
   | string
@@ -26,6 +25,22 @@ function maybeParseJson(value: unknown): JsonValue | unknown {
   } catch {
     return value
   }
+}
+
+/**
+ * Garante que uma string de data ISO tenha timezone.
+ * Se não tiver, adiciona o timezone padrão -03:00 (Brasil).
+ */
+function ensureIsoWithTimezone(input: unknown): unknown {
+  if (typeof input !== "string") return input
+  const s = input.trim()
+  // Já tem timezone
+  if (/(Z|[+-]\d{2}:?\d{2})$/.test(s)) return s
+  // YYYY-MM-DDTHH:mm -> adiciona segundos + -03:00
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return `${s}:00-03:00`
+  // YYYY-MM-DDTHH:mm:ss -> adiciona -03:00
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) return `${s}-03:00`
+  return s
 }
 
 /**

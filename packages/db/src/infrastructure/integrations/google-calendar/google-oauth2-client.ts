@@ -21,10 +21,7 @@ export class GoogleOAuth2Client implements IOAuth2Client {
   ) {
     const googleClientId = clientId || process.env.GOOGLE_CLIENT_ID
     const googleClientSecret = clientSecret || process.env.GOOGLE_CLIENT_SECRET
-    const googleRedirectUri =
-      redirectUri ||
-      process.env.GOOGLE_REDIRECT_URI ||
-      `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/google/callback`
+    const googleRedirectUri = redirectUri ||process.env.GOOGLE_REDIRECT_URI || process.env.NEXT_PUBLIC_APP_URL
 
     if (!googleClientId || !googleClientSecret) {
       throw new IntegrationError(
@@ -54,6 +51,12 @@ export class GoogleOAuth2Client implements IOAuth2Client {
 
     if (!integration || !integration.refreshToken) {
       this.logger.warn('Integration not found or missing refresh token', { salonId })
+      return null
+    }
+
+    // Verifica se a integração está ativa
+    if (integration.isActive === false) {
+      this.logger.debug('Integration is inactive, skipping', { salonId })
       return null
     }
 

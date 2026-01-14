@@ -288,6 +288,7 @@ export const salonIntegrations = pgTable(
     accessToken: text('access_token'),
     expiresAt: bigint('expires_at', { mode: 'number' }),
     email: text('email'),
+    isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
