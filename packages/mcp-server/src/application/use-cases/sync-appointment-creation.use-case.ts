@@ -1,8 +1,5 @@
-import type { IExternalSyncService } from '@repo/db/domain/integrations/interfaces/external-sync.interface'
-import type { IAppointmentRepository } from '@repo/db/domain/integrations/interfaces/appointment-repository.interface'
-import type { ILogger } from '@repo/db/infrastructure/logger'
-import type { AppointmentId } from '@repo/db/domain/integrations/value-objects/appointment-id'
-import { createAppointmentId } from '@repo/db/domain/integrations/value-objects/index'
+import type { IExternalSyncService, IAppointmentRepository, AppointmentId, ILogger } from '@repo/db'
+import { createAppointmentId } from '@repo/db'
 
 /**
  * Use case for syncing appointment creation with external systems

@@ -10,10 +10,10 @@ import {
   createGetProductsTool,
   createGetProfessionalsTool,
   createSaveUserPreferencesTool,
-  createSalonAssistantPrompt,
-  getActiveAgentInfo,
-  mapModelToOpenAI,
-} from '@/lib/services/ai.service'
+} from '@/lib/services/ai/tools'
+import { createSalonAssistantPrompt } from '@/lib/services/ai/system-prompt-builder.service'
+import { getActiveAgentInfo } from '@/lib/services/ai/agent-info.service'
+import { mapModelToOpenAI } from '@/lib/services/ai/model-mapper.service'
 import { getAvailableSlots } from '@/lib/availability'
 import { createClient } from '@/lib/supabase/server'
 import { RetrieveKnowledgeContextUseCase } from './retrieve-knowledge-context.use-case'

@@ -1,7 +1,9 @@
 import { convertToModelMessages, generateText, UIMessage, stepCountIs } from 'ai';
 import { openai } from "@ai-sdk/openai";
 import { getSalonIdByWhatsapp } from '@/lib/services/salon.service';
-import { createSalonAssistantPrompt, getActiveAgentInfo, mapModelToOpenAI } from '@/lib/services/ai.service';
+import { createSalonAssistantPrompt } from '@/lib/services/ai/system-prompt-builder.service';
+import { getActiveAgentInfo } from '@/lib/services/ai/agent-info.service';
+import { mapModelToOpenAI } from '@/lib/services/ai/model-mapper.service';
 import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
 import { db, salons, customers, chats, agents, appointments, profiles } from "@repo/db";
 import { eq, and } from "drizzle-orm";

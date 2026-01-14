@@ -1,198 +1,83 @@
 /**
- * External sync service implementation
- * Uses Strategy pattern for different providers (Google, Trinks, etc)
- * 
- * @deprecated Use SyncAppointmentCreationUseCase, SyncAppointmentUpdateUseCase, SyncAppointmentDeletionUseCase instead
+ * Helper functions for syncing appointments with external systems
+ * These functions instantiate the use cases with required dependencies
  */
 
-import type { IExternalSyncService } from '@repo/db/domain/integrations/interfaces/external-sync.interface'
-import type { AppointmentId } from '@repo/db/domain/integrations/value-objects/appointment-id'
-import { db, appointments } from '@repo/db'
-import { eq } from 'drizzle-orm'
-import { logger } from '@repo/db/infrastructure/logger'
+import type { IExternalSyncService, AppointmentId } from '@repo/db'
+import { AppointmentRepository, GoogleCalendarIntegration, logger, createAppointmentId } from '@repo/db'
+import { SyncAppointmentCreationUseCase } from '../application/use-cases/sync-appointment-creation.use-case'
+import { SyncAppointmentUpdateUseCase } from '../application/use-cases/sync-appointment-update.use-case'
+import { SyncAppointmentDeletionUseCase } from '../application/use-cases/sync-appointment-deletion.use-case'
 
-/**
- * Checks if Google Calendar integration is active for a salon
- */
-async function checkGoogleCalendarIntegration(salonId: string): Promise<boolean> {
-  try {
-    const { getSalonGoogleClient } = await import('@repo/db')
-    const client = await getSalonGoogleClient(salonId)
-    return client !== null
-  } catch (error) {
-    logger.warn('Error checking Google Calendar integration', {
-      salonId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return false
-  }
-}
+// Create shared instances
+const appointmentRepository = new AppointmentRepository()
+const calendarIntegration = new GoogleCalendarIntegration(appointmentRepository, logger)
 
-/**
- * External sync service - syncs appointments with Google Calendar
- * Implements IExternalSyncService interface
- */
-class GoogleCalendarSyncService implements IExternalSyncService {
+// Adapter to convert GoogleCalendarIntegration to IExternalSyncService
+class GoogleCalendarSyncAdapter implements IExternalSyncService {
+  constructor(private readonly calendarIntegration: GoogleCalendarIntegration) {}
+
   async syncCreate(appointmentId: AppointmentId): Promise<void> {
-    const hasIntegration = await checkGoogleCalendarIntegration(
-      (await db.query.appointments.findFirst({
-        where: eq(appointments.id, appointmentId),
-        columns: { salonId: true },
-      }))?.salonId || ''
-    )
-
-    if (!hasIntegration) {
+    const result = await this.calendarIntegration.createEvent(appointmentId)
+    if (!result) {
+      // Integration not configured - this is OK, just log and continue
       return
-    }
-
-    const { createGoogleEvent } = await import('@repo/db')
-    const result = await createGoogleEvent(appointmentId)
-
-    if (result) {
-      logger.info('Appointment synced with Google Calendar', {
-        appointmentId,
-        eventId: result.eventId,
-        htmlLink: result.htmlLink,
-      })
-    } else {
-      logger.warn('Google Calendar sync returned null - integration may not be configured', {
-        appointmentId,
-      })
     }
   }
 
   async syncUpdate(appointmentId: AppointmentId): Promise<void> {
-    const appointment = await db.query.appointments.findFirst({
-      where: eq(appointments.id, appointmentId),
-      columns: { salonId: true },
-    })
-
-    if (!appointment) {
+    const result = await this.calendarIntegration.updateEvent(appointmentId)
+    if (!result) {
+      // Integration not configured - this is OK, just log and continue
       return
-    }
-
-    const hasIntegration = await checkGoogleCalendarIntegration(appointment.salonId)
-    if (!hasIntegration) {
-      return
-    }
-
-    const { updateGoogleEvent } = await import('@repo/db')
-    const result = await updateGoogleEvent(appointmentId)
-
-    if (result) {
-      logger.info('Appointment updated in Google Calendar', {
-        appointmentId,
-        eventId: result.eventId,
-        htmlLink: result.htmlLink,
-      })
-    } else {
-      logger.warn('Google Calendar update returned null - integration may not be configured', {
-        appointmentId,
-      })
     }
   }
 
   async syncDelete(appointmentId: AppointmentId): Promise<void> {
-    const appointment = await db.query.appointments.findFirst({
-      where: eq(appointments.id, appointmentId),
-      columns: { salonId: true },
-    })
-
-    if (!appointment) {
-      return
-    }
-
-    const hasIntegration = await checkGoogleCalendarIntegration(appointment.salonId)
-    if (!hasIntegration) {
-      return
-    }
-
-    const { deleteGoogleEvent } = await import('@repo/db')
-    const result = await deleteGoogleEvent(appointmentId)
-
-    if (result === true) {
-      logger.info('Event removed successfully from Google Calendar', { appointmentId })
-    } else if (result === false) {
-      logger.debug('Appointment had no event in Google Calendar', { appointmentId })
-    } else {
-      logger.warn('Could not remove event from Google Calendar - integration may not be configured', {
-        appointmentId,
-      })
-    }
+    await this.calendarIntegration.deleteEvent(appointmentId)
+    // deleteEvent returns boolean | null, but we don't need to check it
+    // as it's non-blocking
   }
 }
 
-const syncService = new GoogleCalendarSyncService()
+const syncService = new GoogleCalendarSyncAdapter(calendarIntegration)
 
 /**
- * @deprecated Use SyncAppointmentCreationUseCase instead
+ * Syncs appointment creation with external systems (Google Calendar, etc.)
+ * Non-blocking: errors don't prevent main operation
  */
 export async function syncCreateAppointment(appointmentId: string): Promise<void> {
-  try {
-    const appointment = await db.query.appointments.findFirst({
-      where: eq(appointments.id, appointmentId),
-      columns: { salonId: true },
-    })
-
-    if (!appointment) {
-      logger.warn('Appointment not found for synchronization', { appointmentId })
-      return
-    }
-
-    await syncService.syncCreate(appointmentId as AppointmentId)
-  } catch (error) {
-    logger.error('Error syncing appointment creation', {
-      appointmentId,
-      error: error instanceof Error ? error.message : String(error),
-    }, error as Error)
-  }
+  const useCase = new SyncAppointmentCreationUseCase(
+    appointmentRepository,
+    syncService,
+    logger
+  )
+  await useCase.execute(appointmentId)
 }
 
 /**
- * @deprecated Use SyncAppointmentUpdateUseCase instead
+ * Syncs appointment update with external systems
+ * Non-blocking: errors don't prevent main operation
  */
 export async function syncUpdateAppointment(appointmentId: string): Promise<void> {
-  try {
-    const appointment = await db.query.appointments.findFirst({
-      where: eq(appointments.id, appointmentId),
-      columns: { salonId: true },
-    })
-
-    if (!appointment) {
-      logger.warn('Appointment not found for synchronization', { appointmentId })
-      return
-    }
-
-    await syncService.syncUpdate(appointmentId as AppointmentId)
-  } catch (error) {
-    logger.error('Error syncing appointment update', {
-      appointmentId,
-      error: error instanceof Error ? error.message : String(error),
-    }, error as Error)
-  }
+  const useCase = new SyncAppointmentUpdateUseCase(
+    appointmentRepository,
+    syncService,
+    logger
+  )
+  await useCase.execute(appointmentId)
 }
 
 /**
- * @deprecated Use SyncAppointmentDeletionUseCase instead
- * IMPORTANT: This function must be called BEFORE deleting the appointment from the database
+ * Syncs appointment deletion with external systems
+ * IMPORTANT: Must be called BEFORE deleting from database
+ * Non-blocking: errors don't prevent main operation
  */
 export async function syncDeleteAppointment(appointmentId: string): Promise<void> {
-  try {
-    const appointment = await db.query.appointments.findFirst({
-      where: eq(appointments.id, appointmentId),
-      columns: { salonId: true },
-    })
-
-    if (!appointment) {
-      logger.warn('Appointment not found for deletion synchronization', { appointmentId })
-      return
-    }
-
-    await syncService.syncDelete(appointmentId as AppointmentId)
-  } catch (error) {
-    logger.error('Error syncing appointment deletion', {
-      appointmentId,
-      error: error instanceof Error ? error.message : String(error),
-    }, error as Error)
-  }
+  const useCase = new SyncAppointmentDeletionUseCase(
+    appointmentRepository,
+    syncService,
+    logger
+  )
+  await useCase.execute(appointmentId)
 }

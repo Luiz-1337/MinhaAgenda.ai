@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOAuth2Client } from '@/lib/google'
+import { getRawOAuth2Client } from '@/lib/google'
 import { createClient } from '@/lib/supabase/server'
 import { db, salons } from '@repo/db'
 import { eq } from 'drizzle-orm'
@@ -53,8 +53,8 @@ export async function GET(req: NextRequest) {
       console.log('⚠️ Nenhum salonId fornecido na URL. Usando primeiro salão encontrado:', salon.id)
     }
 
-    // Obtém cliente OAuth2
-    const oauth2Client = getOAuth2Client()
+    // Obtém cliente OAuth2 raw (não autenticado) para gerar URL de autenticação
+    const oauth2Client = getRawOAuth2Client()
 
     // Gera URL de autorização
     const authUrl = oauth2Client.generateAuthUrl({

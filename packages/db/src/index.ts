@@ -68,15 +68,26 @@ export { UpdateTrinksAppointmentUseCase } from './application/use-cases/trinks/u
 export { DeleteTrinksAppointmentUseCase } from './application/use-cases/trinks/delete-trinks-appointment.use-case'
 export { FetchTrinksResourcesUseCase } from './application/use-cases/trinks/fetch-trinks-resources.use-case'
 
-// DEPRECATED: Old service exports - use new use cases instead
-/**
- * @deprecated Use GoogleCalendarIntegration and use cases instead
- * These exports are kept for backward compatibility but will be removed in future versions
- */
-export { getOAuth2Client, getSalonGoogleClient, ensureProfessionalCalendar, createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from './services/google-calendar'
-/**
- * @deprecated Use TrinksApiClient and use cases instead
- * These exports are kept for backward compatibility but will be removed in future versions
- */
-export { isTrinksIntegrationActive, createTrinksAppointment, updateTrinksAppointment, deleteTrinksAppointment, getTrinksProfessionals, getTrinksServices, getTrinksProducts } from './services/trinks'
+// Helper functions for Trinks integration
+// These functions instantiate the use cases with required dependencies
+export { 
+  createTrinksAppointment, 
+  updateTrinksAppointment, 
+  deleteTrinksAppointment,
+  isTrinksIntegrationActive,
+  getTrinksProfessionals,
+  getTrinksServices,
+  getTrinksProducts
+} from './services/trinks'
 
+// Helper functions for Google Calendar integration
+// These functions instantiate the use cases with required dependencies
+export {
+  createGoogleEvent,
+  updateGoogleEvent,
+  deleteGoogleEvent,
+  ensureProfessionalCalendar,
+  getOAuth2Client,
+  getSalonGoogleClient,
+  getRawOAuth2Client
+} from './services/google-calendar'

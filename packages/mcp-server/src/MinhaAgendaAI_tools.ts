@@ -1,7 +1,39 @@
 import { and, asc, eq, gt, ilike } from "drizzle-orm"
-import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, products, availability, professionalServices, fromBrazilTime } from "@repo/db"
+import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, products, availability, professionalServices, fromBrazilTime, createTrinksAppointment, updateTrinksAppointment, deleteTrinksAppointment } from "@repo/db"
+import { syncCreateAppointment, syncUpdateAppointment, syncDeleteAppointment } from "./services/external-sync"
 
 export class MinhaAgendaAITools {
+
+    /**
+     * Verifica quais integrações estão ativas para um salão
+     * Retorna informações sobre Google Calendar e Trinks se estiverem ativas
+     */
+    private async getActiveIntegrations(salonId: string): Promise<{
+        google: { isActive: boolean; email?: string } | null;
+        trinks: { isActive: boolean } | null;
+    }> {
+        const [googleIntegration, trinksIntegration] = await Promise.all([
+            db.query.salonIntegrations.findFirst({
+                where: and(
+                    eq(salonIntegrations.salonId, salonId),
+                    eq(salonIntegrations.provider, 'google')
+                ),
+                columns: { isActive: true, email: true }
+            }),
+            db.query.salonIntegrations.findFirst({
+                where: and(
+                    eq(salonIntegrations.salonId, salonId),
+                    eq(salonIntegrations.provider, 'trinks')
+                ),
+                columns: { isActive: true }
+            })
+        ]);
+
+        return {
+            google: googleIntegration?.isActive ? { isActive: true, email: googleIntegration.email || undefined } : null,
+            trinks: trinksIntegration?.isActive ? { isActive: true } : null
+        };
+    }
 
     public async identifyCustomer(phone: string, name?: string, salonId?: string) {
         // Busca cliente existente
@@ -164,13 +196,25 @@ export class MinhaAgendaAITools {
             }
         }
 
-        // Chama o serviço compartilhado
+        // Chama o serviço compartilhado (consulta no banco)
         const allSlots = await sharedServices.getAvailableSlots({
             date,
             salonId,
             serviceDuration: finalServiceDuration,
             professionalId: professionalId,
         })
+
+        // Verificação opcional de integrações ativas (para logging/informação)
+        const integrations = await this.getActiveIntegrations(salonId)
+        if (integrations.google?.isActive || integrations.trinks?.isActive) {
+            // Log opcional para debug (pode ser removido em produção)
+            if (process.env.NODE_ENV === 'development') {
+                console.log('ℹ️ Integrações ativas detectadas durante verificação de disponibilidade:', {
+                    google: integrations.google?.isActive,
+                    trinks: integrations.trinks?.isActive,
+                })
+            }
+        }
 
         // REGRA DE OURO: Retorna no máximo 2 slots (os dois primeiros melhores)
         // Isso garante que sempre teremos opções concretas para oferecer à cliente
@@ -216,15 +260,33 @@ export class MinhaAgendaAITools {
         const appointmentId = result.data.appointmentId
 
         // Sincroniza com sistemas externos (não bloqueia se falhar)
-        try {
-            const { syncCreateAppointment } = await import("./services/external-sync")
-            await syncCreateAppointment(appointmentId)
-        } catch (error: any) {
-            // Loga erro mas não falha a operação principal
-            console.error("❌ Erro ao sincronizar criação de agendamento:", {
-                error: error?.message || error,
-                stack: error?.stack,
-            })
+        // Passo 1: Verificar integrações ativas
+        const integrations = await this.getActiveIntegrations(salonId)
+
+        // Passo 2: Sincronizar com Google Calendar se ativo
+        if (integrations.google?.isActive) {
+            try {
+                await syncCreateAppointment(appointmentId)
+            } catch (error: any) {
+                // Loga erro mas não falha a operação principal
+                console.error("❌ Erro ao sincronizar criação de agendamento com Google Calendar:", {
+                    error: error?.message || error,
+                    stack: error?.stack,
+                })
+            }
+        }
+
+        // Passo 3: Sincronizar com Trinks se ativo
+        if (integrations.trinks?.isActive) {
+            try {
+                await createTrinksAppointment(appointmentId, salonId)
+            } catch (error: any) {
+                // Loga erro mas não falha a operação principal
+                console.error("❌ Erro ao sincronizar criação de agendamento com Trinks:", {
+                    error: error?.message || error,
+                    stack: error?.stack,
+                })
+            }
         }
 
         // Busca info para retorno (opcional, já temos success, mas a mensagem pede nomes)
@@ -282,16 +344,44 @@ export class MinhaAgendaAITools {
             throw new Error(result.error)
         }
 
+        // Busca salonId do agendamento para verificar integrações
+        const appointment = await db.query.appointments.findFirst({
+            where: eq(appointments.id, appointmentId),
+            columns: { salonId: true },
+        })
+
+        if (!appointment) {
+            throw new Error(`Agendamento com ID ${appointmentId} não encontrado após atualização`)
+        }
+
         // Sincroniza com sistemas externos (não bloqueia se falhar)
-        try {
-            const { syncUpdateAppointment } = await import("./services/external-sync")
-            await syncUpdateAppointment(appointmentId)
-        } catch (error: any) {
-            // Loga erro mas não falha a operação principal
-            console.error("❌ Erro ao sincronizar atualização de agendamento:", {
-                error: error?.message || error,
-                stack: error?.stack,
-            })
+        // Passo 1: Verificar integrações ativas
+        const integrations = await this.getActiveIntegrations(appointment.salonId)
+
+        // Passo 2: Sincronizar com Google Calendar se ativo
+        if (integrations.google?.isActive) {
+            try {
+                await syncUpdateAppointment(appointmentId)
+            } catch (error: any) {
+                // Loga erro mas não falha a operação principal
+                console.error("❌ Erro ao sincronizar atualização de agendamento com Google Calendar:", {
+                    error: error?.message || error,
+                    stack: error?.stack,
+                })
+            }
+        }
+
+        // Passo 3: Sincronizar com Trinks se ativo
+        if (integrations.trinks?.isActive) {
+            try {
+                await updateTrinksAppointment(appointmentId, appointment.salonId)
+            } catch (error: any) {
+                // Loga erro mas não falha a operação principal
+                console.error("❌ Erro ao sincronizar atualização de agendamento com Trinks:", {
+                    error: error?.message || error,
+                    stack: error?.stack,
+                })
+            }
         }
 
         return JSON.stringify({
@@ -301,35 +391,60 @@ export class MinhaAgendaAITools {
     }
 
     public async deleteAppointment(appointmentId: string) {
-        // Busca agendamento existente para validar
+        // Passo 1: Busca dados do agendamento ANTES de deletar (para ter acesso aos IDs externos e salonId)
         const existingAppointment = await db.query.appointments.findFirst({
             where: eq(appointments.id, appointmentId),
-            columns: { id: true },
+            columns: { id: true, salonId: true, googleEventId: true, trinksEventId: true },
         })
 
         if (!existingAppointment) {
             throw new Error(`Agendamento com ID ${appointmentId} não encontrado`)
         }
 
-        // Sincroniza deleção com sistemas externos ANTES de deletar (para poder buscar dados)
-        try {
-            const { syncDeleteAppointment } = await import("./services/external-sync")
-            await syncDeleteAppointment(appointmentId)
-        } catch (error: any) {
-            // Loga erro mas não falha a operação principal
-            console.error("❌ Erro ao sincronizar deleção de agendamento:", {
-                error: error?.message || error,
-                stack: error?.stack,
-            })
-        }
+        // Passo 2: Verificar integrações ativas (antes de deletar para ter acesso aos dados)
+        const integrations = await this.getActiveIntegrations(existingAppointment.salonId)
 
-        // Usa serviço centralizado para deletar
+        // Passo 3: Deletar agendamento do banco primeiro
         const result = await sharedServices.deleteAppointmentService({
             appointmentId,
         })
 
         if (!result.success) {
             throw new Error(result.error)
+        }
+
+        // Passo 4: Sincronizar deleção com Google Calendar se ativo
+        // Nota: syncDeleteAppointment busca o agendamento do banco, mas como já deletamos,
+        // ele vai retornar null/aviso sem falhar graciosamente
+        if (integrations.google?.isActive) {
+            try {
+                await syncDeleteAppointment(appointmentId)
+            } catch (error: any) {
+                // Loga erro mas não falha a operação principal
+                console.error("❌ Erro ao sincronizar deleção de agendamento com Google Calendar:", {
+                    error: error?.message || error,
+                    stack: error?.stack,
+                })
+            }
+        }
+
+        // Passo 5: Sincronizar deleção com Trinks se ativo
+        // Nota: deleteTrinksAppointment também busca o agendamento, mas capturamos o erro
+        if (integrations.trinks?.isActive) {
+            try {
+                await deleteTrinksAppointment(appointmentId, existingAppointment.salonId)
+            } catch (error: any) {
+                // Se o erro for porque o agendamento não foi encontrado (já deletamos), é esperado
+                if (error?.message?.includes('não encontrado')) {
+                    console.log("ℹ️ Agendamento já deletado do banco, pulando sincronização Trinks")
+                } else {
+                    // Loga outros erros mas não falha a operação principal
+                    console.error("❌ Erro ao sincronizar deleção de agendamento com Trinks:", {
+                        error: error?.message || error,
+                        stack: error?.stack,
+                    })
+                }
+            }
         }
 
         return JSON.stringify({

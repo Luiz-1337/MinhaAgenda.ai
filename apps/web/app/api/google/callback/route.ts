@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
-import { getOAuth2Client } from '@/lib/google'
+import { getRawOAuth2Client } from '@/lib/google'
 import { createClient } from '@/lib/supabase/server'
 import { db, salonIntegrations, salons } from '@repo/db'
 import { eq } from 'drizzle-orm'
@@ -62,8 +62,8 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Obtém cliente OAuth2
-    const oauth2Client = getOAuth2Client()
+    // Obtém cliente OAuth2 raw (não autenticado) para trocar código por tokens
+    const oauth2Client = getRawOAuth2Client()
 
     // Troca código por tokens
     const { tokens } = await oauth2Client.getToken(code)

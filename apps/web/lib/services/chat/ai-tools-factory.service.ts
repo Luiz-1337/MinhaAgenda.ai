@@ -9,7 +9,7 @@ import {
   createGetServicesTool,
   createGetProfessionalsTool,
   createSaveUserPreferencesTool,
-} from "@/lib/services/ai.service"
+} from "@/lib/services/ai/tools"
 
 export class AIToolsFactory {
   /**

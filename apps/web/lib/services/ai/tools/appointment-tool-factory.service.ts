@@ -98,7 +98,7 @@ export class AppointmentToolFactory {
         // Sincroniza com Trinks (não bloqueia se falhar)
         try {
           const { createTrinksAppointment } = await import("@repo/db")
-          await createTrinksAppointment(appointment.id)
+          await createTrinksAppointment(appointment.id, salonId)
         } catch {
           // Silenciosamente falha - nosso banco é a fonte da verdade
         }

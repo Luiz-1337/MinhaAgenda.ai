@@ -24,7 +24,7 @@
       "@repo/db": ["../../packages/db/src"],
       "@repo/db/*": ["../../packages/db/src/*"],
       "@repo/mcp-server": ["../../packages/mcp-server/src"],
-      "@repo/mcp-server/*": ["../../packages/mcp-server/src/*"]
+      "@repo/mcp-server/*": ["../../packages/mcp-server/*"]
     }
   },
   "include": [
