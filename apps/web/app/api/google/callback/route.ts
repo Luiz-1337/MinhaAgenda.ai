@@ -6,61 +6,124 @@ import { db, salonIntegrations, salons } from '@repo/db'
 import { eq } from 'drizzle-orm'
 
 /**
+ * Obtém a URL base da aplicação
+ */
+function getBaseUrl(req: NextRequest): string {
+  // Prioridade: variável de ambiente > header host > fallback
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  
+  const host = req.headers.get('host') || req.headers.get('x-forwarded-host') || 'localhost:3000'
+  const protocol = req.headers.get('x-forwarded-proto') || 
+                   (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+  
+  return `${protocol}://${host}`
+}
+
+/**
  * Callback OAuth do Google
  * Recebe o código de autorização, troca por tokens e salva no banco
  */
 export async function GET(req: NextRequest) {
+  const baseUrl = getBaseUrl(req)
+  
   try {
     const searchParams = req.nextUrl.searchParams
     const code = searchParams.get('code')
     const state = searchParams.get('state') // salonId
     const error = searchParams.get('error')
 
+    console.log('📥 Callback Google OAuth recebido:', {
+      hasCode: !!code,
+      hasState: !!state,
+      hasError: !!error,
+      state,
+    })
+
     // Verifica se houve erro na autorização
     if (error) {
-      console.error('Erro na autorização Google:', error)
+      console.error('❌ Erro na autorização Google:', error)
       return NextResponse.redirect(
-        new URL(`/dashboard?error=${encodeURIComponent('Autorização Google cancelada')}`, req.url)
+        new URL(`/dashboard?error=${encodeURIComponent('Autorização Google cancelada')}`, baseUrl)
       )
     }
 
     if (!code) {
+      console.error('❌ Código de autorização não fornecido')
       return NextResponse.redirect(
-        new URL('/dashboard?error=' + encodeURIComponent('Código de autorização não fornecido'), req.url)
+        new URL('/dashboard?error=' + encodeURIComponent('Código de autorização não fornecido'), baseUrl)
       )
     }
 
     if (!state) {
+      console.error('❌ Estado (salonId) não fornecido')
       return NextResponse.redirect(
-        new URL('/dashboard?error=' + encodeURIComponent('Estado inválido'), req.url)
+        new URL('/dashboard?error=' + encodeURIComponent('Estado inválido'), baseUrl)
       )
     }
 
     const salonId = state
 
-    // Verifica autenticação
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.redirect(
-        new URL('/login?error=' + encodeURIComponent('Não autenticado'), req.url)
-      )
-    }
-
-    // Verifica se o salão pertence ao usuário
+    // Primeiro verifica se o salão existe (antes de processar OAuth)
     const salon = await db.query.salons.findFirst({
       where: eq(salons.id, salonId),
       columns: { id: true, ownerId: true },
     })
 
-    if (!salon || salon.ownerId !== user.id) {
+    if (!salon) {
+      console.error('❌ Salão não encontrado:', salonId)
       return NextResponse.redirect(
-        new URL('/dashboard?error=' + encodeURIComponent('Acesso negado'), req.url)
+        new URL('/dashboard?error=' + encodeURIComponent('Salão não encontrado'), baseUrl)
       )
     }
+
+    // Verifica autenticação - tenta múltiplas vezes se necessário
+    let user = null
+    let supabase = null
+    
+    try {
+      supabase = await createClient()
+      const authResult = await supabase.auth.getUser()
+      user = authResult.data.user
+      
+      if (!user) {
+        console.warn('⚠️ Usuário não autenticado no callback. Tentando verificar novamente...')
+        // Aguarda um pouco e tenta novamente (pode ser problema de sincronização de cookies)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const retryResult = await supabase.auth.getUser()
+        user = retryResult.data.user
+      }
+    } catch (authError: any) {
+      console.error('❌ Erro ao verificar autenticação:', {
+        message: authError.message,
+        code: authError.code,
+      })
+    }
+
+    if (!user) {
+      console.error('❌ Usuário não autenticado após tentativas')
+      return NextResponse.redirect(
+        new URL('/login?error=' + encodeURIComponent('Não autenticado. Por favor, faça login novamente.'), baseUrl)
+      )
+    }
+
+    // Verifica se o salão pertence ao usuário
+    if (salon.ownerId !== user.id) {
+      console.error('❌ Acesso negado - salão não pertence ao usuário:', {
+        salonOwnerId: salon.ownerId,
+        userId: user.id,
+      })
+      return NextResponse.redirect(
+        new URL('/dashboard?error=' + encodeURIComponent('Acesso negado'), baseUrl)
+      )
+    }
+
+    console.log('✅ Autenticação verificada:', {
+      userId: user.id,
+      salonId,
+      salonOwnerId: salon.ownerId,
+    })
 
     // Obtém cliente OAuth2 raw (não autenticado) para trocar código por tokens
     const oauth2Client = getRawOAuth2Client()
@@ -81,7 +144,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(
         new URL(
           '/dashboard?error=' + encodeURIComponent('Refresh token não fornecido. Tente novamente autorizando o acesso novamente.'),
-          req.url
+          baseUrl
         )
       )
     }
@@ -104,7 +167,10 @@ export async function GET(req: NextRequest) {
       if (email) {
         console.log('✅ Email obtido com sucesso:', email)
       } else {
-        console.warn('⚠️ Email não encontrado na resposta do Google')
+        console.warn('⚠️ Email não encontrado na resposta do Google. Dados recebidos:', {
+          hasData: !!userInfo.data,
+          dataKeys: userInfo.data ? Object.keys(userInfo.data) : [],
+        })
       }
     } catch (emailError: any) {
       // Não é crítico se falhar - podemos continuar sem o email
@@ -112,6 +178,7 @@ export async function GET(req: NextRequest) {
         message: emailError.message,
         code: emailError.code,
         response: emailError.response?.data,
+        stack: emailError.stack,
       })
       // O email pode ser null, não é obrigatório
     }
@@ -136,67 +203,133 @@ export async function GET(req: NextRequest) {
 
     if (existingIntegration) {
       // Atualiza existente (mantém isActive atual, não sobrescreve)
+      console.log('🔄 Atualizando integração existente:', existingIntegration.id)
+      
       const updateResult = await db
         .update(salonIntegrations)
         .set({
           refreshToken: tokens.refresh_token,
           accessToken: tokens.access_token || null,
           expiresAt,
-          email,
+          email, // Garante que o email seja atualizado
           updatedAt: new Date(),
           // isActive não é atualizado aqui - mantém o valor atual
         })
         .where(eq(salonIntegrations.id, existingIntegration.id))
-        .returning({ id: salonIntegrations.id, refreshToken: salonIntegrations.refreshToken })
+        .returning({ 
+          id: salonIntegrations.id, 
+          refreshToken: salonIntegrations.refreshToken,
+          email: salonIntegrations.email,
+        })
       
-      // Verifica se o refresh token foi salvo corretamente
+      console.log('📝 Resultado do update:', {
+        updatedId: updateResult[0]?.id,
+        hasRefreshToken: !!updateResult[0]?.refreshToken,
+        savedEmail: updateResult[0]?.email,
+      })
+      
+      // Verifica se o refresh token e email foram salvos corretamente
       const verifyIntegration = await db.query.salonIntegrations.findFirst({
         where: eq(salonIntegrations.id, existingIntegration.id),
-        columns: { id: true, refreshToken: true },
+        columns: { 
+          id: true, 
+          refreshToken: true,
+          email: true,
+        },
       })
       
       if (!verifyIntegration?.refreshToken || verifyIntegration.refreshToken !== tokens.refresh_token) {
-        console.error('❌ ERRO: Refresh token não foi salvo corretamente!')
+        console.error('❌ ERRO: Refresh token não foi salvo corretamente!', {
+          expectedLength: tokens.refresh_token?.length,
+          savedLength: verifyIntegration?.refreshToken?.length,
+        })
         throw new Error('Falha ao salvar refresh token no banco de dados')
       }
       
-      console.log('✅ Integração atualizada com sucesso. Refresh token salvo e verificado.')
+      if (email && verifyIntegration.email !== email) {
+        console.error('❌ ERRO: Email não foi salvo corretamente!', {
+          expected: email,
+          saved: verifyIntegration.email,
+        })
+        throw new Error('Falha ao salvar email no banco de dados')
+      }
+      
+      console.log('✅ Integração atualizada com sucesso:', {
+        refreshTokenSaved: true,
+        emailSaved: email ? verifyIntegration.email === email : 'N/A (email não fornecido)',
+        savedEmail: verifyIntegration.email,
+      })
     } else {
       // Cria novo (isActive será true por padrão)
+      console.log('🆕 Criando nova integração')
+      
       const result = await db.insert(salonIntegrations).values({
         salonId,
         provider: 'google',
         refreshToken: tokens.refresh_token,
         accessToken: tokens.access_token || null,
         expiresAt,
-        email,
+        email, // Garante que o email seja salvo
         isActive: true, // Ativa sincronização automática por padrão ao conectar
-      }).returning({ id: salonIntegrations.id })
+      }).returning({ 
+        id: salonIntegrations.id,
+        email: salonIntegrations.email,
+      })
       
-      // Verifica se o refresh token foi salvo corretamente
+      console.log('📝 Resultado do insert:', {
+        createdId: result[0]?.id,
+        savedEmail: result[0]?.email,
+      })
+      
+      // Verifica se o refresh token e email foram salvos corretamente
       const verifyIntegration = await db.query.salonIntegrations.findFirst({
         where: eq(salonIntegrations.id, result[0]?.id),
-        columns: { id: true, refreshToken: true },
+        columns: { 
+          id: true, 
+          refreshToken: true,
+          email: true,
+        },
       })
       
       if (!verifyIntegration?.refreshToken || verifyIntegration.refreshToken !== tokens.refresh_token) {
-        console.error('❌ ERRO: Refresh token não foi salvo corretamente!')
+        console.error('❌ ERRO: Refresh token não foi salvo corretamente!', {
+          expectedLength: tokens.refresh_token?.length,
+          savedLength: verifyIntegration?.refreshToken?.length,
+        })
         throw new Error('Falha ao salvar refresh token no banco de dados')
       }
       
-      console.log('✅ Integração criada com sucesso. Refresh token salvo e verificado:', result[0]?.id)
+      if (email && verifyIntegration.email !== email) {
+        console.error('❌ ERRO: Email não foi salvo corretamente!', {
+          expected: email,
+          saved: verifyIntegration.email,
+        })
+        throw new Error('Falha ao salvar email no banco de dados')
+      }
+      
+      console.log('✅ Integração criada com sucesso:', {
+        id: result[0]?.id,
+        refreshTokenSaved: true,
+        emailSaved: email ? verifyIntegration.email === email : 'N/A (email não fornecido)',
+        savedEmail: verifyIntegration.email,
+      })
     }
 
     // Redireciona para dashboard com sucesso
+    console.log('🎉 Redirecionando para dashboard com sucesso')
     return NextResponse.redirect(
-      new URL('/dashboard?success=' + encodeURIComponent('Google Calendar conectado com sucesso!'), req.url)
+      new URL('/dashboard?success=' + encodeURIComponent('Google Calendar conectado com sucesso!'), baseUrl)
     )
   } catch (error: any) {
-    console.error('Erro no callback Google OAuth:', error)
+    console.error('❌ Erro no callback Google OAuth:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    })
     return NextResponse.redirect(
       new URL(
-        '/dashboard?error=' + encodeURIComponent('Erro ao conectar Google Calendar: ' + error.message),
-        req.url
+        '/dashboard?error=' + encodeURIComponent('Erro ao conectar Google Calendar: ' + (error.message || 'Erro desconhecido')),
+        baseUrl
       )
     )
   }

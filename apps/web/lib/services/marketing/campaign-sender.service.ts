@@ -102,7 +102,6 @@ export class CampaignSenderService {
         const messageRecord = await MarketingRepository.createCampaignMessage({
           campaignId,
           customerId: lead.customerId || null,
-          leadId: lead.leadId || null,
           profileId: lead.profileId || null,
           phoneNumber,
           messageSent: finalMessage,

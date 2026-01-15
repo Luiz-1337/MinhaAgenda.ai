@@ -311,6 +311,9 @@ export const chats = pgTable(
     isManual: boolean('is_manual').default(false).notNull(),
     firstUserMessageAt: timestamp('first_user_message_at'),
     firstAgentResponseAt: timestamp('first_agent_response_at'),
+    lastBotMessageRequiresResponse: boolean('last_bot_message_requires_response')
+      .default(false)
+      .notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -325,6 +328,7 @@ export const messages = pgTable('messages', {
   role: chatMessageRoleEnum('role').notNull(),
   content: text('content'),
   toolCalls: jsonb('tool_calls'),
+  requiresResponse: boolean('requires_response').default(false).notNull(),
   inputTokens: integer('input_tokens'),
   outputTokens: integer('output_tokens'),
   model: text('model'),
@@ -457,7 +461,6 @@ export const campaignMessages = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }).notNull(),
     customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
-    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
     profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'set null' }),
     phoneNumber: text('phone_number').notNull(),
     messageSent: text('message_sent').notNull(),
@@ -717,6 +720,5 @@ export const campaignRecipientsRelations = relations(campaignRecipients, ({ one 
 export const campaignMessagesRelations = relations(campaignMessages, ({ one }) => ({
   campaign: one(campaigns, { fields: [campaignMessages.campaignId], references: [campaigns.id] }),
   customer: one(customers, { fields: [campaignMessages.customerId], references: [customers.id] }),
-  lead: one(leads, { fields: [campaignMessages.leadId], references: [leads.id] }),
   profile: one(profiles, { fields: [campaignMessages.profileId], references: [profiles.id] })
 }))

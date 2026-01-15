@@ -5,7 +5,7 @@ import { createSalonAssistantPrompt } from '@/lib/services/ai/system-prompt-buil
 import { getActiveAgentInfo } from '@/lib/services/ai/agent-info.service';
 import { mapModelToOpenAI } from '@/lib/services/ai/model-mapper.service';
 import { createMCPTools } from '@repo/mcp-server/tools/vercel-ai';
-import { db, salons, customers, chats, agents, appointments, profiles } from "@repo/db";
+import { db, salons, customers, chats, agents, appointments, profiles, domainServices } from "@repo/db";
 import { eq, and } from "drizzle-orm";
 import { sendWhatsAppMessage, normalizePhoneNumber } from '@/lib/services/whatsapp.service';
 import { findOrCreateChat, getChatHistory, saveMessage, saveChatMessage, findOrCreateCustomer } from '@/lib/services/chat.service';
@@ -574,12 +574,15 @@ Por favor, responda ao cliente de forma educada e profissional. Explique que hou
 
     console.log(`✅ Resposta gerada: ${finalText.substring(0, 100)}...`);
 
+    const requiresResponse = domainServices.analyzeMessageRequiresResponse(finalText)
+
     // Salva mensagem do assistente com tokens
     await saveMessage(chat.id, "assistant", finalText, {
       inputTokens: usageData?.inputTokens,
       outputTokens: usageData?.outputTokens,
       totalTokens: usageData?.totalTokens,
       model: agentModel, // Salva o modelo original do agente, não o mapeado
+      requiresResponse,
     });
     // Salva também na tabela chatMessages
     await saveChatMessage(salonId, clientPhone, "assistant", finalText).catch(err => {

@@ -127,17 +127,39 @@ export async function saveMessage(
     outputTokens?: number
     totalTokens?: number
     model?: string
+    requiresResponse?: boolean
   }
 ): Promise<void> {
   await db.insert(messages).values({
     chatId,
     role,
     content,
+    requiresResponse: options?.requiresResponse ?? false,
     inputTokens: options?.inputTokens ?? null,
     outputTokens: options?.outputTokens ?? null,
     totalTokens: options?.totalTokens ?? null,
     model: options?.model ?? null,
   })
+
+  if (role === "assistant") {
+    await db
+      .update(chats)
+      .set({
+        lastBotMessageRequiresResponse: options?.requiresResponse ?? false,
+        updatedAt: new Date(),
+      })
+      .where(eq(chats.id, chatId))
+  }
+
+  if (role === "user") {
+    await db
+      .update(chats)
+      .set({
+        lastBotMessageRequiresResponse: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(chats.id, chatId))
+  }
 }
 
 /**

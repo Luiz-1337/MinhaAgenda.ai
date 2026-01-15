@@ -149,6 +149,29 @@ export class MarketingUseCase {
   }
 
   /**
+   * Retorna lista de leads segmentados (para modal de preview)
+   */
+  static async listSegmentedLeads(
+    criteria: Record<string, unknown>,
+    salonId: string
+  ): Promise<{ id: string; name: string }[]> {
+    const leads = await SegmentationService.getSegmentedLeads(
+      criteria as {
+        distanceRadius?: string
+        lastVisit?: string
+        gender?: string
+        serviceIds?: string[]
+      },
+      salonId
+    )
+
+    return leads.map((lead) => ({
+      id: lead.id,
+      name: lead.name || "Cliente",
+    }))
+  }
+
+  /**
    * Executa envio de campanha
    */
   static async sendCampaign(campaignId: string, salonId: string): Promise<SendCampaignResult> {

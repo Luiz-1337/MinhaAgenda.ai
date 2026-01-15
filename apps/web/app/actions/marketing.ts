@@ -113,6 +113,28 @@ export async function previewSegmentedLeads(
 }
 
 /**
+ * Lista leads segmentados (para modal)
+ */
+export async function listSegmentedLeads(
+  criteria: Record<string, unknown>,
+  salonId: string
+): Promise<ActionResult<{ leads: Array<{ id: string; name: string }> }>> {
+  try {
+    const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
+    if ("error" in authResult) {
+      return authResult
+    }
+
+    const leads = await MarketingUseCase.listSegmentedLeads(criteria, salonId)
+
+    return { success: true, data: { leads } }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Falha ao buscar leads."
+    return { error: errorMessage }
+  }
+}
+
+/**
  * Lista todas as campanhas de um salão
  */
 export async function getCampaigns(salonId: string): Promise<ActionResult<any[]>> {

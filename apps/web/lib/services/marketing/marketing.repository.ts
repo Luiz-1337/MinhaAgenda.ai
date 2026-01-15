@@ -46,7 +46,6 @@ export interface CampaignMessageRow {
   id: string
   campaignId: string
   customerId: string | null
-  leadId: string | null
   profileId: string | null
   phoneNumber: string
   messageSent: string
@@ -292,7 +291,6 @@ export class MarketingRepository {
   static async createCampaignMessage(messageData: {
     campaignId: string
     customerId?: string | null
-    leadId?: string | null
     profileId?: string | null
     phoneNumber: string
     messageSent: string
@@ -303,7 +301,6 @@ export class MarketingRepository {
       .values({
         campaignId: messageData.campaignId,
         customerId: messageData.customerId || null,
-        leadId: messageData.leadId || null,
         profileId: messageData.profileId || null,
         phoneNumber: messageData.phoneNumber,
         messageSent: messageData.messageSent,

@@ -1,5 +1,5 @@
 import type { CoreMessage } from 'ai'
-import { db, chatMessages } from '@repo/db'
+import { db, chatMessages, domainServices } from '@repo/db'
 import { logger } from '@repo/db/infrastructure/logger'
 import { findOrCreateWebChat, saveMessage } from '@/lib/services/chat.service'
 
@@ -11,6 +11,7 @@ export interface SaveMessageOptions {
   outputTokens?: number
   totalTokens?: number
   model?: string
+  requiresResponse?: boolean
 }
 
 /**
@@ -70,12 +71,15 @@ export class SaveChatMessageUseCase {
     text: string,
     options?: SaveMessageOptions
   ): Promise<void> {
+    const requiresResponse = domainServices.analyzeMessageRequiresResponse(text)
+
     if (chatId) {
       await saveMessage(chatId, 'assistant', text, {
         inputTokens: options?.inputTokens,
         outputTokens: options?.outputTokens,
         totalTokens: options?.totalTokens,
         model: options?.model,
+        requiresResponse,
       }).catch((err) => {
         logger.error('Error saving assistant message to messages table', {
           chatId,
