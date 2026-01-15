@@ -36,11 +36,9 @@ export default function MarketingPage() {
   const params = useParams<{ salonId: string }>();
   const [activeTab, setActiveTab] = useState<TabType>('recovery');
   const [flowId, setFlowId] = useState<string | null>(null);
-  const [flowName, setFlowName] = useState<string>('Fluxo de Recuperação');
-  const [recoverySteps, setRecoverySteps] = useState<RecoveryStep[]>([
-    { id: '1', days: 3, message: 'Olá {{nome_cliente}}, notamos que você ainda não agendou seu retorno. Que tal um café por nossa conta?' },
-    { id: '2', days: 7, message: 'Oi {{nome_cliente}}, faz uma semana desde nosso último contato. Preparamos um desconto de 15% para você hoje!' }
-  ]);
+  const [flowName, setFlowName] = useState<string>('');
+  const [recoverySteps, setRecoverySteps] = useState<RecoveryStep[]>([]);
+  const [isFlowLoading, setIsFlowLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -70,22 +68,32 @@ export default function MarketingPage() {
 
     startLoading(async () => {
       setLoadError(null);
-      const result = await getRecoveryFlow(params.salonId);
-      if ("error" in result) {
-        setLoadError(result.error);
-        return;
-      }
+      setIsFlowLoading(true);
 
-      if (result.data) {
-        setFlowId(result.data.id);
-        setFlowName(result.data.name || 'Fluxo de Recuperação');
-        setRecoverySteps(
-          result.data.steps.map((step: RecoveryStepFromApi) => ({
-            id: step.id,
-            days: step.daysAfterInactivity,
-            message: step.messageTemplate,
-          }))
-        );
+      try {
+        const result = await getRecoveryFlow(params.salonId);
+        if ("error" in result) {
+          setLoadError(result.error);
+          return;
+        }
+
+        if (result.data) {
+          setFlowId(result.data.id);
+          setFlowName(result.data.name || 'Fluxo de Recuperação');
+          setRecoverySteps(
+            result.data.steps.map((step: RecoveryStepFromApi) => ({
+              id: step.id,
+              days: step.daysAfterInactivity,
+              message: step.messageTemplate,
+            }))
+          );
+        } else {
+          setFlowId(null);
+          setFlowName('Fluxo de Recuperação');
+          setRecoverySteps([]);
+        }
+      } finally {
+        setIsFlowLoading(false);
       }
     });
   }, [params?.salonId]);
@@ -339,88 +347,92 @@ export default function MarketingPage() {
               </div>
             )}
 
-            {/* Steps Timeline */}
-            <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-500 before:via-slate-200 dark:before:via-slate-800 before:to-transparent">
-              
-              {recoverySteps.map((step, index) => (
-                <div key={step.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group animate-in fade-in slide-in-from-bottom-4 duration-300">
-                  {/* Icon Dot */}
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white dark:border-slate-900 bg-slate-50 dark:bg-slate-800 text-indigo-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
-                    <Clock size={16} />
-                  </div>
-                  
-                  {/* Card Content */}
-                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Etapa {index + 1}</span>
-                        <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-600 dark:text-indigo-400 text-[10px] font-bold">
-                          <Zap size={10} /> AUTO
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => removeStep(step.id)}
-                        className="text-slate-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+            {isFlowLoading ? (
+              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-4 py-6 text-center text-sm text-slate-500">
+                Carregando fluxo...
+              </div>
+            ) : (
+              <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-500 before:via-slate-200 dark:before:via-slate-800 before:to-transparent">
+                {recoverySteps.map((step, index) => (
+                  <div key={step.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    {/* Icon Dot */}
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white dark:border-slate-900 bg-slate-50 dark:bg-slate-800 text-indigo-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                      <Clock size={16} />
                     </div>
-
-                    <div className="space-y-4">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase">Enviar após</label>
+                    
+                    {/* Card Content */}
+                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
-                          <input 
-                            type="number" 
-                            value={step.days}
-                            onChange={(event) => {
-                              const nextDays = Number(event.target.value);
-                              updateStep(step.id, { days: Number.isNaN(nextDays) ? 0 : nextDays });
-                            }}
-                            className="w-16 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:outline-none focus:border-indigo-500"
-                          />
-                          <span className="text-xs text-slate-400 font-medium">dias de inatividade</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Etapa {index + 1}</span>
+                          <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-600 dark:text-indigo-400 text-[10px] font-bold">
+                            <Zap size={10} /> AUTO
+                          </div>
                         </div>
+                        <button 
+                          onClick={() => removeStep(step.id)}
+                          className="text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
 
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase">Mensagem (Suporta variáveis)</label>
-                        <textarea 
-                          rows={3}
-                          value={step.message}
-                          onChange={(event) => updateStep(step.id, { message: event.target.value })}
-                          placeholder="Digite o conteúdo aqui..."
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-indigo-500 transition-all resize-none"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => appendVariable(step.id, "{{nome_cliente}}")}
-                            className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
-                          >
-                            {"{{nome_cliente}}"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => appendVariable(step.id, "{{ultimo_servico}}")}
-                            className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
-                          >
-                            {"{{ultimo_servico}}"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => appendVariable(step.id, "{{ultima_visita}}")}
-                            className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
-                          >
-                            {"{{ultima_visita}}"}
-                          </button>
+                      <div className="space-y-4">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Enviar após</label>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="number" 
+                              value={step.days}
+                              onChange={(event) => {
+                                const nextDays = Number(event.target.value);
+                                updateStep(step.id, { days: Number.isNaN(nextDays) ? 0 : nextDays });
+                              }}
+                              className="w-16 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:outline-none focus:border-indigo-500"
+                            />
+                            <span className="text-xs text-slate-400 font-medium">dias de inatividade</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Mensagem (Suporta variáveis)</label>
+                          <textarea 
+                            rows={3}
+                            value={step.message}
+                            onChange={(event) => updateStep(step.id, { message: event.target.value })}
+                            placeholder="Digite o conteúdo aqui..."
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-indigo-500 transition-all resize-none"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => appendVariable(step.id, "{{nome_cliente}}")}
+                              className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
+                            >
+                              {"{{nome_cliente}}"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => appendVariable(step.id, "{{ultimo_servico}}")}
+                              className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
+                            >
+                              {"{{ultimo_servico}}"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => appendVariable(step.id, "{{ultima_visita}}")}
+                              className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
+                            >
+                              {"{{ultima_visita}}"}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Add Button */}
             <div className="flex flex-col items-center gap-4 pt-4">
@@ -433,7 +445,7 @@ export default function MarketingPage() {
               </button>
               <button
                 onClick={handleSaveFlow}
-                disabled={isSaving || isLoading}
+                disabled={isSaving || isLoading || isFlowLoading}
                 className="flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1 active:scale-95 disabled:cursor-not-allowed"
               >
                 {isSaving ? "Salvando..." : "Salvar fluxo"}
