@@ -4,7 +4,8 @@ import { useMemo, useState, useRef, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Search, MoreHorizontal, Send, Loader2, UserRound } from "lucide-react"
+import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
 
@@ -54,6 +55,7 @@ export default function ChatPage() {
   const [query, setQuery] = useState("")
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [showConversationList, setShowConversationList] = useState(true) // Mobile toggle
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageText, setMessageText] = useState("")
   const [isLoading, setIsLoading] = useState(true)
@@ -327,11 +329,22 @@ export default function ChatPage() {
     }
   }
 
+  // Handler para selecionar conversa (com toggle para mobile)
+  function handleSelectConversation(chatId: string) {
+    setActiveId(chatId)
+    setShowConversationList(false) // Em mobile, mostra o chat ao selecionar
+  }
+
   return (
-    <div className="h-full p-4 md:p-6">
-      <div className="flex h-full bg-slate-50 dark:bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-white/5 shadow-2xl">
+    <div className="h-full p-2 md:p-6">
+      <div className="flex h-full bg-slate-50 dark:bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-white/5 shadow-2xl relative">
       {/* Sidebar List */}
-      <div className="w-80 border-r border-slate-200 dark:border-white/5 flex flex-col bg-white/50 dark:bg-slate-900/50 backdrop-blur-md">
+      <div className={cn(
+        "border-r border-slate-200 dark:border-white/5 flex flex-col bg-white/50 dark:bg-slate-900/50 backdrop-blur-md",
+        "w-full md:w-80",
+        "absolute md:relative inset-0 z-20 md:z-auto",
+        !showConversationList && "hidden md:flex"
+      )}>
         {/* Sidebar Header */}
         <div className="p-4 space-y-4">
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Conversas</h2>
@@ -385,7 +398,7 @@ export default function ChatPage() {
             filtered.map((chat) => (
             <div
               key={chat.id}
-              onClick={() => setActiveId(chat.id)}
+              onClick={() => handleSelectConversation(chat.id)}
               className={`p-4 flex gap-3 cursor-pointer transition-colors border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 ${
                 activeId === chat.id
                   ? "bg-indigo-50/50 dark:bg-indigo-500/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-indigo-500"
@@ -418,7 +431,10 @@ export default function ChatPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-950/30 backdrop-blur-sm relative">
+      <div className={cn(
+        "flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-950/30 backdrop-blur-sm relative",
+        showConversationList && "hidden md:flex"
+      )}>
         {/* Background Grid Pattern */}
         <div
           className="absolute inset-0 z-0 opacity-[0.03]"
@@ -431,32 +447,42 @@ export default function ChatPage() {
 
         {/* Chat Header */}
         {active && (
-          <header className="h-20 flex items-center justify-between px-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-sm font-bold text-white shadow-lg">
+          <header className="h-16 md:h-20 flex items-center justify-between px-3 md:px-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md z-10">
+            <div className="flex items-center gap-2 md:gap-4">
+              {/* Botao voltar - apenas mobile */}
+              <button
+                onClick={() => setShowConversationList(true)}
+                className="md:hidden p-2 -ml-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-xs md:text-sm font-bold text-white shadow-lg">
                 {getInitials(active.customer.name)}
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <h2 className="text-xs md:text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
                   {active.customer.name}
                 </h2>
-                <p className="text-xs text-slate-500 font-mono">{active.customer.phone}</p>
+                <p className="text-[10px] md:text-xs text-slate-500 font-mono">{active.customer.phone}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <Button
                 onClick={handleToggleManualMode}
                 disabled={isTogglingManual}
                 variant={isManualMode ? "default" : "outline"}
                 size="sm"
-                className={isManualMode ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                className={cn(
+                  "text-xs px-2 md:px-3",
+                  isManualMode ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""
+                )}
               >
                 <UserRound size={16} />
-                <span className="hidden sm:inline">
+                <span className="hidden lg:inline ml-1">
                   {isManualMode ? "Passar para a IA" : "Assumir Manualmente"}
                 </span>
               </Button>
-              <div className="text-right hidden sm:block">
+              <div className="text-right hidden lg:block">
                 <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Atendente</p>
                 <p className="text-xs text-slate-600 dark:text-slate-300">{active.assignedTo}</p>
               </div>
@@ -482,7 +508,7 @@ export default function ChatPage() {
         )}
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar z-10">
+        <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 custom-scrollbar z-10">
           {isLoadingMessages ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="animate-spin text-slate-400" size={24} />
@@ -497,10 +523,10 @@ export default function ChatPage() {
 
               return (
                 <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
-                  <div className={`max-w-[70%] relative group`}>
+                  <div className="max-w-[85%] md:max-w-[70%] relative group">
                     {/* Message Bubble */}
                     <div
-                      className={`p-4 shadow-sm relative ${
+                      className={`p-3 md:p-4 shadow-sm relative ${
                         isClient
                           ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl rounded-tl-none shadow-indigo-500/20"
                           : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl rounded-tr-none border border-slate-200 dark:border-white/10"
@@ -523,16 +549,16 @@ export default function ChatPage() {
         </div>
 
         {/* Input Area */}
-        <div className="p-6 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-white/5 z-10">
+        <div className="p-3 md:p-6 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-white/5 z-10">
           {isManualMode ? (
             <form onSubmit={handleSendMessage} className="relative">
               <textarea
                 ref={textareaRef}
-                rows={3}
+                rows={2}
                 placeholder="Digite sua mensagem..."
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 pr-12 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
               />
               <button
                 type="submit"

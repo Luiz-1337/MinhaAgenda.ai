@@ -160,57 +160,58 @@ export default function SettingsPage() {
 
 
   return (
-    <div className="h-full flex flex-col gap-6 overflow-hidden">
+    <div className="h-full flex flex-col gap-4 md:gap-6 overflow-hidden">
       {/* Header Compacto */}
-      <div className="flex justify-between items-center flex-shrink-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 flex-shrink-0">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
+          <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
           <p className="text-xs text-slate-500">Personalize seu ambiente de IA.</p>
         </div>
         {activeTab === "profile" && (
           <button
             onClick={() => profileFormRef.current?.submit()}
             disabled={isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save size={16} />
-            {isPending ? "Salvando..." : "Salvar Alterações"}
+            <span className="hidden sm:inline">{isPending ? "Salvando..." : "Salvar Alterações"}</span>
+            <span className="sm:hidden">{isPending ? "..." : "Salvar"}</span>
           </button>
         )}
       </div>
 
-      {/* Main Container - Two Columns */}
-      <div className="flex-1 flex gap-8 overflow-hidden">
-        {/* Left Sidebar Navigation */}
-        <nav className="w-64 flex-shrink-0 flex flex-col gap-1">
+      {/* Main Container - Two Columns (responsive) */}
+      <div className="flex-1 flex flex-col md:flex-row gap-4 md:gap-8 overflow-hidden">
+        {/* Navigation - Horizontal tabs on mobile, vertical sidebar on desktop */}
+        <nav className="flex md:flex-col gap-2 md:gap-1 overflow-x-auto md:overflow-visible md:w-64 flex-shrink-0 pb-2 md:pb-0 -mx-2 px-2 md:mx-0 md:px-0">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex items-start gap-4 p-4 rounded-2xl transition-all text-left group ${
+              className={`flex-shrink-0 md:flex-shrink flex items-center md:items-start gap-2 md:gap-4 px-3 md:px-4 py-2.5 md:py-4 rounded-xl md:rounded-2xl transition-all text-left group whitespace-nowrap ${
                 activeTab === item.id
                   ? "bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm"
                   : "hover:bg-slate-100 dark:hover:bg-white/5 opacity-60 hover:opacity-100"
               }`}
             >
-              <div className={`mt-1 p-2 rounded-xl transition-colors ${
+              <div className={`p-1.5 md:p-2 md:mt-1 rounded-lg md:rounded-xl transition-colors ${
                 activeTab === item.id ? "bg-indigo-600 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500 group-hover:bg-indigo-500/10 group-hover:text-indigo-500"
               }`}>
                 {item.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-bold ${activeTab === item.id ? "text-slate-800 dark:text-white" : "text-slate-600 dark:text-slate-400"}`}>
+                <p className={`text-xs md:text-sm font-bold ${activeTab === item.id ? "text-slate-800 dark:text-white" : "text-slate-600 dark:text-slate-400"}`}>
                   {item.label}
                 </p>
-                <p className="text-[10px] text-slate-400 truncate">{item.description}</p>
+                <p className="text-[10px] text-slate-400 truncate hidden md:block">{item.description}</p>
               </div>
-              {activeTab === item.id && <ChevronRight size={14} className="mt-1.5 text-indigo-500" />}
+              {activeTab === item.id && <ChevronRight size={14} className="mt-0.5 md:mt-1.5 text-indigo-500 hidden md:block" />}
             </button>
           ))}
         </nav>
 
         {/* Right Content Area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar md:pr-4">
           <div className="max-w-3xl">
         {activeTab === "profile" && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">

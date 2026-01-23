@@ -17,11 +17,11 @@ const Pricing: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto items-start">
           {PLANS.map((plan, index) => (
             <div 
               key={index} 
-              className={`relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl transition-colors duration-300 ${plan.highlight ? 'ring-4 ring-indigo-600 dark:ring-indigo-500 shadow-2xl scale-105 z-10' : 'border border-slate-200 dark:border-white/5 shadow-lg' } p-8`}
+              className={`relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl transition-colors duration-300 ${plan.highlight ? 'ring-4 ring-indigo-600 dark:ring-indigo-500 shadow-2xl md:scale-105 z-10 order-first md:order-none' : 'border border-slate-200 dark:border-white/5 shadow-lg' } p-6 sm:p-8`}
             >
               {plan.highlight && (
                 <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-indigo-600 dark:bg-indigo-500 text-white px-4 py-1 rounded-full text-sm font-bold uppercase tracking-wide shadow-md">
