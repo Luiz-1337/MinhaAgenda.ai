@@ -138,6 +138,9 @@ export const services = pgTable(
     description: text('description'),
     duration: integer('duration').notNull(),
     price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+    priceType: text('price_type').default('fixed').notNull(), // 'fixed' | 'range'
+    priceMin: numeric('price_min', { precision: 10, scale: 2 }),
+    priceMax: numeric('price_max', { precision: 10, scale: 2 }),
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },

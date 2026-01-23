@@ -6,11 +6,16 @@ import { and, asc, eq, inArray } from "drizzle-orm"
 import { db, services, professionalServices, professionals, profiles, salons } from "@repo/db"
 import type { ServiceRow } from "@/lib/types/service"
 
+import type { PriceType } from "@/lib/types/service"
+
 export interface ServicePayload {
   name: string
   description: string | null
   duration: number
   price: string
+  priceType: PriceType
+  priceMin: string | null
+  priceMax: string | null
   isActive: boolean
 }
 
@@ -28,6 +33,9 @@ export class ServiceRepository {
         description: true,
         duration: true,
         price: true,
+        priceType: true,
+        priceMin: true,
+        priceMax: true,
         isActive: true,
       },
       orderBy: asc(services.name),
@@ -40,6 +48,9 @@ export class ServiceRepository {
       description: row.description ?? null,
       duration: row.duration,
       price: row.price ?? "0",
+      price_type: (row.priceType ?? "fixed") as PriceType,
+      price_min: row.priceMin ?? null,
+      price_max: row.priceMax ?? null,
       is_active: row.isActive,
     }))
     
@@ -59,6 +70,9 @@ export class ServiceRepository {
         description: true,
         duration: true,
         price: true,
+        priceType: true,
+        priceMin: true,
+        priceMax: true,
         isActive: true,
       },
     })
@@ -74,8 +88,11 @@ export class ServiceRepository {
       description: service.description ?? null,
       duration: service.duration,
       price: service.price ?? "0",
+      price_type: (service.priceType ?? "fixed") as PriceType,
+      price_min: service.priceMin ?? null,
+      price_max: service.priceMax ?? null,
       is_active: service.isActive,
-    } as ServiceRow
+    }
   }
 
   /**

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
-import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save } from "lucide-react"
+import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save, ArrowLeftRight } from "lucide-react"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { useForm } from "react-hook-form"
@@ -15,19 +15,44 @@ import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { getServices, upsertService, deleteService, getServiceLinkedProfessionals } from "@/app/actions/services"
 import { getProfessionals } from "@/app/actions/professionals"
-import type { ServiceRow } from "@/lib/types/service"
+import type { ServiceRow, PriceType } from "@/lib/types/service"
 import type { ProfessionalRow } from "@/lib/types/professional"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
+
+const priceTypeSchema = z.enum(["fixed", "range"])
 
 const serviceSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2, "Informe o nome"),
   description: z.string().optional().or(z.literal("")),
   duration: z.number().int().positive("Duração deve ser positiva"),
-  price: z.number().positive("Preço deve ser positivo"),
+  price: z.number().nonnegative("Preço deve ser positivo"),
+  priceType: priceTypeSchema.default("fixed"),
+  priceMin: z.number().positive("Preço mínimo deve ser positivo").optional(),
+  priceMax: z.number().positive("Preço máximo deve ser positivo").optional(),
   isActive: z.boolean().default(true),
   professionalIds: z.array(z.string()).default([]),
-})
+}).refine(
+  (data) => {
+    if (data.priceType === "fixed") {
+      return data.price > 0
+    }
+    if (data.priceType === "range") {
+      return (
+        data.priceMin !== undefined &&
+        data.priceMax !== undefined &&
+        data.priceMin > 0 &&
+        data.priceMax > 0 &&
+        data.priceMin <= data.priceMax
+      )
+    }
+    return true
+  },
+  {
+    message: "Para preço fixo, informe um valor positivo. Para range, o preço mínimo deve ser menor ou igual ao máximo.",
+    path: ["price"],
+  }
+)
 type ServiceForm = z.infer<typeof serviceSchema>
 
 interface ServiceListProps {
@@ -50,7 +75,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   const form = useForm<ServiceForm>({
     resolver: zodResolver(serviceSchema) as any,
-    defaultValues: { name: "", description: "", duration: 60, price: 0, isActive: true, professionalIds: [] },
+    defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, professionalIds: [] },
   })
 
   useEffect(() => {
@@ -112,7 +137,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   function openCreate() {
     setEditing(null)
-    form.reset({ name: "", description: "", duration: 60, price: 0, isActive: true, professionalIds: [] })
+    form.reset({ name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, professionalIds: [] })
     setOpen(true)
   }
 
@@ -138,6 +163,9 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       description: service.description || "",
       duration: service.duration,
       price: parseFloat(service.price),
+      priceType: service.price_type || "fixed",
+      priceMin: service.price_min ? parseFloat(service.price_min) : undefined,
+      priceMax: service.price_max ? parseFloat(service.price_max) : undefined,
       isActive: service.is_active,
       professionalIds: linkedProfessionalIds,
     })
@@ -151,7 +179,14 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     }
 
     startTransition(async () => {
-      const res = await upsertService({ ...values, salonId, professionalIds: values.professionalIds || [] })
+      const res = await upsertService({ 
+        ...values, 
+        salonId, 
+        professionalIds: values.professionalIds || [],
+        priceType: values.priceType,
+        priceMin: values.priceType === "range" ? values.priceMin : undefined,
+        priceMax: values.priceType === "range" ? values.priceMax : undefined,
+      })
       if ("error" in res) {
         toast.error(res.error)
         return
@@ -217,6 +252,15 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       style: "currency",
       currency: "BRL",
     }).format(parseFloat(price))
+  }
+
+  function formatServicePrice(service: ServiceRow): string {
+    if (service.price_type === "range" && service.price_min && service.price_max) {
+      const min = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(service.price_min))
+      const max = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(service.price_max))
+      return `${min} - ${max}`
+    }
+    return formatPrice(service.price)
   }
 
   return (
@@ -297,28 +341,51 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                        Duração (min) <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative group">
-                        <Clock size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                        <input 
-                          type="number" 
-                          placeholder="30 min" 
-                          {...form.register("duration", { valueAsNumber: true })}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
-                        />
-                      </div>
-                      {form.formState.errors.duration && (
-                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.duration.message}</p>
-                      )}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      Duração (min) <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative group">
+                      <Clock size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                      <input 
+                        type="number" 
+                        placeholder="30 min" 
+                        {...form.register("duration", { valueAsNumber: true })}
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                      />
                     </div>
-                    <div className="space-y-1.5">
+                    {form.formState.errors.duration && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.duration.message}</p>
+                    )}
+                  </div>
+
+                  {/* Preço - Toggle entre fixo e range */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                         Preço (R$) <span className="text-red-500">*</span>
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentType = form.watch("priceType")
+                          const newType = currentType === "fixed" ? "range" : "fixed"
+                          form.setValue("priceType", newType)
+                          if (newType === "fixed") {
+                            form.setValue("priceMin", undefined)
+                            form.setValue("priceMax", undefined)
+                          } else {
+                            form.setValue("price", 0)
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      >
+                        <ArrowLeftRight size={12} />
+                        {form.watch("priceType") === "fixed" ? "Usar faixa de preço" : "Usar preço fixo"}
+                      </button>
+                    </div>
+
+                    {form.watch("priceType") === "fixed" ? (
                       <div className="relative group">
                         <DollarSign size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                         <input 
@@ -329,10 +396,39 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
                         />
                       </div>
-                      {form.formState.errors.price && (
-                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.price.message}</p>
-                      )}
-                    </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="relative group">
+                          <DollarSign size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                          <input 
+                            type="number"
+                            step="0.01"
+                            placeholder="Mínimo" 
+                            {...form.register("priceMin", { valueAsNumber: true })}
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                          />
+                        </div>
+                        <div className="relative group">
+                          <DollarSign size={16} className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                          <input 
+                            type="number"
+                            step="0.01"
+                            placeholder="Máximo" 
+                            {...form.register("priceMax", { valueAsNumber: true })}
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {form.formState.errors.price && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.price.message}</p>
+                    )}
+                    {form.formState.errors.priceMin && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.priceMin.message}</p>
+                    )}
+                    {form.formState.errors.priceMax && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.priceMax.message}</p>
+                    )}
                   </div>
 
                   <div className="space-y-1.5">
@@ -550,7 +646,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
                 <div className="col-span-1 text-slate-600 dark:text-slate-300 font-mono text-xs font-medium flex items-center gap-1">
                   <DollarSign size={12} className="text-emerald-500" />
-                  {formatPrice(service.price)}
+                  {formatServicePrice(service)}
                 </div>
 
                 <div className="col-span-1">
