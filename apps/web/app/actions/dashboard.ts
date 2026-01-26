@@ -1,13 +1,14 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons, sql, messages, agents } from "@repo/db"
+import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons, profiles, sql, messages, agents } from "@repo/db"
 import { eq, and, gte, desc } from "drizzle-orm"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { calculateCredits } from "@/lib/utils/credits"
 
 export interface DashboardStats {
+  planTier: 'SOLO' | 'PRO' | 'ENTERPRISE'
   completedAppointments: number
   activeChats: number
   averageResponseTime: string
@@ -38,6 +39,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   // Verifica acesso ao salão e busca todas as estatísticas em paralelo
   const [
     salon,
+    profileResult,
     completedAppointmentsResult,
     activeChatsResult,
     messagesResult,
@@ -52,6 +54,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       ownerId: true,
     },
     }),
+    db.select({ tier: profiles.tier }).from(salons).innerJoin(profiles, eq(salons.ownerId, profiles.id)).where(eq(salons.id, salonId)).limit(1),
     // Atendimentos concluídos = chats do WhatsApp com status 'completed'
     supabase
       .from("chats")
@@ -358,7 +361,10 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     percent: total > 0 ? Math.round((credits / total) * 100) : 0,
   }))
 
+  const planTier = (profileResult[0]?.tier as 'SOLO' | 'PRO' | 'ENTERPRISE') || 'SOLO'
+
   return {
+    planTier,
     completedAppointments,
     activeChats,
     averageResponseTime,

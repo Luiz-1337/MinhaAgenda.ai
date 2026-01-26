@@ -1,7 +1,7 @@
 import type { IAppointmentRepository, AppointmentWithRelations } from '../../domain/integrations/interfaces/appointment-repository.interface'
 import type { AppointmentId } from '../../domain/integrations/value-objects/appointment-id'
 import type { SalonId } from '../../domain/integrations/value-objects/salon-id'
-import { db, appointments, professionals, services, profiles } from '../../index'
+import { db, appointments, professionals, services, profiles, salons } from '../../index'
 import { eq } from 'drizzle-orm'
 import { createAppointmentId, createSalonId } from '../../domain/integrations/value-objects/index'
 
@@ -117,6 +117,7 @@ export class AppointmentRepository implements IAppointmentRepository {
   async findProfessionalById(professionalId: string): Promise<{
     id: string
     name: string
+    email: string | null
     googleCalendarId: string | null
   } | null> {
     const professional = await db.query.professionals.findFirst({
@@ -124,6 +125,7 @@ export class AppointmentRepository implements IAppointmentRepository {
       columns: {
         id: true,
         name: true,
+        email: true,
         googleCalendarId: true,
       },
     })
@@ -135,8 +137,23 @@ export class AppointmentRepository implements IAppointmentRepository {
     return {
       id: professional.id,
       name: professional.name,
+      email: professional.email ?? null,
       googleCalendarId: professional.googleCalendarId ?? null,
     }
+  }
+
+  async isSoloPlan(salonId: SalonId): Promise<boolean> {
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { ownerId: true },
+    })
+    if (!salon?.ownerId) return false
+
+    const ownerProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, salon.ownerId),
+      columns: { tier: true },
+    })
+    return ownerProfile?.tier === 'SOLO'
   }
 
   async updateProfessionalCalendarId(professionalId: string, calendarId: string): Promise<void> {

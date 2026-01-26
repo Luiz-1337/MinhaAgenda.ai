@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useSalon } from "@/contexts/salon-context"
 import { getRemainingCredits } from "@/app/actions/credits"
-import { formatCreditsInK } from "@/lib/utils"
+import { formatCreditsInK, formatCreditsForDisplay } from "@/lib/utils"
 import { Coins } from "lucide-react"
 
 export function CreditsBadge() {
@@ -63,7 +63,7 @@ export function CreditsBadge() {
   }
 
   const formattedCredits = formatCreditsInK(credits)
-  const fullCredits = credits.toLocaleString('pt-BR')
+  const fullCredits = formatCreditsForDisplay(credits) + " mil créditos"
 
   return (
     <div className="relative group">
@@ -74,7 +74,7 @@ export function CreditsBadge() {
       
       {/* Tooltip */}
       <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm rounded-lg shadow-lg border border-slate-300 dark:border-slate-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none whitespace-nowrap z-50">
-        <span className="font-medium">{fullCredits} créditos</span>
+        <span className="font-medium">{fullCredits}</span>
         {/* Seta do tooltip */}
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 -mb-1">
           <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>

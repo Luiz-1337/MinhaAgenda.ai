@@ -1,8 +1,9 @@
 "use client"
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useTheme } from 'next-themes';
+import { creditsForDisplay } from "@/lib/utils";
 
 interface ChartData {
   date: string;
@@ -18,6 +19,12 @@ interface ChartSectionProps {
 export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionProps) {
   const { theme, resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark');
+
+  // Exibe valores divididos por 1000 (banco mantém o valor original)
+  const displayData = useMemo(
+    () => data.map((d) => ({ ...d, value: creditsForDisplay(d.value) })),
+    [data]
+  );
   
   // Theme-aware colors
   const gridColor = isDark ? '#1e293b' : '#e2e8f0';
@@ -61,7 +68,7 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
 
       <div className="flex-1 w-full min-h-0 px-2 pb-2 overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+          <AreaChart data={displayData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorCredits" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -91,7 +98,7 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
               }}
               itemStyle={{ color: isDark ? '#e2e8f0' : '#475569', fontSize: '12px', fontWeight: 500 }}
               labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px' }}
-              formatter={(value) => [`${value} C`, 'Créditos']}
+              formatter={(value: number) => [`${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 0 })} C`, 'Créditos']}
             />
             <Area 
               type="monotone" 

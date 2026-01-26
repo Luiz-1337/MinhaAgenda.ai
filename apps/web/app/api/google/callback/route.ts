@@ -211,7 +211,7 @@ export async function GET(req: NextRequest) {
           refreshToken: tokens.refresh_token,
           accessToken: tokens.access_token || null,
           expiresAt,
-          email, // Garante que o email seja atualizado
+          ...(email != null && email !== '' ? { email } : {}), // não sobrescreve com null se userinfo falhar
           updatedAt: new Date(),
           // isActive não é atualizado aqui - mantém o valor atual
         })

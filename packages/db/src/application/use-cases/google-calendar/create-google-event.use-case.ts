@@ -51,12 +51,6 @@ export class CreateGoogleEventUseCase {
       return null
     }
 
-    await this.appointmentRepository.updateExternalEventId(
-      appointmentId,
-      'google',
-      result.eventId
-    )
-
     this.logger.info('Google Calendar event created successfully', {
       appointmentId,
       eventId: result.eventId,

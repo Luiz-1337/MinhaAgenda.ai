@@ -401,26 +401,14 @@ export class MinhaAgendaAITools {
             throw new Error(`Agendamento com ID ${appointmentId} não encontrado`)
         }
 
-        // Passo 2: Verificar integrações ativas (antes de deletar para ter acesso aos dados)
+        // Passo 2: Verificar integrações ativas
         const integrations = await this.getActiveIntegrations(existingAppointment.salonId)
 
-        // Passo 3: Deletar agendamento do banco primeiro
-        const result = await sharedServices.deleteAppointmentService({
-            appointmentId,
-        })
-
-        if (!result.success) {
-            throw new Error(result.error)
-        }
-
-        // Passo 4: Sincronizar deleção com Google Calendar se ativo
-        // Nota: syncDeleteAppointment busca o agendamento do banco, mas como já deletamos,
-        // ele vai retornar null/aviso sem falhar graciosamente
+        // Passo 3: Sincronizar deleção com Google Calendar (ANTES de deletar no banco)
         if (integrations.google?.isActive) {
             try {
                 await syncDeleteAppointment(appointmentId)
             } catch (error: any) {
-                // Loga erro mas não falha a operação principal
                 console.error("❌ Erro ao sincronizar deleção de agendamento com Google Calendar:", {
                     error: error?.message || error,
                     stack: error?.stack,
@@ -428,23 +416,29 @@ export class MinhaAgendaAITools {
             }
         }
 
-        // Passo 5: Sincronizar deleção com Trinks se ativo
-        // Nota: deleteTrinksAppointment também busca o agendamento, mas capturamos o erro
+        // Passo 4: Sincronizar deleção com Trinks (ANTES de deletar no banco)
         if (integrations.trinks?.isActive) {
             try {
                 await deleteTrinksAppointment(appointmentId, existingAppointment.salonId)
             } catch (error: any) {
-                // Se o erro for porque o agendamento não foi encontrado (já deletamos), é esperado
                 if (error?.message?.includes('não encontrado')) {
-                    console.log("ℹ️ Agendamento já deletado do banco, pulando sincronização Trinks")
+                    console.log("ℹ️ Agendamento não encontrado no Trinks, pulando sincronização")
                 } else {
-                    // Loga outros erros mas não falha a operação principal
                     console.error("❌ Erro ao sincronizar deleção de agendamento com Trinks:", {
                         error: error?.message || error,
                         stack: error?.stack,
                     })
                 }
             }
+        }
+
+        // Passo 5: Deletar agendamento do banco
+        const result = await sharedServices.deleteAppointmentService({
+            appointmentId,
+        })
+
+        if (!result.success) {
+            throw new Error(result.error)
         }
 
         return JSON.stringify({

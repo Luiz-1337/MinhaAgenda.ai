@@ -12,6 +12,10 @@ import { IntegrationError } from '../../../domain/errors/integration-error'
 import { DomainError } from '../../../domain/errors/domain-error'
 import { createEventId } from '../../../domain/integrations/value-objects/index'
 
+function isGmail(email: string | null | undefined): boolean {
+  return /^[^@]+@(gmail|googlemail)\.com$/i.test(email ?? '')
+}
+
 /**
  * Google Calendar integration implementation
  */
@@ -30,21 +34,39 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
     salonId: SalonId
   ): Promise<string | null> {
     const professional = await this.appointmentRepository.findProfessionalById(professionalId)
-
     if (!professional) {
       throw new DomainError(`Professional ${professionalId} not found`, 'PROFESSIONAL_NOT_FOUND', {
         professionalId,
       })
     }
 
+    const isSolo = await this.appointmentRepository.isSoloPlan(salonId)
+    const googleClient = await this.oauth2Client.getSalonClient(salonId)
+    if (!googleClient) {
+      this.logger.warn('Google client not available - integration may not be configured', { salonId })
+      return null
+    }
+
+    // SOLO: calendário primário do dono (e-mail conectado)
+    if (isSolo) {
+      if (googleClient.email) {
+        return googleClient.email
+      }
+      return null
+    }
+
+    // PRO/ENTERPRISE: calendário do e-mail do funcionário ou secundário na conta do dono
     if (professional.googleCalendarId) {
-      this.logger.debug('Professional already has calendar', {
+      this.logger.debug('Professional already has secondary calendar', {
         professionalId,
         calendarId: professional.googleCalendarId,
       })
       return professional.googleCalendarId
     }
-
+    if (professional.email && isGmail(professional.email)) {
+      return professional.email
+    }
+    // Não Gmail: criar calendário secundário na conta do dono
     const calendarId = await this.createProfessionalCalendar(professionalId, salonId)
     if (calendarId) {
       await this.appointmentRepository.updateProfessionalCalendarId(professionalId, calendarId)
@@ -126,7 +148,7 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
       })
     }
 
-    const calendarId = await this.ensureProfessionalCalendar(
+    let calendarId = await this.ensureProfessionalCalendar(
       appointment.professionalId,
       appointment.salonId
     )
@@ -148,6 +170,15 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
     const calendar = google.calendar({ version: 'v3', auth: googleClient.client as never })
     const timeZone = process.env.GOOGLE_TIMEZONE || GOOGLE_TIMEZONE_DEFAULT
     const event = mapAppointmentToGoogleEvent(appointment, timeZone)
+    const isSolo = await this.appointmentRepository.isSoloPlan(appointment.salonId)
+
+    const tryInsert = async (calId: string) => {
+      const response = await calendar.events.insert({
+        calendarId: calId,
+        requestBody: event,
+      })
+      return response.data
+    }
 
     try {
       this.logger.debug('Sending event to Google Calendar', {
@@ -157,15 +188,13 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
         end: event.end.dateTime,
       })
 
-      const response = await calendar.events.insert({
-        calendarId,
-        requestBody: event,
-      })
+      let createdEvent = await tryInsert(calendarId)
 
-      const createdEvent = response.data
       if (!createdEvent.id) {
         throw new IntegrationError('Event created but ID not returned', 'google', { appointmentId })
       }
+
+      await this.appointmentRepository.updateExternalEventId(appointmentId, 'google', createdEvent.id)
 
       this.logger.info('Event created successfully in Google Calendar', {
         appointmentId,
@@ -177,7 +206,39 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
         eventId: createEventId(createdEvent.id),
         htmlLink: createdEvent.htmlLink || undefined,
       }
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorObj = error as { code?: number; response?: { status?: number } }
+      const status = errorObj?.code ?? errorObj?.response?.status
+      const is403or404 = status === 403 || status === 404
+
+      // Fallback: PRO + Gmail (calendário do funcionário não compartilhado) -> criar secundário na conta do dono
+      if (is403or404 && !isSolo && isGmail(calendarId)) {
+        this.logger.info('Insert failed with 403/404 on professional Gmail, falling back to secondary calendar', {
+          appointmentId,
+          calendarId,
+        })
+        const fallbackCalendarId = await this.createProfessionalCalendar(appointment.professionalId, appointment.salonId)
+        if (!fallbackCalendarId) {
+          const errMsg = error instanceof Error ? error.message : String(error)
+          throw new IntegrationError(`Failed to sync with Google Calendar: ${errMsg}`, 'google', { appointmentId })
+        }
+        await this.appointmentRepository.updateProfessionalCalendarId(appointment.professionalId, fallbackCalendarId)
+
+        const fallbackCreated = await tryInsert(fallbackCalendarId)
+        if (!fallbackCreated.id) {
+          throw new IntegrationError('Event created but ID not returned (fallback)', 'google', { appointmentId })
+        }
+        await this.appointmentRepository.updateExternalEventId(appointmentId, 'google', fallbackCreated.id)
+        this.logger.info('Event created in secondary calendar after Gmail fallback', {
+          appointmentId,
+          eventId: fallbackCreated.id,
+        })
+        return {
+          eventId: createEventId(fallbackCreated.id),
+          htmlLink: fallbackCreated.htmlLink || undefined,
+        }
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error)
       this.logger.error('Failed to create event in Google Calendar', {
         appointmentId,
@@ -292,11 +353,11 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
     }
 
     const professional = await this.appointmentRepository.findProfessionalById(appointment.professionalId)
-    if (!professional || !professional.googleCalendarId) {
-      this.logger.warn(
-        'Professional not found or has no calendar. Cannot delete event.',
-        { appointmentId, professionalId: appointment.professionalId }
-      )
+    if (!professional) {
+      this.logger.warn('Professional not found. Cannot delete event.', {
+        appointmentId,
+        professionalId: appointment.professionalId,
+      })
       return null
     }
 
@@ -308,16 +369,33 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
       return null
     }
 
+    const isSolo = await this.appointmentRepository.isSoloPlan(appointment.salonId)
+
+    let calendarId: string | null
+    if (isSolo) {
+      calendarId = googleClient.email ?? null
+    } else {
+      calendarId = professional.googleCalendarId ?? null
+      if (!calendarId && professional.email && isGmail(professional.email)) {
+        calendarId = professional.email
+      }
+    }
+
+    if (!calendarId) {
+      this.logger.warn('Could not resolve calendarId for delete', { appointmentId })
+      return null
+    }
+
     const calendar = google.calendar({ version: 'v3', auth: googleClient.client as never })
 
     try {
       this.logger.debug('Deleting event from Google Calendar', {
-        calendarId: professional.googleCalendarId,
+        calendarId,
         eventId: appointment.googleEventId,
       })
 
       await calendar.events.delete({
-        calendarId: professional.googleCalendarId,
+        calendarId,
         eventId: appointment.googleEventId,
       })
 
@@ -326,9 +404,9 @@ export class GoogleCalendarIntegration implements ICalendarIntegration {
       await this.appointmentRepository.updateExternalEventId(appointmentId, 'google', null)
 
       return true
-    } catch (error) {
-      const errorObj = error as Record<string, unknown>
-      if (errorObj.code === 404) {
+    } catch (error: unknown) {
+      const errorObj = error as { code?: number; response?: { status?: number } }
+      if (errorObj?.code === 404 || errorObj?.response?.status === 404) {
         this.logger.info('Event not found in Google Calendar (already deleted), removing reference', {
           appointmentId,
         })

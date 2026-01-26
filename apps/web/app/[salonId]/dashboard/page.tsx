@@ -22,6 +22,6 @@ export default async function DashboardHomePage({
     )
   }
 
-  return <DashboardContent stats={statsResult} />
+  return <DashboardContent stats={statsResult} salonId={salonId} />
 }
 

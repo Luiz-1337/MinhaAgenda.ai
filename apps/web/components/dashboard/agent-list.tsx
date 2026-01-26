@@ -1,5 +1,6 @@
 import React from 'react';
 import { Bot, User, BrainCircuit } from 'lucide-react';
+import { formatCreditsForDisplay } from "@/lib/utils";
 
 interface Agent {
   name: string;
@@ -55,7 +56,7 @@ export function AgentList({ agents, creditsByModel = [] }: AgentListProps) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{agent.credits.toLocaleString()}</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{formatCreditsForDisplay(agent.credits)}</p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500">créditos</p>
                 </div>
               </div>

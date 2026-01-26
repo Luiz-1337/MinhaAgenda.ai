@@ -32,30 +32,6 @@ export class DeleteGoogleEventUseCase {
       return false
     }
 
-    const professional = await this.appointmentRepository.findProfessionalById(
-      appointment.professionalId
-    )
-
-    if (!professional || !professional.googleCalendarId) {
-      this.logger.warn(
-        'Professional not found or has no calendar. Cannot delete event.',
-        { appointmentId, professionalId: appointment.professionalId }
-      )
-      return null
-    }
-
-    const result = await this.calendarIntegration.deleteEvent(appointmentId)
-
-    if (result === true) {
-      await this.appointmentRepository.updateExternalEventId(appointmentId, 'google', null)
-      this.logger.info('Google Calendar event deleted successfully', { appointmentId })
-    } else if (result === null) {
-      this.logger.warn(
-        'Event deletion returned null - integration may not be configured',
-        { appointmentId }
-      )
-    }
-
-    return result
+    return await this.calendarIntegration.deleteEvent(appointmentId)
   }
 }

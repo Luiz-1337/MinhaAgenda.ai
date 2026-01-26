@@ -61,6 +61,7 @@ export interface IAppointmentRepository {
   findProfessionalById(professionalId: string): Promise<{
     id: string
     name: string
+    email: string | null
     googleCalendarId: string | null
   } | null>
 
@@ -68,4 +69,9 @@ export interface IAppointmentRepository {
    * Updates professional's Google Calendar ID
    */
   updateProfessionalCalendarId(professionalId: string, calendarId: string): Promise<void>
+
+  /**
+   * Checks if the salon is on the SOLO plan (owner's profile tier === 'SOLO')
+   */
+  isSoloPlan(salonId: SalonId): Promise<boolean>
 }
