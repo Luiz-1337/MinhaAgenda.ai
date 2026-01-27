@@ -50,7 +50,8 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<SalonFormData>({
-    resolver: zodResolver(salonSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(salonSchema as any),
     defaultValues: {
       salonName: data.salonName || "",
       address: data.address || "",

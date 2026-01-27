@@ -40,7 +40,8 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
   }, [isPending, onPendingChange])
 
   const form = useForm<UpdateSalonSchema>({
-    resolver: zodResolver(updateSalonSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(updateSalonSchema as any),
     defaultValues: {
       name: salon.name || "",
       address: salon.address || "",

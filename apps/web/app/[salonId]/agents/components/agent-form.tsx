@@ -243,8 +243,12 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const [hasPromptChanged, setHasPromptChanged] = useState(false)
 
+  // Workaround: cast necessário devido a incompatibilidade entre @hookform/resolvers v5.2.x e Zod v4.1.x
+  // Ver: https://github.com/react-hook-form/resolvers/issues/813
+  const schema = mode === "create" ? createAgentSchema : agentSchema
   const form = useForm<AgentSchema>({
-    resolver: zodResolver(mode === "create" ? createAgentSchema : agentSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema as any),
     defaultValues: {
       name: initialData?.name ?? "",
       systemPrompt: initialData?.systemPrompt ?? "",

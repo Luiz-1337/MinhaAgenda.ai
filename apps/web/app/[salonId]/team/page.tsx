@@ -55,7 +55,8 @@ export default function TeamPage() {
   const [professionalToDelete, setProfessionalToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const form = useForm<ProfessionalForm>({
-    resolver: zodResolver(professionalSchema) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(professionalSchema as any),
     defaultValues: { name: "", email: "", phone: "", role: "STAFF", isActive: true },
   })
 

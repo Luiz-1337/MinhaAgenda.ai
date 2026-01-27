@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
-import { Zap, BrainCircuit, ShieldCheck, Clock, Sparkles, Bot } from "lucide-react"
+import { Zap, BrainCircuit, Sparkles } from "lucide-react"
 import { getRemainingCredits } from "@/app/actions/credits"
 import { formatCreditsForDisplay } from "@/lib/utils"
 import type { DashboardStats } from "@/app/actions/dashboard"
+import SoloAvailabilitySection from "@/components/dashboard/solo-availability-section"
 
 interface SoloDashboardContentProps {
   stats: DashboardStats
@@ -144,98 +145,37 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
         </div>
       </div>
 
-      {/* Cards rápidos: Agendamentos e Tempo */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 flex-shrink-0">
-        <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-6 text-white shadow-lg shadow-indigo-500/20 flex flex-col justify-between">
-          <ShieldCheck size={24} className="opacity-80" />
-          <div>
-            <p className="text-xs opacity-80 uppercase tracking-widest font-bold mb-1">Agendamentos</p>
-            <h4 className="text-2xl font-bold">{stats.completedAppointments} realizados</h4>
-            <p className="text-[10px] opacity-70 mt-1">Total de atendimentos concluídos</p>
-          </div>
+      {/* KPIs Compactos no Topo */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 flex-shrink-0">
+        <div className="bg-[#16161E] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-1">Agendamentos</p>
+          <p className="text-xl font-bold text-white">{stats.completedAppointments}</p>
         </div>
-        <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-3xl p-6 flex flex-col justify-between">
-          <Clock size={24} className="text-emerald-500" />
-          <div>
-            <p className="text-xs text-slate-500 uppercase tracking-widest font-bold mb-1">Tempo de resposta</p>
-            <h4 className="text-2xl font-bold text-slate-800 dark:text-white">{stats.averageResponseTime}</h4>
-            <p className="text-[10px] text-slate-400 mt-1">Média da IA para responder</p>
-          </div>
+        <div className="bg-[#16161E] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-1">Tempo resposta</p>
+          <p className="text-xl font-bold text-white">{stats.averageResponseTime}</p>
+        </div>
+        <div className="bg-[#16161E] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-1">Conversas ativas</p>
+          <p className="text-xl font-bold text-white">{stats.activeChats}</p>
+        </div>
+        <div className="bg-[#16161E] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-1">Taxa resposta</p>
+          <p className="text-xl font-bold text-white">{stats.responseRate}%</p>
+        </div>
+        <div className="bg-[#16161E] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-1">Fila média</p>
+          <p className="text-xl font-bold text-white">{stats.queueAverageTime}</p>
+        </div>
+        <div className="bg-[#16161E] border border-white/5 rounded-xl p-4">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-1">Agentes</p>
+          <p className="text-xl font-bold text-white">{stats.topAgents.length}</p>
         </div>
       </div>
 
-      {/* Rodapé: Agentes + Resumo */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-6 pb-2">
-        <div className="h-full min-h-[200px]">
-          <div className="h-full flex flex-col bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-200 dark:border-white/5">
-              <h3 className="text-slate-800 dark:text-slate-200 font-semibold">Consumo por agente</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Créditos utilizados (em mil)</p>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-              {agents.length > 0 ? (
-                agents.map((agent, i) => (
-                  <div
-                    key={agent.id}
-                    className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 mb-1"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 dark:bg-indigo-500/10 dark:border-indigo-500/20 dark:text-indigo-400 flex items-center justify-center">
-                        <Bot size={16} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{agent.name}</p>
-                        {agent.model && (
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1">
-                            <BrainCircuit size={10} className="text-indigo-400" />
-                            {agent.model}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{formatCreditsForDisplay(agent.credits)}</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500">créditos</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-4 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum agente com uso ainda.</div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Seção de Horários de Atendimento */}
+      <SoloAvailabilitySection salonId={salonId} />
 
-        <div className="lg:col-span-2 h-full min-h-[200px] flex flex-col bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-200 dark:border-white/5 flex justify-between items-center">
-            <h3 className="text-slate-800 dark:text-slate-200 font-semibold flex items-center gap-2">
-              <Sparkles size={18} className="text-amber-500" /> Resumo da operação
-            </h3>
-          </div>
-          <div className="flex-1 p-5 space-y-4 overflow-y-auto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Conversas ativas</p>
-                <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.activeChats}</p>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Taxa de resposta da IA</p>
-                <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.responseRate}%</p>
-              </div>
-              <div className="p-4 bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fila média</p>
-                <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.queueAverageTime}</p>
-              </div>
-              {last7.length > 0 && (
-                <div className="p-4 bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5 rounded-2xl">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Consumo (últimos 7 dias)</p>
-                  <p className="text-xl font-bold text-slate-800 dark:text-white">{formatCreditsForDisplay(last7.reduce((a, d) => a + d.value, 0))} mil créditos</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

@@ -177,6 +177,9 @@ export class MinhaAgendaAITools {
     }
 
     public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:179',message:'checkAvailability entry',data:{salonId,date,professionalId,serviceId,serviceDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         // Valida se professionalId foi fornecido
         if (!professionalId || professionalId.trim() === "") {
             throw new Error("professionalId é obrigatório para verificar disponibilidade")
@@ -196,6 +199,9 @@ export class MinhaAgendaAITools {
             }
         }
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:200',message:'Before getAvailableSlots call',data:{date,finalServiceDuration,professionalId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         // Chama o serviço compartilhado (consulta no banco)
         const allSlots = await sharedServices.getAvailableSlots({
             date,
@@ -203,6 +209,10 @@ export class MinhaAgendaAITools {
             serviceDuration: finalServiceDuration,
             professionalId: professionalId,
         })
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:207',message:'After getAvailableSlots call',data:{allSlotsCount:allSlots.length,allSlots},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
 
         // Verificação opcional de integrações ativas (para logging/informação)
         const integrations = await this.getActiveIntegrations(salonId)
@@ -220,15 +230,29 @@ export class MinhaAgendaAITools {
         // Isso garante que sempre teremos opções concretas para oferecer à cliente
         const slots = allSlots.slice(0, 2)
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:223',message:'Before return',data:{slotsCount:slots.length,slots,totalAvailable:allSlots.length,date,professionalId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
+        // Melhora a mensagem quando não há slots disponíveis
+        let message = ""
+        if (slots.length > 0) {
+            message = slots.length === 2
+                ? `Encontrados ${slots.length} horários disponíveis (mostrando os 2 melhores)`
+                : `Encontrado ${slots.length} horário disponível${allSlots.length > 1 ? ` (existem ${allSlots.length} no total)` : ''}`
+        } else {
+            // Verifica se o problema é falta de horários cadastrados ou conflitos
+            if (allSlots.length === 0) {
+                message = "Nenhum horário disponível para esta data. Verifique se o profissional tem horários de trabalho cadastrados para este dia da semana."
+            } else {
+                message = "Nenhum horário disponível para esta data"
+            }
+        }
+        
         return JSON.stringify({
             slots,
             totalAvailable: allSlots.length,
-            message:
-                slots.length > 0
-                    ? slots.length === 2
-                        ? `Encontrados ${slots.length} horários disponíveis (mostrando os 2 melhores)`
-                        : `Encontrado ${slots.length} horário disponível${allSlots.length > 1 ? ` (existem ${allSlots.length} no total)` : ''}`
-                    : "Nenhum horário disponível para esta data",
+            message,
         })
     }
 

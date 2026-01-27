@@ -45,7 +45,8 @@ export default function OnboardingPage() {
   }, [router])
   
   const form = useForm<CreateSalonSchema>({
-    resolver: zodResolver(createSalonSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(createSalonSchema as any),
     defaultValues: {
       name: "",
       slug: "",

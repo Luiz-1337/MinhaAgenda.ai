@@ -3,6 +3,11 @@ import { sendWhatsAppMessage } from '@/lib/services/whatsapp.service'
 
 export const runtime = 'nodejs'
 
+// Wrapper para adaptar sendWhatsAppMessage ao tipo SendMarketingMessage (Promise<void>)
+const sendMarketingMessage = async (to: string, body: string, salonId: string): Promise<void> => {
+  await sendWhatsAppMessage(to, body, salonId)
+}
+
 export async function GET() {
   try {
     const limboRows = await db.execute(sql`
@@ -25,7 +30,7 @@ export async function GET() {
       limboCount += limboChats.length
     }
 
-    const result = await domainServices.runMarketingDispatcher(sendWhatsAppMessage)
+    const result = await domainServices.runMarketingDispatcher(sendMarketingMessage)
 
     return Response.json({
       queuedCount: result.queuedCount,

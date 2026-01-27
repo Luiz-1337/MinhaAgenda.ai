@@ -42,7 +42,8 @@ export default function ProductList({ salonId }: ProductListProps) {
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const form = useForm<ProductForm>({
-    resolver: zodResolver(productSchema) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(productSchema as any),
     defaultValues: { name: "", description: "", price: 0, isActive: true },
   })
 

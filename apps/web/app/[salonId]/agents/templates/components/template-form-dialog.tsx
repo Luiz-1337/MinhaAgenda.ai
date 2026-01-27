@@ -131,7 +131,8 @@ export function TemplateFormDialog({
   const [isLoadingSalons, setIsLoadingSalons] = useState(false)
 
   const form = useForm<SystemPromptTemplateSchema>({
-    resolver: zodResolver(createSystemPromptTemplateSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(createSystemPromptTemplateSchema as any),
     defaultValues: {
       name: "",
       description: "",

@@ -74,7 +74,8 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const form = useForm<ServiceForm>({
-    resolver: zodResolver(serviceSchema) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(serviceSchema as any),
     defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, professionalIds: [] },
   })
 

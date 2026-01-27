@@ -55,7 +55,8 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<AccountFormData>({
-    resolver: zodResolver(accountSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(accountSchema as any),
     defaultValues: {
       firstName: data.firstName || "",
       lastName: data.lastName || "",

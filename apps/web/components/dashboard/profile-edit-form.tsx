@@ -31,7 +31,8 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
     }, [isPending, isPendingPassword, onPendingChange])
 
     const form = useForm<Omit<UpdateProfileSchema, "calendarSyncEnabled">>({
-      resolver: zodResolver(updateProfileSchema.omit({ calendarSyncEnabled: true })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resolver: zodResolver(updateProfileSchema.omit({ calendarSyncEnabled: true }) as any),
       defaultValues: {
         fullName: profile.fullName || "",
         phone: profile.phone || "",

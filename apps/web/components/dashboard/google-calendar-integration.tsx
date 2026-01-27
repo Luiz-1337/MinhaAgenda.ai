@@ -71,7 +71,8 @@ export function GoogleCalendarIntegration({ profile }: GoogleCalendarIntegration
   const initialValue = integrationIsActive !== null ? integrationIsActive : profile.calendarSyncEnabled
 
   const form = useForm<Pick<UpdateProfileSchema, "calendarSyncEnabled">>({
-    resolver: zodResolver(updateProfileSchema.pick({ calendarSyncEnabled: true })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(updateProfileSchema.pick({ calendarSyncEnabled: true }) as any),
     defaultValues: {
       calendarSyncEnabled: initialValue,
     },

@@ -40,7 +40,8 @@ export function StepLegal({ onNext, onBack }: StepLegalProps) {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<LegalFormData>({
-    resolver: zodResolver(legalSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(legalSchema as any),
     defaultValues: {
       documentType: data.documentType || "CPF",
       document: data.document || "",

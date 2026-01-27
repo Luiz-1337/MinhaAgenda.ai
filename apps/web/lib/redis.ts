@@ -1,0 +1,282 @@
+/**
+ * Cliente Redis para cache, idempotência e locks distribuídos
+ * 
+ * Usado pelo webhook do WhatsApp para:
+ * - Verificar e marcar mensagens como processadas (idempotência)
+ * - Adquirir/liberar locks distribuídos por chat
+ * - Rate limiting por telefone
+ */
+
+import { Redis } from "ioredis";
+import { logger } from "../lib/logger";
+
+// Singleton do cliente Redis
+let redis: Redis | null = null;
+
+/**
+ * Obtém ou cria uma instância do cliente Redis
+ */
+export function getRedisClient(): Redis {
+  if (redis) {
+    return redis;
+  }
+
+  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+  
+  redis = new Redis(redisUrl, {
+    maxRetriesPerRequest: 3,
+    retryStrategy(times) {
+      const delay = Math.min(times * 100, 3000);
+      logger.warn({ times, delay }, "Redis connection retry");
+      return delay;
+    },
+    reconnectOnError(err) {
+      const targetErrors = ["READONLY", "ECONNRESET", "ETIMEDOUT"];
+      return targetErrors.some((e) => err.message.includes(e));
+    },
+  });
+
+  redis.on("error", (err) => {
+    logger.error({ err }, "Redis client error");
+  });
+
+  redis.on("connect", () => {
+    logger.info("Redis client connected");
+  });
+
+  redis.on("ready", () => {
+    logger.info("Redis client ready");
+  });
+
+  return redis;
+}
+
+// Keys prefixes
+const KEYS = {
+  PROCESSED_MESSAGE: "twilio:processed:",
+  LOCK: "lock:",
+  RATE_LIMIT: "rate:",
+} as const;
+
+/**
+ * Verifica se uma mensagem já foi processada (idempotência)
+ * @param messageId - ID da mensagem do Twilio (MessageSid)
+ * @returns true se a mensagem já foi processada
+ */
+export async function isMessageProcessed(messageId: string): Promise<boolean> {
+  const client = getRedisClient();
+  const key = `${KEYS.PROCESSED_MESSAGE}${messageId}`;
+  const exists = await client.exists(key);
+  return exists === 1;
+}
+
+/**
+ * Marca uma mensagem como processada
+ * @param messageId - ID da mensagem do Twilio (MessageSid)
+ * @param ttl - Tempo de vida em segundos (padrão: 24 horas)
+ */
+export async function markMessageProcessed(
+  messageId: string,
+  ttl = 86400
+): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.PROCESSED_MESSAGE}${messageId}`;
+  await client.setex(key, ttl, new Date().toISOString());
+}
+
+/**
+ * Tenta adquirir um lock distribuído
+ * @param resource - Nome do recurso a ser bloqueado (ex: "chat:uuid-do-chat")
+ * @param ttl - Tempo de vida do lock em milissegundos (padrão: 30 segundos)
+ * @returns ID do lock se adquirido com sucesso, null caso contrário
+ */
+export async function acquireLock(
+  resource: string,
+  ttl = 30000
+): Promise<string | null> {
+  const client = getRedisClient();
+  const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const key = `${KEYS.LOCK}${resource}`;
+
+  // SET key value PX ttl NX - só define se não existir
+  const result = await client.set(key, lockId, "PX", ttl, "NX");
+
+  if (result === "OK") {
+    logger.debug({ resource, lockId, ttl }, "Lock acquired");
+    return lockId;
+  }
+
+  logger.debug({ resource }, "Failed to acquire lock");
+  return null;
+}
+
+/**
+ * Libera um lock distribuído
+ * @param resource - Nome do recurso bloqueado
+ * @param lockId - ID do lock retornado por acquireLock
+ */
+export async function releaseLock(
+  resource: string,
+  lockId: string
+): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.LOCK}${resource}`;
+
+  // Script Lua para garantir atomicidade: só deleta se o valor for igual ao lockId
+  const script = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("del", KEYS[1])
+    else
+      return 0
+    end
+  `;
+
+  const result = await client.eval(script, 1, key, lockId);
+
+  if (result === 1) {
+    logger.debug({ resource, lockId }, "Lock released");
+  } else {
+    logger.warn({ resource, lockId }, "Lock release failed (not owner or expired)");
+  }
+}
+
+/**
+ * Tenta estender o TTL de um lock existente
+ * @param resource - Nome do recurso bloqueado
+ * @param lockId - ID do lock
+ * @param ttl - Novo TTL em milissegundos
+ * @returns true se o lock foi estendido, false caso contrário
+ */
+export async function extendLock(
+  resource: string,
+  lockId: string,
+  ttl: number
+): Promise<boolean> {
+  const client = getRedisClient();
+  const key = `${KEYS.LOCK}${resource}`;
+
+  // Script Lua para garantir atomicidade: só estende se o valor for igual ao lockId
+  const script = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("pexpire", KEYS[1], ARGV[2])
+    else
+      return 0
+    end
+  `;
+
+  const result = await client.eval(script, 1, key, lockId, ttl);
+  return result === 1;
+}
+
+/**
+ * Incrementa contador de rate limit
+ * @param identifier - Identificador único (ex: telefone normalizado)
+ * @param limit - Limite máximo de requisições
+ * @param windowSeconds - Janela de tempo em segundos
+ * @returns Objeto com informações do rate limit
+ */
+export async function checkRateLimit(
+  identifier: string,
+  limit: number,
+  windowSeconds: number
+): Promise<{
+  allowed: boolean;
+  current: number;
+  limit: number;
+  remaining: number;
+  resetIn: number;
+}> {
+  const client = getRedisClient();
+  const key = `${KEYS.RATE_LIMIT}${identifier}`;
+
+  const current = await client.incr(key);
+
+  // Define TTL apenas na primeira requisição
+  if (current === 1) {
+    await client.expire(key, windowSeconds);
+  }
+
+  const ttl = await client.ttl(key);
+  const resetIn = ttl > 0 ? ttl : windowSeconds;
+
+  const allowed = current <= limit;
+  const remaining = Math.max(0, limit - current);
+
+  if (!allowed) {
+    logger.warn(
+      { identifier: hashPhone(identifier), current, limit, resetIn },
+      "Rate limit exceeded"
+    );
+  }
+
+  return {
+    allowed,
+    current,
+    limit,
+    remaining,
+    resetIn,
+  };
+}
+
+/**
+ * Obtém informações atuais do rate limit sem incrementar
+ * @param identifier - Identificador único
+ * @param limit - Limite máximo de requisições
+ */
+export async function getRateLimitInfo(
+  identifier: string,
+  limit: number
+): Promise<{
+  current: number;
+  limit: number;
+  remaining: number;
+  resetIn: number;
+}> {
+  const client = getRedisClient();
+  const key = `${KEYS.RATE_LIMIT}${identifier}`;
+
+  const currentStr = await client.get(key);
+  const current = currentStr ? parseInt(currentStr, 10) : 0;
+  const ttl = await client.ttl(key);
+  const resetIn = ttl > 0 ? ttl : 60;
+
+  return {
+    current,
+    limit,
+    remaining: Math.max(0, limit - current),
+    resetIn,
+  };
+}
+
+/**
+ * Reseta o rate limit de um identificador (útil para testes)
+ * @param identifier - Identificador único
+ */
+export async function resetRateLimit(identifier: string): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.RATE_LIMIT}${identifier}`;
+  await client.del(key);
+}
+
+/**
+ * Fecha a conexão Redis (útil para cleanup em testes)
+ */
+export async function closeRedisConnection(): Promise<void> {
+  if (redis) {
+    await redis.quit();
+    redis = null;
+    logger.info("Redis connection closed");
+  }
+}
+
+/**
+ * Hash de telefone para logs (sanitização de PII)
+ */
+function hashPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 8) return "***";
+  return `${digits.slice(0, 4)}***${digits.slice(-4)}`;
+}
+
+// Exporta o cliente para casos de uso avançados
+export { getRedisClient as redis };

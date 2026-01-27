@@ -29,7 +29,8 @@ export function StepCredentials({ onNext }: StepCredentialsProps) {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<CredentialsFormData>({
-    resolver: zodResolver(credentialsSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(credentialsSchema as any),
     defaultValues: {
       email: data.email || "",
       password: "",

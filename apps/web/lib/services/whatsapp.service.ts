@@ -1,11 +1,18 @@
 /**
  * Serviço para operações relacionadas ao WhatsApp via Twilio
+ * 
+ * Features:
+ * - Circuit Breaker para proteção contra falhas
+ * - Retry automático
+ * - Logging estruturado
  */
 
 import twilio from "twilio"
 import type { TwilioConfig } from "@/lib/types/chat"
 import { db, agents } from "@repo/db"
 import { and, eq } from "drizzle-orm"
+import { twilioCircuitBreaker, CircuitOpenError } from "@/lib/circuit-breaker"
+import { logger, hashPhone } from "@/lib/logger"
 
 let twilioClient: twilio.Twilio | null = null
 
@@ -29,7 +36,28 @@ function getTwilioClient(): twilio.Twilio {
 }
 
 /**
+ * Erro específico de WhatsApp
+ */
+export class WhatsAppSendError extends Error {
+  readonly name = "WhatsAppSendError";
+  readonly retryable: boolean;
+  readonly twilioErrorCode?: number;
+
+  constructor(message: string, retryable = true, twilioErrorCode?: number) {
+    super(message);
+    this.retryable = retryable;
+    this.twilioErrorCode = twilioErrorCode;
+  }
+}
+
+/**
  * Envia uma mensagem via WhatsApp usando Twilio
+ * 
+ * PROTEGIDO POR CIRCUIT BREAKER:
+ * - Se Twilio estiver fora do ar, rejeita rapidamente
+ * - Timeout de 10s por chamada
+ * - Abre circuito após 50% de falhas em 5+ requests
+ * 
  * @param to Número de telefone no formato whatsapp:+E.164 (ex: whatsapp:+5511999999999)
  * @param body Conteúdo da mensagem
  * @param salonId ID do salão (opcional) - se fornecido, usa o número do agente ativo
@@ -40,7 +68,7 @@ export async function sendWhatsAppMessage(
   body: string,
   salonId?: string,
   config?: TwilioConfig
-): Promise<void> {
+): Promise<{ sid: string }> {
   const client = getTwilioClient()
 
   // Prioridade: número do agente ativo > config?.phoneNumber > process.env.TWILIO_PHONE_NUMBER
@@ -51,31 +79,105 @@ export async function sendWhatsAppMessage(
   }
 
   if (!phoneNumber) {
-    phoneNumber = config?.phoneNumber ||  null
+    phoneNumber = config?.phoneNumber || null
   }
 
   if (!phoneNumber) {
-    throw new Error("TWILIO_PHONE_NUMBER não configurado")
+    throw new WhatsAppSendError("TWILIO_PHONE_NUMBER não configurado", false)
   }
 
   // Garante que os números estão no formato correto (whatsapp:+E.164)
   const fromNumber = phoneNumber.startsWith("whatsapp:") ? phoneNumber : `whatsapp:${phoneNumber}`
   const toNumber = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`
 
-  console.log(`📤 Enviando mensagem WhatsApp: ${fromNumber} -> ${toNumber}`)
+  const startTime = Date.now()
 
   try {
-    const message = await client.messages.create({
-      body,
-      from: fromNumber,
-      to: toNumber,
+    // Executa com circuit breaker
+    const message = await twilioCircuitBreaker.fire(async () => {
+      return client.messages.create({
+        body,
+        from: fromNumber,
+        to: toNumber,
+      })
     })
 
-    console.log(`✅ Mensagem enviada com sucesso. SID: ${message.sid}`)
+    const duration = Date.now() - startTime
+
+    logger.info(
+      {
+        sid: message.sid,
+        to: hashPhone(toNumber),
+        salonId,
+        bodyLength: body.length,
+        duration,
+      },
+      "WhatsApp message sent successfully"
+    )
+
+    return { sid: message.sid }
   } catch (error) {
-    console.error("❌ Erro ao enviar mensagem WhatsApp:", error)
-    throw error
+    const duration = Date.now() - startTime
+
+    // Se circuit breaker está aberto
+    if (error instanceof CircuitOpenError) {
+      logger.error(
+        {
+          to: hashPhone(toNumber),
+          salonId,
+          circuitState: "OPEN",
+          resetIn: error.resetIn,
+          duration,
+        },
+        "WhatsApp send blocked by circuit breaker"
+      )
+      throw new WhatsAppSendError(
+        "Serviço WhatsApp temporariamente indisponível",
+        true
+      )
+    }
+
+    // Erros do Twilio
+    const twilioError = error as { code?: number; message?: string }
+    const isRetryable = !isNonRetryableTwilioError(twilioError.code)
+
+    logger.error(
+      {
+        err: error,
+        to: hashPhone(toNumber),
+        salonId,
+        twilioCode: twilioError.code,
+        retryable: isRetryable,
+        duration,
+      },
+      "Failed to send WhatsApp message"
+    )
+
+    throw new WhatsAppSendError(
+      twilioError.message || "Erro ao enviar mensagem WhatsApp",
+      isRetryable,
+      twilioError.code
+    )
   }
+}
+
+/**
+ * Verifica se é um erro do Twilio que não deve ser retentado
+ */
+function isNonRetryableTwilioError(code?: number): boolean {
+  if (!code) return false
+
+  // Códigos de erro que não devem ser retentados
+  const nonRetryableCodes = [
+    21211, // Invalid 'To' Phone Number
+    21214, // 'To' phone number not verified
+    21408, // Permission denied
+    21610, // Message blocked
+    21614, // Invalid 'To' phone number format
+    63016, // User has not opted-in to receive messages
+  ]
+
+  return nonRetryableCodes.includes(code)
 }
 
 /**

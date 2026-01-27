@@ -40,30 +40,52 @@ export async function getAvailableSlots({
   serviceDuration,
   professionalId,
 }: GetAvailableSlotsInput): Promise<string[]> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:37',message:'getAvailableSlots entry',data:{date:typeof date==='string'?date:date.toISOString(),salonId,serviceDuration,professionalId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   validateInputs(salonId, serviceDuration, professionalId)
 
   // Normaliza a data e assume que está em horário de Brasília
-  const targetDateBrazil = normalizeDate(date)
+  // IMPORTANTE: Precisamos calcular o dayOfWeek no timezone de Brasília, não no timezone do servidor
+  const targetDate = normalizeDate(date)
+  // Para calcular o dayOfWeek corretamente no timezone de Brasília, precisamos usar format do date-fns-tz
+  // que retorna os componentes de data no timezone especificado
+  const targetDateBrazil = fromBrazilTime(targetDate)
+  // getDay() retorna o dia da semana baseado no timezone local do sistema
+  // Como targetDateBrazil já está no timezone de Brasília (via toZonedTime), getDay() deve funcionar
+  // Mas para garantir, vamos usar uma abordagem mais explícita
   const dayOfWeek = targetDateBrazil.getDay() // 0 = domingo, 6 = sábado
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:56',message:'After normalizeDate and timezone conversion',data:{targetDate:targetDate.toISOString(),targetDateBrazil:targetDateBrazil.toISOString(),targetDateBrazilLocal:targetDateBrazil.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),dayOfWeek,dayName:['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][dayOfWeek]},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
 
   // Busca horários de trabalho do profissional para este dia da semana
-  const professionalAvailability = await db
+  // Primeiro, vamos verificar quais dayOfWeek existem para este profissional (para debug)
+  const allAvailabilityForProfessional = await db
     .select({
+      dayOfWeek: availability.dayOfWeek,
       startTime: availability.startTime,
       endTime: availability.endTime,
       isBreak: availability.isBreak,
     })
     .from(availability)
-    .where(
-      and(
-        eq(availability.professionalId, professionalId!),
-        eq(availability.dayOfWeek, dayOfWeek)
-      )
-    )
+    .where(eq(availability.professionalId, professionalId!))
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:60',message:'All availability for professional',data:{allAvailabilityCount:allAvailabilityForProfessional.length,allAvailability:allAvailabilityForProfessional.map(a=>({dayOfWeek:a.dayOfWeek,dayName:['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][a.dayOfWeek],startTime:String(a.startTime),endTime:String(a.endTime),isBreak:a.isBreak})),searchingForDayOfWeek:dayOfWeek},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
+  const professionalAvailability = allAvailabilityForProfessional
+    .filter((a) => a.dayOfWeek === dayOfWeek)
+    .map(({ startTime, endTime, isBreak }) => ({ startTime, endTime, isBreak }))
 
   const workSpans = professionalAvailability.filter((r) => !r.isBreak)
-
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:64',message:'After query availability',data:{professionalAvailabilityCount:professionalAvailability.length,workSpansCount:workSpans.length,workSpans},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   if (workSpans.length === 0) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:66',message:'No workSpans found, returning empty',data:{dayOfWeek,professionalId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return []
   }
 
@@ -95,7 +117,9 @@ export async function getAvailableSlots({
       periodStartUtc,
       periodEndUtc
     )
-
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:92',message:'After getBusyTimeSlots',data:{busySlotsCount:busySlots.length,busySlots:busySlots.map(s=>({start:s.start.toISOString(),end:s.end.toISOString()})),periodStartUtc:periodStartUtc.toISOString(),periodEndUtc:periodEndUtc.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     // Gera slots disponíveis para este período
     // Trabalha em UTC internamente, mas retorna em horário de Brasília
     const slots = generateAvailableSlots(
@@ -105,12 +129,19 @@ export async function getAvailableSlots({
       busySlots,
       isToday ? toBrazilTime(nowBrazil) : null
     )
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:107',message:'After generateAvailableSlots',data:{slotsCount:slots.length,slots,serviceDuration,isToday},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
     allAvailableSlots.push(...slots)
   }
 
   // Remove duplicatas e ordena
-  return [...new Set(allAvailableSlots)].sort()
+  const finalSlots = [...new Set(allAvailableSlots)].sort()
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:113',message:'getAvailableSlots return',data:{finalSlotsCount:finalSlots.length,finalSlots},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  return finalSlots
 }
 
 /**
@@ -167,6 +198,9 @@ async function getBusyTimeSlots(
   dayStart: Date,
   dayEnd: Date
 ): Promise<Array<{ start: Date; end: Date }>> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:164',message:'getBusyTimeSlots entry',data:{salonId,professionalId,dayStart:dayStart.toISOString(),dayEnd:dayEnd.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
   const existingAppointments = await db
     .select({
       start: appointments.date,
@@ -182,13 +216,19 @@ async function getBusyTimeSlots(
         gt(appointments.endTime, dayStart)
       )
     )
-
-  return existingAppointments
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:184',message:'After query appointments',data:{existingAppointmentsCount:existingAppointments.length,existingAppointments:existingAppointments.map(a=>({start:a.start.toISOString(),end:a.end.toISOString()}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  const result = existingAppointments
     .map(({ start, end }) => ({
       start: new Date(start),
       end: new Date(end),
     }))
     .sort((a, b) => a.start.getTime() - b.start.getTime())
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:192',message:'getBusyTimeSlots return',data:{resultCount:result.length,result:result.map(r=>({start:r.start.toISOString(),end:r.end.toISOString()}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  return result
 }
 
 /**
@@ -215,6 +255,9 @@ function generateAvailableSlots(
   busySlots: Array<{ start: Date; end: Date }>,
   now: Date | null = null
 ): string[] {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:211',message:'generateAvailableSlots entry',data:{periodStart:periodStart.toISOString(),periodEnd:periodEnd.toISOString(),serviceDuration,busySlotsCount:busySlots.length,now:now?now.toISOString():null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
   const durationMs = serviceDuration * MINUTE_IN_MS
   const periodStartMs = periodStart.getTime()
   const periodEndMs = periodEnd.getTime()
@@ -230,6 +273,9 @@ function generateAvailableSlots(
 
     // Filtra slots no passado se for hoje
     if (nowMs !== null && slotEnd <= nowMs) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:232',message:'Slot filtered (past)',data:{slotStart:new Date(slotStart).toISOString(),slotEnd:new Date(slotEnd).toISOString(),nowMs},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       continue
     }
 
@@ -244,9 +290,15 @@ function generateAvailableSlots(
       const brazilTime = fromBrazilTime(slotDateUtc)
       const timeString = formatTime(brazilTime)
       availableSlots.push(timeString)
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:245',message:'Slot filtered (overlap)',data:{slotStart:new Date(slotStart).toISOString(),slotEnd:new Date(slotEnd).toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
     }
   }
-
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:250',message:'generateAvailableSlots return',data:{availableSlotsCount:availableSlots.length,availableSlots},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
   return availableSlots
 }
 

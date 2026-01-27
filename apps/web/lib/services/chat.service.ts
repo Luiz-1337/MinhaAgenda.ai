@@ -2,13 +2,18 @@
  * Serviço para operações relacionadas a chats e mensagens
  */
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, sql } from "drizzle-orm"
 import { db, chats, messages, salons, chatMessages, profiles, customers } from "@repo/db"
 import type { ChatMessage } from "@/lib/types/chat"
+import { logger } from "@/lib/logger"
 
 /**
  * Encontra ou cria um customer na tabela customers
  * Se não existir, cria com nome baseado no telefone formatado
+ * 
+ * PROTEGIDO CONTRA RACE CONDITIONS:
+ * - Usa INSERT ... ON CONFLICT DO NOTHING para evitar duplicatas
+ * - Busca novamente após insert para garantir retorno consistente
  */
 export async function findOrCreateCustomer(
   clientPhone: string,
@@ -27,24 +32,57 @@ export async function findOrCreateCustomer(
     columns: { id: true, name: true }
   })
   
-  // Se não existir, cria com nome baseado no telefone formatado
+  // Se não existir, tenta criar com proteção contra race condition
   if (!customer) {
     // Formata telefone para exibição (mesmo padrão usado em getChatConversations)
     const formattedName = normalizedPhone.length === 11
       ? `(${normalizedPhone.slice(0, 2)}) ${normalizedPhone.slice(2, 7)}-${normalizedPhone.slice(7)}`
       : clientPhone
     
-    const [newCustomer] = await db.insert(customers).values({
-      salonId,
-      name: formattedName,
-      phone: normalizedPhone,
-    }).returning({ id: customers.id, name: customers.name })
-    
-    if (!newCustomer) {
-      throw new Error("Falha ao criar customer")
+    try {
+      // Usa INSERT ... ON CONFLICT DO NOTHING para evitar erro de duplicata
+      // Se outra requisição criou o customer entre o SELECT e o INSERT, isso não vai falhar
+      await db.insert(customers).values({
+        salonId,
+        name: formattedName,
+        phone: normalizedPhone,
+      }).onConflictDoNothing({
+        target: [customers.salonId, customers.phone]
+      })
+      
+      // Busca novamente para pegar o ID (seja do insert ou do existente)
+      customer = await db.query.customers.findFirst({
+        where: and(
+          eq(customers.salonId, salonId),
+          eq(customers.phone, normalizedPhone)
+        ),
+        columns: { id: true, name: true }
+      })
+      
+      if (!customer) {
+        // Se ainda não encontrou, algo está muito errado
+        throw new Error("Falha ao criar ou encontrar customer após insert")
+      }
+    } catch (error) {
+      // Se for erro de constraint única, busca o registro existente
+      if (error instanceof Error && error.message.includes("unique")) {
+        logger.warn({ normalizedPhone, salonId }, "Race condition detected on customer creation, fetching existing")
+        
+        customer = await db.query.customers.findFirst({
+          where: and(
+            eq(customers.salonId, salonId),
+            eq(customers.phone, normalizedPhone)
+          ),
+          columns: { id: true, name: true }
+        })
+        
+        if (!customer) {
+          throw new Error("Falha ao criar customer: constraint violation mas registro não encontrado")
+        }
+      } else {
+        throw error
+      }
     }
-    
-    customer = newCustomer
   }
   
   return { id: customer.id, name: customer.name }
@@ -52,6 +90,10 @@ export async function findOrCreateCustomer(
 
 /**
  * Encontra ou cria um chat ativo para um cliente
+ * 
+ * PROTEGIDO CONTRA RACE CONDITIONS:
+ * - Usa INSERT ... ON CONFLICT para evitar duplicatas
+ * - Busca novamente após insert para garantir retorno consistente
  */
 export async function findOrCreateChat(
   clientPhone: string,
@@ -68,28 +110,52 @@ export async function findOrCreateChat(
 
   // Cria novo chat se não existir
   if (!chat) {
-    const inserted = await db
-      .insert(chats)
-      .values({
-        salonId,
-        clientPhone,
-        status: "active",
+    try {
+      // Usa INSERT ... ON CONFLICT DO NOTHING para evitar erro de duplicata
+      await db
+        .insert(chats)
+        .values({
+          salonId,
+          clientPhone,
+          status: "active",
+        })
+        .onConflictDoNothing({
+          target: [chats.salonId, chats.clientPhone]
+        })
+      
+      // Busca novamente para pegar o ID (seja do insert ou do existente)
+      chat = await db.query.chats.findFirst({
+        where: and(
+          eq(chats.clientPhone, clientPhone),
+          eq(chats.salonId, salonId),
+          eq(chats.status, "active")
+        ),
       })
-      .returning({ id: chats.id })
 
-    if (!inserted[0]) {
-      throw new Error("Falha ao criar chat")
+      if (!chat) {
+        // Se ainda não encontrou, algo está errado
+        throw new Error("Falha ao criar ou encontrar chat após insert")
+      }
+    } catch (error) {
+      // Se for erro de constraint única, busca o registro existente
+      if (error instanceof Error && error.message.includes("unique")) {
+        logger.warn({ clientPhone, salonId }, "Race condition detected on chat creation, fetching existing")
+        
+        chat = await db.query.chats.findFirst({
+          where: and(
+            eq(chats.clientPhone, clientPhone),
+            eq(chats.salonId, salonId),
+            eq(chats.status, "active")
+          ),
+        })
+        
+        if (!chat) {
+          throw new Error("Falha ao criar chat: constraint violation mas registro não encontrado")
+        }
+      } else {
+        throw error
+      }
     }
-
-    const newChat = await db.query.chats.findFirst({
-      where: eq(chats.id, inserted[0].id),
-    })
-
-    if (!newChat) {
-      throw new Error("Falha ao recuperar chat criado")
-    }
-
-    chat = newChat
   }
 
   return { id: chat.id }
