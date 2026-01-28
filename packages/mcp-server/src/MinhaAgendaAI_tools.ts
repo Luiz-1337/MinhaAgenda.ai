@@ -2,37 +2,50 @@ import { and, asc, eq, gt, ilike } from "drizzle-orm"
 import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, products, availability, professionalServices, fromBrazilTime, createTrinksAppointment, updateTrinksAppointment, deleteTrinksAppointment } from "@repo/db"
 import { syncCreateAppointment, syncUpdateAppointment, syncDeleteAppointment } from "./services/external-sync"
 
+/**
+ * Tipo de retorno para integrações ativas
+ */
+export interface ActiveIntegrations {
+    google: { isActive: boolean; email?: string } | null;
+    trinks: { isActive: boolean } | null;
+}
+
+/**
+ * Verifica quais integrações estão ativas para um salão
+ * Função utilitária exportada para uso em outros módulos (ex: vercel-ai.ts)
+ */
+export async function getActiveIntegrations(salonId: string): Promise<ActiveIntegrations> {
+    const [googleIntegration, trinksIntegration] = await Promise.all([
+        db.query.salonIntegrations.findFirst({
+            where: and(
+                eq(salonIntegrations.salonId, salonId),
+                eq(salonIntegrations.provider, 'google')
+            ),
+            columns: { isActive: true, email: true }
+        }),
+        db.query.salonIntegrations.findFirst({
+            where: and(
+                eq(salonIntegrations.salonId, salonId),
+                eq(salonIntegrations.provider, 'trinks')
+            ),
+            columns: { isActive: true }
+        })
+    ]);
+
+    return {
+        google: googleIntegration?.isActive ? { isActive: true, email: googleIntegration.email || undefined } : null,
+        trinks: trinksIntegration?.isActive ? { isActive: true } : null
+    };
+}
+
 export class MinhaAgendaAITools {
 
     /**
      * Verifica quais integrações estão ativas para um salão
-     * Retorna informações sobre Google Calendar e Trinks se estiverem ativas
+     * Método público que delega para a função utilitária
      */
-    private async getActiveIntegrations(salonId: string): Promise<{
-        google: { isActive: boolean; email?: string } | null;
-        trinks: { isActive: boolean } | null;
-    }> {
-        const [googleIntegration, trinksIntegration] = await Promise.all([
-            db.query.salonIntegrations.findFirst({
-                where: and(
-                    eq(salonIntegrations.salonId, salonId),
-                    eq(salonIntegrations.provider, 'google')
-                ),
-                columns: { isActive: true, email: true }
-            }),
-            db.query.salonIntegrations.findFirst({
-                where: and(
-                    eq(salonIntegrations.salonId, salonId),
-                    eq(salonIntegrations.provider, 'trinks')
-                ),
-                columns: { isActive: true }
-            })
-        ]);
-
-        return {
-            google: googleIntegration?.isActive ? { isActive: true, email: googleIntegration.email || undefined } : null,
-            trinks: trinksIntegration?.isActive ? { isActive: true } : null
-        };
+    public async getActiveIntegrations(salonId: string): Promise<ActiveIntegrations> {
+        return getActiveIntegrations(salonId);
     }
 
     public async identifyCustomer(phone: string, name?: string, salonId?: string) {

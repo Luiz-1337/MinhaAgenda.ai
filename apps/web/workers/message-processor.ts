@@ -11,7 +11,7 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { getRedisClient, acquireLock, releaseLock } from "../lib/redis";
+import { getRedisClient, createRedisClientForBullMQ, acquireLock, releaseLock } from "../lib/redis";
 import {
   MessageJobData,
   MessageJobResult,
@@ -290,7 +290,8 @@ async function handleMediaMessage(
  * Cria e inicia o worker
  */
 export function createMessageWorker(): Worker<MessageJobData, MessageJobResult> {
-  const connection = getRedisClient();
+  // BullMQ requer maxRetriesPerRequest: null
+  const connection = createRedisClientForBullMQ();
 
   const worker = new Worker<MessageJobData, MessageJobResult>(
     QUEUE_NAME,

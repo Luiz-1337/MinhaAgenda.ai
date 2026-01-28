@@ -9,6 +9,7 @@ import type { ScheduleItem } from "@/lib/types/availability"
 
 type Props = {
   salonId: string
+  className?: string
 }
 
 type Item = { dayOfWeek: number; isActive: boolean; startTime: string; endTime: string }
@@ -23,7 +24,7 @@ const dayNames = [
   "Sábado",
 ]
 
-export default function SoloAvailabilitySection({ salonId }: Props) {
+export default function SoloAvailabilitySection({ salonId, className }: Props) {
   const [isPending, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(true)
   const [items, setItems] = useState<Item[]>(() =>
@@ -100,21 +101,21 @@ export default function SoloAvailabilitySection({ salonId }: Props) {
   }
 
   return (
-    <div className="bg-[#0B0B0F] border border-white/5 rounded-2xl p-6">
+    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 flex flex-col ${className || ""}`}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-[#16161E] border border-white/5 rounded-lg">
-            <Clock size={18} className="text-indigo-400" />
+          <div className="p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/5 rounded-lg">
+            <Clock size={18} className="text-indigo-500 dark:text-indigo-400" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-white">Horários de Atendimento</h3>
-            <p className="text-xs text-white/60">Configure sua disponibilidade semanal</p>
+            <h3 className="text-base font-semibold text-slate-800 dark:text-white">Horários de Atendimento</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configure sua disponibilidade semanal</p>
           </div>
         </div>
         <button
           onClick={copyToWeekdays}
-          className="text-xs flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors font-medium px-3 py-1.5 rounded-lg hover:bg-white/5 border border-white/5"
+          className="text-xs flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 border border-slate-200 dark:border-white/5"
           title="Copiar horário do primeiro dia útil para todos os dias de semana"
         >
           <Copy size={12} />
@@ -124,23 +125,24 @@ export default function SoloAvailabilitySection({ salonId }: Props) {
 
       {/* Grid de Dias */}
       {isLoading ? (
-        <div className="text-center py-12 text-white/40">
+        <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
           Carregando horários...
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {items.map((day) => (
             <div
               key={day.dayOfWeek}
               className={`p-4 rounded-xl border transition-all duration-200 ${
                 day.isActive
-                  ? "bg-[#16161E] border-white/10"
-                  : "bg-[#16161E]/50 border-white/5 opacity-60"
+                  ? "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-white/10"
+                  : "bg-slate-50/50 dark:bg-slate-800/50 border-slate-100 dark:border-white/5 opacity-60"
               }`}
             >
               {/* Header do Card: Nome do Dia + Toggle */}
               <div className="flex items-center justify-between mb-3">
-                <span className={`text-sm font-medium ${day.isActive ? "text-white" : "text-white/50"}`}>
+                <span className={`text-sm font-medium ${day.isActive ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-500"}`}>
                   {dayNames[day.dayOfWeek]}
                 </span>
                 <Switch
@@ -157,7 +159,7 @@ export default function SoloAvailabilitySection({ salonId }: Props) {
               {day.isActive ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-white/40 uppercase font-semibold tracking-wider">Início</label>
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider">Início</label>
                     <input
                       type="time"
                       value={day.startTime}
@@ -166,11 +168,11 @@ export default function SoloAvailabilitySection({ salonId }: Props) {
                           prev.map((p) => (p.dayOfWeek === day.dayOfWeek ? { ...p, startTime: e.target.value } : p))
                         )
                       }
-                      className="w-full bg-[#0B0B0F] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-700 dark:text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] text-white/40 uppercase font-semibold tracking-wider">Fim</label>
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider">Fim</label>
                     <input
                       type="time"
                       value={day.endTime}
@@ -179,22 +181,23 @@ export default function SoloAvailabilitySection({ salonId }: Props) {
                           prev.map((p) => (p.dayOfWeek === day.dayOfWeek ? { ...p, endTime: e.target.value } : p))
                         )
                       }
-                      className="w-full bg-[#0B0B0F] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-700 dark:text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="text-[10px] text-white/30 font-medium py-2 text-center">
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium py-2 text-center">
                   Inativo
                 </div>
               )}
             </div>
           ))}
+          </div>
         </div>
       )}
 
-      {/* Botão Salvar Fixo */}
-      <div className="sticky bottom-0 pt-4 border-t border-white/5 bg-[#0B0B0F] -mx-6 -mb-6 px-6 pb-6">
+      {/* Botão Salvar */}
+      <div className="flex-shrink-0 pt-4 border-t border-slate-200 dark:border-white/5">
         <button
           onClick={onSave}
           disabled={!canSave || isPending}

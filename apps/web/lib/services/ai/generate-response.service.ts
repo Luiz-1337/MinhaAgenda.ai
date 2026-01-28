@@ -8,16 +8,16 @@
  * - Tratamento de erros de tools
  */
 
-import { generateText, convertToModelMessages, UIMessage } from "ai";
+import { generateText, convertToModelMessages, UIMessage, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createMCPTools } from "@repo/mcp-server/tools/vercel-ai";
 import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
 import { getActiveAgentInfo } from "./agent-info.service";
 import { mapModelToOpenAI } from "./model-mapper.service";
 import { getChatHistory } from "../chat.service";
-import { findRelevantContext } from "@/app/actions/knowledge";
-import { logger, createContextLogger, Logger } from "@/lib/logger";
-import { AIGenerationError, WhatsAppError } from "@/lib/errors";
+import { findRelevantContext } from "../../../app/actions/knowledge";
+import { logger, createContextLogger, Logger } from "../../logger";
+import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments } from "@repo/db";
 import { eq, and } from "drizzle-orm";
 
@@ -51,6 +51,7 @@ export interface GenerateResponseResult {
 
 /**
  * Gera resposta da IA para uma mensagem do usuário
+ * OTIMIZADO: Queries paralelas e sem duplicação
  */
 export async function generateAIResponse(
   params: GenerateResponseParams
@@ -61,8 +62,14 @@ export async function generateAIResponse(
   const startTime = Date.now();
 
   try {
-    // 1. Buscar informações do agente ativo
-    const agentInfo = await getActiveAgentInfo(salonId);
+    // 1. PARALELO: Buscar dados independentes simultaneamente
+    const [agentInfo, preferences, historyMessages, mcpTools] = await Promise.all([
+      getActiveAgentInfo(salonId),
+      fetchCustomerPreferences(salonId, customerId, contextLogger),
+      getChatHistory(chatId, 6), // Reduzido de 10 para 6
+      createMCPTools(salonId, clientPhone),
+    ]);
+
     if (!agentInfo) {
       contextLogger.error("No active agent found for salon");
       throw new AIGenerationError("No active agent found", { retryable: false });
@@ -70,47 +77,39 @@ export async function generateAIResponse(
 
     const agentModel = agentInfo.model || "gpt-4o-mini";
     const modelName = mapModelToOpenAI(agentModel);
-    contextLogger.debug({ model: modelName, agentName: agentInfo.name }, "Agent info loaded");
+    contextLogger.debug({ model: modelName, agentName: agentInfo.name, toolsCount: Object.keys(mcpTools).length }, "Context loaded in parallel");
 
-    // 2. Buscar contexto RAG (se houver agente ativo)
+    // 2. RAG: Só busca se agente tiver knowledge base configurada
     let knowledgeContext: string | undefined;
-    if (agentInfo.id) {
+    if (agentInfo.id && agentInfo.hasKnowledgeBase) {
       knowledgeContext = await fetchKnowledgeContext(agentInfo.id, userMessage, contextLogger);
     }
 
-    // 3. Buscar preferências do cliente
-    const preferences = await fetchCustomerPreferences(salonId, customerId, contextLogger);
-
-    // 4. Buscar histórico de mensagens
-    const historyMessages = await getChatHistory(chatId, 10);
+    // 3. Montar mensagens UI
     const uiMessages: UIMessage[] = historyMessages.map((msg, idx) => ({
       id: `hist-${idx}`,
       role: msg.role as "user" | "assistant",
       parts: [{ type: "text" as const, text: msg.content }],
     }));
 
-    // 5. Adicionar mensagem atual do usuário
     uiMessages.push({
       id: `temp-${Date.now()}`,
       role: "user",
       parts: [{ type: "text" as const, text: userMessage }],
     });
 
-    // 6. Criar system prompt
+    // 4. Criar system prompt (passa agentInfo para evitar query duplicada)
     const systemPrompt = await createSalonAssistantPrompt(
       salonId,
       preferences,
       knowledgeContext,
       customerName,
       customerId,
-      isNewCustomer
+      isNewCustomer,
+      agentInfo // Passa agentInfo para evitar query duplicada
     );
 
-    // 7. Criar tools
-    const mcpTools = await createMCPTools(salonId, clientPhone);
-    contextLogger.debug({ toolsCount: Object.keys(mcpTools).length }, "MCP tools created");
-
-    // 8. Gerar resposta
+    // 5. Gerar resposta
     contextLogger.info({ model: modelName }, "Generating AI response");
 
     const { text, usage, steps } = await generateText({
@@ -118,7 +117,7 @@ export async function generateAIResponse(
       system: systemPrompt,
       messages: convertToModelMessages(uiMessages),
       tools: mcpTools,
-      // maxSteps is not a valid property for generateText request options, so we remove it
+      stopWhen: stepCountIs(5), // Permite até 5 iterações: tool call → resultado → resposta textual
     });
 
     // 9. Verificar e tratar erros de tools

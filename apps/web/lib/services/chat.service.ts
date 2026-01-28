@@ -4,8 +4,8 @@
 
 import { and, asc, desc, eq, sql } from "drizzle-orm"
 import { db, chats, messages, salons, chatMessages, profiles, customers } from "@repo/db"
-import type { ChatMessage } from "@/lib/types/chat"
-import { logger } from "@/lib/logger"
+import type { ChatMessage } from "../types/chat"
+import { logger } from "../logger"
 
 /**
  * Encontra ou cria um customer na tabela customers

@@ -8,11 +8,11 @@
  */
 
 import twilio from "twilio"
-import type { TwilioConfig } from "@/lib/types/chat"
+import type { TwilioConfig } from "../types/chat"
 import { db, agents } from "@repo/db"
 import { and, eq } from "drizzle-orm"
-import { twilioCircuitBreaker, CircuitOpenError } from "@/lib/circuit-breaker"
-import { logger, hashPhone } from "@/lib/logger"
+import { twilioCircuitBreaker, CircuitOpenError } from "../circuit-breaker"
+import { logger, hashPhone } from "../logger"
 
 let twilioClient: twilio.Twilio | null = null
 

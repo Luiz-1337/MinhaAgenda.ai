@@ -2,16 +2,16 @@
 
 import { embed } from "ai"
 import { openai } from "@ai-sdk/openai"
-import { createClient } from "@/lib/supabase/server"
-import type { ActionResult } from "@/lib/types/common"
+import { createClient } from "../../lib/supabase/server"
+import type { ActionResult } from "../../lib/types/common"
 import { db, agentKnowledgeBase, agents, postgresClient } from "@repo/db"
 import { eq, and, desc, sql } from "drizzle-orm"
-import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { hasSalonPermission } from "../../lib/services/permissions.service"
 import {
   extractTextFromFile,
   splitIntelligentChunks,
   type FileProcessingResult,
-} from "@/lib/utils/file-processor"
+} from "../../lib/utils/file-processor"
 
 export type KnowledgeItem = {
   id: string

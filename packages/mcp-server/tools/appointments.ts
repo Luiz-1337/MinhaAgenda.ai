@@ -8,6 +8,8 @@ import {
   deleteAppointmentSchema,
 } from "../src/schemas/tools.schema"
 
+const SOURCE_FILE = 'packages/mcp-server/tools/appointments.ts'
+
 type JsonValue =
   | string
   | number
@@ -15,6 +17,19 @@ type JsonValue =
   | null
   | { [key: string]: JsonValue }
   | JsonValue[]
+
+/**
+ * Logger para execução de tools
+ */
+function logToolExecution(toolName: string, params: unknown, result: unknown, startTime: number) {
+  const duration = Date.now() - startTime
+  console.log('\n🔨 [Tool Execution] ' + toolName)
+  console.log(`   📁 Arquivo: ${SOURCE_FILE}`)
+  console.log(`   📥 Parâmetros: ${JSON.stringify(params, null, 2).split('\n').join('\n      ')}`)
+  console.log(`   📤 Resposta: ${JSON.stringify(result, null, 2).split('\n').join('\n      ')}`)
+  console.log(`   ⏱️ Duração: ${duration}ms`)
+  console.log('')
+}
 
 function maybeParseJson(value: unknown): JsonValue | unknown {
   if (typeof value !== "string") return value
@@ -82,6 +97,7 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
         "Verifica horários disponíveis para agendamento em um salão. Considera horários de trabalho, agendamentos existentes e duração do serviço.",
       inputSchema: checkAvailabilityInputSchema,
       execute: async (input: z.infer<typeof checkAvailabilityInputSchema>) => {
+        const startTime = Date.now()
         const result = await impl.checkAvailability(
           salonId,
           String(ensureIsoWithTimezone(input.date)),
@@ -89,7 +105,9 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
           input.serviceId,
           input.serviceDuration
         )
-        return maybeParseJson(result)
+        const parsed = maybeParseJson(result)
+        logToolExecution('checkAvailability', input, parsed, startTime)
+        return parsed
       },
     }),
 
@@ -98,6 +116,7 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
         "Adiciona um novo agendamento no sistema. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
       inputSchema: createAppointmentInputSchema,
       execute: async (input: z.infer<typeof createAppointmentInputSchema>) => {
+        const startTime = Date.now()
         const result = await impl.createAppointment(
           salonId,
           input.professionalId,
@@ -106,7 +125,9 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
           String(ensureIsoWithTimezone(input.date)),
           input.notes
         )
-        return maybeParseJson(result)
+        const parsed = maybeParseJson(result)
+        logToolExecution('addAppointment', input, parsed, startTime)
+        return parsed
       },
     }),
 
@@ -115,6 +136,7 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
         "Atualiza um agendamento existente. Pode atualizar profissional, serviço, data/hora ou notas. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
       inputSchema: updateAppointmentInputSchema,
       execute: async (input: z.infer<typeof updateAppointmentInputSchema>) => {
+        const startTime = Date.now()
         const result = await impl.updateAppointment(
           input.appointmentId,
           input.professionalId,
@@ -122,7 +144,9 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
           input.date ? String(ensureIsoWithTimezone(input.date)) : undefined,
           input.notes
         )
-        return maybeParseJson(result)
+        const parsed = maybeParseJson(result)
+        logToolExecution('updateAppointment', input, parsed, startTime)
+        return parsed
       },
     }),
 
@@ -131,8 +155,11 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
         "Remove um agendamento do sistema. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
       inputSchema: deleteAppointmentSchema,
       execute: async (input: z.infer<typeof deleteAppointmentSchema>) => {
+        const startTime = Date.now()
         const result = await impl.deleteAppointment(input.appointmentId)
-        return maybeParseJson(result)
+        const parsed = maybeParseJson(result)
+        logToolExecution('removeAppointment', input, parsed, startTime)
+        return parsed
       },
     }),
   }

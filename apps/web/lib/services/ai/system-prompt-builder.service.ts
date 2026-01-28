@@ -95,25 +95,6 @@ function formatCustomerInfoText(
 }
 
 /**
- * Formata informações do salão em texto
- */
-async function formatSalonInfoText(salonId: string): Promise<string> {
-  const salonInfo = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: { settings: true },
-  })
-
-  const salonSettings = (salonInfo?.settings as Record<string, unknown>) || {}
-  const lateToleranceMinutes = salonSettings.late_tolerance_minutes as number | undefined
-
-  if (lateToleranceMinutes === undefined) {
-    return ""
-  }
-
-  return `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${lateToleranceMinutes} minutos`
-}
-
-/**
  * Formata data e hora atual
  */
 function formatDateTime(): { formattedDate: string; formattedTime: string } {
@@ -142,6 +123,7 @@ function formatDateTime(): { formattedDate: string; formattedTime: string } {
 export class SystemPromptBuilder {
   /**
    * Cria system prompt padrão para assistente de salão
+   * OTIMIZADO: Aceita agentInfo para evitar query duplicada
    */
   static async build(
     salonId: string,
@@ -149,19 +131,26 @@ export class SystemPromptBuilder {
     knowledgeContext?: string,
     customerName?: string,
     customerId?: string,
-    isNewCustomer?: boolean
+    isNewCustomer?: boolean,
+    existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>
   ): Promise<string> {
-    const agentInfo = await AgentInfoService.getActiveAgentInfo(salonId)
+    // Usa agentInfo passado ou busca (evita duplicação)
+    const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
     const { formattedDate, formattedTime } = formatDateTime()
     const preferencesText = formatPreferencesText(preferences)
     const knowledgeContextText = formatKnowledgeContextText(knowledgeContext)
     const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer)
-    const salonInfoText = await formatSalonInfoText(salonId)
-    const lateToleranceMinutes = (await db.query.salons.findFirst({
+    
+    // Query única para settings do salão (removida duplicação)
+    const salonInfo = await db.query.salons.findFirst({
       where: eq(salons.id, salonId),
       columns: { settings: true },
-    }))?.settings as Record<string, unknown> | undefined
-    const toleranceMinutes = lateToleranceMinutes?.late_tolerance_minutes as number | undefined
+    })
+    const salonSettings = (salonInfo?.settings as Record<string, unknown>) || {}
+    const toleranceMinutes = salonSettings.late_tolerance_minutes as number | undefined
+    const salonInfoText = toleranceMinutes !== undefined 
+      ? `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${toleranceMinutes} minutos`
+      : ""
 
     return `Você é um assistente virtual.
 
@@ -183,11 +172,9 @@ REGRAS CRÍTICAS:
 5. NUNCA mencione profissionais, serviços ou horários que não foram retornados pelas tools.
 6. Se houver ambiguidade em nomes, peça esclarecimento listando as opções encontradas pela tool (ela retornará erro com sugestões).
 7. Quando usar getServices ou getProfessionals, apresente a lista de forma formatada e amigável.
-8. Antes de agendar, SEMPRE verifique disponibilidade (checkAvailability). Para criar o agendamento, use a tool de agendamento que estiver disponível no contexto (ex: createAppointment no WhatsApp/MCP ou bookAppointment no chat web).
-9. Seja educado, conciso e use português brasileiro.
-10. SEMPRE gere uma resposta de texto após executar qualquer tool. NUNCA retorne apenas resultados de tools sem uma resposta explicativa e amigável ao usuário. Mesmo que tenha executado tools, você DEVE sempre fornecer uma resposta final em texto.
-11. Podem ter casos de ter duas tools para marcar o horário, sendo um para o Google Calendar e outro para a Trix. Nesse caso, utilize as duas tools para marcar os horários e não pergunte ao usuário se é para o Google Calendar ou para a Trix.
-12. Você está conversando via WhatsApp. NÃO use sintaxe Markdown padrão (como ###, **, [ ]). Siga estritamente estas regras de formatação:
+8. Seja educado, conciso e use português brasileiro.
+9. SEMPRE gere uma resposta de texto após executar qualquer tool. NUNCA retorne apenas resultados de tools sem uma resposta explicativa e amigável ao usuário. Mesmo que tenha executado tools, você DEVE sempre fornecer uma resposta final em texto.
+10. Você está conversando via WhatsApp. NÃO use sintaxe Markdown padrão (como ###, **, [ ]). Siga estritamente estas regras de formatação:
 
 Para títulos, use letras MAIÚSCULAS envoltas em asteriscos únicos (ex: *TÍTULO*). Nunca use #.
 Para negrito, use um asterisco de cada lado (ex: *negrito*).
@@ -198,9 +185,41 @@ Use quebras de linha duplas para separar seções.
 REGRA DE OURO DO AGENDAMENTO (OBRIGATÓRIO):
 - SEMPRE ofereça exatamente DUAS opções de horário concretas para a cliente escolher.
 - NUNCA diga apenas "não tem horário" ou pergunte "qual horário você quer?" sem oferecer opções específicas.
-- A tool checkAvailability já retorna no máximo 2 slots. Use-os para oferecer as 2 opções.
+- A tool de verificação de disponibilidade já retorna no máximo 2 slots. Use-os para oferecer as 2 opções.
 - Se a tool retornar apenas 1 horário disponível, busque disponibilidade em outra data próxima para ter a segunda opção.
 - Apresente as duas opções de forma clara: "Tenho duas opções para você: [opção 1] ou [opção 2]. Qual prefere?"
+
+FLUXO CRÍTICO DE AGENDAMENTO (3 FASES OBRIGATÓRIAS):
+
+As tools de agendamento disponíveis dependem das integrações ativas do salão. Siga SEMPRE este fluxo:
+
+FASE 1 - IDENTIFICAÇÃO DAS TOOLS:
+As tools disponíveis já foram filtradas automaticamente baseado nas integrações do salão:
+- Se houver tools com prefixo "google_" (ex: google_checkAvailability, google_createAppointment): use-as para integração com Google Calendar
+- Se houver tools com prefixo "trinks_" (ex: trinks_checkAvailability, trinks_createAppointment): use-as para integração com Trinks
+- Se houver ambas (google_* e trinks_*): use AMBAS - primeiro crie no Google, depois no Trinks
+- Se houver apenas tools sem prefixo (checkAvailability, addAppointment): use as tools padrão
+
+FASE 2 - VERIFICAÇÃO DE DISPONIBILIDADE (OBRIGATÓRIO):
+- ANTES de criar qualquer agendamento, SEMPRE verifique disponibilidade usando a tool apropriada:
+  * Se google_checkAvailability disponível: use-a (consulta Google Calendar FreeBusy)
+  * Se trinks_checkAvailability disponível: use-a (consulta agendamentos do Trinks)
+  * Se checkAvailability disponível: use-a (consulta banco de dados)
+- NUNCA pule esta fase. Se não verificar disponibilidade, pode haver conflito de horários.
+- A tool retornará os horários disponíveis. Ofereça as opções ao cliente.
+
+FASE 3 - EXECUÇÃO DO AGENDAMENTO:
+- SOMENTE após o cliente confirmar o horário desejado, proceda com a criação:
+  * Se google_createAppointment disponível: use-a (cria no banco + sincroniza com Google Calendar)
+  * Se trinks_createAppointment disponível: use-a (cria no banco + sincroniza com Trinks)
+  * Se AMBAS disponíveis: use AMBAS em sequência para sincronizar com os dois sistemas
+  * Se apenas addAppointment disponível: use-a (cria apenas no banco de dados)
+- Se ocorrer erro, informe o cliente e tente novamente ou peça para tentar outro horário.
+
+REGRA DE SINCRONIZAÇÃO MÚLTIPLA:
+- Quando houver múltiplas integrações ativas (Google + Trinks), o agendamento deve ser criado em TODOS os sistemas.
+- Use todas as tools de criação disponíveis (google_createAppointment E trinks_createAppointment).
+- Não pergunte ao usuário em qual sistema criar - crie em todos automaticamente.
 
 FLUXO DE ATENDIMENTO:
 
@@ -237,7 +256,7 @@ REGRA DO PROFISSIONAL DA VEZ:
        - Lembrete sobre finalização não inclusa (se for corte): "Lembrando: o serviço de corte não inclui finalização/escova."
      * Informe sobre o tempo de tolerância para atrasos${toleranceMinutes !== undefined ? ` (${toleranceMinutes} minutos)` : ""}:
        "Importante: Pedimos que chegue pontualmente. Temos uma tolerância de ${toleranceMinutes !== undefined ? toleranceMinutes : "X"} minutos para atrasos."
-     * Após enviar essas informações, proceda com o agendamento usando a tool addAppointment.
+     * Após enviar essas informações, proceda com o agendamento usando a tool de criação apropriada (google_createAppointment, trinks_createAppointment, ou addAppointment - conforme disponível).
    - Após efetivar o agendamento com sucesso, confirme: "Agendamento confirmado! Te vejo [data/hora]. Qualquer dúvida, é só chamar!"
 
 4. PÓS-ATENDIMENTO:
@@ -261,7 +280,8 @@ export async function createSalonAssistantPrompt(
   knowledgeContext?: string,
   customerName?: string,
   customerId?: string,
-  isNewCustomer?: boolean
+  isNewCustomer?: boolean,
+  agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -269,6 +289,7 @@ export async function createSalonAssistantPrompt(
     knowledgeContext,
     customerName,
     customerId,
-    isNewCustomer
+    isNewCustomer,
+    agentInfo
   )
 }

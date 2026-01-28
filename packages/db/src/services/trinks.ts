@@ -146,3 +146,79 @@ export async function getTrinksServices(salonId: string): Promise<unknown[]> {
 export async function getTrinksProducts(salonId: string): Promise<unknown[]> {
   return await fetchTrinksResources(salonId, 'produtos')
 }
+
+/**
+ * Interface para agendamento do Trinks
+ */
+export interface TrinksAppointment {
+  id: string
+  dataInicio: string
+  dataFim: string
+  profissionalId?: string
+  status?: string
+}
+
+/**
+ * Fetches Trinks appointments for a specific date range
+ * @param salonId - The salon ID
+ * @param startDate - Start of the date range
+ * @param endDate - End of the date range
+ * @param professionalId - Optional professional ID to filter
+ * @returns Array of appointments from Trinks
+ */
+export async function getTrinksAppointments(
+  salonId: string,
+  startDate: Date,
+  endDate: Date,
+  professionalId?: string
+): Promise<TrinksAppointment[]> {
+  const apiClient = new TrinksApiClient(createSalonId(salonId), logger)
+  
+  const isActive = await apiClient.isActive()
+  if (!isActive) {
+    return []
+  }
+
+  try {
+    // Formata as datas para o formato esperado pela API do Trinks
+    const startStr = startDate.toISOString().split('T')[0]
+    const endStr = endDate.toISOString().split('T')[0]
+    
+    // Consulta agendamentos no período
+    let endpoint = `/agendamentos?dataInicio=${startStr}&dataFim=${endStr}`
+    if (professionalId) {
+      endpoint += `&profissionalId=${professionalId}`
+    }
+
+    const appointments = await apiClient.request<TrinksAppointment[]>(endpoint)
+    return appointments || []
+  } catch (error) {
+    logger.error('Failed to fetch Trinks appointments', { salonId, error })
+    return []
+  }
+}
+
+/**
+ * Gets busy time slots from Trinks for a specific professional
+ * Returns array of { start, end } periods that are occupied
+ * @param salonId - The salon ID
+ * @param professionalId - The professional ID
+ * @param timeMin - Start of the time range
+ * @param timeMax - End of the time range
+ * @returns Array of busy periods
+ */
+export async function getTrinksBusySlots(
+  salonId: string,
+  professionalId: string,
+  timeMin: Date,
+  timeMax: Date
+): Promise<{ start: Date; end: Date }[]> {
+  const appointments = await getTrinksAppointments(salonId, timeMin, timeMax, professionalId)
+  
+  return appointments
+    .filter(apt => apt.dataInicio && apt.dataFim && apt.status !== 'cancelado')
+    .map(apt => ({
+      start: new Date(apt.dataInicio),
+      end: new Date(apt.dataFim),
+    }))
+}

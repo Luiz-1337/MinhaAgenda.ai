@@ -178,7 +178,10 @@ export default function ContactsPage() {
     <div className="flex flex-col h-full gap-6">
       {/* Header */}
       <div className="flex flex-col gap-1 flex-shrink-0">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Contatos</h2>
+        <div className="flex items-center gap-2">
+          <User size={24} className="text-slate-400" />
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Contatos</h2>
+        </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">Listagem dos contatos da sua conta</p>
       </div>
 
@@ -219,7 +222,7 @@ export default function ContactsPage() {
       {/* Table Container */}
       <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
         {/* Table Header */}
-        <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+        <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
           <div className="col-span-3 pl-2">Nome</div>
           <div className="col-span-2">Telefone</div>
           <div className="col-span-3">E-mail</div>
@@ -250,30 +253,32 @@ export default function ContactsPage() {
             filtered.list.map((contact, index) => (
               <div
                 key={contact.id}
-                className={`grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
+                className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-start md:items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
                   index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
                 }`}
               >
-                <div className="col-span-3 flex items-center gap-3 pl-2">
+                <div className="md:col-span-3 flex items-center gap-3 md:pl-2 w-full md:w-auto">
                   <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-white/10 font-mono">
                     {getInitials(contact.name)}
                   </div>
                   <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{contact.name}</span>
                 </div>
 
-                <div className="col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                <div className="md:col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                  <span className="text-xs text-slate-400 md:hidden font-medium font-sans">Tel: </span>
                   {contact.phone || "Não informado"}
                 </div>
 
-                <div className="col-span-3 text-slate-600 dark:text-slate-400 truncate">
+                <div className="md:col-span-3 text-slate-600 dark:text-slate-400 truncate w-full md:w-auto">
+                  <span className="text-xs text-slate-400 md:hidden font-medium">E-mail: </span>
                   {contact.email || "Não informado"}
                 </div>
 
-                <div className="col-span-3 text-slate-600 dark:text-slate-400 text-xs truncate">
+                <div className="md:col-span-3 text-slate-600 dark:text-slate-400 text-xs truncate hidden md:block">
                   {formatPreferences(contact.preferences)}
                 </div>
 
-                <div className="col-span-1 flex justify-end pr-2">
+                <div className="md:col-span-1 flex justify-end md:pr-2 w-full md:w-auto">
                   <ActionMenu
                     onEdit={() => handleEditCustomer(contact)}
                     onDelete={() => handleRemoveCustomer(contact)}

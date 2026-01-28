@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Search, Plus, User, Pencil, Clock, Trash2, AlertCircle, X, Save } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
@@ -17,6 +17,7 @@ import type { ProfessionalRow } from "@/lib/types/professional"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import { canAddProfessional } from "@/lib/utils/permissions"
 import AvailabilitySheet from "@/components/team/availability-sheet"
+import { ConfirmModal } from "@/components/ui/confirm-modal"
 
 // Função para formatar os dias da semana
 function formatWorkingDays(days?: number[]): string {
@@ -41,7 +42,7 @@ type ProfessionalForm = z.infer<typeof professionalSchema>
 export default function TeamPage() {
   const { activeSalon } = useSalon()
   const { planTier, isManager } = useSalonAuth()
-  
+
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [list, setList] = useState<ProfessionalRow[]>([])
@@ -101,13 +102,13 @@ export default function TeamPage() {
 
   function openEdit(p: ProfessionalRow) {
     setEditing(p)
-    form.reset({ 
-      id: p.id, 
-      name: p.name, 
-      email: p.email, 
-      phone: p.phone || "", 
+    form.reset({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      phone: p.phone || "",
       role: p.role || "STAFF",
-      isActive: p.is_active 
+      isActive: p.is_active
     })
     setOpen(true)
   }
@@ -165,164 +166,21 @@ export default function TeamPage() {
           <User size={24} className="text-slate-400" />
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Equipe</h2>
         </div>
-        
+
         {isSolo ? (
           <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 dark:border-slate-700">
             <AlertCircle size={16} />
-            <span>Plano SOLO: Apenas você tem acesso. Faça upgrade para adicionar equipe.</span>
+            <span className="hidden sm:inline">Plano SOLO: Apenas você tem acesso. Faça upgrade para adicionar equipe.</span>
+            <span className="sm:hidden">Plano SOLO</span>
           </div>
         ) : canCreate ? (
-          <>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
-            >
-              <Plus size={16} />
-              Convidar membro
-            </button>
-            
-            {/* Professional Modal */}
-            {open && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                {/* Backdrop */}
-                <div 
-                  className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" 
-                  onClick={() => setOpen(false)} 
-                />
-                
-                {/* Modal Card */}
-                <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
-                  
-                  {/* Header */}
-                  <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-emerald-500 rounded-lg text-white shadow-lg shadow-emerald-500/20">
-                        <User size={18} />
-                      </div>
-                      <div>
-                        <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
-                          {editing ? "Editar Profissional" : "Novo Profissional"}
-                        </h2>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Configuração de membro</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setOpen(false)}
-                      disabled={form.formState.isSubmitting}
-                      className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-
-                  {/* Body */}
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
-                    <div className="p-5 space-y-5">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                          Nome Completo <span className="text-red-500">*</span>
-                        </label>
-                        <input 
-                          type="text" 
-                          placeholder="Ex: Ana Souza" 
-                          {...form.register("name")}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
-                        />
-                        {form.formState.errors.name && (
-                          <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                          E-mail <span className="text-red-500">*</span>
-                        </label>
-                        <input 
-                          type="email" 
-                          placeholder="ana@empresa.com" 
-                          {...form.register("email")}
-                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
-                        />
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Se este e-mail já estiver cadastrado no sistema, o usuário será vinculado automaticamente.
-                        </p>
-                        {form.formState.errors.email && (
-                          <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Telefone</label>
-                          <input 
-                            type="text" 
-                            placeholder="(11) 9XXXX-XXXX" 
-                            {...form.register("phone")}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all" 
-                          />
-                        </div>
-                        
-                        {/* Seletor de Role apenas para Manager */}
-                        {isManager && (
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Permissão</label>
-                            <Controller
-                              name="role"
-                              control={form.control}
-                              render={({ field }) => (
-                                <Select onValueChange={field.onChange} value={field.value || "STAFF"}>
-                                  <SelectTrigger className="bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-white/10">
-                                    <SelectValue placeholder="Selecione..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="STAFF">Staff (Padrão)</SelectItem>
-                                    <SelectItem value="MANAGER">Gerente</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Controller
-                          name="isActive"
-                          control={form.control}
-                          render={({ field }) => (
-                            <Label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 cursor-pointer">
-                              <Switch checked={field.value} onCheckedChange={field.onChange} />
-                              <span>Profissional Ativo</span>
-                            </Label>
-                          )}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
-                      <button 
-                        type="button"
-                        onClick={() => setOpen(false)}
-                        disabled={form.formState.isSubmitting}
-                        className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Cancelar
-                      </button>
-                      <button 
-                        type="submit"
-                        disabled={form.formState.isSubmitting}
-                        className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                      >
-                        <Save size={18} />
-                        {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Profissional" : "Criar Profissional"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-          </>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-indigo-500/20"
+          >
+            <Plus size={16} />
+            Convidar membro
+          </button>
         ) : (
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 dark:border-amber-500/20">
             <AlertCircle size={16} />
@@ -330,6 +188,138 @@ export default function TeamPage() {
           </div>
         )}
       </div>
+
+      {/* Professional Modal */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="!max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 p-0" showCloseButton={false}>
+          {/* Header */}
+          <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg shadow-indigo-500/20">
+                <User size={18} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
+                  {editing ? "Editar Profissional" : "Novo Profissional"}
+                </h2>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Configuração de membro</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              disabled={form.formState.isSubmitting}
+              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
+            <div className="p-5 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Nome Completo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Ana Souza"
+                  {...form.register("name")}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+                {form.formState.errors.name && (
+                  <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  E-mail <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  placeholder="ana@empresa.com"
+                  {...form.register("email")}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Se este e-mail já estiver cadastrado no sistema, o usuário será vinculado automaticamente.
+                </p>
+                {form.formState.errors.email && (
+                  <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Telefone</label>
+                  <input
+                    type="text"
+                    placeholder="(11) 9XXXX-XXXX"
+                    {...form.register("phone")}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  />
+                </div>
+
+                {/* Seletor de Role apenas para Manager */}
+                {isManager && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Permissão</label>
+                    <Controller
+                      name="role"
+                      control={form.control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value || "STAFF"}>
+                          <SelectTrigger className="bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10">
+                            <SelectValue placeholder="Selecione..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="STAFF">Staff (Padrão)</SelectItem>
+                            <SelectItem value="MANAGER">Gerente</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Controller
+                  name="isActive"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 cursor-pointer">
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      <span>Profissional Ativo</span>
+                    </Label>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={form.formState.isSubmitting}
+                className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={form.formState.isSubmitting}
+                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save size={18} />
+                {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Profissional" : "Criar Profissional"}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Filter Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-2 rounded-xl border border-slate-200 dark:border-white/5">
@@ -380,8 +370,8 @@ export default function TeamPage() {
 
       {/* Table Container */}
       <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
-        {/* Table Header */}
-        <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+        {/* Table Header - Hidden on mobile */}
+        <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
           <div className="col-span-2 pl-2">Nome</div>
           <div className="col-span-1">Role</div>
           <div className="col-span-3">E-mail</div>
@@ -414,29 +404,32 @@ export default function TeamPage() {
             filteredTeam.map((member, index) => (
               <div
                 key={member.id}
-                className={`grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
+                className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-start md:items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
                   index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
                 }`}
               >
-                <div className="col-span-2 pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate flex items-center gap-2">
+                <div className="md:col-span-2 md:pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate flex items-center gap-2 w-full md:w-auto">
                   {member.name}
                 </div>
 
-                <div className="col-span-1 text-xs">
-                    {member.role === 'MANAGER' && <span className="text-indigo-600 dark:text-indigo-400 font-medium">Manager</span>}
-                    {(!member.role || member.role === 'STAFF') && <span className="text-slate-500">Staff</span>}
+                <div className="md:col-span-1 text-xs">
+                  <span className="text-xs text-slate-400 md:hidden font-medium">Role: </span>
+                  {member.role === 'MANAGER' && <span className="text-indigo-600 dark:text-indigo-400 font-medium">Manager</span>}
+                  {(!member.role || member.role === 'STAFF') && <span className="text-slate-500">Staff</span>}
                 </div>
 
-                <div className="col-span-3 text-slate-600 dark:text-slate-400 truncate text-xs">
+                <div className="md:col-span-3 text-slate-600 dark:text-slate-400 truncate text-xs w-full md:w-auto">
+                  <span className="text-xs text-slate-400 md:hidden font-medium">E-mail: </span>
                   {member.email}
                   {member.user_id && <span className="ml-1 text-[10px] text-emerald-500 font-mono">(Vinculado)</span>}
                 </div>
 
-                <div className="col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                <div className="md:col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
+                  <span className="text-xs text-slate-400 md:hidden font-medium font-sans">Tel: </span>
                   {member.phone || "—"}
                 </div>
 
-                <div className="col-span-1">
+                <div className="md:col-span-1 flex items-center gap-2">
                   {member.is_active ? (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
                       Ativo
@@ -448,7 +441,7 @@ export default function TeamPage() {
                   )}
                 </div>
 
-                <div className="col-span-3 flex justify-end gap-2 pr-2">
+                <div className="md:col-span-3 flex flex-wrap justify-start md:justify-end gap-2 md:pr-2 w-full md:w-auto">
                   {!isSolo && (
                     <>
                       <button
@@ -495,41 +488,18 @@ export default function TeamPage() {
       )}
 
       {/* Dialog de Confirmação de Exclusão */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-slate-700 dark:text-slate-300">
-              Tem certeza que deseja remover o profissional <strong>"{professionalToDelete?.name}"</strong>?
-            </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              Esta ação não pode ser desfeita. O profissional será removido permanentemente, incluindo seus horários e associações com serviços.
-            </p>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDeleteConfirmOpen(false)
-                setProfessionalToDelete(null)
-              }}
-              className="border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={onDelete}
-            >
-              Remover
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmModal
+        open={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false)
+          setProfessionalToDelete(null)
+        }}
+        onConfirm={onDelete}
+        title="Confirmar Exclusão"
+        description={`Tem certeza que deseja remover o profissional "${professionalToDelete?.name}"? Esta ação não pode ser desfeita. O profissional será removido permanentemente, incluindo seus horários e associações com serviços.`}
+        confirmText="Remover"
+        type="danger"
+      />
     </div>
   )
 }

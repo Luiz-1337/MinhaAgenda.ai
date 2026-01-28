@@ -164,7 +164,7 @@ export default function SettingsPage() {
       {/* Header Compacto */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 flex-shrink-0">
         <div>
-          <h2 className="text-lg md:text-xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
           <p className="text-xs text-slate-500">Personalize seu ambiente de IA.</p>
         </div>
         {activeTab === "profile" && (
@@ -317,7 +317,7 @@ export default function SettingsPage() {
               ) : (
                 <form onSubmit={handleSaveTrinksToken} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                       Token da API Trinks
                     </label>
                     <input
@@ -325,7 +325,7 @@ export default function SettingsPage() {
                       placeholder="Cole aqui o token da API Trinks"
                       value={trinksToken}
                       onChange={(e) => setTrinksToken(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono"
                     />
                     <p className="text-xs text-slate-400">
                       Obtenha o token em:{" "}

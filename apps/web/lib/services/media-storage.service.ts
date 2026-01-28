@@ -9,7 +9,7 @@
  * - Cleanup de arquivos temporários
  */
 
-import { logger, hashUrl } from "@/lib/logger";
+import { logger, hashUrl } from "../logger";
 
 /**
  * Resultado do armazenamento de mídia

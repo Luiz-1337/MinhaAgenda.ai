@@ -32,16 +32,29 @@ const client = postgres(connectionString, { prepare: false })
 export const db = drizzle(client, { schema })
 export { client as postgresClient }
 export * from './schema'
+
 // Re-export drizzle-orm helpers for convenience
 export { and, eq, gt, lt, gte, lte, ne, like, ilike, inArray, notInArray, isNull, isNotNull, desc, asc, sql } from 'drizzle-orm'
+
+// Re-export domain services
 export * as domainServices from './services'
+
 // Re-export timezone utilities
 export { fromBrazilTime, toBrazilTime, getBrazilNow, formatBrazilTime, BRAZIL_TIMEZONE } from './utils/timezone.utils'
+
+// Re-export date parsing utilities
+export { 
+  parseBrazilianDateTime, 
+  parseBrazilianDateTimeString, 
+  parseBrazilianDateTimeObject,
+  createBrazilDateTimeFromComponents,
+  type DateComponents,
+  type ParseDateResult 
+} from './utils/date-parsing.utils'
+
 // Re-export infrastructure
-export { logger, LoggerFactory, type ILogger } from './infrastructure/logger'
+export { logger, LoggerFactory, StructuredLogger, type ILogger, type LogLevel } from './infrastructure/logger'
 export { AppointmentRepository } from './infrastructure/repositories/appointment-repository'
-export { GoogleCalendarIntegration } from './infrastructure/integrations/google-calendar/google-calendar-integration'
-export { GoogleOAuth2Client } from './infrastructure/integrations/google-calendar/google-oauth2-client'
 
 // Re-export domain
 export * from './domain/constants'
@@ -57,19 +70,13 @@ export * from './domain/integrations/interfaces/external-sync.interface'
 export * from './domain/integrations/interfaces/oauth2-client.interface'
 export * from './domain/integrations/interfaces/appointment-repository.interface'
 
-// Re-export use cases - exported individually to avoid circular dependencies
-export { CreateGoogleEventUseCase } from './application/use-cases/google-calendar/create-google-event.use-case'
-export { UpdateGoogleEventUseCase } from './application/use-cases/google-calendar/update-google-event.use-case'
-export { DeleteGoogleEventUseCase } from './application/use-cases/google-calendar/delete-google-event.use-case'
-export { EnsureProfessionalCalendarUseCase } from './application/use-cases/google-calendar/ensure-professional-calendar.use-case'
-export { RefreshOAuthTokenUseCase } from './application/use-cases/google-calendar/refresh-oauth-token.use-case'
+// Re-export use cases - Trinks integration
 export { CreateTrinksAppointmentUseCase } from './application/use-cases/trinks/create-trinks-appointment.use-case'
 export { UpdateTrinksAppointmentUseCase } from './application/use-cases/trinks/update-trinks-appointment.use-case'
 export { DeleteTrinksAppointmentUseCase } from './application/use-cases/trinks/delete-trinks-appointment.use-case'
 export { FetchTrinksResourcesUseCase } from './application/use-cases/trinks/fetch-trinks-resources.use-case'
 
 // Helper functions for Trinks integration
-// These functions instantiate the use cases with required dependencies
 export { 
   createTrinksAppointment, 
   updateTrinksAppointment, 
@@ -77,17 +84,24 @@ export {
   isTrinksIntegrationActive,
   getTrinksProfessionals,
   getTrinksServices,
-  getTrinksProducts
+  getTrinksProducts,
+  getTrinksAppointments,
+  getTrinksBusySlots,
+  type TrinksAppointment
 } from './services/trinks'
 
-// Helper functions for Google Calendar integration
-// These functions instantiate the use cases with required dependencies
+// Google Calendar Service - Simplified service facade with retry support
 export {
+  GoogleCalendarService,
+  GoogleCalendarError,
   createGoogleEvent,
   updateGoogleEvent,
   deleteGoogleEvent,
   ensureProfessionalCalendar,
   getOAuth2Client,
   getSalonGoogleClient,
-  getRawOAuth2Client
+  getRawOAuth2Client,
+  getGoogleFreeBusy,
+  getGoogleFreeBusyForProfessional,
+  type CalendarEventResult
 } from './services/google-calendar'

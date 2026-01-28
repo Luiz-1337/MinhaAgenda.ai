@@ -9,6 +9,7 @@ import { calculateCredits } from "@/lib/utils/credits"
 
 export interface DashboardStats {
   planTier: 'SOLO' | 'PRO' | 'ENTERPRISE'
+  userName: string
   completedAppointments: number
   activeChats: number
   averageResponseTime: string
@@ -54,7 +55,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       ownerId: true,
     },
     }),
-    db.select({ tier: profiles.tier }).from(salons).innerJoin(profiles, eq(salons.ownerId, profiles.id)).where(eq(salons.id, salonId)).limit(1),
+    db.select({ tier: profiles.tier, fullName: profiles.fullName }).from(salons).innerJoin(profiles, eq(salons.ownerId, profiles.id)).where(eq(salons.id, salonId)).limit(1),
     // Atendimentos concluídos = chats do WhatsApp com status 'completed'
     supabase
       .from("chats")
@@ -362,9 +363,11 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   }))
 
   const planTier = (profileResult[0]?.tier as 'SOLO' | 'PRO' | 'ENTERPRISE') || 'SOLO'
+  const userName = profileResult[0]?.fullName?.split(' ')[0] || 'Usuário'
 
   return {
     planTier,
+    userName,
     completedAppointments,
     activeChats,
     averageResponseTime,

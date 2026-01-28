@@ -101,7 +101,7 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label htmlFor="firstName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Nome <span className="text-indigo-500">*</span>
@@ -194,7 +194,7 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
             <label htmlFor="billingPostalCode" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               CEP <span className="text-indigo-500">*</span>

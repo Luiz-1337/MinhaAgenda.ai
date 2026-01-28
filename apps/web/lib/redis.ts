@@ -51,6 +51,38 @@ export function getRedisClient(): Redis {
   return redis;
 }
 
+/**
+ * Cria uma nova instância do cliente Redis para BullMQ
+ * BullMQ requer maxRetriesPerRequest: null para operações blocking
+ */
+export function createRedisClientForBullMQ(): Redis {
+  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+  
+  const client = new Redis(redisUrl, {
+    maxRetriesPerRequest: null, // Requerido pelo BullMQ
+    enableReadyCheck: false,
+    retryStrategy(times) {
+      const delay = Math.min(times * 100, 3000);
+      logger.warn({ times, delay }, "BullMQ Redis connection retry");
+      return delay;
+    },
+    reconnectOnError(err) {
+      const targetErrors = ["READONLY", "ECONNRESET", "ETIMEDOUT"];
+      return targetErrors.some((e) => err.message.includes(e));
+    },
+  });
+
+  client.on("error", (err) => {
+    logger.error({ err }, "BullMQ Redis client error");
+  });
+
+  client.on("connect", () => {
+    logger.info("BullMQ Redis client connected");
+  });
+
+  return client;
+}
+
 // Keys prefixes
 const KEYS = {
   PROCESSED_MESSAGE: "twilio:processed:",

@@ -7,6 +7,7 @@ import type { ActionResult } from "@/lib/types/common"
 import { ServiceRepository } from "./service.repository"
 import { ServiceMapper, type UpsertServiceInput } from "./service-mapper.service"
 import { SalonPlanService } from "./salon-plan.service"
+import { ProfessionalService } from "@/lib/services/professional.service"
 
 export class ServiceUseCase {
   /**
@@ -39,9 +40,11 @@ export class ServiceUseCase {
     const isSolo = await SalonPlanService.isSoloPlan(input.salonId)
 
     if (isSolo) {
-      const ownerProfessionalId = await SalonPlanService.findOwnerProfessional(input.salonId)
-      if (ownerProfessionalId) {
-        await ServiceRepository.associateProfessionals(serviceId, [ownerProfessionalId])
+      // Garante que o profissional único do plano SOLO exista
+      // Se não existir, cria automaticamente usando os dados do owner
+      const soloProfessional = await ProfessionalService.ensureSoloProfessional(input.salonId)
+      if (soloProfessional) {
+        await ServiceRepository.associateProfessionals(serviceId, [soloProfessional.id])
       }
     } else {
       // Para outros planos, valida e associa profissionais selecionados

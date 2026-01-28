@@ -163,7 +163,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
             <div className="space-y-1.5 w-full">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Nome Completo</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Nome Completo</label>
               <div className="relative group">
                 <div className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
                   <User size={14} />
@@ -181,7 +181,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
             </div>
 
             <div className="space-y-1.5 w-full">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">E-mail Corporativo</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">E-mail Corporativo</label>
               <div className="relative group">
                 <div className="absolute left-3 top-2.5 text-slate-400">
                   <Mail size={14} />
@@ -196,7 +196,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
             </div>
 
             <div className="space-y-1.5 w-full">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Telefone</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Telefone</label>
               <div className="relative group">
                 <div className="absolute left-3 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
                   <Phone size={14} />
@@ -225,7 +225,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
 
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Senha Atual
             </label>
             <input
@@ -237,7 +237,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Nova Senha</label>
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Nova Senha</label>
             <input
               type="password"
               placeholder="Digite sua nova senha"
@@ -248,7 +248,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Confirmar Nova Senha
             </label>
             <input

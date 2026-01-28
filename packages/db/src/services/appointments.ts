@@ -3,8 +3,7 @@ import { z } from "zod"
 
 import { db, appointments, availability, professionals, professionalServices, services } from "../index"
 import { formatZodError } from "../utils/validation.utils"
-import { BRAZIL_TIMEZONE } from "../utils/timezone.utils"
-import { fromZonedTime } from "date-fns-tz"
+import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
 
 /**
  * Tipo de resultado padronizado para operações de serviço.
@@ -22,7 +21,7 @@ export type ActionResult<T = void> =
  * - Valida que o profissional existe, está ativo e pertence ao salão
  * - Verifica se o profissional executa o serviço solicitado
  * - Verifica se o horário solicitado está dentro do expediente do profissional (considerando timezone do Brasil)
- * - Verifica conflitos com agendamentos existentes (exceto cancelados)
+ * - Verifica conflitos com agendamentos existentes (exceto cancelados) usando transação
  * - Converte a data/hora do horário de Brasília para UTC antes de salvar
  *
  * @param input - Dados do agendamento a ser criado
@@ -63,6 +62,7 @@ export async function createAppointmentService(input: {
   }
   const { salonId, professionalId, clientId, serviceId } = parse.data
 
+  // Valida serviço e profissional em paralelo
   const [service, professional] = await Promise.all([
     db.query.services.findFirst({
       where: eq(services.id, serviceId),
@@ -89,97 +89,28 @@ export async function createAppointmentService(input: {
     return { success: false, error: "Profissional não executa este serviço" }
   }
 
-  // TODAS as datas de entrada são tratadas como UTC-3 (horário do Brasil)
-  // O aplicativo é nativo do Brasil, então sempre assumimos UTC-3
-  let startUtc: Date
-  let dateComponents: { year: number; month: number; day: number; hour: number; minute: number; second: number }
-  
-  if (typeof parse.data.date === "string") {
-    const dateStr = parse.data.date.trim()
-    // SEMPRE remove qualquer timezone existente e trata como UTC-3
-    // Parse da string ISO para obter os componentes
-    // Aceita formatos: YYYY-MM-DDTHH:mm, YYYY-MM-DDTHH:mm:ss, YYYY-MM-DDTHH:mm:ss.sss
-    // Com ou sem timezone (Z, +HH:mm, -HH:mm) ou sem nada no final
-    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/)
-    if (!match) {
-      return { success: false, error: `Formato de data inválido: ${dateStr}. Esperado formato ISO (ex: 2024-01-15T14:00:00 ou 2024-01-15T14:00)` }
-    }
-    const [, year, month, day, hour, minute, second = "0"] = match
-    dateComponents = {
-      year: parseInt(year, 10),
-      month: parseInt(month, 10) - 1, // meses são 0-indexed
-      day: parseInt(day, 10),
-      hour: parseInt(hour, 10),
-      minute: parseInt(minute, 10),
-      second: parseInt(second, 10)
-    }
-    
-    // Valida os componentes
-    if (dateComponents.month < 0 || dateComponents.month > 11) {
-      return { success: false, error: `Mês inválido: ${parseInt(month, 10)}` }
-    }
-    if (dateComponents.day < 1 || dateComponents.day > 31) {
-      return { success: false, error: `Dia inválido: ${dateComponents.day}` }
-    }
-    if (dateComponents.hour < 0 || dateComponents.hour > 23) {
-      return { success: false, error: `Hora inválida: ${dateComponents.hour}` }
-    }
-    if (dateComponents.minute < 0 || dateComponents.minute > 59) {
-      return { success: false, error: `Minuto inválido: ${dateComponents.minute}` }
-    }
-    if (dateComponents.second < 0 || dateComponents.second > 59) {
-      return { success: false, error: `Segundo inválido: ${dateComponents.second}` }
-    }
-    
-    // Constrói a string ISO a partir dos componentes extraídos e adiciona -03:00 (UTC-3)
-    // Isso garante que sempre teremos o formato correto, independente do formato de entrada
-    const yearStr = dateComponents.year.toString().padStart(4, '0')
-    const monthStr = (dateComponents.month + 1).toString().padStart(2, '0')
-    const dayStr = dateComponents.day.toString().padStart(2, '0')
-    const hourStr = dateComponents.hour.toString().padStart(2, '0')
-    const minuteStr = dateComponents.minute.toString().padStart(2, '0')
-    const secondStr = dateComponents.second.toString().padStart(2, '0')
-    
-    const dateWithTimezone = `${yearStr}-${monthStr}-${dayStr}T${hourStr}:${minuteStr}:${secondStr}-03:00`
-    // Cria o Date que já converte automaticamente para UTC
-    startUtc = new Date(dateWithTimezone)
-    
-    // Valida se o Date foi criado corretamente
-    if (Number.isNaN(startUtc.getTime())) {
-      return { success: false, error: `Não foi possível criar a data a partir de: ${dateStr} (processado como: ${dateWithTimezone})` }
-    }
-  } else {
-    // Se já é um Date, SEMPRE trata como UTC-3 e converte para UTC
-    // Extrai componentes assumindo que o Date representa UTC-3
-    dateComponents = {
-      year: parse.data.date.getFullYear(),
-      month: parse.data.date.getMonth(),
-      day: parse.data.date.getDate(),
-      hour: parse.data.date.getHours(),
-      minute: parse.data.date.getMinutes(),
-      second: parse.data.date.getSeconds()
-    }
-    // Trata como UTC-3 e converte para UTC usando fromZonedTime
-    startUtc = fromZonedTime(parse.data.date, BRAZIL_TIMEZONE)
-    
-    if (Number.isNaN(startUtc.getTime())) {
-      return { success: false, error: "Data inválida (objeto Date)" }
-    }
+  // Parse da data usando o módulo centralizado
+  const parseResult = parseBrazilianDateTime(parse.data.date)
+  if (!parseResult.success) {
+    return { success: false, error: parseResult.error }
   }
-  
-  // Cria um Date com os componentes para validações (getDay, etc)
-  const requestedStartBrazil = new Date(
-    dateComponents.year,
-    dateComponents.month,
-    dateComponents.day,
-    dateComponents.hour,
-    dateComponents.minute,
-    dateComponents.second
-  )
+  const { utcDate: startUtc, brazilComponents } = parseResult
+
+  // Calcula horário de término
   const endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
 
+  // Cria um Date com os componentes para validações (getDay, etc)
+  const requestedStartBrazil = new Date(
+    brazilComponents.year,
+    brazilComponents.month,
+    brazilComponents.day,
+    brazilComponents.hour,
+    brazilComponents.minute,
+    brazilComponents.second
+  )
   const dayOfWeek = requestedStartBrazil.getDay()
 
+  // Valida se o horário está dentro do expediente do profissional
   const proDayRules = await db
     .select({ startTime: availability.startTime, endTime: availability.endTime, isBreak: availability.isBreak })
     .from(availability)
@@ -192,16 +123,10 @@ export async function createAppointmentService(input: {
   }
 
   const withinWork = workSpans.some((span) => {
-    const [sh, sm] = String(span.startTime).split(":").map(Number)
-    const [eh, em] = String(span.endTime).split(":").map(Number)
+    const startSpanUtc = createBrazilDateTimeFromComponents(brazilComponents, String(span.startTime))
+    const endSpanUtc = createBrazilDateTimeFromComponents(brazilComponents, String(span.endTime))
 
-    // Cria os spans de horário usando os componentes da data original (UTC-3)
-    // Cria strings ISO com timezone -03:00 e converte para UTC
-    const startSpanStr = `${dateComponents.year.toString().padStart(4, '0')}-${(dateComponents.month + 1).toString().padStart(2, '0')}-${dateComponents.day.toString().padStart(2, '0')}T${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}:00-03:00`
-    const startSpanUtc = new Date(startSpanStr)
-
-    const endSpanStr = `${dateComponents.year.toString().padStart(4, '0')}-${(dateComponents.month + 1).toString().padStart(2, '0')}-${dateComponents.day.toString().padStart(2, '0')}T${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}:00-03:00`
-    const endSpanUtc = new Date(endSpanStr)
+    if (!startSpanUtc || !endSpanUtc) return false
 
     return startUtc.getTime() >= startSpanUtc.getTime() && endUtc.getTime() <= endSpanUtc.getTime()
   })
@@ -210,35 +135,48 @@ export async function createAppointmentService(input: {
     return { success: false, error: "Horário fora do expediente do profissional" }
   }
 
-  // Step B: Overlap Detection - Query appointments table for ANY confirmed appointment
-  // that overlaps with the requested [startTime, endTime]
-  // Overlap Logic: (existing_start < new_end) AND (existing_end > new_start)
-  // Exclude cancelled appointments
-  const overlappingAppointment = await db.query.appointments.findFirst({
-    where: and(
-      eq(appointments.professionalId, professionalId),
-      ne(appointments.status, 'cancelled'),
-      lt(appointments.date, endUtc), // existing_start < new_end
-      gt(appointments.endTime, startUtc) // existing_end > new_start
-    ),
-  })
+  // TRANSAÇÃO: Verificação de conflito + inserção atômica
+  // Isso previne race conditions onde dois agendamentos poderiam ser criados no mesmo horário
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Verifica conflitos com agendamentos existentes (dentro da transação)
+      const overlappingAppointment = await tx.query.appointments.findFirst({
+        where: and(
+          eq(appointments.professionalId, professionalId),
+          ne(appointments.status, 'cancelled'),
+          lt(appointments.date, endUtc),
+          gt(appointments.endTime, startUtc)
+        ),
+      })
 
-  if (overlappingAppointment) {
-    return { success: false, error: "Horário indisponível (conflito de agenda)" }
+      if (overlappingAppointment) {
+        throw new Error("Horário indisponível (conflito de agenda)")
+      }
+
+      // Insere o agendamento
+      const [newAppointment] = await tx.insert(appointments).values({
+        salonId,
+        clientId,
+        professionalId,
+        serviceId: service.id,
+        date: startUtc,
+        endTime: endUtc,
+        status: 'pending',
+        notes: parse.data.notes
+      }).returning({ id: appointments.id })
+
+      return { appointmentId: newAppointment.id }
+    })
+
+    return { success: true, data: result }
+  } catch (error) {
+    // Se o erro veio da verificação de conflito, retorna mensagem amigável
+    if (error instanceof Error && error.message === "Horário indisponível (conflito de agenda)") {
+      return { success: false, error: error.message }
+    }
+    // Outros erros (ex: banco indisponível)
+    throw error
   }
-
-  const [newAppointment] = await db.insert(appointments).values({
-    salonId,
-    clientId,
-    professionalId,
-    serviceId: service.id,
-    date: startUtc,
-    endTime: endUtc,
-    status: 'pending',
-    notes: parse.data.notes
-  }).returning({ id: appointments.id })
-
-  return { success: true, data: { appointmentId: newAppointment.id } }
 }
 
 /**
@@ -250,7 +188,7 @@ export async function createAppointmentService(input: {
  * - Se serviceId for fornecido: valida que o serviço existe, está ativo e pertence ao salão
  * - Se serviceId mudar: verifica se o novo profissional executa o serviço
  * - Se date for fornecido: verifica se o horário está dentro do expediente do profissional
- * - Se date for fornecido: verifica conflitos com agendamentos existentes (exceto o próprio agendamento e cancelados)
+ * - Se date for fornecido: verifica conflitos com agendamentos existentes usando transação
  * - Converte a data/hora do horário de Brasília para UTC antes de salvar
  *
  * @param input - Dados do agendamento a ser atualizado
@@ -315,8 +253,7 @@ export async function updateAppointmentService(input: {
   const finalServiceId = parse.data.serviceId || existingAppointment.serviceId
   const finalNotes = parse.data.notes !== undefined ? parse.data.notes : existingAppointment.notes
 
-  // Se serviço mudou, busca o novo serviço para obter duração
-  // Se não mudou, busca o serviço existente
+  // Busca serviço para obter duração
   const service = await db.query.services.findFirst({
     where: eq(services.id, finalServiceId),
     columns: { id: true, salonId: true, duration: true, isActive: true },
@@ -326,7 +263,7 @@ export async function updateAppointmentService(input: {
     return { success: false, error: "Serviço inválido ou inativo" }
   }
 
-  // Se profissional mudou, valida o novo profissional
+  // Valida o profissional
   const professional = await db.query.professionals.findFirst({
     where: eq(professionals.id, finalProfessionalId),
     columns: { id: true, salonId: true, isActive: true },
@@ -347,92 +284,34 @@ export async function updateAppointmentService(input: {
     }
   }
 
-  // Se date foi fornecido, precisa recalcular tudo relacionado ao horário
+  // Determina datas de início e fim
   let startUtc: Date = existingAppointment.date
   let endUtc: Date = existingAppointment.endTime
-  let dateComponents: { year: number; month: number; day: number; hour: number; minute: number; second: number } | null = null
+  let brazilComponents: DateComponents | null = null
 
   if (parse.data.date !== undefined) {
-    // Processa a nova data (mesma lógica do createAppointmentService)
-    if (typeof parse.data.date === "string") {
-      const dateStr = parse.data.date.trim()
-      const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/)
-      if (!match) {
-        return { success: false, error: `Formato de data inválido: ${dateStr}. Esperado formato ISO (ex: 2024-01-15T14:00:00 ou 2024-01-15T14:00)` }
-      }
-      const [, year, month, day, hour, minute, second = "0"] = match
-      dateComponents = {
-        year: parseInt(year, 10),
-        month: parseInt(month, 10) - 1,
-        day: parseInt(day, 10),
-        hour: parseInt(hour, 10),
-        minute: parseInt(minute, 10),
-        second: parseInt(second, 10)
-      }
-
-      // Valida os componentes
-      if (dateComponents.month < 0 || dateComponents.month > 11) {
-        return { success: false, error: `Mês inválido: ${parseInt(month, 10)}` }
-      }
-      if (dateComponents.day < 1 || dateComponents.day > 31) {
-        return { success: false, error: `Dia inválido: ${dateComponents.day}` }
-      }
-      if (dateComponents.hour < 0 || dateComponents.hour > 23) {
-        return { success: false, error: `Hora inválida: ${dateComponents.hour}` }
-      }
-      if (dateComponents.minute < 0 || dateComponents.minute > 59) {
-        return { success: false, error: `Minuto inválido: ${dateComponents.minute}` }
-      }
-      if (dateComponents.second < 0 || dateComponents.second > 59) {
-        return { success: false, error: `Segundo inválido: ${dateComponents.second}` }
-      }
-
-      const yearStr = dateComponents.year.toString().padStart(4, '0')
-      const monthStr = (dateComponents.month + 1).toString().padStart(2, '0')
-      const dayStr = dateComponents.day.toString().padStart(2, '0')
-      const hourStr = dateComponents.hour.toString().padStart(2, '0')
-      const minuteStr = dateComponents.minute.toString().padStart(2, '0')
-      const secondStr = dateComponents.second.toString().padStart(2, '0')
-
-      const dateWithTimezone = `${yearStr}-${monthStr}-${dayStr}T${hourStr}:${minuteStr}:${secondStr}-03:00`
-      startUtc = new Date(dateWithTimezone)
-
-      if (Number.isNaN(startUtc.getTime())) {
-        return { success: false, error: `Não foi possível criar a data a partir de: ${dateStr} (processado como: ${dateWithTimezone})` }
-      }
-    } else {
-      dateComponents = {
-        year: parse.data.date.getFullYear(),
-        month: parse.data.date.getMonth(),
-        day: parse.data.date.getDate(),
-        hour: parse.data.date.getHours(),
-        minute: parse.data.date.getMinutes(),
-        second: parse.data.date.getSeconds()
-      }
-      startUtc = fromZonedTime(parse.data.date, BRAZIL_TIMEZONE)
-
-      if (Number.isNaN(startUtc.getTime())) {
-        return { success: false, error: "Data inválida (objeto Date)" }
-      }
+    // Parse da nova data usando o módulo centralizado
+    const parseResult = parseBrazilianDateTime(parse.data.date)
+    if (!parseResult.success) {
+      return { success: false, error: parseResult.error }
     }
-
+    startUtc = parseResult.utcDate
+    brazilComponents = parseResult.brazilComponents
     endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
-  } else {
-    // Se date não mudou mas serviceId mudou, precisa recalcular endTime
-    if (finalServiceId !== existingAppointment.serviceId) {
-      endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
-    }
+  } else if (finalServiceId !== existingAppointment.serviceId) {
+    // Se date não mudou mas serviceId mudou, recalcula endTime
+    endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
   }
 
   // Se date foi fornecido, valida horário dentro do expediente
-  if (parse.data.date !== undefined && dateComponents) {
+  if (parse.data.date !== undefined && brazilComponents) {
     const requestedStartBrazil = new Date(
-      dateComponents.year,
-      dateComponents.month,
-      dateComponents.day,
-      dateComponents.hour,
-      dateComponents.minute,
-      dateComponents.second
+      brazilComponents.year,
+      brazilComponents.month,
+      brazilComponents.day,
+      brazilComponents.hour,
+      brazilComponents.minute,
+      brazilComponents.second
     )
     const dayOfWeek = requestedStartBrazil.getDay()
 
@@ -448,14 +327,10 @@ export async function updateAppointmentService(input: {
     }
 
     const withinWork = workSpans.some((span) => {
-      const [sh, sm] = String(span.startTime).split(":").map(Number)
-      const [eh, em] = String(span.endTime).split(":").map(Number)
+      const startSpanUtc = createBrazilDateTimeFromComponents(brazilComponents!, String(span.startTime))
+      const endSpanUtc = createBrazilDateTimeFromComponents(brazilComponents!, String(span.endTime))
 
-      const startSpanStr = `${dateComponents!.year.toString().padStart(4, '0')}-${(dateComponents!.month + 1).toString().padStart(2, '0')}-${dateComponents!.day.toString().padStart(2, '0')}T${sh.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}:00-03:00`
-      const startSpanUtc = new Date(startSpanStr)
-
-      const endSpanStr = `${dateComponents!.year.toString().padStart(4, '0')}-${(dateComponents!.month + 1).toString().padStart(2, '0')}-${dateComponents!.day.toString().padStart(2, '0')}T${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}:00-03:00`
-      const endSpanUtc = new Date(endSpanStr)
+      if (!startSpanUtc || !endSpanUtc) return false
 
       return startUtc.getTime() >= startSpanUtc.getTime() && endUtc.getTime() <= endSpanUtc.getTime()
     })
@@ -463,52 +338,52 @@ export async function updateAppointmentService(input: {
     if (!withinWork) {
       return { success: false, error: "Horário fora do expediente do profissional" }
     }
-
-    // Verifica conflitos com outros agendamentos (exceto o próprio e cancelados)
-    const overlappingAppointment = await db.query.appointments.findFirst({
-      where: and(
-        eq(appointments.professionalId, finalProfessionalId),
-        ne(appointments.id, parse.data.appointmentId), // Exclui o próprio agendamento
-        ne(appointments.status, 'cancelled'),
-        lt(appointments.date, endUtc), // existing_start < new_end
-        gt(appointments.endTime, startUtc) // existing_end > new_start
-      ),
-    })
-
-    if (overlappingAppointment) {
-      return { success: false, error: "Horário indisponível (conflito de agenda)" }
-    }
-  } else if (finalProfessionalId !== existingAppointment.professionalId) {
-    // Se profissional mudou mas date não, ainda precisa verificar conflitos no novo profissional
-    const overlappingAppointment = await db.query.appointments.findFirst({
-      where: and(
-        eq(appointments.professionalId, finalProfessionalId),
-        ne(appointments.id, parse.data.appointmentId),
-        ne(appointments.status, 'cancelled'),
-        lt(appointments.date, endUtc),
-        gt(appointments.endTime, startUtc)
-      ),
-    })
-
-    if (overlappingAppointment) {
-      return { success: false, error: "Horário indisponível (conflito de agenda)" }
-    }
   }
 
-  // Atualiza o agendamento
-  await db
-    .update(appointments)
-    .set({
-      professionalId: finalProfessionalId,
-      serviceId: finalServiceId,
-      date: startUtc,
-      endTime: endUtc,
-      notes: finalNotes,
-      updatedAt: new Date(),
-    })
-    .where(eq(appointments.id, parse.data.appointmentId))
+  // TRANSAÇÃO: Verificação de conflito + atualização atômica
+  try {
+    await db.transaction(async (tx) => {
+      // Verifica conflitos se data ou profissional mudou
+      const needsConflictCheck = parse.data.date !== undefined || 
+        finalProfessionalId !== existingAppointment.professionalId
 
-  return { success: true, data: { appointmentId: parse.data.appointmentId } }
+      if (needsConflictCheck) {
+        const overlappingAppointment = await tx.query.appointments.findFirst({
+          where: and(
+            eq(appointments.professionalId, finalProfessionalId),
+            ne(appointments.id, parse.data.appointmentId),
+            ne(appointments.status, 'cancelled'),
+            lt(appointments.date, endUtc),
+            gt(appointments.endTime, startUtc)
+          ),
+        })
+
+        if (overlappingAppointment) {
+          throw new Error("Horário indisponível (conflito de agenda)")
+        }
+      }
+
+      // Atualiza o agendamento
+      await tx
+        .update(appointments)
+        .set({
+          professionalId: finalProfessionalId,
+          serviceId: finalServiceId,
+          date: startUtc,
+          endTime: endUtc,
+          notes: finalNotes,
+          updatedAt: new Date(),
+        })
+        .where(eq(appointments.id, parse.data.appointmentId))
+    })
+
+    return { success: true, data: { appointmentId: parse.data.appointmentId } }
+  } catch (error) {
+    if (error instanceof Error && error.message === "Horário indisponível (conflito de agenda)") {
+      return { success: false, error: error.message }
+    }
+    throw error
+  }
 }
 
 /**

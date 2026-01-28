@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   WebhookMetrics.received();
 
   try {
-    reqLogger.info("Webhook received");
+    //reqLogger.info("Webhook received");
 
     // 1. VALIDAR CONTENT-TYPE
     const contentType = req.headers.get("content-type") || "";
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       hasMedia: data.NumMedia > 0,
     });
 
-    reqLogger.info("Payload validated");
+    //reqLogger.info("Payload validated");
 
     // 5. VERIFICAR IDEMPOTÊNCIA (com timeout)
     const isProcessed = await withTimeout(
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
     );
 
     const duration = getDuration(ctx);
-    reqLogger.info({ duration }, "Message enqueued successfully");
+    // reqLogger.info({ duration }, "Message enqueued successfully");
     
     // Registra métricas de sucesso
     WebhookMetrics.enqueued({ salonId });

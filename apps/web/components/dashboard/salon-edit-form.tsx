@@ -150,7 +150,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
               <div className="space-y-3">
                 {/* Nome do Estabelecimento */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Nome do Estabelecimento
                   </label>
                   <input
@@ -166,7 +166,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
 
                 {/* Bio abaixo */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Bio / Descrição
                   </label>
                   <textarea
@@ -187,7 +187,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
               <div className="grid grid-cols-2 gap-3">
                 {/* Endereço ocupa 2 colunas */}
                 <div className="col-span-2 space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Endereço</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Endereço</label>
                   <input
                     type="text"
                     {...form.register("address")}
@@ -198,7 +198,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
 
                 {/* Telefone e WhatsApp lado a lado */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Telefone</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Telefone</label>
                   <div className="relative">
                     <Phone size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
                     <input
@@ -211,7 +211,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">WhatsApp</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">WhatsApp</label>
                   <div className="relative">
                     <MessageCircle size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
                     <input
@@ -281,7 +281,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
               {/* Tolerância e Cancelamento */}
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Tolerância de atraso (minutos)
                   </label>
                   <div className="relative w-32">
@@ -297,7 +297,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Política de Cancelamento
                   </label>
                   <textarea

@@ -2,7 +2,7 @@
  * Mapeamento de modelos de IA (DOMAIN LAYER)
  */
 
-import { AI_MODEL_CONSTANTS } from "@/lib/constants/ai.constants"
+import { AI_MODEL_CONSTANTS } from "../../constants/ai.constants"
 
 /**
  * Mapeia nomes de modelos do agente para nomes válidos do OpenAI SDK
