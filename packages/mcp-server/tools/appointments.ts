@@ -7,6 +7,8 @@ import {
   updateAppointmentSchema,
   deleteAppointmentSchema,
 } from "../src/schemas/tools.schema"
+import { assertRateLimit, RATE_LIMITS } from "../src/utils"
+import { ensureIsoWithTimezone } from "../src/utils/date-format.utils"
 
 const SOURCE_FILE = 'packages/mcp-server/tools/appointments.ts'
 
@@ -40,22 +42,6 @@ function maybeParseJson(value: unknown): JsonValue | unknown {
   } catch {
     return value
   }
-}
-
-/**
- * Garante que uma string de data ISO tenha timezone.
- * Se não tiver, adiciona o timezone padrão -03:00 (Brasil).
- */
-function ensureIsoWithTimezone(input: unknown): unknown {
-  if (typeof input !== "string") return input
-  const s = input.trim()
-  // Já tem timezone
-  if (/(Z|[+-]\d{2}:?\d{2})$/.test(s)) return s
-  // YYYY-MM-DDTHH:mm -> adiciona segundos + -03:00
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return `${s}:00-03:00`
-  // YYYY-MM-DDTHH:mm:ss -> adiciona -03:00
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) return `${s}-03:00`
-  return s
 }
 
 /**
@@ -93,8 +79,30 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
 
   return {
     checkAvailability: tool({
-      description:
-        "Verifica horários disponíveis para agendamento em um salão. Considera horários de trabalho, agendamentos existentes e duração do serviço.",
+      description: `OBJETIVO: Retorna slots de horário disponíveis para agendamento.
+
+QUANDO USAR:
+- Cliente pergunta "tem horário disponível?"
+- Cliente quer agendar para data específica
+- Após identificar profissional E serviço
+
+PRÉ-REQUISITOS:
+1. Obter professionalId via tool 'getProfessionals' PRIMEIRO
+2. Obter serviceId via tool 'getServices' (opcional, mas recomendado para duração correta)
+
+PARÂMETROS:
+- date: Data ISO com timezone (ex: 2025-01-28T14:00:00-03:00) - OBRIGATÓRIO
+- professionalId: UUID do profissional - OBRIGATÓRIO
+- serviceId: UUID do serviço (opcional)
+- serviceDuration: Duração em minutos (opcional, usa 60 se não informado)
+
+RETORNO:
+- slots: Array com até 2 melhores horários disponíveis
+- totalAvailable: Total de slots disponíveis no dia
+
+ERROS COMUNS:
+- "professionalId é obrigatório" -> Chame getProfessionals primeiro para obter o ID
+- "Nenhum horário disponível" -> Tente outro dia ou profissional`.trim(),
       inputSchema: checkAvailabilityInputSchema,
       execute: async (input: z.infer<typeof checkAvailabilityInputSchema>) => {
         const startTime = Date.now()
@@ -112,10 +120,42 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
     }),
 
     addAppointment: tool({
-      description:
-        "Adiciona um novo agendamento no sistema. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
+      description: `OBJETIVO: Cria um novo agendamento para o cliente.
+
+QUANDO USAR:
+- Cliente confirma que quer agendar em um horário específico
+- Após verificar disponibilidade com checkAvailability
+- Cliente já está identificado no sistema
+
+PRÉ-REQUISITOS:
+1. Cliente DEVE estar identificado (identifyCustomer ou createCustomer)
+2. Obter professionalId via getProfessionals
+3. Obter serviceId via getServices
+4. Verificar disponibilidade com checkAvailability (recomendado)
+
+PARÂMETROS:
+- professionalId: UUID do profissional - OBRIGATÓRIO
+- serviceId: UUID do serviço - OBRIGATÓRIO
+- date: Data/hora ISO com timezone - OBRIGATÓRIO
+- notes: Observações (opcional)
+
+RETORNO:
+- appointmentId: UUID do agendamento criado
+- message: Confirmação com detalhes
+
+VALIDAÇÕES AUTOMÁTICAS:
+- Verifica conflito de horário com agendamentos existentes
+- Sincroniza com Google Calendar e Trinks se integrados
+
+ERROS COMUNS:
+- "Cliente não encontrado" -> Chame identifyCustomer ou createCustomer primeiro
+- "APPOINTMENT_CONFLICT" -> Horário já ocupado, use checkAvailability
+- "Rate limit excedido" -> Aguarde alguns segundos e tente novamente`.trim(),
       inputSchema: createAppointmentInputSchema,
       execute: async (input: z.infer<typeof createAppointmentInputSchema>) => {
+        // Rate limiting: máximo 10 agendamentos por minuto por salão
+        assertRateLimit(`${salonId}:createAppointment`, RATE_LIMITS.CREATE_APPOINTMENT)
+        
         const startTime = Date.now()
         const result = await impl.createAppointment(
           salonId,
@@ -132,8 +172,35 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
     }),
 
     updateAppointment: tool({
-      description:
-        "Atualiza um agendamento existente. Pode atualizar profissional, serviço, data/hora ou notas. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
+      description: `OBJETIVO: Atualiza um agendamento existente (reagendamento).
+
+QUANDO USAR:
+- Cliente quer mudar data/hora de um agendamento
+- Cliente quer trocar de profissional ou serviço
+- Precisa adicionar/alterar observações
+
+PRÉ-REQUISITOS:
+1. Obter appointmentId via getMyFutureAppointments PRIMEIRO
+2. Se mudar profissional: obter novo professionalId via getProfessionals
+3. Se mudar serviço: obter novo serviceId via getServices
+
+PARÂMETROS:
+- appointmentId: UUID do agendamento - OBRIGATÓRIO (obter via getMyFutureAppointments)
+- professionalId: Novo UUID do profissional (opcional)
+- serviceId: Novo UUID do serviço (opcional)
+- date: Nova data/hora ISO com timezone (opcional)
+- notes: Novas observações (opcional)
+
+RETORNO:
+- appointmentId: UUID do agendamento atualizado
+- message: Confirmação da atualização
+
+NÃO É POSSÍVEL:
+- Atualizar agendamentos com status 'cancelled'
+
+ERROS COMUNS:
+- "Agendamento não encontrado" -> Verifique o ID com getMyFutureAppointments
+- "Não é possível atualizar agendamento cancelado" -> Crie um novo agendamento`.trim(),
       inputSchema: updateAppointmentInputSchema,
       execute: async (input: z.infer<typeof updateAppointmentInputSchema>) => {
         const startTime = Date.now()
@@ -151,8 +218,32 @@ export function createAppointmentTools(salonId: string, clientPhone: string) {
     }),
 
     removeAppointment: tool({
-      description:
-        "Remove um agendamento do sistema. Sincroniza automaticamente com sistemas externos se a integração estiver ativa.",
+      description: `OBJETIVO: Cancela um agendamento existente (soft delete - muda status para 'cancelled').
+
+QUANDO USAR:
+- Cliente quer cancelar um agendamento
+- Cliente não pode comparecer na data marcada
+
+PRÉ-REQUISITOS:
+1. Obter appointmentId via getMyFutureAppointments PRIMEIRO
+2. Confirmar com o cliente antes de cancelar (ação irreversível via esta tool)
+
+PARÂMETROS:
+- appointmentId: UUID do agendamento - OBRIGATÓRIO (obter via getMyFutureAppointments)
+
+RETORNO:
+- message: Confirmação do cancelamento
+- appointmentId: UUID do agendamento cancelado
+- cancelled: true se cancelado com sucesso
+- alreadyCancelled: true se já estava cancelado
+
+COMPORTAMENTO:
+- NÃO deleta o registro, apenas muda status para 'cancelled'
+- Sincroniza cancelamento com Google Calendar e Trinks se integrados
+- Agendamento cancelado não pode ser reativado (criar novo)
+
+ERROS COMUNS:
+- "Agendamento não encontrado" -> Verifique o ID com getMyFutureAppointments`.trim(),
       inputSchema: deleteAppointmentSchema,
       execute: async (input: z.infer<typeof deleteAppointmentSchema>) => {
         const startTime = Date.now()

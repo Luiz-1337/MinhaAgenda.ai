@@ -20,6 +20,7 @@ import {
   deleteGoogleEvent,
 } from "@repo/db"
 import { eq } from "drizzle-orm"
+import { ensureIsoWithTimezone } from "../src/utils/date-format.utils"
 
 const SOURCE_FILE = 'packages/mcp-server/tools/google-calendar-tools.ts'
 
@@ -53,22 +54,6 @@ function maybeParseJson(value: unknown): JsonValue | unknown {
   } catch {
     return value
   }
-}
-
-/**
- * Garante que uma string de data ISO tenha timezone.
- * Se não tiver, adiciona o timezone padrão -03:00 (Brasil).
- */
-function ensureIsoWithTimezone(input: unknown): unknown {
-  if (typeof input !== "string") return input
-  const s = input.trim()
-  // Já tem timezone
-  if (/(Z|[+-]\d{2}:?\d{2})$/.test(s)) return s
-  // YYYY-MM-DDTHH:mm -> adiciona segundos + -03:00
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return `${s}:00-03:00`
-  // YYYY-MM-DDTHH:mm:ss -> adiciona -03:00
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) return `${s}-03:00`
-  return s
 }
 
 /**
@@ -159,53 +144,30 @@ export function createGoogleCalendarTools(salonId: string, clientPhone: string) 
   return {
     google_checkAvailability: tool({
       description:
-        "Verifica horários disponíveis consultando o Google Calendar. Usa a API FreeBusy do Google para obter slots realmente livres no calendário.",
+        "Verifica horários disponíveis consultando o Google Calendar. Combina disponibilidade do banco com a API FreeBusy do Google para excluir slots ocupados no calendário do profissional.",
       inputSchema: checkAvailabilityInputSchema,
       execute: async (input: z.infer<typeof checkAvailabilityInputSchema>) => {
         const startTime = Date.now()
-        
-        // Valida se professionalId foi fornecido
-        if (!input.professionalId || input.professionalId.trim() === "") {
+
+        if (!input.professionalId?.trim()) {
           throw new Error("professionalId é obrigatório para verificar disponibilidade")
         }
 
-        // Busca duração do serviço se necessário
-        let serviceDuration = input.serviceDuration || 60
+        const dateStr = String(ensureIsoWithTimezone(input.date))
+        const dateOnly = dateStr.slice(0, 10)
+
+        let serviceDuration = input.serviceDuration ?? 60
         if (input.serviceId && !input.serviceDuration) {
           const service = await db.query.services.findFirst({
             where: eq(services.id, input.serviceId),
             columns: { duration: true },
           })
-          if (service) {
-            serviceDuration = service.duration
-          }
+          if (service) serviceDuration = service.duration
         }
 
-        // Parse da data para determinar o range de busca
-        const dateStr = String(ensureIsoWithTimezone(input.date))
-        const targetDate = new Date(dateStr)
-        
-        // Define o range do dia (00:00 até 23:59)
-        const dayStart = new Date(targetDate)
-        dayStart.setHours(0, 0, 0, 0)
-        const dayEnd = new Date(targetDate)
-        dayEnd.setHours(23, 59, 59, 999)
+        const dayStart = new Date(`${dateOnly}T00:00:00-03:00`)
+        const dayEnd = new Date(`${dateOnly}T23:59:59.999-03:00`)
 
-        // Consulta períodos ocupados no Google Calendar
-        let googleBusySlots: { start: Date; end: Date }[] = []
-        try {
-          googleBusySlots = await getGoogleFreeBusyForProfessional(
-            salonId,
-            input.professionalId,
-            dayStart,
-            dayEnd
-          )
-        } catch (error) {
-          console.error("Erro ao consultar Google FreeBusy:", error)
-          // Fallback: usa disponibilidade do banco
-        }
-
-        // Também consulta agendamentos do banco (pode haver eventos não sincronizados)
         const dbSlots = await sharedServices.getAvailableSlots({
           date: dateStr,
           salonId,
@@ -213,49 +175,67 @@ export function createGoogleCalendarTools(salonId: string, clientPhone: string) 
           professionalId: input.professionalId,
         })
 
-        // Se não conseguiu buscar do Google, retorna slots do banco
-        if (googleBusySlots.length === 0 && dbSlots.length > 0) {
-          const slots = dbSlots.slice(0, 2)
-          const result = {
-            source: "database_fallback",
-            slots,
-            totalAvailable: dbSlots.length,
-            message: slots.length > 0
-              ? `Encontrados ${slots.length} horário(s) disponível(is) (via banco de dados)`
-              : "Nenhum horário disponível para esta data",
-          }
-          logToolExecution('google_checkAvailability', input, result, startTime)
-          return result
+        let googleBusySlots: { start: Date; end: Date }[] = []
+        let googleError: string | null = null
+        try {
+          googleBusySlots = await getGoogleFreeBusyForProfessional(
+            salonId,
+            input.professionalId,
+            dayStart,
+            dayEnd
+          )
+        } catch (err: unknown) {
+          googleError = err instanceof Error ? err.message : "Erro ao consultar Google FreeBusy"
+          console.warn("⚠️ Falha ao consultar Google FreeBusy:", googleError)
         }
 
-        // Busca horários de trabalho do profissional para gerar slots
-        const availabilityRules = await sharedServices.getAvailableSlots({
-          date: dateStr,
-          salonId,
-          serviceDuration,
-          professionalId: input.professionalId,
+        const filteredSlots = dbSlots.filter((slot) => {
+          const slotStart = new Date(`${dateOnly}T${slot}:00-03:00`)
+          const slotEnd = new Date(slotStart.getTime() + serviceDuration * 60 * 1000)
+          const hasOverlap = googleBusySlots.some(
+            (b) => slotStart < b.end && slotEnd > b.start
+          )
+          return !hasOverlap
         })
 
-        // REGRA DE OURO: Retorna no máximo 2 slots
-        const slots = availabilityRules.slice(0, 2)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'google-calendar-tools.ts:google_checkAvailability:afterFilter',message:'after filter',data:{dbSlotsLength:dbSlots.length,googleBusySlotsCount:googleBusySlots.length,filteredSlotsLength:filteredSlots.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
 
-        let message = ""
+        const slots = filteredSlots.slice(0, 2)
+        const source =
+          googleBusySlots.length > 0 ? "google_calendar_combined" : "database_only"
+
+        let message: string
         if (slots.length > 0) {
-          message = slots.length === 2
-            ? `Encontrados ${slots.length} horários disponíveis no Google Calendar (mostrando os 2 melhores)`
-            : `Encontrado ${slots.length} horário disponível no Google Calendar`
+          message =
+            slots.length === 2
+              ? `Encontrados ${slots.length} horários disponíveis (mostrando os 2 melhores)${googleBusySlots.length > 0 ? " (verificado com Google Calendar)" : ""}`
+              : `Encontrado ${slots.length} horário disponível${googleBusySlots.length > 0 ? " (verificado com Google Calendar)" : ""}`
         } else {
-          message = "Nenhum horário disponível para esta data no Google Calendar"
+          message = "Nenhum horário disponível para esta data"
         }
 
-        const result = {
-          source: "google_calendar",
+        const result: Record<string, unknown> = {
+          source,
           slots,
-          totalAvailable: availabilityRules.length,
+          totalAvailable: filteredSlots.length,
           googleBusySlotsCount: googleBusySlots.length,
           message,
         }
-        logToolExecution('google_checkAvailability', input, result, startTime)
+        if (googleError) result.googleError = googleError
+        if (process.env.NODE_ENV === "development") {
+          result.debug = {
+            dbSlotsCount: dbSlots.length,
+            filteredAfterGoogle: filteredSlots.length,
+            googleBusySlots: googleBusySlots.map((b) => ({
+              start: b.start.toISOString(),
+              end: b.end.toISOString(),
+            })),
+          }
+        }
+
+        logToolExecution("google_checkAvailability", input, result, startTime)
         return result
       },
     }),

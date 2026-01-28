@@ -1,6 +1,6 @@
 import { and, eq, gt, lt, ne } from "drizzle-orm"
 
-import { appointments, availability, db } from "../index"
+import { appointments, availability, db, profiles, professionals, salons } from "../index"
 import { MINUTE_IN_MS, parseTimeInDay } from "../utils/time.utils"
 import { fromBrazilTime, getBrazilNow, toBrazilTime } from "../utils/timezone.utils"
 
@@ -40,6 +40,9 @@ export async function getAvailableSlots({
   serviceDuration,
   professionalId,
 }: GetAvailableSlotsInput): Promise<string[]> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:getAvailableSlots:entry',message:'getAvailableSlots entry',data:{date:typeof date==='string'?date:date?.toISOString?.(),professionalId,serviceDuration},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C'})}).catch(()=>{});
+  // #endregion
   validateInputs(salonId, serviceDuration, professionalId)
 
   // Normaliza a data e assume que está em horário de Brasília
@@ -52,6 +55,10 @@ export async function getAvailableSlots({
   // Como targetDateBrazil já está no timezone de Brasília (via toZonedTime), getDay() deve funcionar
   // Mas para garantir, vamos usar uma abordagem mais explícita
   const dayOfWeek = targetDateBrazil.getDay() // 0 = domingo, 6 = sábado
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:dayOfWeek',message:'dayOfWeek after normalize',data:{dayOfWeek,targetDateIso:targetDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
 
   // Busca horários de trabalho do profissional para este dia da semana
   const allAvailabilityForProfessional = await db
@@ -68,7 +75,42 @@ export async function getAvailableSlots({
     .filter((a) => a.dayOfWeek === dayOfWeek)
     .map(({ startTime, endTime, isBreak }) => ({ startTime, endTime, isBreak }))
 
-  const workSpans = professionalAvailability.filter((r) => !r.isBreak)
+  let workSpans = professionalAvailability.filter((r) => !r.isBreak)
+
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:workSpans',message:'workSpans',data:{workSpansLength:workSpans.length,allAvailLen:allAvailabilityForProfessional.length,professionalAvailabilityLen:professionalAvailability.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,C'})}).catch(()=>{});
+  // #endregion
+
+  // Fallback para salão SOLO: usar salons.workHours quando o profissional é o owner e não há regras em availability
+  if (workSpans.length === 0) {
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { ownerId: true, workHours: true },
+    })
+    if (salon?.ownerId) {
+      const ownerProfile = await db.query.profiles.findFirst({
+        where: eq(profiles.id, salon.ownerId),
+        columns: { tier: true },
+      })
+      const prof = await db.query.professionals.findFirst({
+        where: eq(professionals.id, professionalId!),
+        columns: { userId: true },
+      })
+      const wh = salon.workHours as Record<string, { start?: string; end?: string }> | null | undefined
+      const dayHours = wh && typeof wh === "object" ? wh[String(dayOfWeek)] : undefined
+      if (
+        ownerProfile?.tier === "SOLO" &&
+        prof?.userId === salon.ownerId &&
+        dayHours?.start &&
+        dayHours?.end
+      ) {
+        workSpans = [{ startTime: dayHours.start, endTime: dayHours.end, isBreak: false }]
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:soloWorkHoursFallback',message:'SOLO workHours fallback applied',data:{dayOfWeek,start:dayHours.start,end:dayHours.end},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      }
+    }
+  }
 
   if (workSpans.length === 0) {
     return []
@@ -117,7 +159,11 @@ export async function getAvailableSlots({
   }
 
   // Remove duplicatas e ordena
-  return [...new Set(allAvailableSlots)].sort()
+  const out = [...new Set(allAvailableSlots)].sort()
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'availability.ts:getAvailableSlots:return',message:'getAvailableSlots return',data:{allAvailableSlotsLength:out.length,sample:out.slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  return out
 }
 
 /**
@@ -143,19 +189,29 @@ function validateInputs(salonId: string, serviceDuration: number, professionalId
 
 /**
  * Normaliza uma data (string ou Date) para objeto Date válido.
- * 
+ * Para YYYY-MM-DD sem hora, interpreta como meio-dia em Brasília para evitar
+ * troca de dia ao interpretar meia-noite UTC (00:00 UTC = 21h do dia anterior em Brasília).
+ *
  * @param date - Data a normalizar (Date ou string ISO)
- * 
+ *
  * @returns Objeto Date válido
- * 
+ *
  * @throws Erro se a data for inválida (NaN)
  */
 function normalizeDate(date: Date | string): Date {
-  const targetDate = typeof date === "string" ? new Date(date) : date
-  if (Number.isNaN(targetDate.getTime())) {
-    throw new Error("Data inválida")
+  if (typeof date === "string") {
+    const s = date.trim()
+    // YYYY-MM-DD sem hora: interpretar como meio-dia em Brasília para evitar troca de dia
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = new Date(s + "T12:00:00-03:00")
+      if (!Number.isNaN(d.getTime())) return d
+    }
+    const d = new Date(s)
+    if (Number.isNaN(d.getTime())) throw new Error("Data inválida")
+    return d
   }
-  return targetDate
+  if (Number.isNaN(date.getTime())) throw new Error("Data inválida")
+  return date
 }
 
 /**

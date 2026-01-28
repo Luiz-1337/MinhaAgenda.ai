@@ -1,350 +1,97 @@
-import { and, asc, eq, gt, ilike } from "drizzle-orm"
-import { appointments, db, domainServices as sharedServices, leads, professionals, profiles, customers, salonIntegrations, salons, services, products, availability, professionalServices, fromBrazilTime, createTrinksAppointment, updateTrinksAppointment, deleteTrinksAppointment } from "@repo/db"
-import { syncCreateAppointment, syncUpdateAppointment, syncDeleteAppointment } from "./services/external-sync"
-
 /**
- * Tipo de retorno para integrações ativas
+ * MinhaAgendaAITools - Facade para as classes de tools especializadas
+ * 
+ * Esta classe mantém a API original para backward compatibility,
+ * delegando as operações para classes especializadas por domínio.
+ * 
+ * Classes especializadas:
+ * - CustomerTools: Operações de clientes
+ * - AppointmentTools: CRUD de agendamentos
+ * - AvailabilityTools: Verificação de disponibilidade
+ * - CatalogTools: Serviços, produtos, profissionais
+ * - SalonTools: Informações do salão, preferências, leads
  */
-export interface ActiveIntegrations {
-    google: { isActive: boolean; email?: string } | null;
-    trinks: { isActive: boolean } | null;
-}
 
-/**
- * Verifica quais integrações estão ativas para um salão
- * Função utilitária exportada para uso em outros módulos (ex: vercel-ai.ts)
- */
-export async function getActiveIntegrations(salonId: string): Promise<ActiveIntegrations> {
-    const [googleIntegration, trinksIntegration] = await Promise.all([
-        db.query.salonIntegrations.findFirst({
-            where: and(
-                eq(salonIntegrations.salonId, salonId),
-                eq(salonIntegrations.provider, 'google')
-            ),
-            columns: { isActive: true, email: true }
-        }),
-        db.query.salonIntegrations.findFirst({
-            where: and(
-                eq(salonIntegrations.salonId, salonId),
-                eq(salonIntegrations.provider, 'trinks')
-            ),
-            columns: { isActive: true }
-        })
-    ]);
+import {
+    CustomerTools,
+    AppointmentTools,
+    AvailabilityTools,
+    CatalogTools,
+    SalonTools,
+    getActiveIntegrations as getActiveIntegrationsInternal,
+    type ActiveIntegrations,
+} from "./tools"
 
-    return {
-        google: googleIntegration?.isActive ? { isActive: true, email: googleIntegration.email || undefined } : null,
-        trinks: trinksIntegration?.isActive ? { isActive: true } : null
-    };
-}
+// Re-exporta para manter compatibilidade
+export type { ActiveIntegrations }
+export { getActiveIntegrationsInternal as getActiveIntegrations }
 
 export class MinhaAgendaAITools {
+    // Instâncias das classes especializadas
+    private customerTools = new CustomerTools()
+    private appointmentTools = new AppointmentTools()
+    private availabilityTools = new AvailabilityTools()
+    private catalogTools = new CatalogTools()
+    private salonTools = new SalonTools()
+
+    // ========================================
+    // Métodos de Integração
+    // ========================================
 
     /**
      * Verifica quais integrações estão ativas para um salão
-     * Método público que delega para a função utilitária
      */
     public async getActiveIntegrations(salonId: string): Promise<ActiveIntegrations> {
-        return getActiveIntegrations(salonId);
+        return getActiveIntegrationsInternal(salonId)
     }
 
+    // ========================================
+    // Métodos de Cliente (delegados para CustomerTools)
+    // ========================================
+
     public async identifyCustomer(phone: string, name?: string, salonId?: string) {
-        // Busca cliente existente
-        const existing = await db.query.profiles.findFirst({
-            where: eq(profiles.phone, phone),
-            columns: { id: true, fullName: true, phone: true },
-        })
-
-        let profileId: string;
-        let created = false;
-
-        if (existing) {
-            profileId = existing.id;
-        } else if (name) {
-            // Se não encontrado e nome fornecido, cria novo cliente
-            // Email temporário baseado no telefone (schema requer email notNull)
-            const [newProfile] = await db
-                .insert(profiles)
-                .values({
-                    phone,
-                    fullName: name,
-                    email: `${phone.replace(/\D/g, '')}@temp.com`, // Remove caracteres não numéricos
-                })
-                .returning({ id: profiles.id, fullName: profiles.fullName, phone: profiles.phone })
-
-            profileId = newProfile.id;
-            created = true;
-        } else {
-            // Cliente não encontrado e sem nome para criar
-            return JSON.stringify({ found: false })
-        }
-
-        return JSON.stringify({
-            id: profileId,
-            name: existing?.fullName || name,
-            phone: existing?.phone || phone,
-            found: !created,
-            created: created,
-        })
+        return this.customerTools.identifyCustomer(phone, name, salonId)
     }
 
     public async createCustomer(phone: string, name: string, salonId?: string) {
-        // Verifica se o cliente já existe
-        const existing = await db.query.profiles.findFirst({
-            where: eq(profiles.phone, phone),
-            columns: { id: true, fullName: true, phone: true },
-        })
-
-        let profileId: string;
-        let alreadyExists = false;
-
-        if (existing) {
-            profileId = existing.id;
-            alreadyExists = true;
-        } else {
-            // Cria novo cliente
-            // Email temporário baseado no telefone (schema requer email notNull)
-            const [newProfile] = await db
-                .insert(profiles)
-                .values({
-                    phone,
-                    fullName: name,
-                    email: `${phone.replace(/\D/g, '')}@temp.com`, // Remove caracteres não numéricos do telefone
-                })
-                .returning({ id: profiles.id, fullName: profiles.fullName, phone: profiles.phone })
-
-            profileId = newProfile.id;
-        }
-
-        // Se salonId foi fornecido, garante que existe customer
-        if (salonId && phone) {
-            const normalizedPhone = phone.replace(/\D/g, "")
-            const existingCustomer = await db.query.customers.findFirst({
-                where: and(
-                    eq(customers.salonId, salonId),
-                    eq(customers.phone, normalizedPhone)
-                ),
-                columns: { id: true },
-            })
-
-            if (!existingCustomer) {
-                // Cria registro em customers se não existir
-                await db.insert(customers).values({
-                    salonId,
-                    name: existing?.fullName || name,
-                    phone: normalizedPhone,
-                })
-            }
-        }
-
-        return JSON.stringify({
-            id: profileId,
-            name: existing?.fullName || name,
-            phone: existing?.phone || phone,
-            alreadyExists: alreadyExists,
-            created: !alreadyExists,
-            message: alreadyExists
-                ? "Cliente já existe no sistema"
-                : "Cliente criado com sucesso",
-        })
+        return this.customerTools.createCustomer(phone, name, salonId)
     }
 
     public async updateCustomerName(customerId: string, name: string) {
-        // Valida nome
-        if (!name || name.trim() === "") {
-            throw new Error("Nome não pode ser vazio")
-        }
-
-        const trimmedName = name.trim()
-
-        // Verifica se o customer existe
-        const customer = await db.query.customers.findFirst({
-            where: eq(customers.id, customerId),
-            columns: { id: true, name: true, phone: true },
-        })
-
-        if (!customer) {
-            throw new Error(`Cliente com ID ${customerId} não encontrado`)
-        }
-
-        // Atualiza o nome na tabela customers
-        const [updatedCustomer] = await db
-            .update(customers)
-            .set({
-                name: trimmedName,
-                updatedAt: new Date(),
-            })
-            .where(eq(customers.id, customerId))
-            .returning({
-                id: customers.id,
-                name: customers.name,
-                phone: customers.phone,
-            })
-
-        return JSON.stringify({
-            id: updatedCustomer.id,
-            name: updatedCustomer.name,
-            phone: updatedCustomer.phone,
-            message: "Nome atualizado com sucesso",
-        })
+        return this.customerTools.updateCustomerName(customerId, name)
     }
 
-    public async checkAvailability(salonId: string, date: string, professionalId?: string, serviceId?: string, serviceDuration?: number) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:179',message:'checkAvailability entry',data:{salonId,date,professionalId,serviceId,serviceDuration},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
-        // Valida se professionalId foi fornecido
-        if (!professionalId || professionalId.trim() === "") {
-            throw new Error("professionalId é obrigatório para verificar disponibilidade")
-        }
+    // ========================================
+    // Métodos de Disponibilidade (delegados para AvailabilityTools)
+    // ========================================
 
-        // Se serviceId for fornecido, busca a duração do serviço no DB
-        let finalServiceDuration = serviceDuration || 60
-
-        if (serviceId && !serviceDuration) {
-            const service = await db.query.services.findFirst({
-                where: eq(services.id, serviceId),
-                columns: { duration: true },
-            })
-
-            if (service) {
-                finalServiceDuration = service.duration
-            }
-        }
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:200',message:'Before getAvailableSlots call',data:{date,finalServiceDuration,professionalId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
-        // Chama o serviço compartilhado (consulta no banco)
-        const allSlots = await sharedServices.getAvailableSlots({
-            date,
-            salonId,
-            serviceDuration: finalServiceDuration,
-            professionalId: professionalId,
-        })
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:207',message:'After getAvailableSlots call',data:{allSlotsCount:allSlots.length,allSlots},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
-
-        // Verificação opcional de integrações ativas (para logging/informação)
-        const integrations = await this.getActiveIntegrations(salonId)
-        if (integrations.google?.isActive || integrations.trinks?.isActive) {
-            // Log opcional para debug (pode ser removido em produção)
-            if (process.env.NODE_ENV === 'development') {
-                console.log('ℹ️ Integrações ativas detectadas durante verificação de disponibilidade:', {
-                    google: integrations.google?.isActive,
-                    trinks: integrations.trinks?.isActive,
-                })
-            }
-        }
-
-        // REGRA DE OURO: Retorna no máximo 2 slots (os dois primeiros melhores)
-        // Isso garante que sempre teremos opções concretas para oferecer à cliente
-        const slots = allSlots.slice(0, 2)
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/ac7031ef-f4cf-4a4b-a2e4-8f976eb78084',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MinhaAgendaAI_tools.ts:223',message:'Before return',data:{slotsCount:slots.length,slots,totalAvailable:allSlots.length,date,professionalId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
-        
-        // Melhora a mensagem quando não há slots disponíveis
-        let message = ""
-        if (slots.length > 0) {
-            message = slots.length === 2
-                ? `Encontrados ${slots.length} horários disponíveis (mostrando os 2 melhores)`
-                : `Encontrado ${slots.length} horário disponível${allSlots.length > 1 ? ` (existem ${allSlots.length} no total)` : ''}`
-        } else {
-            // Verifica se o problema é falta de horários cadastrados ou conflitos
-            if (allSlots.length === 0) {
-                message = "Nenhum horário disponível para esta data. Verifique se o profissional tem horários de trabalho cadastrados para este dia da semana."
-            } else {
-                message = "Nenhum horário disponível para esta data"
-            }
-        }
-        
-        return JSON.stringify({
-            slots,
-            totalAvailable: allSlots.length,
-            message,
-        })
+    public async checkAvailability(
+        salonId: string, 
+        date: string, 
+        professionalId?: string, 
+        serviceId?: string, 
+        serviceDuration?: number
+    ) {
+        return this.availabilityTools.checkAvailability(salonId, date, professionalId, serviceId, serviceDuration)
     }
 
-    public async createAppointment(salonId: string, professionalId: string, phone: string, serviceId: string, date: string, notes?: string) {
-        // Busca cliente pelo telefone
-        const client = await db.query.profiles.findFirst({
-            where: eq(profiles.phone, phone),
-            columns: { id: true, fullName: true },
-        })
+    public async getProfessionalAvailabilityRules(salonId: string, professionalName: string) {
+        return this.availabilityTools.getProfessionalAvailabilityRules(salonId, professionalName)
+    }
 
-        if (!client) {
-            throw new Error(`Cliente com telefone ${phone} não encontrado. Por favor, identifique o cliente primeiro.`)
-        }
+    // ========================================
+    // Métodos de Agendamento (delegados para AppointmentTools)
+    // ========================================
 
-        // Usa serviço centralizado
-        const result = await sharedServices.createAppointmentService({
-            salonId,
-            professionalId,
-            clientId: client.id,
-            serviceId,
-            date,
-            notes,
-        })
-
-        if (!result.success) {
-            throw new Error(result.error)
-        }
-
-        const appointmentId = result.data.appointmentId
-
-        // Sincroniza com sistemas externos (não bloqueia se falhar)
-        // Passo 1: Verificar integrações ativas
-        const integrations = await this.getActiveIntegrations(salonId)
-
-        // Passo 2: Sincronizar com Google Calendar se ativo
-        if (integrations.google?.isActive) {
-            try {
-                await syncCreateAppointment(appointmentId)
-            } catch (error: any) {
-                // Loga erro mas não falha a operação principal
-                console.error("❌ Erro ao sincronizar criação de agendamento com Google Calendar:", {
-                    error: error?.message || error,
-                    stack: error?.stack,
-                })
-            }
-        }
-
-        // Passo 3: Sincronizar com Trinks se ativo
-        if (integrations.trinks?.isActive) {
-            try {
-                await createTrinksAppointment(appointmentId, salonId)
-            } catch (error: any) {
-                // Loga erro mas não falha a operação principal
-                console.error("❌ Erro ao sincronizar criação de agendamento com Trinks:", {
-                    error: error?.message || error,
-                    stack: error?.stack,
-                })
-            }
-        }
-
-        // Busca info para retorno (opcional, já temos success, mas a mensagem pede nomes)
-        const [professional, service] = await Promise.all([
-            db.query.professionals.findFirst({
-                where: eq(professionals.id, professionalId),
-                columns: { name: true },
-            }),
-            db.query.services.findFirst({
-                where: eq(services.id, serviceId),
-                columns: { name: true },
-            })
-        ])
-
-        const dateObj = new Date(date)
-
-        return JSON.stringify({
-            appointmentId: appointmentId,
-            message: `Agendamento criado com sucesso para ${client.fullName || "cliente"} com ${professional?.name} às ${dateObj.toLocaleString("pt-BR")}`,
-        })
-
+    public async createAppointment(
+        salonId: string, 
+        professionalId: string, 
+        phone: string, 
+        serviceId: string, 
+        date: string, 
+        notes?: string
+    ) {
+        return this.appointmentTools.createAppointment(salonId, professionalId, phone, serviceId, date, notes)
     }
 
     public async updateAppointment(
@@ -354,635 +101,64 @@ export class MinhaAgendaAITools {
         date?: string,
         notes?: string
     ) {
-        // Busca agendamento existente para validar
-        const existingAppointment = await db.query.appointments.findFirst({
-            where: eq(appointments.id, appointmentId),
-            columns: { id: true, status: true },
-        })
-
-        if (!existingAppointment) {
-            throw new Error(`Agendamento com ID ${appointmentId} não encontrado`)
-        }
-
-        if (existingAppointment.status === "cancelled") {
-            throw new Error("Não é possível atualizar um agendamento cancelado")
-        }
-
-        // Usa serviço centralizado
-        const result = await sharedServices.updateAppointmentService({
-            appointmentId,
-            professionalId,
-            serviceId,
-            date: date ? date : undefined,
-            notes,
-        })
-
-        if (!result.success) {
-            throw new Error(result.error)
-        }
-
-        // Busca salonId do agendamento para verificar integrações
-        const appointment = await db.query.appointments.findFirst({
-            where: eq(appointments.id, appointmentId),
-            columns: { salonId: true },
-        })
-
-        if (!appointment) {
-            throw new Error(`Agendamento com ID ${appointmentId} não encontrado após atualização`)
-        }
-
-        // Sincroniza com sistemas externos (não bloqueia se falhar)
-        // Passo 1: Verificar integrações ativas
-        const integrations = await this.getActiveIntegrations(appointment.salonId)
-
-        // Passo 2: Sincronizar com Google Calendar se ativo
-        if (integrations.google?.isActive) {
-            try {
-                await syncUpdateAppointment(appointmentId)
-            } catch (error: any) {
-                // Loga erro mas não falha a operação principal
-                console.error("❌ Erro ao sincronizar atualização de agendamento com Google Calendar:", {
-                    error: error?.message || error,
-                    stack: error?.stack,
-                })
-            }
-        }
-
-        // Passo 3: Sincronizar com Trinks se ativo
-        if (integrations.trinks?.isActive) {
-            try {
-                await updateTrinksAppointment(appointmentId, appointment.salonId)
-            } catch (error: any) {
-                // Loga erro mas não falha a operação principal
-                console.error("❌ Erro ao sincronizar atualização de agendamento com Trinks:", {
-                    error: error?.message || error,
-                    stack: error?.stack,
-                })
-            }
-        }
-
-        return JSON.stringify({
-            appointmentId: appointmentId,
-            message: "Agendamento atualizado com sucesso",
-        })
+        return this.appointmentTools.updateAppointment(appointmentId, professionalId, serviceId, date, notes)
     }
 
     public async deleteAppointment(appointmentId: string) {
-        // Passo 1: Busca dados do agendamento ANTES de deletar (para ter acesso aos IDs externos e salonId)
-        const existingAppointment = await db.query.appointments.findFirst({
-            where: eq(appointments.id, appointmentId),
-            columns: { id: true, salonId: true, googleEventId: true, trinksEventId: true },
-        })
-
-        if (!existingAppointment) {
-            throw new Error(`Agendamento com ID ${appointmentId} não encontrado`)
-        }
-
-        // Passo 2: Verificar integrações ativas
-        const integrations = await this.getActiveIntegrations(existingAppointment.salonId)
-
-        // Passo 3: Sincronizar deleção com Google Calendar (ANTES de deletar no banco)
-        if (integrations.google?.isActive) {
-            try {
-                await syncDeleteAppointment(appointmentId)
-            } catch (error: any) {
-                console.error("❌ Erro ao sincronizar deleção de agendamento com Google Calendar:", {
-                    error: error?.message || error,
-                    stack: error?.stack,
-                })
-            }
-        }
-
-        // Passo 4: Sincronizar deleção com Trinks (ANTES de deletar no banco)
-        if (integrations.trinks?.isActive) {
-            try {
-                await deleteTrinksAppointment(appointmentId, existingAppointment.salonId)
-            } catch (error: any) {
-                if (error?.message?.includes('não encontrado')) {
-                    console.log("ℹ️ Agendamento não encontrado no Trinks, pulando sincronização")
-                } else {
-                    console.error("❌ Erro ao sincronizar deleção de agendamento com Trinks:", {
-                        error: error?.message || error,
-                        stack: error?.stack,
-                    })
-                }
-            }
-        }
-
-        // Passo 5: Deletar agendamento do banco
-        const result = await sharedServices.deleteAppointmentService({
-            appointmentId,
-        })
-
-        if (!result.success) {
-            throw new Error(result.error)
-        }
-
-        return JSON.stringify({
-            message: `Agendamento ${appointmentId} removido com sucesso`,
-        })
+        return this.appointmentTools.deleteAppointment(appointmentId)
     }
 
-
     public async getCustomerUpcomingAppointments(salonId: string, customerPhone: string) {
-        // Busca perfil pelo telefone
-        const profile = await db.query.profiles.findFirst({
-            where: eq(profiles.phone, customerPhone),
-            columns: { id: true },
-        })
-
-        if (!profile) {
-            return JSON.stringify({
-                appointments: [],
-                message: "Cliente não encontrado",
-            })
-        }
-
-        const now = new Date()
-
-        // Busca agendamentos futuros
-        const upcomingAppointments = await db
-            .select({
-                id: appointments.id,
-                date: appointments.date,
-                endTime: appointments.endTime,
-                status: appointments.status,
-                notes: appointments.notes,
-                service: {
-                    name: services.name,
-                },
-                professional: {
-                    name: professionals.name,
-                },
-            })
-            .from(appointments)
-            .leftJoin(services, eq(appointments.serviceId, services.id))
-            .leftJoin(professionals, eq(appointments.professionalId, professionals.id))
-            .where(
-                and(
-                    eq(appointments.salonId, salonId),
-                    eq(appointments.clientId, profile.id),
-                    gt(appointments.date, now),
-                    eq(appointments.status, "confirmed")
-                )
-            )
-
-        return JSON.stringify({
-            appointments: upcomingAppointments.map((apt) => ({
-                id: apt.id,
-                date: apt.date.toISOString(),
-                endTime: apt.endTime.toISOString(),
-                status: apt.status,
-                serviceName: apt.service?.name || "Serviço não encontrado",
-                professionalName: apt.professional?.name || "Profissional não encontrado",
-                notes: apt.notes,
-            })),
-            message: `Encontrados ${upcomingAppointments.length} agendamento(s) futuro(s)`,
-        })
-
+        return this.appointmentTools.getCustomerUpcomingAppointments(salonId, customerPhone)
     }
 
     public async getMyFutureAppointments(salonId: string, clientId?: string, phone?: string) {
-        // Valida que pelo menos um identificador foi fornecido
-        if (!clientId && !phone) {
-            throw new Error("É necessário fornecer clientId ou phone")
-        }
-
-        // Helper para validar se uma string é um UUID válido
-        const isValidUUID = (str: string): boolean => {
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            return uuidRegex.test(str)
-        }
-
-        let resolvedClientId: string | undefined = undefined
-        let phoneToSearch: string | undefined = undefined
-
-        // Se clientId foi fornecido, verifica se é UUID válido ou telefone
-        if (clientId) {
-            if (isValidUUID(clientId)) {
-                resolvedClientId = clientId
-            } else {
-                // Se não é UUID válido, trata como telefone
-                phoneToSearch = clientId
-            }
-        }
-
-        // Se phone foi fornecido diretamente ou se clientId era na verdade um telefone
-        if (!resolvedClientId && (phone || phoneToSearch)) {
-            const searchPhone = phone || phoneToSearch
-            const profile = await db.query.profiles.findFirst({
-                where: eq(profiles.phone, searchPhone!),
-                columns: { id: true },
-            })
-
-            if (!profile) {
-                return JSON.stringify({
-                    formattedList: [],
-                    appointments: [],
-                    message: "Cliente não encontrado com o telefone fornecido",
-                })
-            }
-
-            resolvedClientId = profile.id
-        }
-
-        if (!resolvedClientId) {
-            throw new Error("Não foi possível identificar o cliente")
-        }
-
-        const now = new Date()
-
-        // Busca agendamentos futuros
-        const upcomingAppointments = await db
-            .select({
-                id: appointments.id,
-                date: appointments.date,
-                endTime: appointments.endTime,
-                status: appointments.status,
-                notes: appointments.notes,
-                service: {
-                    name: services.name,
-                },
-                professional: {
-                    id: professionals.id,
-                    name: professionals.name,
-                },
-            })
-            .from(appointments)
-            .leftJoin(services, eq(appointments.serviceId, services.id))
-            .leftJoin(professionals, eq(appointments.professionalId, professionals.id))
-            .where(
-                and(
-                    eq(appointments.salonId, salonId),
-                    eq(appointments.clientId, resolvedClientId),
-                    gt(appointments.date, now),
-                    eq(appointments.status, "confirmed")
-                )
-            )
-            .orderBy(asc(appointments.date))
-
-        // Formata lista para exibição ao usuário (sem IDs, apenas informações legíveis)
-        // Converte datas de UTC para UTC-3 (horário do Brasil) antes de formatar
-        const formattedList = upcomingAppointments.map((apt) => {
-            // Converte de UTC (banco) para UTC-3 (horário do Brasil)
-            const dateBrazil = fromBrazilTime(apt.date)
-            const dateStr = dateBrazil.toLocaleDateString("pt-BR", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-                timeZone: "America/Sao_Paulo"
-            })
-            const timeStr = dateBrazil.toLocaleTimeString("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "America/Sao_Paulo"
-            })
-
-            return `${dateStr} - ${timeStr} - ${apt.service?.name || "Serviço não encontrado"} - ${apt.professional?.name || "Profissional não encontrado"}`
-        })
-
-        // Retorna também os dados completos com IDs para uso interno da IA (cancelar/reagendar)
-        const appointmentsData = upcomingAppointments.map((apt) => ({
-            id: apt.id,
-            date: apt.date.toISOString(),
-            endTime: apt.endTime.toISOString(),
-            status: apt.status,
-            serviceName: apt.service?.name || "Serviço não encontrado",
-            professionalName: apt.professional?.name || "Profissional não encontrado",
-            professionalId: apt.professional?.id || "",
-            notes: apt.notes,
-        }))
-
-        return JSON.stringify({
-            formattedList,
-            appointments: appointmentsData,
-            message: `Encontrados ${upcomingAppointments.length} agendamento(s) futuro(s)`,
-        })
-
+        return this.appointmentTools.getMyFutureAppointments(salonId, clientId, phone)
     }
 
+    // ========================================
+    // Métodos de Catálogo (delegados para CatalogTools)
+    // ========================================
+
     public async getServices(salonId: string, includeInactive?: boolean) {
-        const servicesList = await db
-            .select({
-                id: services.id,
-                name: services.name,
-                description: services.description,
-                duration: services.duration,
-                price: services.price,
-                isActive: services.isActive,
-            })
-            .from(services)
-            .where(
-                and(
-                    eq(services.salonId, salonId),
-                    includeInactive ? undefined : eq(services.isActive, true)
-                )
-            )
-
-        return JSON.stringify({
-            services: servicesList.map((s) => ({
-                ...s,
-                price: s.price.toString(),
-            })),
-            message: `Encontrados ${servicesList.length} serviço(s) disponível(is)`,
-        })
-
+        return this.catalogTools.getServices(salonId, includeInactive)
     }
 
     public async getProducts(salonId: string, includeInactive?: boolean) {
-        const productsList = await db
-            .select({
-                id: products.id,
-                name: products.name,
-                description: products.description,
-                price: products.price,
-                isActive: products.isActive,
-            })
-            .from(products)
-            .where(
-                and(
-                    eq(products.salonId, salonId),
-                    includeInactive ? undefined : eq(products.isActive, true)
-                )
-            )
-
-        return JSON.stringify({
-            products: productsList.map((p) => ({
-                ...p,
-                price: p.price.toString(),
-            })),
-            message: `Encontrados ${productsList.length} produto(s) disponível(is)`,
-        })
-
-    }
-
-    public async saveCustomerPreference(salonId: string, customerId: string, key: string, value: string | number | boolean) {
-        // Busca registro do cliente no salão (customerId pode ser ID do customer ou phone)
-        let customer = await db.query.customers.findFirst({
-            where: and(
-                eq(customers.salonId, salonId),
-                eq(customers.id, customerId)
-            ),
-            columns: { id: true, preferences: true },
-        })
-
-        // Se não encontrou por ID, tenta buscar por phone (caso customerId seja phone)
-        if (!customer) {
-            customer = await db.query.customers.findFirst({
-                where: and(
-                    eq(customers.salonId, salonId),
-                    eq(customers.phone, customerId.replace(/\D/g, ""))
-                ),
-                columns: { id: true, preferences: true },
-            })
-        }
-
-        const currentPreferences = (customer?.preferences as Record<string, unknown>) || {}
-
-        // Atualiza preferências
-        const updatedPreferences = {
-            ...currentPreferences,
-            [key]: value,
-        }
-
-        if (customer) {
-            // Atualiza existente
-            await db
-                .update(customers)
-                .set({ 
-                    preferences: updatedPreferences,
-                    updatedAt: new Date()
-                })
-                .where(eq(customers.id, customer.id))
-        } else {
-            // Não cria customer automaticamente aqui - deve ser criado antes
-            return JSON.stringify({
-                error: "Cliente não encontrado no salão",
-            })
-        }
-
-        return JSON.stringify({
-            message: `Preferência "${key}" salva com sucesso para o cliente`,
-        })
-    }
-
-    public async qualifyLead(salonId: string, phoneNumber: string, interest: "high" | "medium" | "low" | "none", notes?: string) {
-        // Busca lead existente
-        let lead = await db.query.leads.findFirst({
-            where: and(
-                eq(leads.salonId, salonId),
-                eq(leads.phoneNumber, phoneNumber)
-            ),
-            columns: { id: true },
-        })
-
-        const statusMap: Record<string, string> = {
-            high: "recently_scheduled",
-            medium: "new",
-            low: "cold",
-            none: "cold",
-        }
-
-        if (lead) {
-            // Atualiza lead existente
-            await db
-                .update(leads)
-                .set({
-                    status: statusMap[interest] as any,
-                    notes: notes || undefined,
-                    lastContactAt: new Date(),
-                })
-                .where(eq(leads.id, lead.id))
-        } else {
-            // Cria novo lead
-            await db.insert(leads).values({
-                salonId,
-                phoneNumber,
-                status: statusMap[interest] as any,
-                notes: notes || null,
-                lastContactAt: new Date(),
-            })
-        }
-
-        const interestMap: Record<string, string> = {
-            high: "alto",
-            medium: "médio",
-            low: "baixo",
-            none: "nenhum",
-        }
-
-        return JSON.stringify({
-            message: `Lead qualificado com interesse ${interestMap[interest]}`,
-        })
-    }
-
-    public async getSalonDetails(salonId?: string) {
-        // Se salonId não foi fornecido, lança erro (não temos contexto no padrão atual)
-        if (!salonId) {
-            throw new Error("salonId é obrigatório. Forneça como parâmetro.")
-        }
-
-        const salon = await db.query.salons.findFirst({
-            where: eq(salons.id, salonId),
-            columns: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-                description: true,
-                settings: true,
-                workHours: true,
-            },
-        })
-
-        if (!salon) {
-            throw new Error(`Salão com ID ${salonId} não encontrado`)
-        }
-
-        const settings = (salon.settings as Record<string, unknown>) || {}
-        const workHours = (salon.workHours as Record<string, { start: string; end: string }> | null) || null
-
-        // Extrai cancellation_policy de settings se existir
-        const cancellationPolicy = settings.cancellation_policy as string | undefined
-
-        return JSON.stringify({
-            id: salon.id,
-            name: salon.name,
-            address: salon.address || null,
-            phone: salon.phone || null,
-            description: salon.description || null,
-            cancellationPolicy,
-            businessHours: workHours, // Formato: { "0": { start: "09:00", end: "18:00" }, ... } (0 = domingo, 6 = sábado)
-            settings,
-            message: "Informações do salão recuperadas com sucesso",
-        })
-
+        return this.catalogTools.getProducts(salonId, includeInactive)
     }
 
     public async getProfessionals(salonId: string, includeInactive?: boolean) {
-        // Busca profissionais com seus serviços
-        const professionalsWithServices = await db
-            .select({
-                id: professionals.id,
-                name: professionals.name,
-                isActive: professionals.isActive,
-                serviceName: services.name,
-            })
-            .from(professionals)
-            .leftJoin(professionalServices, eq(professionals.id, professionalServices.professionalId))
-            .leftJoin(services, eq(professionalServices.serviceId, services.id))
-            .where(
-                and(
-                    eq(professionals.salonId, salonId),
-                    includeInactive ? undefined : eq(professionals.isActive, true)
-                )
-            )
-
-        // Agrupa serviços por profissional
-        const professionalsMap = new Map<
-            string,
-            { id: string; name: string; services: string[]; isActive: boolean }
-        >()
-
-        for (const row of professionalsWithServices) {
-            if (!professionalsMap.has(row.id)) {
-                professionalsMap.set(row.id, {
-                    id: row.id,
-                    name: row.name,
-                    services: [],
-                    isActive: row.isActive,
-                })
-            }
-
-            const professional = professionalsMap.get(row.id)!
-            if (row.serviceName) {
-                professional.services.push(row.serviceName)
-            }
-        }
-
-        const professionalsList = Array.from(professionalsMap.values())
-
-        return JSON.stringify({
-            professionals: professionalsList,
-            message: `Encontrados ${professionalsList.length} profissional(is)`,
-        })
-
+        return this.catalogTools.getProfessionals(salonId, includeInactive)
     }
 
-    public async getProfessionalAvailabilityRules(salonId: string, professionalName: string) {
-        // Busca o profissional pelo nome (case-insensitive)
-        const professional = await db.query.professionals.findFirst({
-            where: and(
-                eq(professionals.salonId, salonId),
-                ilike(professionals.name, `%${professionalName}%`)
-            ),
-            columns: {
-                id: true,
-                name: true,
-            },
-        })
+    // ========================================
+    // Métodos do Salão (delegados para SalonTools)
+    // ========================================
 
-        if (!professional) {
-            throw new Error(`Profissional "${professionalName}" não encontrado no salão`)
-        }
-
-        // Busca as regras de disponibilidade do profissional
-        const availabilityRules = await db
-            .select({
-                dayOfWeek: availability.dayOfWeek,
-                startTime: availability.startTime,
-                endTime: availability.endTime,
-                isBreak: availability.isBreak,
-            })
-            .from(availability)
-            .where(eq(availability.professionalId, professional.id))
-            .orderBy(asc(availability.dayOfWeek), asc(availability.startTime))
-
-        // Mapeia números dos dias da semana (0-6) para nomes em português
-        const dayNames = [
-            "Domingo",
-            "Segunda-feira",
-            "Terça-feira",
-            "Quarta-feira",
-            "Quinta-feira",
-            "Sexta-feira",
-            "Sábado",
-        ]
-
-        const rules = availabilityRules.map((rule) => ({
-            dayOfWeek: rule.dayOfWeek,
-            dayName: dayNames[rule.dayOfWeek] || `Dia ${rule.dayOfWeek}`,
-            startTime: rule.startTime,
-            endTime: rule.endTime,
-            isBreak: rule.isBreak,
-        }))
-
-        // Filtra apenas regras de trabalho (não breaks)
-        const workRules = rules.filter((rule) => !rule.isBreak)
-
-        return JSON.stringify({
-            professionalId: professional.id,
-            professionalName: professional.name,
-            rules: workRules,
-            message: workRules.length > 0
-                ? `${professional.name} trabalha ${workRules.length} dia(s) da semana`
-                : `${professional.name} não possui regras de trabalho cadastradas`,
-        })
+    public async getSalonDetails(salonId?: string) {
+        return this.salonTools.getSalonDetails(salonId)
     }
 
-    /**
-     * Verifica se o salão tem integração ativa com Google Calendar
-     * Método helper para verificação rápida sem precisar importar módulos externos
-     */
+    public async saveCustomerPreference(
+        salonId: string, 
+        customerId: string, 
+        key: string, 
+        value: string | number | boolean
+    ) {
+        return this.salonTools.saveCustomerPreference(salonId, customerId, key, value)
+    }
+
+    public async qualifyLead(
+        salonId: string, 
+        phoneNumber: string, 
+        interest: "high" | "medium" | "low" | "none", 
+        notes?: string
+    ) {
+        return this.salonTools.qualifyLead(salonId, phoneNumber, interest, notes)
+    }
+
     public async hasGoogleCalendarIntegration(salonId: string): Promise<boolean> {
-        const integration = await db.query.salonIntegrations.findFirst({
-            where: eq(salonIntegrations.salonId, salonId),
-            columns: { id: true, refreshToken: true },
-        })
-
-        return !!integration && !!integration.refreshToken
+        return this.salonTools.hasGoogleCalendarIntegration(salonId)
     }
-
 }
-
