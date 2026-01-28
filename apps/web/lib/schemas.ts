@@ -89,12 +89,16 @@ export const agentSchema = z.object({
 
 export type AgentSchema = z.infer<typeof agentSchema>
 
-// Schema para criação de agente (todos os campos obrigatórios, incluindo whatsappNumber)
+// Schema para criação de agente (whatsappNumber opcional: pode conectar depois via Integrações)
 export const createAgentSchema = agentSchema.extend({
   whatsappNumber: z
     .string()
-    .min(1, "Número de WhatsApp é obrigatório")
-    .regex(/^\+[1-9]\d{10,14}$/, "Formato inválido. Use: +PaísDDDNúmero (ex: +5511986049295)"),
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (val) => !val || /^\+[1-9]\d{10,14}$/.test(val),
+      "Formato inválido. Use: +PaísDDDNúmero (ex: +5511986049295)"
+    ),
 })
 
 export type CreateAgentSchema = z.infer<typeof createAgentSchema>

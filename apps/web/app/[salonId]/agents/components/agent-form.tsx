@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
-import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle, HelpCircle, ArrowLeft, Cpu, AlertTriangle, FileText } from "lucide-react"
+import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle, HelpCircle, ArrowLeft, Cpu, AlertTriangle, FileText, Loader2 } from "lucide-react"
 import { agentSchema, createAgentSchema, type AgentSchema } from "@/lib/schemas"
 import { createAgent, updateAgent } from "@/app/actions/agents"
 import { getSystemPromptTemplates, updateSystemPromptTemplate } from "@/app/actions/system-prompt-templates"
@@ -14,6 +14,7 @@ import type { SystemPromptTemplateRow } from "@/lib/types/system-prompt-template
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
+import { ConfirmModal } from "@/components/ui/confirm-modal"
 
 const AGENT_MODELS = [
   { value: "gpt-5.2", label: "GPT-5.2" },
@@ -243,6 +244,16 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const [hasPromptChanged, setHasPromptChanged] = useState(false)
 
+  // Integrações WhatsApp (conectar/desconectar via Twilio Senders)
+  const agentId = initialData?.id
+  const [whatsappPhoneInput, setWhatsappPhoneInput] = useState("")
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [whatsappNumbers, setWhatsappNumbers] = useState<{ phoneNumber: string; status: string; connectedAt: string; verifiedAt?: string }[]>([])
+  const [whatsappLoading, setWhatsappLoading] = useState(false)
+  const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
+  const [verifyCode, setVerifyCode] = useState("")
+
   // Workaround: cast necessário devido a incompatibilidade entre @hookform/resolvers v5.2.x e Zod v4.1.x
   // Ver: https://github.com/react-hook-form/resolvers/issues/813
   const schema = mode === "create" ? createAgentSchema : agentSchema
@@ -272,6 +283,28 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     }
     loadTemplates()
   }, [salonId])
+
+  // Carrega status WhatsApp (Integrações) quando em modo edição
+  useEffect(() => {
+    if (!agentId || mode !== "edit") return
+    let cancelled = false
+    setWhatsappLoading(true)
+    fetch(`/api/agents/${agentId}/whatsapp/status`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        const list = Array.isArray(data?.numbers) ? data.numbers : []
+        setWhatsappNumbers(list)
+        if (list.length > 0) {
+          form.setValue("whatsappNumber", list[0].phoneNumber)
+        } else {
+          form.setValue("whatsappNumber", "")
+        }
+      })
+      .catch(() => { if (!cancelled) setWhatsappNumbers([]) })
+      .finally(() => { if (!cancelled) setWhatsappLoading(false) })
+    return () => { cancelled = true }
+  }, [agentId, mode, form])
 
   // Atualiza o formulário quando initialData mudar (útil para duplicação)
   useEffect(() => {
@@ -565,37 +598,182 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                 <h3 className="text-sm font-bold text-slate-800 dark:text-white">Integrações</h3>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Número do WhatsApp
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    {...form.register("whatsappNumber")}
-                    placeholder="Ex.: +5511986049295"
-                    className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                    pattern="^\+[1-9]\d{10,14}$"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // TODO: Implementar função de conexão do WhatsApp
-                      toast.info("Funcionalidade de conexão em desenvolvimento")
-                    }}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-                  >
-                    Conectar
-                  </button>
-                </div>
-                {form.formState.errors.whatsappNumber && (
-                  <p className="text-xs text-red-500">{form.formState.errors.whatsappNumber.message}</p>
-                )}
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Formato:ex: +5511999999999
+              {(mode === "create" || !agentId) && (
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Salve o agente primeiro para conectar o WhatsApp.
                 </p>
-              </div>
+              )}
+
+              {agentId && (mode === "edit") && (
+                <>
+                  {whatsappLoading && whatsappNumbers.length === 0 && (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Carregando...</p>
+                  )}
+
+                  {!whatsappLoading && whatsappNumbers.length === 0 && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Número do WhatsApp
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={whatsappPhoneInput}
+                          onChange={(e) => setWhatsappPhoneInput(e.target.value)}
+                          placeholder="Ex.: +5511986049295"
+                          className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                        <button
+                          type="button"
+                          disabled={isConnecting}
+                          onClick={async () => {
+                            const raw = whatsappPhoneInput.replace(/\s/g, "").replace(/-/g, "").replace(/[()]/g, "").trim()
+                            if (!/^\+[1-9]\d{10,14}$/.test(raw)) {
+                              toast.error("Formato de número inválido. Use o formato +5511999999999")
+                              return
+                            }
+                            setIsConnecting(true)
+                            try {
+                              const res = await fetch(`/api/agents/${agentId}/whatsapp/connect`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ phoneNumber: raw }),
+                              })
+                              const data = await res.json()
+                              if (!res.ok) {
+                                toast.error(data?.error || "Erro ao conectar")
+                                return
+                              }
+                              const list = (await fetch(`/api/agents/${agentId}/whatsapp/status`).then((r) => r.json()))?.numbers || []
+                              setWhatsappNumbers(list)
+                              if (list.length > 0) form.setValue("whatsappNumber", list[0].phoneNumber)
+                              toast.success("Número registrado! Você receberá um SMS. Use \"Verificar\" para completar.")
+                            } catch {
+                              toast.error("Erro de conexão. Tente novamente.")
+                            } finally {
+                              setIsConnecting(false)
+                            }
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                        >
+                          {isConnecting && <Loader2 size={16} className="animate-spin" />}
+                          Conectar
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Formato: +5511999999999</p>
+                    </div>
+                  )}
+
+                  {!whatsappLoading && whatsappNumbers.length > 0 && (() => {
+                    const n = whatsappNumbers[0]
+                    const st = (n?.status || "").toLowerCase()
+                    const mask = (p: string) => {
+                      const d = p.replace(/\D/g, "")
+                      if (d.length >= 12 && p.startsWith("+55")) return `+55 ${d.slice(2, 4)} •••••-${d.slice(-4)}`
+                      if (d.length >= 10) return `${p.slice(0, 6)} •••••-${p.slice(-4)}`
+                      return p
+                    }
+                    const needVerify = st === "pending_verification" || st === "verifying"
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{mask(n.phoneNumber)}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            st === "verified" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                            st === "failed" ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" :
+                            "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                          }`}>
+                            {st === "verified" ? "Verificado" : st === "failed" ? "Falhou" : st === "verifying" ? "Verificando" : "Pendente"}
+                          </span>
+                        </div>
+                        {needVerify && (
+                          <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Código recebido por SMS</label>
+                              <input
+                                type="text"
+                                value={verifyCode}
+                                onChange={(e) => setVerifyCode(e.target.value)}
+                                placeholder="123456"
+                                className="mt-1 w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isVerifying || !verifyCode.trim()}
+                              onClick={async () => {
+                                setIsVerifying(true)
+                                try {
+                                  const res = await fetch(`/api/agents/${agentId}/whatsapp/verify`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ phoneNumber: n.phoneNumber, verificationCode: verifyCode.trim() }),
+                                  })
+                                  const data = await res.json()
+                                  if (!res.ok) {
+                                    toast.error(data?.error || "Erro ao verificar")
+                                    return
+                                  }
+                                  const list = (await fetch(`/api/agents/${agentId}/whatsapp/status`).then((r) => r.json()))?.numbers || []
+                                  setWhatsappNumbers(list)
+                                  setVerifyCode("")
+                                  toast.success("Código enviado. O status será atualizado em breve.")
+                                } catch {
+                                  toast.error("Erro ao verificar. Tente novamente.")
+                                } finally {
+                                  setIsVerifying(false)
+                                }
+                              }}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isVerifying && <Loader2 size={14} className="animate-spin" />}
+                              Verificar
+                            </button>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setDisconnectModalOpen(true)}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium"
+                        >
+                          Desconectar
+                        </button>
+                      </div>
+                    )
+                  })()}
+                </>
+              )}
             </div>
+
+            <ConfirmModal
+              open={disconnectModalOpen}
+              onClose={() => setDisconnectModalOpen(false)}
+              onConfirm={async () => {
+                const n = whatsappNumbers[0]
+                if (!n || !agentId) return
+                try {
+                  const res = await fetch(`/api/agents/${agentId}/whatsapp/disconnect`, {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phoneNumber: n.phoneNumber }),
+                  })
+                  const data = await res.json()
+                  if (!res.ok) {
+                    toast.error(data?.error || "Erro ao desconectar")
+                    return
+                  }
+                  setWhatsappNumbers([])
+                  form.setValue("whatsappNumber", "")
+                  toast.success("Número desconectado com sucesso")
+                } catch {
+                  toast.error("Erro ao desconectar. Tente novamente.")
+                }
+              }}
+              title="Desconectar WhatsApp"
+              description="Tem certeza que deseja desconectar este número?"
+              confirmText="Desconectar"
+              type="danger"
+            />
           </div>
 
           {/* Coluna Direita - System Prompt (66%) */}

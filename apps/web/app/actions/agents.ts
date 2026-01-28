@@ -160,7 +160,8 @@ export async function createAgent(
         .where(and(eq(agents.salonId, salonId), eq(agents.isActive, true)))
     }
 
-    // Cria o novo agente
+    // Cria o novo agente (whatsappNumber opcional: pode conectar depois via Integrações)
+    const whatsappVal = parsed.data.whatsappNumber?.trim()
     const [newAgent] = await db
       .insert(agents)
       .values({
@@ -169,7 +170,7 @@ export async function createAgent(
         systemPrompt: parsed.data.systemPrompt.trim(),
         model: parsed.data.model,
         tone: parsed.data.tone,
-        whatsappNumber: parsed.data.whatsappNumber.trim(),
+        whatsappNumber: whatsappVal || null,
         isActive: parsed.data.isActive,
       })
       .returning({ id: agents.id })
@@ -254,11 +255,8 @@ export async function updateAgent(
     }
     if (parsed.data.whatsappNumber !== undefined) {
       const whatsappValue = emptyStringToNull(parsed.data.whatsappNumber)
-      // Como o campo é NOT NULL no schema, apenas atualiza se houver um valor válido
-      // Se for null (string vazia), não atualiza o campo (undefined = não atualizar)
-      if (whatsappValue !== null) {
-        updateData.whatsappNumber = whatsappValue
-      }
+      // whatsappNumber é gerenciado também pelos endpoints de Integrações; aqui só aplicamos o que vem do form
+      updateData.whatsappNumber = whatsappValue
     }
     if (parsed.data.isActive !== undefined) {
       updateData.isActive = parsed.data.isActive
