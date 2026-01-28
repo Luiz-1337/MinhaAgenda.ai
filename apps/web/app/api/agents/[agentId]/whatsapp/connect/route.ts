@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { db, agents } from "@repo/db"
-import { eq, ne } from "drizzle-orm"
+import { eq, ne, and, isNotNull } from "drizzle-orm"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { registerSender } from "@/lib/services/twilio-whatsapp-senders.service"
 import { checkRateLimit } from "@/lib/redis"
@@ -26,7 +26,7 @@ export async function POST(
 
     const agent = await db.query.agents.findFirst({
       where: eq(agents.id, agentId),
-      columns: { id: true, salonId: true, name: true, whatsappNumber: true, whatsappNumbers: true },
+      columns: { id: true, salonId: true, name: true, whatsappNumber: true },
     })
     if (!agent) {
       return NextResponse.json({ success: false, error: "Agente não encontrado" }, { status: 404 })
@@ -69,24 +69,18 @@ export async function POST(
     const phone = normalizeForCompare(raw)
 
     // Número já em outro agente?
-    const others = await db.query.agents.findMany({
-      where: ne(agents.id, agentId),
-      columns: { whatsappNumber: true, whatsappNumbers: true },
+    const existingAgent = await db.query.agents.findFirst({
+      where: and(
+        ne(agents.id, agentId),
+        eq(agents.whatsappNumber, phone)
+      ),
+      columns: { id: true },
     })
-    for (const o of others) {
-      if (o.whatsappNumber && normalizeForCompare(o.whatsappNumber) === phone) {
-        return NextResponse.json(
-          { success: false, error: "Este número já está conectado a outro agente" },
-          { status: 409 }
-        )
-      }
-      const arr = Array.isArray(o.whatsappNumbers) ? o.whatsappNumbers : []
-      if (arr.some((e: { phoneNumber?: string }) => e?.phoneNumber && normalizeForCompare(e.phoneNumber) === phone)) {
-        return NextResponse.json(
-          { success: false, error: "Este número já está conectado a outro agente" },
-          { status: 409 }
-        )
-      }
+    if (existingAgent) {
+      return NextResponse.json(
+        { success: false, error: "Este número já está conectado a outro agente" },
+        { status: 409 }
+      )
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
@@ -96,19 +90,13 @@ export async function POST(
 
     const { sid, status } = await registerSender(phone, agent.name, statusCallbackUrl)
 
-    const entry = {
-      phoneNumber: phone,
-      status: "pending_verification" as const,
-      twilioSenderId: sid,
-      connectedAt: new Date().toISOString(),
-    }
-    const current = Array.isArray(agent.whatsappNumbers) ? agent.whatsappNumbers : []
-
     await db
       .update(agents)
       .set({
-        whatsappNumbers: [...current, entry],
         whatsappNumber: phone,
+        whatsappStatus: "pending_verification",
+        twilioSenderId: sid,
+        whatsappConnectedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(agents.id, agentId))

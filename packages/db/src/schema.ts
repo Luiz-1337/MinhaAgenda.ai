@@ -528,7 +528,11 @@ export const agents = pgTable(
     systemPrompt: text('system_prompt').notNull(),
     model: text('model').notNull(),
     tone: text('tone').notNull(),
-    whatsappNumber: text('whatsapp_number').notNull(),
+    whatsappNumber: text('whatsapp_number'), // Opcional - pode conectar depois via Integrações
+    whatsappStatus: text('whatsapp_status'), // pending_verification, verifying, verified, failed
+    twilioSenderId: text('twilio_sender_id'), // ID do sender no Twilio
+    whatsappConnectedAt: timestamp('whatsapp_connected_at'), // Quando foi conectado
+    whatsappVerifiedAt: timestamp('whatsapp_verified_at'), // Quando foi verificado
     isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()

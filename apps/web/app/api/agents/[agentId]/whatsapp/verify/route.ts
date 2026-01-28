@@ -24,7 +24,13 @@ export async function POST(
 
     const agent = await db.query.agents.findFirst({
       where: eq(agents.id, agentId),
-      columns: { id: true, salonId: true, whatsappNumbers: true },
+      columns: { 
+        id: true, 
+        salonId: true, 
+        whatsappNumber: true,
+        whatsappStatus: true,
+        twilioSenderId: true,
+      },
     })
     if (!agent) {
       return NextResponse.json({ success: false, error: "Agente não encontrado" }, { status: 404 })
@@ -66,38 +72,36 @@ export async function POST(
       return NextResponse.json({ success: false, error: "verificationCode é obrigatório" }, { status: 400 })
     }
 
-    const arr = Array.isArray(agent.whatsappNumbers) ? agent.whatsappNumbers : []
-    const idx = arr.findIndex((e: { phoneNumber?: string; status?: string }) => e?.phoneNumber && normalizeForCompare(e.phoneNumber) === phone)
-    if (idx === -1) {
+    // Verifica se o número corresponde ao número conectado
+    if (!agent.whatsappNumber || normalizeForCompare(agent.whatsappNumber) !== phone) {
       return NextResponse.json(
         { success: false, error: "Este número não está conectado a este agente" },
         { status: 404 }
       )
     }
 
-    const entry = arr[idx] as { status?: string; twilioSenderId?: string | null }
-    const st = (entry?.status ?? "").toLowerCase()
-    if (st !== "pending_verification" && st !== "verifying") {
+    const status = (agent.whatsappStatus ?? "").toLowerCase()
+    if (status !== "pending_verification" && status !== "verifying") {
       return NextResponse.json(
         { success: false, error: "Este número não está aguardando verificação" },
         { status: 400 }
       )
     }
-    if (!entry?.twilioSenderId) {
+    if (!agent.twilioSenderId) {
       return NextResponse.json(
         { success: false, error: "Dados de verificação incompletos para este número" },
         { status: 400 }
       )
     }
 
-    await verifySender(entry.twilioSenderId, code)
-
-    const updated = [...arr] as { phoneNumber?: string; status?: string; twilioSenderId?: string | null; connectedAt?: string; verifiedAt?: string }[]
-    updated[idx] = { ...updated[idx], status: "verifying" }
+    await verifySender(agent.twilioSenderId, code)
 
     await db
       .update(agents)
-      .set({ whatsappNumbers: updated, updatedAt: new Date() })
+      .set({ 
+        whatsappStatus: "verifying", 
+        updatedAt: new Date() 
+      })
       .where(eq(agents.id, agentId))
 
     return NextResponse.json({

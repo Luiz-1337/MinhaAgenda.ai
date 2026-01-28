@@ -6,7 +6,8 @@
  * por um único serviço simplificado com retry automático.
  */
 
-import { google, type calendar_v3 } from 'googleapis'
+import { google } from 'googleapis';
+import type { calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library'
 import { eq } from 'drizzle-orm'
 

@@ -24,7 +24,12 @@ export async function DELETE(
 
     const agent = await db.query.agents.findFirst({
       where: eq(agents.id, agentId),
-      columns: { id: true, salonId: true, whatsappNumber: true, whatsappNumbers: true },
+      columns: { 
+        id: true, 
+        salonId: true, 
+        whatsappNumber: true, 
+        twilioSenderId: true,
+      },
     })
     if (!agent) {
       return NextResponse.json({ success: false, error: "Agente não encontrado" }, { status: 404 })
@@ -66,35 +71,32 @@ export async function DELETE(
     }
     const phone = normalizeForCompare(raw)
 
-    const arr = Array.isArray(agent.whatsappNumbers) ? agent.whatsappNumbers : []
-    const idx = arr.findIndex((e: { phoneNumber?: string }) => e?.phoneNumber && normalizeForCompare(e.phoneNumber) === phone)
-    if (idx === -1) {
+    // Verifica se o número corresponde ao número conectado
+    if (!agent.whatsappNumber || normalizeForCompare(agent.whatsappNumber) !== phone) {
       return NextResponse.json(
         { success: false, error: "Este número não está conectado a este agente" },
         { status: 404 }
       )
     }
 
-    const entry = arr[idx] as { twilioSenderId?: string | null }
-    if (entry?.twilioSenderId) {
+    // Remove do Twilio se tiver senderId
+    if (agent.twilioSenderId) {
       try {
-        await removeSender(entry.twilioSenderId)
+        await removeSender(agent.twilioSenderId)
       } catch {
         // Ignora: Sender já removido ou indisponível
       }
     }
 
-    const nextArr = arr.filter((_, i) => i !== idx) as { phoneNumber?: string; status?: string }[]
-    const nextMain =
-      nextArr.length > 0
-        ? (nextArr.find((e) => e.status === "verified") || nextArr[0])?.phoneNumber ?? null
-        : null
-
+    // Limpa os campos de WhatsApp
     await db
       .update(agents)
       .set({
-        whatsappNumbers: nextArr,
-        whatsappNumber: nextMain,
+        whatsappNumber: null,
+        whatsappStatus: null,
+        twilioSenderId: null,
+        whatsappConnectedAt: null,
+        whatsappVerifiedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(agents.id, agentId))

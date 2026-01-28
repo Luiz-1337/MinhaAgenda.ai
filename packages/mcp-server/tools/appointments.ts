@@ -1,8 +1,8 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { MinhaAgendaAITools } from "../src/MinhaAgendaAI_tools"
-import { 
-  checkAvailabilitySchema, 
+import {
+  checkAvailabilitySchema,
   createAppointmentSchema,
   updateAppointmentSchema,
   deleteAppointmentSchema,
@@ -155,7 +155,7 @@ ERROS COMUNS:
       execute: async (input: z.infer<typeof createAppointmentInputSchema>) => {
         // Rate limiting: máximo 10 agendamentos por minuto por salão
         assertRateLimit(`${salonId}:createAppointment`, RATE_LIMITS.CREATE_APPOINTMENT)
-        
+
         const startTime = Date.now()
         const result = await impl.createAppointment(
           salonId,

@@ -5,11 +5,12 @@ import { eq } from "drizzle-orm"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 
 /** Mapeia status (nosso enum ou Twilio) para o contrato da API */
-function mapStatus(s: string): "verified" | "pending_verification" | "verifying" | "failed" {
-  const v = (s || "").toLowerCase()
+function mapStatus(s: string | null): "verified" | "pending_verification" | "verifying" | "failed" | null {
+  if (!s) return null
+  const v = s.toLowerCase()
   if (["verified", "pending_verification", "verifying", "failed"].includes(v))
     return v as "verified" | "pending_verification" | "verifying" | "failed"
-  const u = (s || "").toUpperCase()
+  const u = s.toUpperCase()
   if (u === "ONLINE") return "verified"
   if (["PENDING_VERIFICATION", "CREATING"].includes(u)) return "pending_verification"
   if (u === "VERIFYING") return "verifying"
@@ -30,7 +31,13 @@ export async function GET(
 
     const agent = await db.query.agents.findFirst({
       where: eq(agents.id, agentId),
-      columns: { salonId: true, whatsappNumbers: true },
+      columns: { 
+        salonId: true, 
+        whatsappNumber: true, 
+        whatsappStatus: true,
+        whatsappConnectedAt: true,
+        whatsappVerifiedAt: true,
+      },
     })
     if (!agent) {
       return NextResponse.json({ error: "Agente não encontrado" }, { status: 404 })
@@ -41,13 +48,15 @@ export async function GET(
       return NextResponse.json({ error: "Acesso negado a este salão" }, { status: 403 })
     }
 
-    const arr = Array.isArray(agent.whatsappNumbers) ? agent.whatsappNumbers : []
-    const numbers = arr.map((e: { phoneNumber?: string; status?: string; connectedAt?: string; verifiedAt?: string }) => ({
-      phoneNumber: e?.phoneNumber ?? "",
-      status: mapStatus(e?.status ?? ""),
-      connectedAt: e?.connectedAt ?? "",
-      ...(e?.verifiedAt ? { verifiedAt: e.verifiedAt } : {}),
-    }))
+    // Retorna array para manter compatibilidade com o frontend (mas sempre terá no máximo 1 item)
+    const numbers = agent.whatsappNumber
+      ? [{
+          phoneNumber: agent.whatsappNumber,
+          status: mapStatus(agent.whatsappStatus) ?? "pending_verification",
+          connectedAt: agent.whatsappConnectedAt?.toISOString() ?? "",
+          ...(agent.whatsappVerifiedAt ? { verifiedAt: agent.whatsappVerifiedAt.toISOString() } : {}),
+        }]
+      : []
 
     return NextResponse.json({ numbers })
   } catch (err) {

@@ -1,4 +1,131 @@
 import { z } from "zod";
+
+// ============================================================================
+// Validação ISO 8601 (baseado no google-calendar-mcp-main)
+// ============================================================================
+
+/**
+ * Padrões de validação ISO 8601
+ */
+const ISO_DATETIME_WITH_TZ = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/
+const ISO_DATETIME_WITHOUT_TZ = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/
+const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Valida se a string é um datetime ISO 8601 válido (com ou sem timezone)
+ */
+export function isValidIsoDateTime(val: string): boolean {
+  return ISO_DATETIME_WITH_TZ.test(val) || ISO_DATETIME_WITHOUT_TZ.test(val)
+}
+
+/**
+ * Valida se a string é uma data ISO ou datetime ISO 8601
+ */
+export function isValidIsoDateOrDateTime(val: string): boolean {
+  return ISO_DATE_ONLY.test(val) || isValidIsoDateTime(val)
+}
+
+/**
+ * Schema de datetime com validação robusta
+ * Aceita: '2025-01-01T10:00:00', '2025-01-01T10:00:00-03:00', '2025-01-01T10:00:00Z'
+ */
+export const isoDateTimeSchema = z
+  .string()
+  .min(1, "Data/hora é obrigatória")
+  .refine(isValidIsoDateTime, {
+    message: "Formato inválido. Use ISO 8601: '2025-01-01T10:00:00' ou '2025-01-01T10:00:00-03:00'",
+  })
+  .describe("Data/hora ISO 8601 (ex: 2025-01-01T10:00:00-03:00)")
+
+/**
+ * Schema de datetime opcional com validação robusta
+ */
+export const isoDateTimeOptionalSchema = z
+  .string()
+  .refine((val) => !val || isValidIsoDateTime(val), {
+    message: "Formato inválido. Use ISO 8601: '2025-01-01T10:00:00' ou '2025-01-01T10:00:00-03:00'",
+  })
+  .optional()
+  .describe("Data/hora ISO 8601 (ex: 2025-01-01T10:00:00-03:00)")
+
+// ============================================================================
+// Schemas para Google Calendar Tools
+// ============================================================================
+
+/**
+ * Schema para checkAvailability do Google Calendar
+ * Usado pelo CheckAvailabilityHandler
+ */
+export const googleCheckAvailabilitySchema = z.object({
+  professionalId: z
+    .string()
+    .uuid("professionalId deve ser um UUID válido")
+    .describe("ID do profissional para verificar disponibilidade"),
+  date: isoDateTimeSchema,
+  serviceId: z.uuid("serviceId deve ser um UUID válido").optional(),
+  serviceDuration: z
+    .number()
+    .int()
+    .positive("serviceDuration deve ser um número positivo")
+    .optional()
+    .describe("Duração do serviço em minutos (padrão: 60)"),
+})
+
+export type GoogleCheckAvailabilityInput = z.infer<typeof googleCheckAvailabilitySchema>
+
+/**
+ * Schema para createAppointment do Google Calendar
+ * Usado pelo CreateAppointmentHandler
+ */
+export const googleCreateAppointmentSchema = z.object({
+  professionalId: z
+    .string()
+    .uuid("professionalId deve ser um UUID válido")
+    .describe("ID do profissional"),
+  serviceId: z
+    .string()
+    .uuid("serviceId deve ser um UUID válido")
+    .describe("ID do serviço"),
+  date: isoDateTimeSchema,
+  notes: z.string().optional().describe("Observações do agendamento"),
+})
+
+export type GoogleCreateAppointmentInput = z.infer<typeof googleCreateAppointmentSchema>
+
+/**
+ * Schema para updateAppointment do Google Calendar
+ * Usado pelo UpdateAppointmentHandler
+ */
+export const googleUpdateAppointmentSchema = z.object({
+  appointmentId: z
+    .string()
+    .uuid("appointmentId deve ser um UUID válido")
+    .describe("ID do agendamento a ser atualizado"),
+  professionalId: z.uuid("professionalId deve ser um UUID válido").optional(),
+  serviceId: z.uuid("serviceId deve ser um UUID válido").optional(),
+  date: isoDateTimeOptionalSchema,
+  notes: z.string().optional(),
+})
+
+export type GoogleUpdateAppointmentInput = z.infer<typeof googleUpdateAppointmentSchema>
+
+/**
+ * Schema para deleteAppointment do Google Calendar
+ * Usado pelo DeleteAppointmentHandler
+ */
+export const googleDeleteAppointmentSchema = z.object({
+  appointmentId: z
+    .string()
+    .uuid("appointmentId deve ser um UUID válido")
+    .describe("ID do agendamento a ser removido"),
+})
+
+export type GoogleDeleteAppointmentInput = z.infer<typeof googleDeleteAppointmentSchema>
+
+// ============================================================================
+// Schemas Existentes (mantidos para compatibilidade)
+// ============================================================================
+
 /**
  * Schema para verificar disponibilidade
  */
