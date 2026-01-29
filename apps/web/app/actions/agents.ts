@@ -7,7 +7,6 @@ import { agentSchema, createAgentSchema, updateAgentSchema, type AgentSchema } f
 import { db, agents } from "@repo/db"
 import { eq, and, ne } from "drizzle-orm"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
-import { emptyStringToNull } from "@/lib/services/validation.service"
 
 export type AgentRow = {
   id: string
@@ -160,8 +159,7 @@ export async function createAgent(
         .where(and(eq(agents.salonId, salonId), eq(agents.isActive, true)))
     }
 
-    // Cria o novo agente (whatsappNumber opcional: pode conectar depois via Integrações)
-    const whatsappVal = parsed.data.whatsappNumber?.trim()
+    // Cria o novo agente (whatsappNumber é gerenciado no nível do salão)
     const [newAgent] = await db
       .insert(agents)
       .values({
@@ -170,7 +168,6 @@ export async function createAgent(
         systemPrompt: parsed.data.systemPrompt.trim(),
         model: parsed.data.model,
         tone: parsed.data.tone,
-        whatsappNumber: whatsappVal || null,
         isActive: parsed.data.isActive,
       })
       .returning({ id: agents.id })
@@ -253,11 +250,7 @@ export async function updateAgent(
     if (parsed.data.tone !== undefined) {
       updateData.tone = parsed.data.tone
     }
-    if (parsed.data.whatsappNumber !== undefined) {
-      const whatsappValue = emptyStringToNull(parsed.data.whatsappNumber)
-      // whatsappNumber é gerenciado também pelos endpoints de Integrações; aqui só aplicamos o que vem do form
-      updateData.whatsappNumber = whatsappValue
-    }
+    // Nota: whatsappNumber é gerenciado no nível do salão (via /api/salons/[salonId]/whatsapp/)
     if (parsed.data.isActive !== undefined) {
       updateData.isActive = parsed.data.isActive
     }

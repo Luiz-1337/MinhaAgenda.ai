@@ -42,7 +42,6 @@ export default async function NewAgentPage({
                 systemPrompt: duplicateAgent.systemPrompt,
                 model: duplicateAgent.model as "gpt-5.2" | "gpt-5.1" | "gpt-5-mini" | "gpt-5-nano" | "gpt-4.1" | "gpt-4o-mini",
                 tone: duplicateAgent.tone,
-                whatsappNumber: duplicateAgent.whatsappNumber ?? "",
                 isActive: false, // Sempre false para duplicação
               }
             : undefined

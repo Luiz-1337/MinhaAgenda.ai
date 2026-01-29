@@ -34,7 +34,6 @@ export default async function EditAgentPage({
           systemPrompt: agent.systemPrompt,
           model: agent.model as "gpt-5.2" | "gpt-5.1" | "gpt-5-mini" | "gpt-5-nano" | "gpt-4.1" | "gpt-4o-mini",
           tone: agent.tone,
-          whatsappNumber: agent.whatsappNumber ?? "",
           isActive: agent.isActive,
         }}
       />

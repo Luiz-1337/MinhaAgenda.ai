@@ -1,11 +1,17 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText } from "lucide-react"
+import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText, Loader2, MessageCircle, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
+import { ConfirmModal } from "@/components/ui/confirm-modal"
+
+type WhatsAppNumber = {
+  phoneNumber: string
+  connectedAt?: string
+}
 
 type AgentsClientProps = {
   salonId: string
@@ -20,6 +26,84 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [openMenuAgentId, setOpenMenuAgentId] = useState<string | null>(null)
+
+  // WhatsApp state
+  const [whatsappNumbers, setWhatsappNumbers] = useState<WhatsAppNumber[]>([])
+  const [whatsappLoading, setWhatsappLoading] = useState(true)
+  const [whatsappPhoneInput, setWhatsappPhoneInput] = useState("")
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
+
+  // Fetch WhatsApp status on mount
+  useEffect(() => {
+    async function fetchWhatsAppStatus() {
+      try {
+        const res = await fetch(`/api/salons/${salonId}/whatsapp/status`)
+        const data = await res.json()
+        if (res.ok && data.numbers) {
+          setWhatsappNumbers(data.numbers)
+        }
+      } catch {
+        // Silently fail - no WhatsApp configured
+      } finally {
+        setWhatsappLoading(false)
+      }
+    }
+    fetchWhatsAppStatus()
+  }, [salonId])
+
+  // WhatsApp handlers
+  async function handleConnectWhatsApp() {
+    const raw = whatsappPhoneInput.replace(/\s/g, "").replace(/-/g, "").replace(/[()]/g, "").trim()
+    if (!/^\+[1-9]\d{10,14}$/.test(raw)) {
+      toast.error("Formato de número inválido. Use o formato +5511999999999")
+      return
+    }
+    setIsConnecting(true)
+    try {
+      const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber: raw }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data?.error || "Erro ao conectar")
+        return
+      }
+      const list = (await fetch(`/api/salons/${salonId}/whatsapp/status`).then((r) => r.json()))?.numbers || []
+      setWhatsappNumbers(list)
+      setWhatsappPhoneInput("")
+      toast.success("WhatsApp conectado com sucesso!")
+      router.refresh()
+    } catch {
+      toast.error("Erro de conexão. Tente novamente.")
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  async function handleDisconnectWhatsApp() {
+    const n = whatsappNumbers[0]
+    if (!n) return
+    try {
+      const res = await fetch(`/api/salons/${salonId}/whatsapp/disconnect`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber: n.phoneNumber }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data?.error || "Erro ao desconectar")
+        return
+      }
+      setWhatsappNumbers([])
+      toast.success("Número desconectado com sucesso")
+      router.refresh()
+    } catch {
+      toast.error("Erro ao desconectar. Tente novamente.")
+    }
+  }
 
   const filteredAgents = useMemo(() => {
     return agents.filter((agent) => {
@@ -101,6 +185,14 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
     return name.substring(0, 2).toUpperCase()
   }
 
+  // Helper para mascarar número
+  function maskPhone(p: string) {
+    const d = p.replace(/\D/g, "")
+    if (d.length >= 12 && p.startsWith("+55")) return `+55 ${d.slice(2, 4)} •••••-${d.slice(-4)}`
+    if (d.length >= 10) return `${p.slice(0, 6)} •••••-${p.slice(-4)}`
+    return p
+  }
+
   return (
     <div className="flex flex-col h-full gap-6 pt-[5px] pr-[5px] pl-[5px]">
       {/* Header */}
@@ -123,6 +215,85 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           </button>
         </div>
       </div>
+
+      {/* WhatsApp Configuration Card */}
+      <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <MessageCircle size={18} className="text-emerald-500" />
+          <h3 className="text-sm font-bold text-slate-800 dark:text-white">WhatsApp do Salão</h3>
+          <span className="text-xs text-slate-500 dark:text-slate-400">(compartilhado por todos os agentes)</span>
+        </div>
+
+        {whatsappLoading && (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <Loader2 size={16} className="animate-spin" />
+            Carregando...
+          </div>
+        )}
+
+        {!whatsappLoading && whatsappNumbers.length === 0 && (
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                Número do WhatsApp
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={whatsappPhoneInput}
+                  onChange={(e) => setWhatsappPhoneInput(e.target.value)}
+                  placeholder="Ex.: +5511986049295"
+                  className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                />
+                <button
+                  type="button"
+                  disabled={isConnecting}
+                  onClick={handleConnectWhatsApp}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                >
+                  {isConnecting && <Loader2 size={16} className="animate-spin" />}
+                  Conectar
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Formato: +5511999999999</p>
+            </div>
+          </div>
+        )}
+
+        {!whatsappLoading && whatsappNumbers.length > 0 && (() => {
+          const n = whatsappNumbers[0]
+
+          return (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Phone size={16} className="text-slate-400" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{maskPhone(n.phoneNumber)}</span>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <CheckCircle size={12} />
+                Conectado
+              </span>
+              <button
+                type="button"
+                onClick={() => setDisconnectModalOpen(true)}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-medium"
+              >
+                Desconectar
+              </button>
+            </div>
+          )
+        })()}
+      </div>
+
+      <ConfirmModal
+        open={disconnectModalOpen}
+        onClose={() => setDisconnectModalOpen(false)}
+        onConfirm={handleDisconnectWhatsApp}
+        title="Desconectar WhatsApp"
+        description="Tem certeza que deseja desconectar este número? Todos os agentes perderão a conexão com o WhatsApp."
+        confirmText="Desconectar"
+        type="danger"
+      />
 
       {/* Filter Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-2 rounded-xl border border-slate-200 dark:border-white/5">
@@ -201,12 +372,6 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                       <BrainCircuit size={12} />
                       <span className="font-mono">{agent.model}</span>
                     </div>
-                    {agent.whatsappNumber && (
-                      <div className="flex items-center gap-1">
-                        <Phone size={12} />
-                        <span>{agent.whatsappNumber}</span>
-                      </div>
-                    )}
                     <span className="capitalize">{agent.tone}</span>
                   </div>
                 </div>

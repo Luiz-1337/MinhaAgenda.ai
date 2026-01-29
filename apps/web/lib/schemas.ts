@@ -76,30 +76,13 @@ export const agentSchema = z.object({
   systemPrompt: z.string().min(1, "System prompt é obrigatório").max(10000, "System prompt muito longo"),
   model: agentModelEnum,
   tone: z.enum(["formal", "informal"]),
-  whatsappNumber: z
-    .string()
-    .optional()
-    .or(z.literal(""))
-    .refine(
-      (val) => !val || /^\+[1-9]\d{10,14}$/.test(val),
-      "Formato inválido. Use: +PaísDDDNúmero (ex: +5511986049295)"
-    ),
   isActive: z.boolean(),
 })
 
 export type AgentSchema = z.infer<typeof agentSchema>
 
-// Schema para criação de agente (whatsappNumber opcional: pode conectar depois via Integrações)
-export const createAgentSchema = agentSchema.extend({
-  whatsappNumber: z
-    .string()
-    .optional()
-    .or(z.literal(""))
-    .refine(
-      (val) => !val || /^\+[1-9]\d{10,14}$/.test(val),
-      "Formato inválido. Use: +PaísDDDNúmero (ex: +5511986049295)"
-    ),
-})
+// Schema para criação de agente (mesmo que o base)
+export const createAgentSchema = agentSchema
 
 export type CreateAgentSchema = z.infer<typeof createAgentSchema>
 
