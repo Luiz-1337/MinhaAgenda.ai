@@ -1,0 +1,5 @@
+export * from "./AppointmentDTO"
+export * from "./AvailabilityDTO"
+export * from "./CustomerDTO"
+export * from "./CatalogDTO"
+export * from "./SalonDTO"

@@ -1,0 +1,6 @@
+export * from "./common.schema"
+export * from "./appointment.schema"
+export * from "./availability.schema"
+export * from "./customer.schema"
+export * from "./catalog.schema"
+export * from "./salon.schema"

@@ -223,17 +223,18 @@ async function processMessage(
     };
   } catch (error) {
     const duration = Date.now() - startTime;
+    const isRetryable = error instanceof WhatsAppError ? error.retryable : true;
 
     jobLogger.error(
       {
         err: error,
         duration,
-        retryable: error instanceof WhatsAppError ? error.retryable : true,
+        retryable: isRetryable,
       },
       "Error processing message"
     );
 
-    // Se for erro não-retryable, envia mensagem de erro ao cliente
+    // Se for erro não-retryable, envia mensagem de erro ao cliente e NÃO faz retry
     if (error instanceof WhatsAppError && !error.retryable) {
       try {
         const errorMessage = getUserFriendlyMessage(error);
@@ -242,9 +243,18 @@ async function processMessage(
       } catch (sendError) {
         jobLogger.error({ err: sendError }, "Failed to send error message to client");
       }
+
+      // Retorna resultado de erro em vez de throw para evitar retry
+      return {
+        status: "error" as const,
+        chatId,
+        messageId,
+        duration,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
 
-    // Re-throw para BullMQ fazer retry (se retryable)
+    // Re-throw apenas para erros retryable
     throw error;
   } finally {
     // Sempre libera o lock

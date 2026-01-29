@@ -351,15 +351,15 @@ importers:
       ai:
         specifier: ^5.0.108
         version: 5.0.108(zod@4.1.13)
-      drizzle-orm:
-        specifier: ^0.45.0
-        version: 0.45.0(@opentelemetry/api@1.9.0)(pg@8.16.3)(postgres@3.4.7)
       google-auth-library:
         specifier: ^9.0.0
         version: 9.15.1
       googleapis:
         specifier: ^144.0.0
         version: 144.0.0
+      uuid:
+        specifier: ^9.0.0
+        version: 9.0.1
       zod:
         specifier: ^4.1.13
         version: 4.1.13
@@ -367,6 +367,9 @@ importers:
       '@types/node':
         specifier: ^20.11.24
         version: 20.19.25
+      '@types/uuid':
+        specifier: ^9.0.0
+        version: 9.0.8
       tsx:
         specifier: ^4.7.0
         version: 4.21.0
@@ -3295,6 +3298,9 @@ packages:
 
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
+
+  '@types/uuid@9.0.8':
+    resolution: {integrity: sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA==}
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
@@ -11244,6 +11250,8 @@ snapshots:
   '@types/stack-utils@2.0.3': {}
 
   '@types/use-sync-external-store@0.0.6': {}
+
+  '@types/uuid@9.0.8': {}
 
   '@types/ws@8.18.1':
     dependencies:
