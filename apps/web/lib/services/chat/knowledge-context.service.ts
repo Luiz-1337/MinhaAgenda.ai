@@ -2,7 +2,7 @@
  * Serviço para busca de contexto RAG (APPLICATION LAYER)
  */
 
-import { findRelevantContext } from "@/app/actions/knowledge"
+import { findRelevantContext } from "@/lib/services/ai/rag-context.service"
 import { RAG_CONSTANTS } from "@/lib/constants/ai.constants"
 import { db, agents } from "@repo/db"
 import { and, eq } from "drizzle-orm"

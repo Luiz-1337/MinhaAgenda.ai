@@ -4,11 +4,19 @@ import { db, agents, salons } from "@repo/db"
 import { eq, and, ne } from "drizzle-orm"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { checkRateLimit } from "@/lib/redis"
+import { getOrCreateSubaccount } from "@/lib/services/twilio-subaccount.service"
+import { registerSenderWithClient } from "@/lib/services/twilio-whatsapp-senders.service"
 
 const E164_REGEX = /^\+[1-9]\d{10,14}$/
 
 function normalizeForCompare(phone: string): string {
   return phone.trim().replace(/\s/g, "").replace(/^whatsapp:/i, "")
+}
+
+interface ConnectRequestBody {
+  phoneNumber?: string
+  wabaId?: string // Meta WABA ID (do Embedded Signup)
+  phoneNumberId?: string // Meta Phone Number ID (do Embedded Signup)
 }
 
 export async function POST(
@@ -49,7 +57,7 @@ export async function POST(
       // Redis falhou: segue sem rate limit
     }
 
-    let body: { phoneNumber?: string }
+    let body: ConnectRequestBody
     try {
       body = await req.json()
     } catch {
@@ -83,12 +91,42 @@ export async function POST(
       )
     }
 
+    // Obtém ou cria a subaccount Twilio do salão
+    const subClient = await getOrCreateSubaccount(salonId)
+
+    // Monta a URL de callback para status
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+    const statusCallbackUrl = baseUrl
+      ? `${String(baseUrl).replace(/\/$/, "")}/api/webhooks/twilio/whatsapp-status`
+      : undefined
+
+    // Registra o sender via Twilio Senders API na subaccount
+    const { sid: twilioSenderId, status: twilioStatus } = await registerSenderWithClient(subClient, {
+      phoneNumber: phone,
+      profileName: salon.name,
+      statusCallbackUrl,
+      wabaId: body.wabaId,
+    })
+
+    // Salva os dados do Meta se fornecidos
+    if (body.wabaId || body.phoneNumberId) {
+      await db
+        .update(salons)
+        .set({
+          metaWabaId: body.wabaId || null,
+          metaPhoneNumberId: body.phoneNumberId || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(salons.id, salonId))
+    }
+
     // Atualiza TODOS os agentes do salão com o novo número
     await db
       .update(agents)
       .set({
         whatsappNumber: phone,
-        whatsappStatus: "verified",
+        whatsappStatus: "pending_verification",
+        twilioSenderId,
         whatsappConnectedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -96,7 +134,13 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: "WhatsApp conectado com sucesso!",
+      status: "pending_verification",
+      twilioStatus,
+      message: "Número registrado. Você receberá um SMS com um código de verificação.",
+      verificationDetails: {
+        twilioSenderId,
+        verificationMethod: "sms",
+      },
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Ocorreu um erro. Tente novamente ou contate o suporte."

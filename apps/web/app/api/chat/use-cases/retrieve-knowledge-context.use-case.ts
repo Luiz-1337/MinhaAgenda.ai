@@ -1,5 +1,5 @@
 import type { CoreMessage } from 'ai'
-import { findRelevantContext } from '@/app/actions/knowledge'
+import { findRelevantContext } from '@/lib/services/ai/rag-context.service'
 import { RAG_SIMILARITY_THRESHOLD } from '@repo/db/domain/constants'
 import { logger } from '@repo/db/infrastructure/logger'
 
@@ -10,8 +10,8 @@ export class RetrieveKnowledgeContextUseCase {
   async execute(
     agentId: string,
     userMessage: string,
-    maxResults: number = 3,
-    similarityThreshold: number = RAG_SIMILARITY_THRESHOLD
+    maxResults: number = parseInt(process.env.RAG_MAX_RESULTS || '5'),
+    similarityThreshold: number = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.65')
   ): Promise<string | undefined> {
     try {
       const contextResult = await findRelevantContext(agentId, userMessage, maxResults, similarityThreshold)

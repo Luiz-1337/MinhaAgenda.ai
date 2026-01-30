@@ -91,18 +91,28 @@ export async function DELETE(
     }
 
     // Limpa os campos de WhatsApp de TODOS os agentes do salão
-    await db
-      .update(agents)
-      .set({
-        whatsappNumber: null,
-        whatsappStatus: null,
-        whatsappConnectedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(agents.salonId, salonId))
+    try {
+      const result = await db
+        .update(agents)
+        .set({
+          whatsappNumber: null,
+          whatsappStatus: null,
+          whatsappConnectedAt: null,
+          twilioSenderId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(agents.salonId, salonId))
+        .returning({ id: agents.id })
+
+      console.log(`[WhatsApp Disconnect] Updated ${result.length} agents for salon ${salonId}`)
+    } catch (dbError) {
+      console.error("[WhatsApp Disconnect] Database error:", dbError)
+      throw dbError
+    }
 
     return NextResponse.json({ success: true, message: "Número desconectado com sucesso" })
   } catch (err) {
+    console.error("[WhatsApp Disconnect] Full error:", err)
     const msg = err instanceof Error ? err.message : "Ocorreu um erro. Tente novamente ou contate o suporte."
     return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }

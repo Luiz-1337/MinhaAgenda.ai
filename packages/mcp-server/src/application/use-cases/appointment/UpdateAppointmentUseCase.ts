@@ -12,16 +12,26 @@ import {
   IProfessionalRepository,
   IServiceRepository,
 } from "../../../domain/repositories"
-import { ICalendarService } from "../../ports"
 import { AppointmentDTO, UpdateAppointmentDTO } from "../../dtos"
+import { IntegrationSyncService } from "../../services/IntegrationSyncService"
 
+/**
+ * UpdateAppointmentUseCase
+ * 
+ * Arquitetura:
+ * 1. Validar dados de entrada
+ * 2. Verificar conflitos no DB (fonte da verdade)
+ * 3. Atualizar agendamento no DB
+ * 4. Sincronizar com integrações ativas (Google Calendar, Trinks)
+ * 5. Erros de integração NÃO revertem a operação do DB
+ */
 export class UpdateAppointmentUseCase {
   constructor(
     private appointmentRepo: IAppointmentRepository,
     private customerRepo: ICustomerRepository,
     private professionalRepo: IProfessionalRepository,
     private serviceRepo: IServiceRepository,
-    private calendarService?: ICalendarService
+    private integrationSyncService?: IntegrationSyncService
   ) {}
 
   async execute(
@@ -66,13 +76,13 @@ export class UpdateAppointmentUseCase {
       }
     }
 
-    // 5. Se mudou data, validar e reagendar
+    // 5. Se mudou data, validar e reagendar (verifica conflitos no DB)
     if (input.startsAt) {
       const newStart = new Date(input.startsAt)
       const duration = service?.durationMinutes ?? appointment.duration
       const newEnd = addMinutes(newStart, duration)
 
-      // Verificar conflitos
+      // Verificar conflitos no DB (fonte da verdade)
       const conflicts = await this.appointmentRepo.findConflicting(
         appointment.professionalId,
         newStart,
@@ -95,28 +105,57 @@ export class UpdateAppointmentUseCase {
       appointment.updateNotes(input.notes)
     }
 
-    // 7. Persistir
+    // 7. Persistir no DB (fonte da verdade)
     await this.appointmentRepo.save(appointment)
 
-    // 8. Sincronizar com calendário externo
-    if (this.calendarService && professional?.googleCalendarId && appointment.googleEventId) {
+    // 8. Buscar dados para DTO e sincronização
+    const customer = await this.customerRepo.findById(appointment.customerId)
+
+    // 9. Sincronizar com integrações ativas (erros NÃO revertem o DB)
+    if (this.integrationSyncService) {
       try {
-        const customer = await this.customerRepo.findById(appointment.customerId)
-        await this.calendarService.updateEvent(professional.googleCalendarId, {
-          id: appointment.googleEventId,
-          start: appointment.startsAt,
-          end: appointment.endsAt,
-          summary: `${service?.name} - ${customer?.name}`,
-          description: appointment.notes ?? undefined,
+        const syncResult = await this.integrationSyncService.syncUpdate({
+          appointmentId: appointment.id,
+          salonId: appointment.salonId,
+          professionalId: appointment.professionalId,
+          customerId: appointment.customerId,
+          serviceId: appointment.serviceId,
+          startsAt: appointment.startsAt,
+          endsAt: appointment.endsAt,
+          customerName: customer?.name,
+          serviceName: service?.name,
+          notes: appointment.notes ?? undefined,
+          googleEventId: appointment.googleEventId,
+          trinksEventId: appointment.trinksEventId,
+          professionalGoogleCalendarId: professional?.googleCalendarId,
         })
+
+        // Atualiza IDs das integrações se foram criados
+        let needsSave = false
+        if (syncResult.googleEventId && syncResult.googleEventId !== appointment.googleEventId) {
+          appointment.setGoogleEventId(syncResult.googleEventId)
+          needsSave = true
+        }
+        if (syncResult.trinksEventId && syncResult.trinksEventId !== appointment.trinksEventId) {
+          appointment.setTrinksEventId(syncResult.trinksEventId)
+          needsSave = true
+        }
+
+        if (needsSave) {
+          await this.appointmentRepo.save(appointment)
+        }
+
+        // Log de erros de integração (não bloqueiam)
+        if (syncResult.errors.length > 0) {
+          console.warn("Erros de integração (não bloqueantes):", syncResult.errors)
+        }
       } catch (error) {
-        console.warn("Erro ao sincronizar atualização com calendário:", error)
+        // Erro inesperado na sincronização - loga mas não reverte DB
+        console.warn("Erro inesperado ao sincronizar com integrações:", error)
       }
     }
 
-    // 9. Buscar dados para DTO
-    const customer = await this.customerRepo.findById(appointment.customerId)
-
+    // 10. Retornar DTO (sempre retorna sucesso se DB funcionou)
     return ok({
       id: appointment.id,
       customerName: customer?.name ?? "Cliente",

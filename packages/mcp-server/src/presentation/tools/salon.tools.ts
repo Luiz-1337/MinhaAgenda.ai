@@ -15,6 +15,14 @@ import {
 import { ErrorPresenter } from "../presenters"
 
 /**
+ * Normaliza input que pode vir como undefined do Vercel AI SDK
+ * quando a IA chama uma tool sem argumentos
+ */
+function normalizeInput<T>(input: T | undefined): T {
+  return (input ?? {}) as T
+}
+
+/**
  * Cria as tools do salão
  */
 export function createSalonTools(
@@ -27,8 +35,9 @@ export function createSalonTools(
       description:
         "Retorna informações do salão: nome, endereço, horários de funcionamento, política de cancelamento.",
       inputSchema: getSalonInfoSchema,
-      execute: async (_input) => {
+      execute: async (input) => {
         try {
+          const params = normalizeInput(input)
           const useCase = container.resolve<GetSalonDetailsUseCase>(
             TOKENS.GetSalonDetailsUseCase
           )

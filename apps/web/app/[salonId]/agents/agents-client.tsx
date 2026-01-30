@@ -2,15 +2,26 @@
 
 import { useMemo, useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText, Loader2, MessageCircle, CheckCircle } from "lucide-react"
+import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText, Loader2, MessageCircle, CheckCircle, Clock, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
+import { MetaEmbeddedSignup } from "@/components/whatsapp/meta-embedded-signup"
+import { VerificationModal } from "@/components/whatsapp/verification-modal"
 
 type WhatsAppNumber = {
   phoneNumber: string
   connectedAt?: string
+  status?: string
+}
+
+type WhatsAppStatus = {
+  numbers: WhatsAppNumber[]
+  pendingVerification?: {
+    phoneNumber: string
+    twilioSenderId: string
+  }
 }
 
 type AgentsClientProps = {
@@ -28,31 +39,52 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   const [openMenuAgentId, setOpenMenuAgentId] = useState<string | null>(null)
 
   // WhatsApp state
-  const [whatsappNumbers, setWhatsappNumbers] = useState<WhatsAppNumber[]>([])
+  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({ numbers: [] })
   const [whatsappLoading, setWhatsappLoading] = useState(true)
   const [whatsappPhoneInput, setWhatsappPhoneInput] = useState("")
   const [isConnecting, setIsConnecting] = useState(false)
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
+  
+  // Verification state
+  const [verificationModalOpen, setVerificationModalOpen] = useState(false)
+  const [pendingPhone, setPendingPhone] = useState("")
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [verificationError, setVerificationError] = useState<string | null>(null)
+  
+  // Connection mode state
+  const [connectionMode, setConnectionMode] = useState<"manual" | "embedded">("manual")
+
+  // Derived state
+  const whatsappNumbers = whatsappStatus.numbers
+  const hasPendingVerification = whatsappNumbers.length > 0 && whatsappNumbers[0].status === "pending_verification"
 
   // Fetch WhatsApp status on mount
   useEffect(() => {
-    async function fetchWhatsAppStatus() {
-      try {
-        const res = await fetch(`/api/salons/${salonId}/whatsapp/status`)
-        const data = await res.json()
-        if (res.ok && data.numbers) {
-          setWhatsappNumbers(data.numbers)
-        }
-      } catch {
-        // Silently fail - no WhatsApp configured
-      } finally {
-        setWhatsappLoading(false)
-      }
-    }
     fetchWhatsAppStatus()
   }, [salonId])
 
-  // WhatsApp handlers
+  async function fetchWhatsAppStatus() {
+    try {
+      const res = await fetch(`/api/salons/${salonId}/whatsapp/status`)
+      const data = await res.json()
+      if (res.ok) {
+        setWhatsappStatus({
+          numbers: data.numbers || [],
+          pendingVerification: data.pendingVerification,
+        })
+        // Se tem verificação pendente, abre o modal automaticamente
+        if (data.numbers?.[0]?.status === "pending_verification") {
+          setPendingPhone(data.numbers[0].phoneNumber)
+        }
+      }
+    } catch {
+      // Silently fail - no WhatsApp configured
+    } finally {
+      setWhatsappLoading(false)
+    }
+  }
+
+  // WhatsApp handlers - Manual connection
   async function handleConnectWhatsApp() {
     const raw = whatsappPhoneInput.replace(/\s/g, "").replace(/-/g, "").replace(/[()]/g, "").trim()
     if (!/^\+[1-9]\d{10,14}$/.test(raw)) {
@@ -71,15 +103,117 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         toast.error(data?.error || "Erro ao conectar")
         return
       }
-      const list = (await fetch(`/api/salons/${salonId}/whatsapp/status`).then((r) => r.json()))?.numbers || []
-      setWhatsappNumbers(list)
+      
+      // Se retornou status pending_verification, abre modal de verificação
+      if (data.status === "pending_verification") {
+        setPendingPhone(raw)
+        setVerificationModalOpen(true)
+        toast.success("SMS enviado! Digite o código de verificação.")
+      } else {
+        toast.success("WhatsApp conectado com sucesso!")
+      }
+      
+      await fetchWhatsAppStatus()
       setWhatsappPhoneInput("")
-      toast.success("WhatsApp conectado com sucesso!")
       router.refresh()
     } catch {
       toast.error("Erro de conexão. Tente novamente.")
     } finally {
       setIsConnecting(false)
+    }
+  }
+
+  // WhatsApp handlers - Meta Embedded Signup
+  async function handleEmbeddedSignupSuccess(data: { wabaId: string; phoneNumberId: string; phoneNumber?: string }) {
+    setIsConnecting(true)
+    try {
+      // Se o Embedded Signup retornou um número, usa ele
+      // Caso contrário, pede para o usuário informar
+      const phone = data.phoneNumber || whatsappPhoneInput
+      if (!phone) {
+        toast.error("Digite o número do WhatsApp")
+        return
+      }
+      
+      const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phoneNumber: phone,
+          wabaId: data.wabaId,
+          phoneNumberId: data.phoneNumberId,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        toast.error(result?.error || "Erro ao conectar")
+        return
+      }
+      
+      if (result.status === "pending_verification") {
+        setPendingPhone(phone)
+        setVerificationModalOpen(true)
+        toast.success("SMS enviado! Digite o código de verificação.")
+      } else {
+        toast.success("WhatsApp conectado com sucesso!")
+      }
+      
+      await fetchWhatsAppStatus()
+      setWhatsappPhoneInput("")
+      router.refresh()
+    } catch {
+      toast.error("Erro de conexão. Tente novamente.")
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  // Verification handler
+  async function handleVerify(code: string) {
+    setIsVerifying(true)
+    setVerificationError(null)
+    try {
+      const res = await fetch(`/api/salons/${salonId}/whatsapp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verificationCode: code }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setVerificationError(data?.error || "Código inválido")
+        throw new Error(data?.error)
+      }
+      
+      toast.success("WhatsApp verificado com sucesso!")
+      setVerificationModalOpen(false)
+      setPendingPhone("")
+      await fetchWhatsAppStatus()
+      router.refresh()
+    } catch {
+      // Error already set
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
+  // Resend verification code
+  async function handleResendCode() {
+    if (!pendingPhone) return
+    
+    try {
+      const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber: pendingPhone }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data?.error || "Erro ao reenviar código")
+        return
+      }
+      toast.success("Novo código enviado!")
+    } catch {
+      toast.error("Erro ao reenviar código")
     }
   }
 
@@ -97,7 +231,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         toast.error(data?.error || "Erro ao desconectar")
         return
       }
-      setWhatsappNumbers([])
+      setWhatsappStatus({ numbers: [] })
       toast.success("Número desconectado com sucesso")
       router.refresh()
     } catch {
@@ -218,10 +352,21 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
 
       {/* WhatsApp Configuration Card */}
       <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <MessageCircle size={18} className="text-emerald-500" />
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white">WhatsApp do Salão</h3>
-          <span className="text-xs text-slate-500 dark:text-slate-400">(compartilhado por todos os agentes)</span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <MessageCircle size={18} className="text-emerald-500" />
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white">WhatsApp do Salão</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">(compartilhado por todos os agentes)</span>
+          </div>
+          {whatsappNumbers.length > 0 && whatsappNumbers[0].status === "verified" && (
+            <button
+              onClick={() => router.push(`/${salonId}/whatsapp-templates`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors"
+            >
+              <FileText size={14} />
+              Templates HSM
+            </button>
+          )}
         </div>
 
         {whatsappLoading && (
@@ -232,47 +377,151 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         )}
 
         {!whatsappLoading && whatsappNumbers.length === 0 && (
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
-                Número do WhatsApp
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={whatsappPhoneInput}
-                  onChange={(e) => setWhatsappPhoneInput(e.target.value)}
-                  placeholder="Ex.: +5511986049295"
-                  className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                />
-                <button
-                  type="button"
-                  disabled={isConnecting}
-                  onClick={handleConnectWhatsApp}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-                >
-                  {isConnecting && <Loader2 size={16} className="animate-spin" />}
-                  Conectar
-                </button>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Formato: +5511999999999</p>
+          <div className="space-y-4">
+            {/* Connection Mode Toggle */}
+            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
+              <button
+                type="button"
+                onClick={() => setConnectionMode("manual")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  connectionMode === "manual"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                Conexão Manual
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnectionMode("embedded")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  connectionMode === "embedded"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+              >
+                Meta Business
+              </button>
             </div>
+
+            {connectionMode === "manual" ? (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                    Número do WhatsApp
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={whatsappPhoneInput}
+                      onChange={(e) => setWhatsappPhoneInput(e.target.value)}
+                      placeholder="Ex.: +5511986049295"
+                      className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                    />
+                    <button
+                      type="button"
+                      disabled={isConnecting}
+                      onClick={handleConnectWhatsApp}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                    >
+                      {isConnecting && <Loader2 size={16} className="animate-spin" />}
+                      Conectar
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Formato: +5511999999999 - Você receberá um SMS para verificar
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                    Número do WhatsApp (para registro)
+                  </label>
+                  <input
+                    type="text"
+                    value={whatsappPhoneInput}
+                    onChange={(e) => setWhatsappPhoneInput(e.target.value)}
+                    placeholder="Ex.: +5511986049295"
+                    className="w-full max-w-xs bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  />
+                </div>
+                <MetaEmbeddedSignup
+                  salonId={salonId}
+                  onSuccess={handleEmbeddedSignupSuccess}
+                  onError={(error) => toast.error(error)}
+                  disabled={isConnecting || !whatsappPhoneInput}
+                />
+              </div>
+            )}
           </div>
         )}
 
-        {!whatsappLoading && whatsappNumbers.length > 0 && (() => {
+        {/* Pending Verification State */}
+        {!whatsappLoading && hasPendingVerification && (() => {
           const n = whatsappNumbers[0]
+          return (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Phone size={16} className="text-slate-400" />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{maskPhone(n.phoneNumber)}</span>
+                </div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                  <Clock size={12} />
+                  Aguardando Verificação
+                </span>
+              </div>
+              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Um SMS foi enviado para o número acima. Digite o código de 6 dígitos para verificar.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingPhone(n.phoneNumber)
+                    setVerificationModalOpen(true)
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-all"
+                >
+                  Inserir Código
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisconnectModalOpen(true)}
+                  className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )
+        })()}
 
+        {/* Connected State - show when verified OR when has number but status is not pending */}
+        {!whatsappLoading && whatsappNumbers.length > 0 && !hasPendingVerification && (() => {
+          const n = whatsappNumbers[0]
+          const isVerified = n.status === "verified" || !n.status
           return (
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Phone size={16} className="text-slate-400" />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{maskPhone(n.phoneNumber)}</span>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-                <CheckCircle size={12} />
-                Conectado
-              </span>
+              {isVerified ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <CheckCircle size={12} />
+                  Conectado
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  {n.status}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setDisconnectModalOpen(true)}
@@ -284,6 +533,20 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           )
         })()}
       </div>
+
+      {/* Verification Modal */}
+      <VerificationModal
+        open={verificationModalOpen}
+        onClose={() => {
+          setVerificationModalOpen(false)
+          setVerificationError(null)
+        }}
+        onVerify={handleVerify}
+        onResend={handleResendCode}
+        phoneNumber={pendingPhone}
+        isLoading={isVerifying}
+        error={verificationError}
+      />
 
       <ConfirmModal
         open={disconnectModalOpen}

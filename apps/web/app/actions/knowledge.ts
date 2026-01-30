@@ -7,6 +7,7 @@ import type { ActionResult } from "../../lib/types/common"
 import { db, agentKnowledgeBase, agents, postgresClient } from "@repo/db"
 import { eq, and, desc, sql } from "drizzle-orm"
 import { hasSalonPermission } from "../../lib/services/permissions.service"
+import { AgentInfoService } from "../../lib/services/ai/agent-info.service"
 import {
   extractTextFromFile,
   splitIntelligentChunks,
@@ -85,6 +86,9 @@ export async function createKnowledgeItem(
       created_at: Date
       updated_at: Date
     }>
+
+    // Invalida o cache do agente para refletir que agora tem knowledge base
+    AgentInfoService.invalidateCache(agent.salonId)
 
     return {
       success: true,
@@ -212,6 +216,9 @@ export async function deleteKnowledgeItem(
     // Remove o item
     await db.delete(agentKnowledgeBase).where(eq(agentKnowledgeBase.id, itemId))
 
+    // Invalida o cache do agente (pode não ter mais knowledge base se era o último)
+    AgentInfoService.invalidateCache(agent.salonId)
+
     return { success: true }
   } catch (error) {
     console.error("Erro ao remover item de conhecimento:", error)
@@ -334,6 +341,9 @@ export async function uploadKnowledgeFile(
       )
     }
 
+    // Invalida o cache do agente para refletir que agora tem knowledge base
+    AgentInfoService.invalidateCache(agent.salonId)
+
     return {
       success: true,
       data: {
@@ -409,6 +419,9 @@ export async function deleteKnowledgeFile(
         AND metadata->>'fileName' = ${fileName}
     `
 
+    // Invalida o cache do agente (pode não ter mais knowledge base se era o último arquivo)
+    AgentInfoService.invalidateCache(agent.salonId)
+
     return {
       success: true,
       data: { deletedCount: items.length },
@@ -418,60 +431,3 @@ export async function deleteKnowledgeFile(
     return { error: "Falha ao remover arquivo." }
   }
 }
-
-/**
- * Busca contexto relevante para uma query usando similaridade de embeddings
- * @param similarityThreshold Threshold de similaridade (0-1). Valores acima deste threshold serão retornados. Padrão: 0.7 (70%)
- */
-export async function findRelevantContext(
-  agentId: string,
-  query: string,
-  limit = 3,
-  similarityThreshold = 0.7
-): Promise<ActionResult<Array<{ content: string; similarity: number; metadata?: Record<string, unknown> }>>> {
-  try {
-    if (!agentId || !query?.trim()) {
-      return { error: "agentId e query são obrigatórios" }
-    }
-
-    // Gera o embedding da query
-    const { embedding: queryEmbedding } = await embed({
-      model: openai.embedding("text-embedding-3-small"),
-      value: query.trim(),
-    })
-
-    // Busca por similaridade usando SQL raw (pgvector)
-    // O operador <=> calcula a distância cosseno (menor = mais similar)
-    // Similaridade = 1 - distância (1 = idêntico, 0 = completamente diferente)
-    // Converte o array de embedding para formato PostgreSQL array string
-    // O formato correto é: '[0.1,0.2,0.3,...]'::vector
-    const embeddingArrayString = `[${queryEmbedding.join(",")}]`
-    
-    // Usa o cliente postgres diretamente porque o Drizzle não suporta operador <=> do pgvector
-    // Filtra apenas resultados com similaridade >= threshold
-    const results = await postgresClient`
-      SELECT content, metadata, 1 - (embedding <=> ${embeddingArrayString}::vector) as similarity
-      FROM agent_knowledge_base
-      WHERE agent_id = ${agentId}
-        AND (1 - (embedding <=> ${embeddingArrayString}::vector)) >= ${similarityThreshold}
-      ORDER BY embedding <=> ${embeddingArrayString}::vector
-      LIMIT ${limit}
-    ` as Array<{
-      content: string
-      metadata: Record<string, unknown> | null
-      similarity: number
-    }>
-
-    const formattedResults = results.map((row) => ({
-      content: row.content,
-      similarity: row.similarity,
-      metadata: row.metadata as Record<string, unknown> | undefined,
-    }))
-
-    return { success: true, data: formattedResults }
-  } catch (error) {
-    console.error("Erro ao buscar contexto relevante:", error)
-    return { error: "Falha ao buscar contexto relevante." }
-  }
-}
-

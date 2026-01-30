@@ -35,7 +35,9 @@ export async function GET(
       where: eq(agents.salonId, salonId),
       columns: {
         whatsappNumber: true,
+        whatsappStatus: true,
         whatsappConnectedAt: true,
+        twilioSenderId: true,
       },
     })
 
@@ -43,11 +45,18 @@ export async function GET(
     const numbers = agent?.whatsappNumber
       ? [{
           phoneNumber: agent.whatsappNumber,
+          status: agent.whatsappStatus || "verified", // Default para verified se não tiver status
           connectedAt: agent.whatsappConnectedAt?.toISOString() ?? "",
         }]
       : []
 
-    return NextResponse.json({ numbers })
+    return NextResponse.json({ 
+      numbers,
+      // Informações adicionais para verificação pendente
+      pendingVerification: agent?.whatsappStatus === "pending_verification" 
+        ? { phoneNumber: agent.whatsappNumber, twilioSenderId: agent.twilioSenderId }
+        : undefined
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Ocorreu um erro. Tente novamente ou contate o suporte."
     return NextResponse.json({ error: msg }, { status: 500 })

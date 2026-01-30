@@ -14,6 +14,14 @@ import {
 import { CatalogPresenter, ErrorPresenter } from "../presenters"
 
 /**
+ * Normaliza input que pode vir como undefined do Vercel AI SDK
+ * quando a IA chama uma tool sem argumentos
+ */
+function normalizeInput<T>(input: T | undefined): T {
+  return (input ?? {}) as T
+}
+
+/**
  * Cria as tools de catálogo
  */
 export function createCatalogTools(
@@ -28,13 +36,14 @@ export function createCatalogTools(
       inputSchema: getServicesSchema,
       execute: async (input) => {
         try {
+          const params = normalizeInput(input)
           const useCase = container.resolve<GetServicesUseCase>(
             TOKENS.GetServicesUseCase
           )
 
           const result = await useCase.execute({
             salonId,
-            includeInactive: input.includeInactive,
+            includeInactive: params.includeInactive,
           })
 
           if (!isOk(result)) {
@@ -53,13 +62,14 @@ export function createCatalogTools(
       inputSchema: getProductsSchema,
       execute: async (input) => {
         try {
+          const params = normalizeInput(input)
           const useCase = container.resolve<GetProductsUseCase>(
             TOKENS.GetProductsUseCase
           )
 
           const result = await useCase.execute({
             salonId,
-            includeInactive: input.includeInactive,
+            includeInactive: params.includeInactive,
           })
 
           if (!isOk(result)) {
@@ -79,13 +89,14 @@ export function createCatalogTools(
         inputSchema: getProfessionalsSchema,
       execute: async (input) => {
         try {
+          const params = normalizeInput(input)
           const useCase = container.resolve<GetProfessionalsUseCase>(
             TOKENS.GetProfessionalsUseCase
           )
 
           const result = await useCase.execute({
             salonId,
-            includeInactive: input.includeInactive,
+            includeInactive: params.includeInactive,
           })
 
           if (!isOk(result)) {

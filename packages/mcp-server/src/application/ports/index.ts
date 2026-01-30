@@ -1,3 +1,5 @@
 export * from "./ICalendarService"
 export * from "./IExternalScheduler"
 export * from "./INotificationService"
+export * from "./IIntegrationRepository"
+export * from "./ITrinksService"

@@ -60,7 +60,7 @@ export class ProcessChatMessageUseCase {
       ? await this.saveMessageUseCase.findOrCreateChat(this.clientId, this.salonId)
       : null
 
-    await this.saveUserMessage(chatId)
+    await this.saveUserMessage()
 
     const agentInfo = await getActiveAgentInfo(this.salonId)
     const agentModel = agentInfo?.model || 'gpt-4o-mini'
@@ -157,7 +157,7 @@ export class ProcessChatMessageUseCase {
     }
   }
 
-  private async saveUserMessage(chatId: string | null): Promise<void> {
+  private async saveUserMessage(): Promise<void> {
     const userMessage = SaveChatMessageUseCase.extractLastUserMessage(this.messages)
     if (!userMessage) {
       return

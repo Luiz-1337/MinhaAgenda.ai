@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save, ArrowLeftRight } from "lucide-react"
 import { ActionMenu } from "@/components/ui/action-menu"
@@ -285,6 +285,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       {/* Service Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="!max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 p-0" showCloseButton={false}>
+          <DialogTitle className="sr-only">{editing ? "Editar Serviço" : "Novo Serviço"}</DialogTitle>
           {/* Header */}
           <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
             <div className="flex items-center gap-3">

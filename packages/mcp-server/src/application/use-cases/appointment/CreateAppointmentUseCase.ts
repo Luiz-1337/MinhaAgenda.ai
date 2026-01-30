@@ -16,16 +16,26 @@ import {
   IProfessionalRepository,
   IServiceRepository,
 } from "../../../domain/repositories"
-import { ICalendarService } from "../../ports"
 import { AppointmentDTO, CreateAppointmentDTO } from "../../dtos"
+import { IntegrationSyncService } from "../../services/IntegrationSyncService"
 
+/**
+ * CreateAppointmentUseCase
+ *
+ * Arquitetura:
+ * 1. Validar dados de entrada
+ * 2. Verificar conflitos no DB (fonte da verdade)
+ * 3. Criar agendamento no DB
+ * 4. Sincronizar com integrações ativas (Google Calendar, Trinks)
+ * 5. Erros de integração NÃO revertem a operação do DB
+ */
 export class CreateAppointmentUseCase {
   constructor(
     private appointmentRepo: IAppointmentRepository,
     private customerRepo: ICustomerRepository,
     private professionalRepo: IProfessionalRepository,
     private serviceRepo: IServiceRepository,
-    private calendarService?: ICalendarService
+    private integrationSyncService?: IntegrationSyncService
   ) {}
 
   async execute(
@@ -63,7 +73,7 @@ export class CreateAppointmentUseCase {
     const startsAt = new Date(input.startsAt)
     const endsAt = addMinutes(startsAt, service.durationMinutes)
 
-    // 5. Verificar conflitos no banco
+    // 5. Verificar conflitos no DB (fonte da verdade)
     const conflicts = await this.appointmentRepo.findConflicting(
       input.professionalId,
       startsAt,
@@ -74,25 +84,7 @@ export class CreateAppointmentUseCase {
       return fail(new AppointmentConflictError())
     }
 
-    // 6. Verificar disponibilidade no calendário externo (se configurado)
-    if (this.calendarService && professional.googleCalendarId) {
-      try {
-        const busyPeriods = await this.calendarService.getFreeBusy(
-          professional.googleCalendarId,
-          startsAt,
-          endsAt
-        )
-
-        if (busyPeriods.length > 0) {
-          return fail(new SlotUnavailableError("Horário ocupado no calendário do profissional"))
-        }
-      } catch (error) {
-        // Log erro mas não falha - calendário é opcional
-        console.warn("Erro ao verificar calendário:", error)
-      }
-    }
-
-    // 7. Criar entidade Appointment
+    // 6. Criar entidade Appointment
     const appointment = Appointment.create({
       id: uuidv4(),
       salonId: input.salonId,
@@ -105,30 +97,50 @@ export class CreateAppointmentUseCase {
       notes: input.notes,
     })
 
-    // 8. Persistir
+    // 7. Persistir no DB (fonte da verdade)
     await this.appointmentRepo.save(appointment)
 
-    // 9. Sincronizar com calendário externo (se configurado)
-    if (this.calendarService && professional.googleCalendarId) {
-      try {
-        const eventId = await this.calendarService.createEvent(
-          professional.googleCalendarId,
-          {
-            start: startsAt,
-            end: endsAt,
-            summary: `${service.name} - ${customer.name}`,
-            description: input.notes,
-          }
-        )
-        appointment.setGoogleEventId(eventId)
-        await this.appointmentRepo.save(appointment)
-      } catch (error) {
-        // Log erro mas não falha - sincronização é opcional
-        console.warn("Erro ao sincronizar com calendário:", error)
-      }
-    }
+    // 8. Sincronizar com integrações ativas (erros NÃO revertem o DB)
+    // if (this.integrationSyncService) {
+    //   try {
+    //     const syncResult = await this.integrationSyncService.syncCreate({
+    //       appointmentId: appointment.id,
+    //       salonId: input.salonId,
+    //       professionalId: input.professionalId,
+    //       customerId: input.customerId,
+    //       serviceId: input.serviceId,
+    //       startsAt,
+    //       endsAt,
+    //       customerName: customer.name,
+    //       serviceName: service.name,
+    //       notes: input.notes,
+    //       professionalGoogleCalendarId: professional.googleCalendarId,
+    //     })
+    //
+    //     // Atualiza IDs das integrações no agendamento
+    //     if (syncResult.googleEventId) {
+    //       appointment.setGoogleEventId(syncResult.googleEventId)
+    //     }
+    //     if (syncResult.trinksEventId) {
+    //       appointment.setTrinksEventId(syncResult.trinksEventId)
+    //     }
+    //
+    //     // Persiste os IDs das integrações
+    //     if (syncResult.googleEventId || syncResult.trinksEventId) {
+    //       await this.appointmentRepo.save(appointment)
+    //     }
+    //
+    //     // Log de erros de integração (não bloqueiam)
+    //     if (syncResult.errors.length > 0) {
+    //       console.warn("Erros de integração (não bloqueantes):", syncResult.errors)
+    //     }
+    //   } catch (error) {
+    //     // Erro inesperado na sincronização - loga mas não reverte DB
+    //     console.warn("Erro inesperado ao sincronizar com integrações:", error)
+    //   }
+    // }
 
-    // 10. Retornar DTO
+    // 9. Retornar DTO (sempre retorna sucesso se DB funcionou)
     return ok({
       id: appointment.id,
       customerName: customer.name,

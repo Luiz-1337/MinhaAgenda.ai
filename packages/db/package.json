@@ -22,7 +22,9 @@
     "migrate:manual:005:profile": "node scripts/migrate_005_profile_fields.mjs",
     "migrate:manual:006": "node scripts/migrate_006.mjs",
     "migrate:manual:009": "node scripts/migrate_009.mjs",
+    "migrate:manual:024": "node scripts/migrate_024_twilio_whatsapp.mjs",
     "migrate:signup-function": "node scripts/migrate_003_signup_function.mjs",
+    "check:rag": "node scripts/check-rag-setup.mjs",
     "reset": "node scripts/reset.mjs"
   },
   "dependencies": {

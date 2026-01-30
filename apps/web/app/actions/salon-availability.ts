@@ -13,7 +13,10 @@ import type { ActionResult } from "@/lib/types/common"
 // ============================================================================
 
 import { BaseAuthenticatedAction } from "@/lib/services/actions/base-authenticated-action.service"
+import { AvailabilityMapper } from "@/lib/services/availability/availability-mapper.service"
+import { AvailabilityRepository } from "@/lib/services/availability/availability.repository"
 import { ScheduleValidator } from "@/lib/services/availability/schedule-validator.service"
+import { SalonPlanService } from "@/lib/services/services/salon-plan.service"
 import { db, salons } from "@repo/db"
 import { eq } from "drizzle-orm"
 
@@ -166,6 +169,22 @@ export async function updateSalonAvailability(
         updatedAt: new Date(),
       })
       .where(eq(salons.id, salonId))
+
+    // Replica para a tabela availability quando o salão é SOLO (MCP, agendamentos leem de lá)
+    const isSolo = await SalonPlanService.isSoloPlan(salonId)
+    if (isSolo) {
+      const professionalId = await SalonPlanService.findOwnerProfessional(salonId)
+      if (professionalId) {
+        await AvailabilityRepository.deleteByProfessionalId(professionalId)
+        const activeSchedules = ScheduleValidator.filterActive(schedule)
+        if (activeSchedules.length > 0) {
+          const toInsert = activeSchedules.map((item) =>
+            AvailabilityMapper.toInsert(professionalId, item)
+          )
+          await AvailabilityRepository.insertMany(toInsert)
+        }
+      }
+    }
 
     revalidatePath(`/${salonId}/dashboard`)
     return { success: true, data: undefined }

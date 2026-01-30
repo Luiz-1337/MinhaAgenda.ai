@@ -2,7 +2,16 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../typescript-config/base.json",
   "compilerOptions": {
-    "outDir": "dist"
+    "outDir": "dist",
+    "baseUrl": "../..",
+    "paths": {
+      "googleapis": ["node_modules/googleapis"],
+      "googleapis/*": ["node_modules/googleapis/*"]
+    },
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src"]
 }

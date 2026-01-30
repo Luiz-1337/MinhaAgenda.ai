@@ -1,6 +1,6 @@
 /**
  * Google Calendar Service - Service Facade Pattern
- * 
+ *
  * Este serviço centraliza toda a lógica de integração com o Google Calendar.
  * Substitui a arquitetura anterior de Repository -> Integration -> UseCase
  * por um único serviço simplificado com retry automático.
@@ -703,18 +703,18 @@ export class GoogleCalendarService {
       )
 
       const busySlots = response.data.calendars?.[calendarId]?.busy || []
-      
+
       const result = busySlots
-        .filter(slot => slot.start && slot.end)
-        .map(slot => ({
+        .filter((slot): slot is { start: string; end: string } => !!slot.start && !!slot.end)
+        .map((slot) => ({
           start: new Date(slot.start!),
           end: new Date(slot.end!),
         }))
 
-      this.logger.debug('FreeBusy query successful', { 
-        salonId, 
-        calendarId, 
-        busySlotsCount: result.length 
+      this.logger.debug('FreeBusy query successful', {
+        salonId,
+        calendarId,
+        busySlotsCount: result.length
       })
 
       return result

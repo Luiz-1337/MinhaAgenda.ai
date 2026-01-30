@@ -1,5 +1,6 @@
 /**
  * Serviço para registrar, remover e verificar WhatsApp Senders via Twilio Senders API
+ * Suporta tanto a conta principal quanto subaccounts para arquitetura multi-tenant
  * @see https://www.twilio.com/docs/whatsapp/api/senders
  */
 
@@ -33,7 +34,7 @@ const TWILIO_ERROR_MESSAGES: Record<number, string> = {
 const FALLBACK_MESSAGE =
   "Este número não é elegível para WhatsApp Business. Verifique se é um número válido e se a conta Twilio está configurada."
 
-function mapTwilioError(err: { code?: number; message?: string }): string {
+export function mapTwilioError(err: { code?: number; message?: string }): string {
   if (err?.code && TWILIO_ERROR_MESSAGES[err.code]) {
     return TWILIO_ERROR_MESSAGES[err.code]
   }
@@ -43,11 +44,20 @@ function mapTwilioError(err: { code?: number; message?: string }): string {
   return FALLBACK_MESSAGE
 }
 
+export interface RegisterSenderOptions {
+  phoneNumber: string
+  profileName: string
+  statusCallbackUrl?: string
+  wabaId?: string // Meta WABA ID para integração com Embedded Signup
+  verificationMethod?: "sms" | "voice"
+}
+
 /**
  * Registra um número como WhatsApp Sender na Twilio (inicia verificação por SMS)
  * @param phoneNumber E.164 (ex: +5511999999999)
  * @param profileName Nome do perfil (ex: nome do agente/salão) – obrigatório para WhatsApp
  * @param statusCallbackUrl URL para callbacks de status (opcional)
+ * @deprecated Use registerSenderWithClient para arquitetura multi-tenant com subaccounts
  */
 export async function registerSender(
   phoneNumber: string,
@@ -55,15 +65,37 @@ export async function registerSender(
   statusCallbackUrl?: string
 ): Promise<{ sid: string; status: string }> {
   const client = getTwilioClient()
+  return registerSenderWithClient(client, { phoneNumber, profileName, statusCallbackUrl })
+}
+
+/**
+ * Registra um número como WhatsApp Sender usando um cliente Twilio específico (subaccount)
+ * @param client Cliente Twilio (pode ser da conta principal ou subaccount)
+ * @param options Opções de registro
+ */
+export async function registerSenderWithClient(
+  client: twilio.Twilio,
+  options: RegisterSenderOptions
+): Promise<{ sid: string; status: string }> {
+  const { phoneNumber, profileName, statusCallbackUrl, wabaId, verificationMethod = "sms" } = options
+  
   // API exige <channel>:<id> (ex: whatsapp:+5511999999999) e parâmetro sender_id (snake_case)
   const raw = phoneNumber.replace(/^whatsapp:/i, "").trim()
   const senderId = raw.startsWith("+") ? `whatsapp:${raw}` : `whatsapp:+${raw.replace(/\D/g, "")}`
 
+  const configuration: Record<string, unknown> = { verification_method: verificationMethod }
+  
+  // Adiciona WABA ID se fornecido (para Meta Embedded Signup)
+  if (wabaId) {
+    configuration.waba_id = wabaId
+  }
+
   const opts: Record<string, unknown> = {
     sender_id: senderId,
-    configuration: { verification_method: "sms" },
+    configuration,
     profile: { name: profileName },
   }
+  
   if (statusCallbackUrl) {
     opts.webhook = { status_callback_url: statusCallbackUrl, status_callback_method: "POST" }
   }
@@ -72,7 +104,7 @@ export async function registerSender(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Twilio REST espera snake_case (sender_id, verification_method, etc.)
     const sender = await client.messaging.v2.channelsSenders.create(opts as any)
     logger.info(
-      { sid: sender.sid, phone: hashPhone(senderId), status: sender.status },
+      { sid: sender.sid, phone: hashPhone(senderId), status: sender.status, wabaId },
       "Twilio Sender created"
     )
     return { sid: sender.sid, status: sender.status || "CREATING" }
@@ -85,9 +117,17 @@ export async function registerSender(
 
 /**
  * Remove um Sender da Twilio
+ * @deprecated Use removeSenderWithClient para arquitetura multi-tenant com subaccounts
  */
 export async function removeSender(twilioSenderId: string): Promise<void> {
   const client = getTwilioClient()
+  return removeSenderWithClient(client, twilioSenderId)
+}
+
+/**
+ * Remove um Sender da Twilio usando um cliente específico (subaccount)
+ */
+export async function removeSenderWithClient(client: twilio.Twilio, twilioSenderId: string): Promise<void> {
   try {
     await client.messaging.v2.channelsSenders(twilioSenderId).remove()
     logger.info({ twilioSenderId: twilioSenderId.slice(0, 10) + "..." }, "Twilio Sender removed")
@@ -105,9 +145,17 @@ export async function removeSender(twilioSenderId: string): Promise<void> {
 
 /**
  * Obtém o status de um Sender na Twilio
+ * @deprecated Use getSenderStatusWithClient para arquitetura multi-tenant com subaccounts
  */
 export async function getSenderStatus(twilioSenderId: string): Promise<string> {
   const client = getTwilioClient()
+  return getSenderStatusWithClient(client, twilioSenderId)
+}
+
+/**
+ * Obtém o status de um Sender na Twilio usando um cliente específico (subaccount)
+ */
+export async function getSenderStatusWithClient(client: twilio.Twilio, twilioSenderId: string): Promise<string> {
   try {
     const sender = await client.messaging.v2.channelsSenders(twilioSenderId).fetch()
     return sender.status || "UNKNOWN"
@@ -123,9 +171,21 @@ export async function getSenderStatus(twilioSenderId: string): Promise<string> {
 
 /**
  * Envia o código de verificação recebido por SMS para completar a verificação do Sender
+ * @deprecated Use verifySenderWithClient para arquitetura multi-tenant com subaccounts
  */
 export async function verifySender(twilioSenderId: string, verificationCode: string): Promise<string> {
   const client = getTwilioClient()
+  return verifySenderWithClient(client, twilioSenderId, verificationCode)
+}
+
+/**
+ * Envia o código de verificação usando um cliente específico (subaccount)
+ */
+export async function verifySenderWithClient(
+  client: twilio.Twilio,
+  twilioSenderId: string,
+  verificationCode: string
+): Promise<string> {
   try {
     const sender = await client.messaging.v2
       .channelsSenders(twilioSenderId)

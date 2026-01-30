@@ -43,6 +43,8 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', ['ACTIVE', '
 export const professionalRoleEnum = pgEnum('professional_role', ['OWNER', 'MANAGER', 'STAFF'])
 export const paymentStatusEnum = pgEnum('payment_status', ['PENDING', 'APPROVED', 'FAILED', 'REFUNDED'])
 export const paymentMethodEnum = pgEnum('payment_method', ['PIX', 'CARD', 'BOLETO'])
+export const whatsappTemplateStatusEnum = pgEnum('whatsapp_template_status', ['draft', 'pending', 'approved', 'rejected'])
+export const whatsappTemplateCategoryEnum = pgEnum('whatsapp_template_category', ['MARKETING', 'UTILITY', 'AUTHENTICATION'])
 
 // ============================================================================
 // TABLES - User/Auth
@@ -120,6 +122,13 @@ export const salons = pgTable(
     subscriptionStatus: subscriptionStatusEnum('subscription_status').default('TRIAL').notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
+    // Twilio Subaccount fields
+    twilioSubaccountSid: text('twilio_subaccount_sid'),
+    twilioSubaccountToken: text('twilio_subaccount_token'), // Encrypted
+    twilioMessagingServiceSid: text('twilio_messaging_service_sid'),
+    // Meta WhatsApp Business fields
+    metaWabaId: text('meta_waba_id'),
+    metaPhoneNumberId: text('meta_phone_number_id'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -594,6 +603,36 @@ export const systemPromptTemplates = pgTable(
 )
 
 // ============================================================================
+// TABLES - WhatsApp HSM Templates
+// ============================================================================
+export const whatsappTemplates = pgTable(
+  'whatsapp_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    language: text('language').default('pt_BR').notNull(),
+    category: whatsappTemplateCategoryEnum('category').notNull(),
+    body: text('body').notNull(),
+    header: text('header'), // Optional header text
+    footer: text('footer'), // Optional footer text
+    buttons: jsonb('buttons'), // Quick reply or CTA buttons
+    twilioContentSid: text('twilio_content_sid'), // Twilio Content API SID
+    status: whatsappTemplateStatusEnum('status').default('draft').notNull(),
+    rejectionReason: text('rejection_reason'),
+    submittedAt: timestamp('submitted_at'),
+    approvedAt: timestamp('approved_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('whatsapp_templates_salon_idx').on(table.salonId),
+    index('whatsapp_templates_status_idx').on(table.status),
+    uniqueIndex('whatsapp_templates_salon_name_unique').on(table.salonId, table.name)
+  ]
+)
+
+// ============================================================================
 // RELATIONS
 // ============================================================================
 export const profilesRelations = relations(profiles, ({ many, one }) => ({
@@ -615,7 +654,8 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   recoveryFlows: many(recoveryFlows),
   integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] }),
   agent: one(agents, { fields: [salons.id], references: [agents.salonId] }),
-  systemPromptTemplates: many(systemPromptTemplates)
+  systemPromptTemplates: many(systemPromptTemplates),
+  whatsappTemplates: many(whatsappTemplates)
 }))
 
 export const salonIntegrationsRelations = relations(salonIntegrations, ({ one }) => ({
@@ -696,6 +736,10 @@ export const agentKnowledgeBaseRelations = relations(agentKnowledgeBase, ({ one 
 
 export const systemPromptTemplatesRelations = relations(systemPromptTemplates, ({ one }) => ({
   salon: one(salons, { fields: [systemPromptTemplates.salonId], references: [salons.id] })
+}))
+
+export const whatsappTemplatesRelations = relations(whatsappTemplates, ({ one }) => ({
+  salon: one(salons, { fields: [whatsappTemplates.salonId], references: [salons.id] })
 }))
 
 export const paymentsRelations = relations(payments, ({ one }) => ({

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { Search, Plus, User, Pencil, Clock, Trash2, AlertCircle, X, Save } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
@@ -192,6 +192,7 @@ export default function TeamPage() {
       {/* Professional Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="!max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 p-0" showCloseButton={false}>
+          <DialogTitle className="sr-only">{editing ? "Editar Profissional" : "Novo Profissional"}</DialogTitle>
           {/* Header */}
           <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
             <div className="flex items-center gap-3">

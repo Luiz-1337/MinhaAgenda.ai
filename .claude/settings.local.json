@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(pnpm check:rag:*)",
+      "Bash(node scripts/test-rag-similarity.mjs:*)",
+      "Bash(node scripts/test-embedding-similarity.mjs:*)",
+      "Bash(grep:*)"
     ]
   }
 }

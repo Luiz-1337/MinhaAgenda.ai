@@ -5,18 +5,27 @@ import {
   IAppointmentRepository,
   IProfessionalRepository,
 } from "../../../domain/repositories"
-import { ICalendarService } from "../../ports"
+import { IntegrationSyncService } from "../../services/IntegrationSyncService"
 
 export interface DeleteAppointmentResult {
   appointmentId: string
   message: string
 }
 
+/**
+ * DeleteAppointmentUseCase
+ * 
+ * Arquitetura:
+ * 1. Buscar agendamento no DB
+ * 2. Cancelar no DB (soft delete via status)
+ * 3. Sincronizar cancelamento com integrações ativas (Google Calendar, Trinks)
+ * 4. Erros de integração NÃO revertem a operação do DB
+ */
 export class DeleteAppointmentUseCase {
   constructor(
     private appointmentRepo: IAppointmentRepository,
     private professionalRepo: IProfessionalRepository,
-    private calendarService?: ICalendarService
+    private integrationSyncService?: IntegrationSyncService
   ) {}
 
   async execute(
@@ -34,24 +43,40 @@ export class DeleteAppointmentUseCase {
       return result as Result<DeleteAppointmentResult, DomainError>
     }
 
-    // 3. Persistir
+    // 3. Persistir no DB (fonte da verdade)
     await this.appointmentRepo.save(appointment)
 
-    // 4. Remover do calendário externo
-    if (this.calendarService && appointment.googleEventId) {
+    // 4. Sincronizar cancelamento com integrações ativas (erros NÃO revertem o DB)
+    if (this.integrationSyncService) {
       try {
         const professional = await this.professionalRepo.findById(appointment.professionalId)
-        if (professional?.googleCalendarId) {
-          await this.calendarService.deleteEvent(
-            professional.googleCalendarId,
-            appointment.googleEventId
-          )
+        
+        const syncResult = await this.integrationSyncService.syncDelete({
+          appointmentId: appointment.id,
+          salonId: appointment.salonId,
+          googleEventId: appointment.googleEventId,
+          trinksEventId: appointment.trinksEventId,
+          professionalGoogleCalendarId: professional?.googleCalendarId,
+        })
+
+        // Limpa IDs das integrações após deleção
+        if (appointment.googleEventId || appointment.trinksEventId) {
+          appointment.setGoogleEventId(null)
+          appointment.setTrinksEventId(null)
+          await this.appointmentRepo.save(appointment)
+        }
+
+        // Log de erros de integração (não bloqueiam)
+        if (syncResult.errors.length > 0) {
+          console.warn("Erros de integração ao cancelar (não bloqueantes):", syncResult.errors)
         }
       } catch (error) {
-        console.warn("Erro ao remover evento do calendário:", error)
+        // Erro inesperado na sincronização - loga mas não reverte DB
+        console.warn("Erro inesperado ao sincronizar cancelamento com integrações:", error)
       }
     }
 
+    // 5. Retornar sucesso (sempre retorna sucesso se DB funcionou)
     return ok({
       appointmentId: appointment.id,
       message: "Agendamento cancelado com sucesso",
