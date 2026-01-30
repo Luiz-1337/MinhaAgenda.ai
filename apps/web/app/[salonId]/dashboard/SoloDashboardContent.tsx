@@ -116,12 +116,12 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
                       <div className="flex items-baseline gap-4">
                         <div>
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-0.5">Disponível</p>
-                          <p className="text-2xl font-bold text-emerald-500">{formatCreditsForDisplay(credits.remaining)}<span className="text-sm font-medium text-slate-400 ml-1">mil</span></p>
+                          <p className="text-2xl font-bold text-emerald-500">{formatCreditsForDisplay(credits.remaining)}</p>
                         </div>
                         <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
                         <div>
                           <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-0.5">Utilizado</p>
-                          <p className="text-2xl font-bold text-indigo-500">{formatCreditsForDisplay(credits.used)}<span className="text-sm font-medium text-slate-400 ml-1">mil</span></p>
+                          <p className="text-2xl font-bold text-indigo-500">{formatCreditsForDisplay(credits.used)}</p>
                         </div>
                       </div>
                       {/* Barra de progresso */}
@@ -157,8 +157,8 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
                   {/* Textos descritivos */}
                   <div className="pt-3 border-t border-slate-100 dark:border-white/5 space-y-1">
                     <p className="text-sm text-slate-600 dark:text-slate-300">
-                      Você utilizou <span className="text-indigo-500 font-semibold">{formatCreditsForDisplay(credits.used)} mil</span> até agora.
-                      {" "}Ainda tem <span className="text-emerald-500 font-semibold">{formatCreditsForDisplay(credits.remaining)} mil</span> para gastar.
+                      Você utilizou <span className="text-indigo-500 font-semibold">{formatCreditsForDisplay(credits.used)}</span> até agora.
+                      {" "}Ainda tem <span className="text-emerald-500 font-semibold">{formatCreditsForDisplay(credits.remaining)}</span> para gastar.
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {daysLeft != null && (

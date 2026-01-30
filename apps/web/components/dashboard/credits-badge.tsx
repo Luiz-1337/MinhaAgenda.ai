@@ -63,7 +63,7 @@ export function CreditsBadge() {
   }
 
   const formattedCredits = formatCreditsInK(credits)
-  const fullCredits = formatCreditsForDisplay(credits) + " mil créditos"
+  const fullCredits = formatCreditsForDisplay(credits) + " créditos"
 
   return (
     <div className="relative group">
