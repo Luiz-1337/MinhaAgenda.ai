@@ -287,7 +287,7 @@ export async function completeOnboardingWithPayment(
 
       // Criar profissional automaticamente se for plano SOLO
       if (data.plan === 'SOLO') {
-        await tx.insert(professionals).values({
+        const [newProfessional] = await tx.insert(professionals).values({
           salonId: newSalon.id,
           userId: userId,
           name: normalizeString(fullName),
@@ -296,7 +296,25 @@ export async function completeOnboardingWithPayment(
           role: 'MANAGER', // Owner sempre é MANAGER
           isActive: true,
           commissionRate: '0',
-        })
+        }).returning({ id: professionals.id })
+
+        // Criar disponibilidade padrão (Segunda a Sexta, 9h às 18h)
+        // Isso permite que o profissional comece a aceitar agendamentos imediatamente
+        const { availability } = await import('@repo/db')
+        const defaultAvailability = []
+
+        // Segunda (1) a Sexta (5), 9:00 às 18:00
+        for (let dayOfWeek = 1; dayOfWeek <= 5; dayOfWeek++) {
+          defaultAvailability.push({
+            professionalId: newProfessional.id,
+            dayOfWeek,
+            startTime: '09:00',
+            endTime: '18:00',
+            isBreak: false,
+          })
+        }
+
+        await tx.insert(availability).values(defaultAvailability)
       }
 
       // Marcar onboarding como completo

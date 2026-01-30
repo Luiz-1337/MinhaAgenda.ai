@@ -6,7 +6,11 @@
       "Bash(pnpm check:rag:*)",
       "Bash(node scripts/test-rag-similarity.mjs:*)",
       "Bash(node scripts/test-embedding-similarity.mjs:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(supabase migration list:*)",
+      "Bash(npx supabase:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

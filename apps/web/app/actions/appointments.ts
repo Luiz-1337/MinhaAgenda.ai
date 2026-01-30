@@ -14,6 +14,8 @@ import {
   type ProfessionalDTO 
 } from "@/lib/repositories/appointment.repository"
 import { ProfessionalService } from "@/lib/services/professional.service"
+import { SalonPlanService } from "@/lib/services/services/salon-plan.service"
+import { AvailabilityRepository } from "@/lib/services/availability/availability.repository"
 
 // Re-exportando tipos para compatibilidade com componentes existentes que possam importá-los
 export type { AppointmentDTO, ProfessionalDTO as ProfessionalInfo }
@@ -220,4 +222,100 @@ export async function createAppointment(input: {
   }
 
   return { success: true, data: result.data }
+}
+
+/**
+ * Extrai hora (0-23) de string "HH:mm"
+ */
+function parseHour(timeStr: string): number {
+  const [h] = timeStr.split(":").map(Number)
+  return Math.max(0, Math.min(23, h ?? 8))
+}
+
+/**
+ * Retorna o intervalo de horas para exibição do calendário baseado na disponibilidade do salão/profissional.
+ * - Solo: usa workHours do salão
+ * - Pro: usa availability do profissional selecionado
+ * - Padrão: 8-18 se não houver configuração
+ */
+export async function getSchedulerHours(
+  salonId: string,
+  professionalId: string | null
+): Promise<{ startHour: number; endHour: number } | { error: string }> {
+  if (!salonId) {
+    return { error: "salonId é obrigatório" }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { id: true, ownerId: true, workHours: true },
+  })
+  if (!salon) {
+    return { error: "Salão não encontrado" }
+  }
+
+  const isOwner = salon.ownerId === user.id
+  const pro = !isOwner
+    ? await db.query.professionals.findFirst({
+        where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id)),
+        columns: { id: true },
+      })
+    : null
+  if (!isOwner && !pro) {
+    return { error: "Acesso negado" }
+  }
+
+  const DEFAULT = { startHour: 8, endHour: 22 }
+
+  try {
+    const isSolo = await SalonPlanService.isSoloPlan(salonId)
+
+    if (isSolo) {
+      const workHours = salon.workHours as Record<string, { start: string; end: string }> | null | undefined
+      if (!workHours || typeof workHours !== "object") {
+        return DEFAULT
+      }
+      let minH = 23
+      let maxH = 0
+      for (const dayKey of Object.keys(workHours)) {
+        const day = workHours[dayKey]
+        if (day?.start && day?.end) {
+          minH = Math.min(minH, parseHour(day.start))
+          maxH = Math.max(maxH, parseHour(day.end))
+        }
+      }
+      if (minH <= maxH) {
+        return { startHour: minH, endHour: maxH }
+      }
+      return DEFAULT
+    }
+
+    if (!professionalId) {
+      return DEFAULT
+    }
+
+    const rows = await AvailabilityRepository.findActiveByProfessionalId(professionalId)
+    if (rows.length === 0) {
+      return DEFAULT
+    }
+    let minH = 23
+    let maxH = 0
+    for (const row of rows) {
+      minH = Math.min(minH, parseHour(row.startTime))
+      maxH = Math.max(maxH, parseHour(row.endTime))
+    }
+    if (minH <= maxH) {
+      return { startHour: minH, endHour: maxH }
+    }
+    return DEFAULT
+  } catch (err) {
+    console.error("Erro em getSchedulerHours:", err)
+    return DEFAULT
+  }
 }

@@ -19,15 +19,15 @@ interface MonthlySchedulerProps {
 function getStatusColor(status: DailyAppointment["status"]): { bg: string; border: string; text: string } {
   switch (status) {
     case "confirmed":
-      return { bg: "bg-indigo-100 dark:bg-indigo-500/20", border: "border-indigo-500", text: "text-indigo-700 dark:text-indigo-200" }
+      return { bg: "bg-indigo-100 dark:bg-indigo-600", border: "border-indigo-500", text: "text-indigo-700 dark:text-indigo-200" }
     case "pending":
-      return { bg: "bg-pink-100 dark:bg-pink-500/20", border: "border-pink-500", text: "text-pink-700 dark:text-pink-200" }
+      return { bg: "bg-pink-100 dark:bg-pink-600", border: "border-pink-500", text: "text-pink-700 dark:text-pink-200" }
     case "cancelled":
-      return { bg: "bg-red-100 dark:bg-red-500/20", border: "border-red-500", text: "text-red-700 dark:text-red-200" }
+      return { bg: "bg-red-100 dark:bg-red-600", border: "border-red-500", text: "text-red-700 dark:text-red-200" }
     case "completed":
-      return { bg: "bg-emerald-100 dark:bg-emerald-500/20", border: "border-emerald-500", text: "text-emerald-700 dark:text-emerald-200" }
+      return { bg: "bg-emerald-100 dark:bg-emerald-600", border: "border-emerald-500", text: "text-emerald-700 dark:text-emerald-200" }
     default:
-      return { bg: "bg-blue-100 dark:bg-blue-500/20", border: "border-blue-500", text: "text-blue-700 dark:text-blue-200" }
+      return { bg: "bg-blue-100 dark:bg-blue-600", border: "border-blue-500", text: "text-blue-700 dark:text-blue-200" }
   }
 }
 
@@ -115,10 +115,10 @@ export function MonthlyScheduler({
           </div>
         </div>
       ) : (
-        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-4 overflow-hidden flex flex-col">
-          <div className="grid grid-cols-7 gap-4 h-full">
+        <div className="flex-1 min-h-[500px] bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6 overflow-hidden flex flex-col">
+          <div className="grid grid-cols-7 gap-5 flex-1 min-h-0 [grid-auto-rows:minmax(90px,1fr)]">
             {weekDayNames.map((d, index) => (
-              <div key={weekDayKeys[index]} className="text-center text-sm font-bold text-slate-400 dark:text-slate-500 mb-2">{d}</div>
+              <div key={weekDayKeys[index]} className="text-center text-base font-bold text-slate-400 dark:text-slate-500 py-2">{d}</div>
             ))}
             {calendarDays.map((day) => {
               // Converte day para horário de Brasília para comparação consistente
@@ -132,7 +132,7 @@ export function MonthlyScheduler({
                 <div 
                   key={day.toISOString()} 
                   className={`
-                    border rounded-xl p-2 relative flex flex-col justify-between transition-all
+                    border rounded-xl p-4 relative flex flex-col justify-between transition-all
                     ${isCurrentMonth 
                       ? 'border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] hover:border-indigo-500/50 cursor-pointer' 
                       : 'border-transparent opacity-30'}
@@ -140,23 +140,23 @@ export function MonthlyScheduler({
                 >
                   {isCurrentMonth && (
                     <>
-                      <span className={`text-sm font-medium ${isToday ? 'text-indigo-500 dark:text-indigo-400 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
+                      <span className={`text-base font-medium ${isToday ? 'text-indigo-500 dark:text-indigo-400 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
                         {formatBrazilTime(day, "d")}
                       </span>
                       {hasEvent && (
-                        <div className="space-y-1 mt-1">
+                        <div className="space-y-1.5 mt-2">
                           {dayAppointments.slice(0, 2).map((appointment) => {
                             const colorScheme = getStatusColor(appointment.status)
                             return (
                               <div 
                                 key={appointment.id}
-                                className={`h-1.5 w-full ${colorScheme.bg.replace('bg-', 'bg-').replace('/20', '/40')} rounded-full`}
+                                className={`h-2 w-full ${colorScheme.bg} rounded-full`}
                                 title={`${appointment.clientName || "Cliente"} - ${formatBrazilTime(appointment.startTime, "HH:mm")}`}
                               ></div>
                             )
                           })}
                           {dayAppointments.length > 2 && (
-                            <div className="h-1.5 w-2/3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full"></div>
+                            <div className="h-2 w-2/3 bg-slate-400/40 dark:bg-slate-500/40 rounded-full"></div>
                           )}
                         </div>
                       )}

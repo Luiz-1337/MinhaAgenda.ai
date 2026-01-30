@@ -6,7 +6,7 @@ import { DailyScheduler } from "./DailyScheduler"
 import { WeeklyScheduler } from "./WeeklyScheduler"
 import { MonthlyScheduler } from "./MonthlyScheduler"
 import { CreateAppointmentDialog } from "./CreateAppointmentDialog"
-import { getAppointments, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
+import { getAppointments, getSchedulerHours, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import {
@@ -18,6 +18,12 @@ import {
   endOfMonthBrazil
 } from "@/lib/utils/timezone.utils"
 import { useSalonAuth } from "@/contexts/salon-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface SchedulerViewProps {
   salonId: string
@@ -52,6 +58,17 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   const [selectedProId, setSelectedProId] = useState<string | null>(null)
   const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [schedulerHours, setSchedulerHours] = useState({ startHour: 8, endHour: 22 })
+
+  // Carrega horários do calendário (baseado na disponibilidade do salão/profissional)
+  useEffect(() => {
+    if (!salonId) return
+    getSchedulerHours(salonId, selectedProId).then((res) => {
+      if (!("error" in res)) {
+        setSchedulerHours(res)
+      }
+    })
+  }, [salonId, selectedProId])
 
   // Carrega dados unificados (Agendamentos + Profissionais)
   useEffect(() => {
@@ -161,20 +178,6 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       avatar: p.name.split(' ').map(n => n[0]).slice(0, 2).join('')
     }))
   }, [professionals])
-
-  // Fechar dropdown ao clicar fora
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as HTMLElement
-      if (isProDropdownOpen && !target.closest('.professional-dropdown')) {
-        setIsProDropdownOpen(false)
-      }
-    }
-    if (isProDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isProDropdownOpen])
 
   const navigateDate = (direction: 'prev' | 'next') => {
     setCurrentDate(prev => {
@@ -296,37 +299,35 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
         {/* Professional Dropdown */}
         {!loading && selectedPro && dropdownProfessionals.length > 1 && !isSolo && (
-          <div className="relative professional-dropdown flex-1 sm:flex-initial">
-            <button 
-              onClick={() => setIsProDropdownOpen(!isProDropdownOpen)}
-              className="w-full sm:w-auto flex items-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-200 hover:border-indigo-500/50 transition-colors sm:min-w-[180px] justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
-                  {selectedPro.name.split(' ').map(n => n[0]).slice(0, 2).join('') || <Users size={12} />}
+          <DropdownMenu open={isProDropdownOpen} onOpenChange={setIsProDropdownOpen}>
+            <DropdownMenuTrigger asChild>
+              <button 
+                className="w-full sm:w-auto flex items-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-200 hover:border-indigo-500/50 transition-colors sm:min-w-[180px] justify-between flex-1 sm:flex-initial"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                    {selectedPro.name.split(' ').map(n => n[0]).slice(0, 2).join('') || <Users size={12} />}
+                  </div>
+                  <span className="truncate">{selectedPro.name}</span>
                 </div>
-                <span className="truncate">{selectedPro.name}</span>
-              </div>
-              <ChevronDown size={14} className={`text-slate-400 transition-transform flex-shrink-0 ${isProDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-            
-            {isProDropdownOpen && (
-              <div className="absolute top-full left-0 sm:right-0 sm:left-auto mt-2 w-full sm:w-auto sm:min-w-[200px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                {dropdownProfessionals.map(pro => (
-                  <button
-                    key={pro.id}
-                    onClick={() => { setSelectedProId(pro.id); setIsProDropdownOpen(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left hover:bg-slate-50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 transition-colors"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      {pro.avatar || <Users size={12} />}
-                    </div>
-                    {pro.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                <ChevronDown size={14} className={`text-slate-400 transition-transform flex-shrink-0 ${isProDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={8} className="min-w-[200px] bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 rounded-xl p-1">
+              {dropdownProfessionals.map(pro => (
+                <DropdownMenuItem
+                  key={pro.id}
+                  onClick={() => { setSelectedProId(pro.id); setIsProDropdownOpen(false); }}
+                  className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer rounded-lg"
+                >
+                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">
+                    {pro.avatar || <Users size={12} />}
+                  </div>
+                  {pro.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {isSolo && selectedPro && (
           <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg text-[10px] sm:text-xs text-indigo-700 dark:text-indigo-300 flex-1 sm:flex-initial">
@@ -377,6 +378,8 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             loading={loading}
             error={error}
             selectedProfessionalId={selectedProId}
+            startHour={schedulerHours.startHour}
+            endHour={schedulerHours.endHour}
           />
         )}
         {viewType === "weekly" && (
@@ -388,6 +391,8 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             loading={loading}
             error={error}
             selectedProfessionalId={selectedProId}
+            startHour={schedulerHours.startHour}
+            endHour={schedulerHours.endHour}
           />
         )}
         {viewType === "monthly" && (

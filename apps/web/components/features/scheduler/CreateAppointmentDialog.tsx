@@ -2,9 +2,9 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { toast } from "sonner"
-import { X, Calendar, User, Briefcase, Zap, FileText, Clock } from "lucide-react"
+import { X, Calendar, User, Briefcase, Zap, FileText, Clock, Plus, Phone, Mail } from "lucide-react"
 import { createAppointment } from "@/app/actions/appointments"
-import { getSalonCustomers, type CustomerRow } from "@/app/actions/customers"
+import { getSalonCustomers, createSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { getServices } from "@/app/actions/services"
 import type { ServiceRow } from "@/lib/types/service"
 import type { ProfessionalInfo } from "@/app/actions/appointments"
@@ -37,6 +37,13 @@ export function CreateAppointmentDialog({
   const [services, setServices] = useState<ServiceRow[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [loadingServices, setLoadingServices] = useState(false)
+
+  // Estados para criar novo cliente inline
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState("")
+  const [newCustomerPhone, setNewCustomerPhone] = useState("")
+  const [newCustomerEmail, setNewCustomerEmail] = useState("")
+  const [creatingCustomer, setCreatingCustomer] = useState(false)
 
   // Carrega clientes e serviços quando o modal abre
   useEffect(() => {
@@ -148,6 +155,61 @@ export function CreateAppointmentDialog({
     })
   }
 
+  const handleCreateCustomer = async () => {
+    // Validação
+    if (!newCustomerName.trim()) {
+      toast.error("Nome do cliente é obrigatório")
+      return
+    }
+
+    if (!newCustomerPhone.trim()) {
+      toast.error("Telefone do cliente é obrigatório")
+      return
+    }
+
+    if (newCustomerName.trim().length < 2) {
+      toast.error("Nome deve ter pelo menos 2 caracteres")
+      return
+    }
+
+    // Valida formato do telefone (apenas dígitos)
+    const phoneDigits = newCustomerPhone.replace(/\D/g, "")
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      toast.error("Telefone inválido. Use formato: (11) 98765-4321")
+      return
+    }
+
+    setCreatingCustomer(true)
+
+    try {
+      const result = await createSalonCustomer({
+        salonId,
+        name: newCustomerName.trim(),
+        phone: newCustomerPhone.trim(),
+        email: newCustomerEmail.trim() || undefined,
+      })
+
+      if ("error" in result) {
+        toast.error(result.error)
+      } else {
+        toast.success("Cliente criado com sucesso!")
+        // Adiciona o novo cliente à lista
+        setCustomers((prev) => [...prev, result.data])
+        // Seleciona o cliente recém-criado
+        setClientId(result.data.id)
+        // Limpa o formulário de criar cliente
+        setNewCustomerName("")
+        setNewCustomerPhone("")
+        setNewCustomerEmail("")
+        setShowCreateCustomer(false)
+      }
+    } catch (error) {
+      toast.error("Erro ao criar cliente. Tente novamente.")
+    } finally {
+      setCreatingCustomer(false)
+    }
+  }
+
   const handleClose = () => {
     if (!isPending) {
       onOpenChange(false)
@@ -158,6 +220,10 @@ export function CreateAppointmentDialog({
       setDate("")
       setTime("")
       setNotes("")
+      setShowCreateCustomer(false)
+      setNewCustomerName("")
+      setNewCustomerPhone("")
+      setNewCustomerEmail("")
     }
   }
 
@@ -213,8 +279,8 @@ export function CreateAppointmentDialog({
                 <select
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
-                  disabled={isPending || loadingCustomers}
-                  required
+                  disabled={isPending || loadingCustomers || showCreateCustomer}
+                  required={!showCreateCustomer}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer"
                 >
                   <option value="">Selecione um cliente</option>
@@ -225,6 +291,122 @@ export function CreateAppointmentDialog({
                   ))}
                 </select>
               </div>
+
+              {/* Botão para criar novo cliente */}
+              {!showCreateCustomer && (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateCustomer(true)}
+                  disabled={isPending || loadingCustomers}
+                  className="mt-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus size={14} />
+                  Novo Cliente
+                </button>
+              )}
+
+              {/* Formulário inline para criar cliente */}
+              {showCreateCustomer && (
+                <div className="mt-3 p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/30 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-indigo-900 dark:text-indigo-100 uppercase tracking-wider">
+                      Criar Novo Cliente
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateCustomer(false)
+                        setNewCustomerName("")
+                        setNewCustomerPhone("")
+                        setNewCustomerEmail("")
+                      }}
+                      disabled={creatingCustomer}
+                      className="text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200 transition-colors disabled:opacity-50"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Nome */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
+                      Nome <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <User size={14} className="absolute left-2.5 top-2.5 text-indigo-400" />
+                      <input
+                        type="text"
+                        value={newCustomerName}
+                        onChange={(e) => setNewCustomerName(e.target.value)}
+                        placeholder="Nome completo do cliente"
+                        disabled={creatingCustomer}
+                        className="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/50 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Telefone */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
+                      Telefone <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone size={14} className="absolute left-2.5 top-2.5 text-indigo-400" />
+                      <input
+                        type="tel"
+                        value={newCustomerPhone}
+                        onChange={(e) => setNewCustomerPhone(e.target.value)}
+                        placeholder="(11) 98765-4321"
+                        disabled={creatingCustomer}
+                        className="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/50 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
+                      Email (opcional)
+                    </label>
+                    <div className="relative">
+                      <Mail size={14} className="absolute left-2.5 top-2.5 text-indigo-400" />
+                      <input
+                        type="email"
+                        value={newCustomerEmail}
+                        onChange={(e) => setNewCustomerEmail(e.target.value)}
+                        placeholder="cliente@email.com"
+                        disabled={creatingCustomer}
+                        className="w-full bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/50 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botões */}
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleCreateCustomer}
+                      disabled={creatingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()}
+                      className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {creatingCustomer ? "Criando..." : "Criar e Selecionar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateCustomer(false)
+                        setNewCustomerName("")
+                        setNewCustomerPhone("")
+                        setNewCustomerEmail("")
+                      }}
+                      disabled={creatingCustomer}
+                      className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Profissional */}

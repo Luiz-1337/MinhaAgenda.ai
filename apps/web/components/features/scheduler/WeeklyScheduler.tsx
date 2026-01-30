@@ -16,9 +16,12 @@ interface WeeklySchedulerProps {
   loading: boolean
   error: string | null
   selectedProfessionalId: string | null
+  startHour?: number
+  endHour?: number
 }
 
 const PIXELS_PER_MINUTE = 2
+const HOUR_ROW_HEIGHT = 60 * PIXELS_PER_MINUTE // 120px - uma hora em pixels
 
 function calculateAppointmentPosition(
   appointment: DailyAppointment,
@@ -47,19 +50,16 @@ function calculateAppointmentPosition(
   return { top, height }
 }
 
-function getStatusColor(status: DailyAppointment["status"]): { bg: string; border: string; text: string } {
-  switch (status) {
-    case "confirmed":
-      return { bg: "bg-indigo-100 dark:bg-indigo-500/20", border: "border-indigo-500", text: "text-indigo-700 dark:text-indigo-200" }
-    case "pending":
-      return { bg: "bg-pink-100 dark:bg-pink-500/20", border: "border-pink-500", text: "text-pink-700 dark:text-pink-200" }
-    case "cancelled":
-      return { bg: "bg-red-100 dark:bg-red-500/20", border: "border-red-500", text: "text-red-700 dark:text-red-200" }
-    case "completed":
-      return { bg: "bg-emerald-100 dark:bg-emerald-500/20", border: "border-emerald-500", text: "text-emerald-700 dark:text-emerald-200" }
-    default:
-      return { bg: "bg-blue-100 dark:bg-blue-500/20", border: "border-blue-500", text: "text-blue-700 dark:text-blue-200" }
-  }
+const SEQUENCE_COLORS = [
+  { bg: "bg-indigo-100 dark:bg-indigo-600", border: "border-indigo-500", text: "text-indigo-700 dark:text-indigo-200" },
+  { bg: "bg-pink-100 dark:bg-pink-600", border: "border-pink-500", text: "text-pink-700 dark:text-pink-200" },
+  { bg: "bg-emerald-100 dark:bg-emerald-600", border: "border-emerald-500", text: "text-emerald-700 dark:text-emerald-200" },
+  { bg: "bg-violet-100 dark:bg-violet-600", border: "border-violet-500", text: "text-violet-700 dark:text-violet-200" },
+  { bg: "bg-amber-100 dark:bg-amber-600", border: "border-amber-500", text: "text-amber-700 dark:text-amber-200" },
+] as const
+
+function getSequenceColor(index: number): { bg: string; border: string; text: string } {
+  return SEQUENCE_COLORS[index % SEQUENCE_COLORS.length]
 }
 
 export function WeeklyScheduler({
@@ -69,7 +69,9 @@ export function WeeklyScheduler({
   professionals,
   loading,
   error,
-  selectedProfessionalId
+  selectedProfessionalId,
+  startHour = 8,
+  endHour = 22
 }: WeeklySchedulerProps) {
   
   const weekStart = useMemo(() => startOfWeekBrazil(currentDate, { weekStartsOn: 0 }), [currentDate])
@@ -113,8 +115,19 @@ export function WeeklyScheduler({
     return map
   }, [selectedProfessionalId, appointmentsByProfessional])
 
+  // Índice de sequência global por dia (para cores diferentes mesmo em horas diferentes)
+  const sequenceIndexByDay = useMemo(() => {
+    const map = new Map<string, Map<string, number>>()
+    appointmentsByDay.forEach((appointments, dayKey) => {
+      const sorted = [...appointments].sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+      const indexMap = new Map<string, number>()
+      sorted.forEach((apt, i) => indexMap.set(apt.id, i))
+      map.set(dayKey, indexMap)
+    })
+    return map
+  }, [appointmentsByDay])
 
-  const hours = Array.from({ length: 11 }, (_, i) => i + 8) // 8:00 to 18:00
+  const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i)
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -165,7 +178,7 @@ export function WeeklyScheduler({
           {/* Time Grid */}
           <div className="flex-1 overflow-y-auto custom-scrollbar relative">
             {hours.map((hour) => (
-              <div key={hour} className="flex min-h-[80px] border-b border-slate-200 dark:border-white/5 relative group">
+              <div key={hour} className="flex border-b border-slate-200 dark:border-white/5 relative group" style={{ minHeight: `${HOUR_ROW_HEIGHT}px` }}>
                 <div className="w-16 flex-shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50/30 dark:bg-white/[0.02] text-xs text-slate-400 dark:text-slate-500 font-mono text-right pr-3 pt-2">
                   {hour}:00
                 </div>
@@ -177,23 +190,25 @@ export function WeeklyScheduler({
 
                   return (
                     <div key={dayIndex} className={`flex-1 relative ${dayIndex < weekDays.length - 1 ? 'border-r border-slate-200 dark:border-white/5' : ''} hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors`}>
-                      {dayAppointments
+                      {[...dayAppointments]
                         .filter(apt => {
                           const aptHour = getBrazilHours(apt.startTime)
                           return aptHour >= hour && aptHour < hour + 1
                         })
+                        .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
                         .map((appointment) => {
                           const { top, height } = calculateAppointmentPosition(appointment, dayStart)
-                          const colorScheme = getStatusColor(appointment.status)
+                          const sequenceIndex = sequenceIndexByDay.get(dayKey)?.get(appointment.id) ?? 0
+                          const colorScheme = getSequenceColor(sequenceIndex)
                           const hourStartMinutes = hour * 60
                           const relativeTop = top - (hourStartMinutes * PIXELS_PER_MINUTE)
                           
                           return (
                             <div
                               key={appointment.id}
-                              className={`absolute left-0 w-full p-2 m-0.5 rounded text-xs font-medium cursor-pointer hover:brightness-110 transition-all z-10 border-l-4 ${colorScheme.bg} ${colorScheme.border} ${colorScheme.text}`}
+                              className={`absolute left-0 w-full p-2 m-0.5 rounded text-xs font-medium cursor-pointer hover:brightness-110 transition-all z-10 border-l-4 overflow-hidden ${colorScheme.bg} ${colorScheme.border} ${colorScheme.text}`}
                               style={{ 
-                                height: `${Math.max(height, 50)}px`,
+                                height: `${Math.max(height, 62)}px`,
                                 top: `${Math.max(relativeTop, 0)}px`,
                               }}
                               title={`${appointment.clientName || "Cliente"} - ${appointment.serviceName} (${formatBrazilTime(appointment.startTime, "HH:mm")} - ${formatBrazilTime(appointment.endTime, "HH:mm")})`}

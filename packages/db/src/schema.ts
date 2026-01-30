@@ -251,7 +251,7 @@ export const appointments = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     salonId: uuid('salon_id').references(() => salons.id).notNull(),
     professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
-    clientId: uuid('client_id').references(() => profiles.id).notNull(),
+    clientId: uuid('client_id').references(() => customers.id).notNull(),
     serviceId: uuid('service_id').references(() => services.id).notNull(),
     date: timestamp('date').notNull(),
     endTime: timestamp('end_time').notNull(),
