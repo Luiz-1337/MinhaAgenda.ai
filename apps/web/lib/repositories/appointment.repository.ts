@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, lte, desc } from "drizzle-orm"
-import { appointments, db, professionals, profiles, services } from "@repo/db"
+import { appointments, db, professionals, profiles, services, customers } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
 
 // ============================================================================
@@ -90,7 +90,7 @@ export async function getAppointmentsByRange({
         professionalId: appointments.professionalId,
         professionalName: professionals.name,
         clientId: appointments.clientId,
-        clientName: profiles.fullName,
+        clientName: customers.name,
         serviceId: appointments.serviceId,
         serviceName: services.name,
         serviceDuration: services.duration,
@@ -101,7 +101,7 @@ export async function getAppointmentsByRange({
       })
       .from(appointments)
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
-      .innerJoin(profiles, eq(appointments.clientId, profiles.id))
+      .innerJoin(customers, eq(appointments.clientId, customers.id))
       .innerJoin(services, eq(appointments.serviceId, services.id))
       .where(
         and(
