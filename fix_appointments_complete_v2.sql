@@ -77,7 +77,11 @@ CREATE POLICY "Users can update relevant appointments" ON appointments
     )
   );
 
-RAISE NOTICE '✓ Phase 1 complete: RLS INSERT/UPDATE policies updated';
+-- Phase 1 complete notification
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Phase 1 complete: RLS INSERT/UPDATE policies updated';
+END $$;
 
 -- ============================================================================
 -- PHASE 2: APPLY MIGRATION 012 - Fix client_id Foreign Key (CRITICAL FIX)
@@ -135,7 +139,11 @@ CREATE POLICY "Users can view relevant appointments" ON appointments
     )
   );
 
-RAISE NOTICE '✓ Phase 2 complete: FK updated and SELECT policy fixed';
+-- Phase 2 complete notification
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Phase 2 complete: FK updated and SELECT policy fixed';
+END $$;
 
 -- ============================================================================
 -- PHASE 3: APPLY MIGRATION 011 - Backfill Default Availability
@@ -224,7 +232,11 @@ BEGIN
   END IF;
 END $$;
 
-RAISE NOTICE '✓ Phase 4 complete: Edge cases handled';
+-- Phase 4 complete notification
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Phase 4 complete: Edge cases handled';
+END $$;
 
 -- ============================================================================
 -- PHASE 5: VERIFICATION QUERIES
