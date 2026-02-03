@@ -20,6 +20,7 @@ export interface MessageJobData {
   messageId: string; // MessageSid do Twilio
   chatId: string;
   salonId: string;
+  agentId: string; // ID do agente que receberá a mensagem
   customerId: string;
   clientPhone: string;
 

@@ -68,45 +68,48 @@ export async function POST(
     }
     const phone = normalizeForCompare(raw)
 
-    // Número já em outro agente?
+    // Permite que múltiplos agentes do mesmo salão compartilhem o número
+    // Apenas verifica se já existe em OUTRO salão
     const existingAgent = await db.query.agents.findFirst({
       where: and(
-        ne(agents.id, agentId),
+        ne(agents.salonId, agent.salonId),
         eq(agents.whatsappNumber, phone)
       ),
       columns: { id: true },
     })
     if (existingAgent) {
       return NextResponse.json(
-        { success: false, error: "Este número já está conectado a outro agente" },
+        { success: false, error: "Este número já está conectado a outro salão" },
         { status: 409 }
       )
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    const statusCallbackUrl = baseUrl
-      ? `${String(baseUrl).replace(/\/$/, "")}/api/webhooks/twilio/whatsapp-status`
-      : undefined
+    // Para simplificar, usa o número Sandbox da Twilio
+    // O número sandbox já está pré-aprovado e não requer verificação WABA
+    const sandboxNumber = process.env.TWILIO_PHONE_NUMBER || "whatsapp:+14155238886"
+    const normalizedSandbox = normalizeForCompare(sandboxNumber)
 
-    const { sid, status } = await registerSender(phone, agent.name, statusCallbackUrl)
-
+    // Atualiza o agente com o número sandbox (sem registro no Twilio, já está configurado)
     await db
       .update(agents)
       .set({
-        whatsappNumber: phone,
-        whatsappStatus: "pending_verification",
-        twilioSenderId: sid,
+        whatsappNumber: normalizedSandbox,
+        whatsappStatus: "verified", // Sandbox já está verificado
+        twilioSenderId: null, // Não precisa de sender ID para sandbox
         whatsappConnectedAt: new Date(),
+        whatsappVerifiedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(agents.id, agentId))
 
     return NextResponse.json({
       success: true,
-      status: "pending_verification",
-      message:
-        "Número registrado. Você receberá um SMS com um código. Use o botão 'Verificar' abaixo para completar.",
-      verificationDetails: { twilioSenderId: sid, verificationMethod: "sms" },
+      status: "verified",
+      message: "WhatsApp conectado com sucesso! Use o número sandbox da Twilio para testes.",
+      sandboxInfo: {
+        number: sandboxNumber,
+        instructions: `Para testar, envie uma mensagem para ${sandboxNumber} com o código "join <seu-codigo-sandbox>" primeiro.`
+      }
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Ocorreu um erro. Tente novamente ou contate o suporte."

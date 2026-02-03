@@ -24,7 +24,7 @@ export class TrinksApiClient {
       ),
     })
 
-    if (!integration || !integration.accessToken) {
+    if (!integration || !integration.accessToken || integration.isActive === false) {
       return null
     }
 

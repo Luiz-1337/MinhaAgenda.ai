@@ -177,19 +177,16 @@ export function registerProviders(container: Container): void {
   // ==========================================================================
 
   container.register(TOKENS.CreateAppointmentUseCase, () => new CreateAppointmentUseCase(
-    container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.CustomerRepository),
     container.resolve(TOKENS.ProfessionalRepository),
-    container.resolve(TOKENS.ServiceRepository),
-    container.resolve(TOKENS.IntegrationSyncService)
+    container.resolve(TOKENS.ServiceRepository)
   ))
 
   container.register(TOKENS.UpdateAppointmentUseCase, () => new UpdateAppointmentUseCase(
     container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.CustomerRepository),
     container.resolve(TOKENS.ProfessionalRepository),
-    container.resolve(TOKENS.ServiceRepository),
-    container.resolve(TOKENS.IntegrationSyncService)
+    container.resolve(TOKENS.ServiceRepository)
   ))
 
   container.register(TOKENS.DeleteAppointmentUseCase, () => new DeleteAppointmentUseCase(

@@ -143,6 +143,43 @@ export async function getSalonIdByWhatsapp(
 }
 
 /**
+ * Busca o agente e salão baseado no número de WhatsApp
+ * @param whatsapp - Número de WhatsApp do agente (pode conter espaços, traços, parênteses)
+ * @returns Objeto com salonId e agentId, ou null se não encontrado
+ * @throws {Error} Se ocorrer um erro na consulta ao banco de dados
+ */
+export async function getAgentByWhatsapp(
+  whatsapp: string
+): Promise<{ salonId: string; agentId: string } | null> {
+  // Sanitiza o número de WhatsApp para garantir o match
+  const sanitizedWhatsapp = sanitizeWhatsApp(whatsapp)
+
+  // Valida se o número sanitizado não está vazio
+  if (!sanitizedWhatsapp) {
+    return null
+  }
+
+  try {
+    // Busca o agente ATIVO pelo número de WhatsApp sanitizado
+    const agent = await db.query.agents.findFirst({
+      where: and(
+        eq(agents.whatsappNumber, sanitizedWhatsapp),
+        eq(agents.isActive, true)
+      ),
+      columns: { id: true, salonId: true },
+    })
+
+    // Retorna salonId e agentId se encontrado, caso contrário retorna null
+    return agent ? { salonId: agent.salonId, agentId: agent.id } : null
+  } catch (error) {
+    // Re-lança o erro com contexto adicional
+    throw new Error(
+      `Erro ao buscar agente por WhatsApp: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+}
+
+/**
  * Cria um novo salão e automaticamente registra o dono como profissional (OWNER)
  * Garante atomicidade da operação via transação
  */

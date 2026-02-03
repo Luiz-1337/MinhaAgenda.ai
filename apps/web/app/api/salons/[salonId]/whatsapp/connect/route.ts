@@ -17,6 +17,7 @@ interface ConnectRequestBody {
   phoneNumber?: string
   wabaId?: string // Meta WABA ID (do Embedded Signup)
   phoneNumberId?: string // Meta Phone Number ID (do Embedded Signup)
+  useSandbox?: boolean // Se true, usa o número sandbox da Twilio (não requer WABA ID)
 }
 
 export async function POST(
@@ -99,9 +100,6 @@ export async function POST(
     const statusCallbackUrl = baseUrl
       ? `${String(baseUrl).replace(/\/$/, "")}/api/webhooks/twilio/whatsapp-status`
       : undefined
-
-    console.log('[DEBUG] baseUrl:', baseUrl)
-    console.log('[DEBUG] statusCallbackUrl:', statusCallbackUrl)
 
     // Registra o sender via Twilio Senders API na subaccount
     const { sid: twilioSenderId, status: twilioStatus } = await registerSenderWithClient(subClient, {

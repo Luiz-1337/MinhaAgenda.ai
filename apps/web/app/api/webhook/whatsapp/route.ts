@@ -9,7 +9,7 @@ import { TwilioWebhookSchema, detectMediaType } from "@/lib/schemas/twilio";
 import { logger, createContextLogger, hashPhone, createRequestContext, getDuration } from "@/lib/logger";
 import { isMessageProcessed, markMessageProcessed } from "@/lib/redis";
 import { enqueueMessage } from "@/lib/queues/message-queue";
-import { getSalonIdByWhatsapp } from "@/lib/services/salon.service";
+import { getAgentByWhatsapp } from "@/lib/services/salon.service";
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from "@/lib/services/chat.service";
 import { normalizePhoneNumber } from "@/lib/services/whatsapp.service";
 import { checkIfNewCustomer } from "@/lib/services/ai/generate-response.service";
@@ -130,21 +130,22 @@ export async function POST(req: NextRequest) {
       throw error;
     }
 
-    // 8. BUSCAR SALÃO (com timeout)
-    const salonId = await withTimeout(
-      getSalonIdByWhatsapp(salonPhone),
+    // 8. BUSCAR AGENTE E SALÃO (com timeout)
+    const agentData = await withTimeout(
+      getAgentByWhatsapp(salonPhone),
       DB_TIMEOUT,
-      "getSalonIdByWhatsapp"
+      "getAgentByWhatsapp"
     );
-    
-    if (!salonId) {
-      reqLogger.error({ salonPhone: hashPhone(salonPhone) }, "Salon not found");
-      WebhookMetrics.error("salon_not_found");
+
+    if (!agentData) {
+      reqLogger.error({ salonPhone: hashPhone(salonPhone) }, "Agent not found");
+      WebhookMetrics.error("agent_not_found");
       // Retorna 200 para evitar retries do Twilio (não é erro temporário)
       return new Response("", { status: 200 });
     }
 
-    reqLogger = reqLogger.child({ salonId });
+    const { salonId, agentId } = agentData;
+    reqLogger = reqLogger.child({ salonId, agentId });
 
     // 9. CRIAR/BUSCAR CUSTOMER E CHAT (com timeouts)
     const customer = await withTimeout(
@@ -189,6 +190,7 @@ export async function POST(req: NextRequest) {
         messageId,
         chatId: chat.id,
         salonId,
+        agentId, // Inclui o ID do agente
         customerId: customer.id,
         clientPhone,
         body: data.Body || "",

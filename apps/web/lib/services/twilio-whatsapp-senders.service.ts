@@ -27,7 +27,7 @@ const TWILIO_ERROR_MESSAGES: Record<number, string> = {
   63113: "Não foi possível verificar o número. Verifique se o número está correto e pode receber SMS.",
   63114: "Muitas tentativas de verificação. Aguarde alguns minutos antes de tentar novamente.",
   63116: "Código de verificação não recebido. Verifique a cobertura e se o número recebe SMS.",
-  63100: "Dados inválidos. Verifique o formato do número (ex: +5511999999999).",
+  63100: "Erro na configuração. Use o 'Meta Embedded Signup' para conectar sua conta WhatsApp Business ou configure o WABA ID manualmente.",
   63104: "Limite de números atingido na sua conta WhatsApp Business.",
 }
 
@@ -35,6 +35,11 @@ const FALLBACK_MESSAGE =
   "Este número não é elegível para WhatsApp Business. Verifique se é um número válido e se a conta Twilio está configurada."
 
 export function mapTwilioError(err: { code?: number; message?: string }): string {
+  // Tratamento especial para erro de WABA ID obrigatório
+  if (err?.message?.includes("waba_id is required")) {
+    return "WABA ID é obrigatório. Use o botão 'Conectar com WhatsApp Business' para conectar via Meta ou configure sua conta WhatsApp Business na Twilio primeiro."
+  }
+
   if (err?.code && TWILIO_ERROR_MESSAGES[err.code]) {
     return TWILIO_ERROR_MESSAGES[err.code]
   }
