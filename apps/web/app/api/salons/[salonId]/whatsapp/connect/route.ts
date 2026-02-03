@@ -100,6 +100,9 @@ export async function POST(
       ? `${String(baseUrl).replace(/\/$/, "")}/api/webhooks/twilio/whatsapp-status`
       : undefined
 
+    console.log('[DEBUG] baseUrl:', baseUrl)
+    console.log('[DEBUG] statusCallbackUrl:', statusCallbackUrl)
+
     // Registra o sender via Twilio Senders API na subaccount
     const { sid: twilioSenderId, status: twilioStatus } = await registerSenderWithClient(subClient, {
       phoneNumber: phone,

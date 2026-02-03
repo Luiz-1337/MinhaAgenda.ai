@@ -122,7 +122,8 @@ export async function generateAIResponse(
     console.log("\n💬 ========== CONVERSATION HISTORY ==========");
     console.log("Total messages:", uiMessages.length);
     uiMessages.forEach((msg, idx) => {
-      const text = msg.parts[0]?.text || "";
+      const part = msg.parts[0];
+      const text = part && part.type === "text" ? part.text : "";
       const preview = text.substring(0, 80);
       console.log(`  [${idx + 1}] ${msg.role}: ${preview}${text.length >= 80 ? "..." : ""}`);
     });

@@ -191,12 +191,13 @@ export function CreateAppointmentDialog({
 
       if ("error" in result) {
         toast.error(result.error)
-      } else {
+      } else if (result.data) {
+        const newCustomer = result.data
         toast.success("Cliente criado com sucesso!")
         // Adiciona o novo cliente à lista
-        setCustomers((prev) => [...prev, result.data])
+        setCustomers((prev) => [...prev, newCustomer])
         // Seleciona o cliente recém-criado
-        setClientId(result.data.id)
+        setClientId(newCustomer.id)
         // Limpa o formulário de criar cliente
         setNewCustomerName("")
         setNewCustomerPhone("")
