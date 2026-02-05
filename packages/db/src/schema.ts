@@ -122,13 +122,11 @@ export const salons = pgTable(
     subscriptionStatus: subscriptionStatusEnum('subscription_status').default('TRIAL').notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
-    // Twilio Subaccount fields
-    twilioSubaccountSid: text('twilio_subaccount_sid'),
-    twilioSubaccountToken: text('twilio_subaccount_token'), // Encrypted
-    twilioMessagingServiceSid: text('twilio_messaging_service_sid'),
-    // Meta WhatsApp Business fields
-    metaWabaId: text('meta_waba_id'),
-    metaPhoneNumberId: text('meta_phone_number_id'),
+    // Evolution API fields
+    evolutionInstanceName: text('evolution_instance_name'),
+    evolutionInstanceToken: text('evolution_instance_token'), // Optional instance-specific token
+    evolutionConnectionStatus: text('evolution_connection_status'), // 'connected' | 'disconnected' | 'connecting'
+    evolutionConnectedAt: timestamp('evolution_connected_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -539,7 +537,6 @@ export const agents = pgTable(
     tone: text('tone').notNull(),
     whatsappNumber: text('whatsapp_number'), // Opcional - pode conectar depois via Integrações
     whatsappStatus: text('whatsapp_status'), // pending_verification, verifying, verified, failed
-    twilioSenderId: text('twilio_sender_id'), // ID do sender no Twilio
     whatsappConnectedAt: timestamp('whatsapp_connected_at'), // Quando foi conectado
     whatsappVerifiedAt: timestamp('whatsapp_verified_at'), // Quando foi verificado
     isActive: boolean('is_active').default(false).notNull(),
@@ -617,7 +614,6 @@ export const whatsappTemplates = pgTable(
     header: text('header'), // Optional header text
     footer: text('footer'), // Optional footer text
     buttons: jsonb('buttons'), // Quick reply or CTA buttons
-    twilioContentSid: text('twilio_content_sid'), // Twilio Content API SID
     status: whatsappTemplateStatusEnum('status').default('draft').notNull(),
     rejectionReason: text('rejection_reason'),
     submittedAt: timestamp('submitted_at'),

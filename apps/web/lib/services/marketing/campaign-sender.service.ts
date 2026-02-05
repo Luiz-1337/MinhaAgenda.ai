@@ -2,7 +2,7 @@
  * Serviço para envio de campanhas de broadcast
  */
 
-import { sendWhatsAppMessage, normalizePhoneNumber, formatPhoneToE164 } from "@/lib/services/whatsapp.service"
+import { sendWhatsAppMessage, normalizePhoneNumber, formatPhoneToE164 } from "@/lib/services/evolution-message.service"
 import { MarketingRepository } from "./marketing.repository"
 import { SegmentationService } from "./segmentation.service"
 import { VariableReplacerService } from "./variable-replacer.service"

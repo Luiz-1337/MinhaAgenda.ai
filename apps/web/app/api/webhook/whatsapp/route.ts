@@ -1,36 +1,44 @@
 /**
- * Webhook do WhatsApp via Twilio 
- * 
+ * Webhook do WhatsApp via Evolution API
+ *
+ * Processa eventos da Evolution API:
+ * - messages.upsert: Mensagens recebidas
+ * - connection.update: Mudanças no status de conexão
+ * - qrcode.updated: QR code atualizado
  */
 
-import { NextRequest } from "next/server";
-import { validateRequest } from "twilio";
-import { TwilioWebhookSchema, detectMediaType } from "@/lib/schemas/twilio";
-import { logger, createContextLogger, hashPhone, createRequestContext, getDuration } from "@/lib/logger";
-import { isMessageProcessed, markMessageProcessed } from "@/lib/redis";
-import { enqueueMessage } from "@/lib/queues/message-queue";
-import { getAgentByWhatsapp } from "@/lib/services/salon.service";
-import { findOrCreateChat, findOrCreateCustomer, saveMessage } from "@/lib/services/chat.service";
-import { normalizePhoneNumber } from "@/lib/services/whatsapp.service";
-import { checkIfNewCustomer } from "@/lib/services/ai/generate-response.service";
-import { checkPhoneRateLimit } from "@/lib/rate-limit";
-import { withTimeout, TimeoutError } from "@/lib/utils/async.utils";
-import { WebhookMetrics } from "@/lib/metrics";
+import { NextRequest, NextResponse } from 'next/server';
 import {
-  WhatsAppError,
-  RateLimitError,
-  wrapError,
-} from "@/lib/errors";
+  EvolutionWebhookSchema,
+  extractMessageContent,
+  extractPhoneNumber,
+  detectMediaType,
+  hasMedia,
+  extractMediaUrl,
+  mapConnectionState,
+} from '@/lib/schemas/evolution';
+import { logger, createContextLogger, hashPhone, createRequestContext, getDuration } from '@/lib/logger';
+import { isMessageProcessed, markMessageProcessed } from '@/lib/redis';
+import { enqueueMessage } from '@/lib/queues/message-queue';
+import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
+import { checkIfNewCustomer } from '@/lib/services/ai/generate-response.service';
+import { checkPhoneRateLimit } from '@/lib/rate-limit';
+import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
+import { WebhookMetrics } from '@/lib/metrics';
+import { RateLimitError, wrapError } from '@/lib/errors';
+import { getConnectedPhoneNumber } from '@/lib/services/evolution-instance.service';
+import { db, salons, agents } from '@repo/db';
+import { eq, and } from 'drizzle-orm';
 
-// Timeout reduzido - webhook deve apenas validar e enfileirar
+// Timeout - webhook deve apenas validar e enfileirar
 export const maxDuration = 10;
 
-// Timeouts para operações do banco de dados (em ms)
+// Timeouts para operações (em ms)
 const DB_TIMEOUT = 5000; // 5 segundos
 const REDIS_TIMEOUT = 2000; // 2 segundos
 
 /**
- * Handler principal do webhook
+ * Handler principal do webhook Evolution API
  */
 export async function POST(req: NextRequest) {
   const ctx = createRequestContext();
@@ -40,295 +48,375 @@ export async function POST(req: NextRequest) {
   WebhookMetrics.received();
 
   try {
-    //reqLogger.info("Webhook received");
-
-    // 1. VALIDAR CONTENT-TYPE
-    const contentType = req.headers.get("content-type") || "";
-    const isValidContentType =
-      contentType.includes("multipart/form-data") ||
-      contentType.includes("application/x-www-form-urlencoded");
-
-    if (!isValidContentType) {
-      reqLogger.warn({ contentType }, "Invalid content-type");
-      WebhookMetrics.error("invalid_content_type");
-      return new Response("Invalid Content-Type", { status: 400 });
-    }
-
-    // 2. PARSEAR FORM DATA
-    const formData = await req.formData();
-    const formDataObject: Record<string, string> = {};
-    formData.forEach((value, key) => {
-      formDataObject[key] = value.toString();
-    });
-
-    // 3. VALIDAR ASSINATURA TWILIO
-    const isSignatureValid = await validateTwilioSignature(req, formDataObject, reqLogger);
-    if (!isSignatureValid) {
-      reqLogger.error("Invalid Twilio signature");
-      WebhookMetrics.error("invalid_signature");
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    // 4. VALIDAR SCHEMA
-    const validationResult = TwilioWebhookSchema.safeParse(formDataObject);
-    if (!validationResult.success) {
-      reqLogger.error(
-        { errors: validationResult.error.issues },
-        "Schema validation failed"
-      );
-      WebhookMetrics.error("schema_validation");
-      return new Response("Invalid payload", { status: 400 });
-    }
-
-    const data = validationResult.data;
-    const messageId = data.MessageSid;
-
-    reqLogger = reqLogger.child({
-      messageId,
-      from: hashPhone(data.From),
-      to: hashPhone(data.To),
-      hasMedia: data.NumMedia > 0,
-    });
-
-    //reqLogger.info("Payload validated");
-
-    // 5. VERIFICAR IDEMPOTÊNCIA (com timeout)
-    const isProcessed = await withTimeout(
-      isMessageProcessed(messageId),
-      REDIS_TIMEOUT,
-      "isMessageProcessed"
-    );
-    
-    if (isProcessed) {
-      reqLogger.info("Duplicate message, skipping");
-      WebhookMetrics.duplicate();
-      return new Response("", { status: 200 });
-    }
-
-    // 6. NORMALIZAR DADOS
-    const clientPhone = normalizePhoneNumber(data.From);
-    const salonPhone = data.To;
-
-    // 7. RATE LIMITING (ANTES de qualquer operação pesada)
+    // 1. PARSEAR JSON BODY (Evolution API usa JSON; pode ser objeto ou array em batch)
+    let body: unknown;
     try {
-      await withTimeout(
-        checkPhoneRateLimit(clientPhone),
-        REDIS_TIMEOUT,
-        "checkPhoneRateLimit"
-      );
-    } catch (error) {
-      if (error instanceof RateLimitError) {
-        reqLogger.warn(
-          { resetIn: error.resetIn },
-          "Rate limit exceeded at webhook level"
-        );
-        WebhookMetrics.rateLimited({ phone: hashPhone(clientPhone) });
-        // Retorna 200 para não causar retry do Twilio
-        // A mensagem será simplesmente ignorada
-        return new Response("", { status: 200 });
+      body = await req.json();
+    } catch {
+      reqLogger.warn('Invalid JSON body');
+      WebhookMetrics.error('invalid_json');
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+
+    const payloads = Array.isArray(body) ? body : [body];
+
+    for (const rawPayload of payloads) {
+      try {
+        const validationResult = EvolutionWebhookSchema.safeParse(rawPayload);
+        if (!validationResult.success) {
+          reqLogger.error(
+            { errors: validationResult.error.issues, rawEvent: (rawPayload as any)?.event },
+            'Schema validation failed'
+          );
+          WebhookMetrics.error('schema_validation');
+          continue;
+        }
+
+        const data = validationResult.data;
+
+        const payloadLogger = reqLogger.child({
+          event: data.event,
+          instance: data.instance,
+        });
+
+        switch (data.event) {
+          case 'messages.upsert':
+            await handleMessageUpsert(data as any, payloadLogger, ctx);
+            break;
+          case 'connection.update':
+            await handleConnectionUpdate(data as any, payloadLogger, ctx);
+            break;
+          case 'qrcode.updated':
+            await handleQRCodeUpdate(data as any, payloadLogger, ctx);
+            break;
+          default:
+            payloadLogger.debug({ event: data.event }, 'Ignoring unknown event');
+        }
+      } catch (payloadError) {
+        reqLogger.warn({ err: payloadError, rawPayload }, 'Error processing webhook payload');
       }
-      throw error;
     }
 
-    // 8. BUSCAR AGENTE E SALÃO (com timeout)
-    const agentData = await withTimeout(
-      getAgentByWhatsapp(salonPhone),
-      DB_TIMEOUT,
-      "getAgentByWhatsapp"
-    );
-
-    if (!agentData) {
-      reqLogger.error({ salonPhone: hashPhone(salonPhone) }, "Agent not found");
-      WebhookMetrics.error("agent_not_found");
-      // Retorna 200 para evitar retries do Twilio (não é erro temporário)
-      return new Response("", { status: 200 });
-    }
-
-    const { salonId, agentId } = agentData;
-    reqLogger = reqLogger.child({ salonId, agentId });
-
-    // 9. CRIAR/BUSCAR CUSTOMER E CHAT (com timeouts)
-    const customer = await withTimeout(
-      findOrCreateCustomer(clientPhone, salonId),
-      DB_TIMEOUT,
-      "findOrCreateCustomer"
-    );
-    
-    const chat = await withTimeout(
-      findOrCreateChat(clientPhone, salonId),
-      DB_TIMEOUT,
-      "findOrCreateChat"
-    );
-
-    reqLogger = reqLogger.child({
-      chatId: chat.id,
-      customerId: customer.id,
-    });
-
-    // 10. VERIFICAR SE É CLIENTE NOVO (com timeout)
-    const isNewCustomer = await withTimeout(
-      checkIfNewCustomer(salonId, clientPhone),
-      DB_TIMEOUT,
-      "checkIfNewCustomer"
-    );
-
-    // 11. SALVAR MENSAGEM RAW NO BANCO (com timeout)
-    const messageContent = data.NumMedia > 0
-      ? `[MÍDIA] ${getMediaLabel(formDataObject)}`
-      : data.Body || "";
-
-    await withTimeout(
-      saveMessage(chat.id, "user", messageContent),
-      DB_TIMEOUT,
-      "saveMessage"
-    );
-    reqLogger.debug("Message saved to database");
-
-    // 12. ENFILEIRAR PROCESSAMENTO (com timeout)
-    await withTimeout(
-      enqueueMessage({
-        messageId,
-        chatId: chat.id,
-        salonId,
-        agentId, // Inclui o ID do agente
-        customerId: customer.id,
-        clientPhone,
-        body: data.Body || "",
-        hasMedia: data.NumMedia > 0,
-        mediaType: data.NumMedia > 0 ? getMediaType(formDataObject) : undefined,
-        mediaUrl: data.MediaUrl0,
-        receivedAt: new Date().toISOString(),
-        profileName: data.ProfileName,
-        isNewCustomer,
-        customerName: customer.name,
-      }),
-      REDIS_TIMEOUT,
-      "enqueueMessage"
-    );
-
-    // 13. MARCAR COMO PROCESSADO (idempotência, com timeout)
-    await withTimeout(
-      markMessageProcessed(messageId),
-      REDIS_TIMEOUT,
-      "markMessageProcessed"
-    );
-
-    const duration = getDuration(ctx);
-    // reqLogger.info({ duration }, "Message enqueued successfully");
-    
-    // Registra métricas de sucesso
-    WebhookMetrics.enqueued({ salonId });
-    WebhookMetrics.latency(duration);
-
-    return new Response("", { status: 200 });
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
   } catch (error) {
     const duration = getDuration(ctx);
 
     // Tratamento especial para timeout
     if (error instanceof TimeoutError) {
-      reqLogger.error(
-        { err: error, duration },
-        "Operation timed out"
-      );
-      WebhookMetrics.error("timeout");
-      // Timeout é retryable
-      return new Response("Internal Server Error", { status: 500 });
+      reqLogger.error({ err: error, duration }, 'Operation timed out');
+      WebhookMetrics.error('timeout');
+      return NextResponse.json({ error: 'Timeout' }, { status: 500 });
     }
 
-    // Wrap em WhatsAppError se necessário
     const wrappedError = wrapError(error);
 
     reqLogger.error(
       {
         err: wrappedError,
-        code: wrappedError.code,
+        code: (wrappedError as any).code,
         duration,
       },
-      "Error processing webhook"
+      'Error processing webhook'
     );
 
-    WebhookMetrics.error(wrappedError.code);
-    WebhookMetrics.latency(duration);
+    WebhookMetrics.error('processing_error');
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
-    // Retorna 200 para erros não-retryable (evita loops de retry do Twilio)
-    if (!wrappedError.retryable) {
-      return new Response("", { status: 200 });
+/**
+ * Handler para evento messages.upsert (mensagem recebida)
+ */
+async function handleMessageUpsert(
+  data: any,
+  reqLogger: ReturnType<typeof createContextLogger>,
+  ctx: ReturnType<typeof createRequestContext>
+) {
+  const messageData = data.data;
+  const instanceName = data.instance;
+
+  // Ignora mensagens enviadas por nós (fromMe = true)
+  if (messageData.key.fromMe) {
+    reqLogger.debug('Ignoring message from self');
+    return NextResponse.json({ status: 'ignored' }, { status: 200 });
+  }
+
+  const messageId = messageData.key.id;
+  const remoteJid = messageData.key.remoteJid;
+
+  // Extrai número de telefone do formato Evolution (5511999999999@s.whatsapp.net)
+  const clientPhone = extractPhoneNumber(remoteJid);
+
+  reqLogger = reqLogger.child({
+    messageId,
+    from: hashPhone(clientPhone),
+    hasMedia: hasMedia(messageData),
+  });
+
+  // 1. VERIFICAR IDEMPOTÊNCIA (com timeout)
+  const isProcessed = await withTimeout(
+    isMessageProcessed(messageId),
+    REDIS_TIMEOUT,
+    'isMessageProcessed'
+  );
+
+  if (isProcessed) {
+    reqLogger.info('Duplicate message, skipping');
+    WebhookMetrics.duplicate();
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  // 2. RATE LIMITING (antes de qualquer operação pesada)
+  try {
+    await withTimeout(
+      checkPhoneRateLimit(clientPhone),
+      REDIS_TIMEOUT,
+      'checkPhoneRateLimit'
+    );
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      reqLogger.warn(
+        { resetIn: (error as any).resetIn },
+        'Rate limit exceeded at webhook level'
+      );
+      WebhookMetrics.rateLimited({ phone: hashPhone(clientPhone) });
+      // Retorna 200 para não causar retry
+      return NextResponse.json({ status: 'ok' }, { status: 200 });
+    }
+    throw error;
+  }
+
+  // 3. BUSCAR SALÃO PELA INSTÂNCIA (com timeout)
+  const salon = await withTimeout(
+    db.query.salons.findFirst({
+      where: eq(salons.evolutionInstanceName, instanceName),
+      columns: { id: true },
+    }),
+    DB_TIMEOUT,
+    'findSalonByInstance'
+  );
+
+  if (!salon) {
+    reqLogger.error({ instanceName }, 'Salon not found for instance');
+    WebhookMetrics.error('salon_not_found');
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  const salonId = salon.id;
+  reqLogger = reqLogger.child({ salonId });
+
+  // 4. BUSCAR AGENTE ATIVO DO SALÃO (com timeout)
+  const agent = await withTimeout(
+    db.query.agents.findFirst({
+      where: and(
+        eq(agents.salonId, salonId),
+        eq(agents.isActive, true)
+      ),
+      columns: { id: true },
+    }),
+    DB_TIMEOUT,
+    'findActiveAgent'
+  );
+
+  if (!agent) {
+    reqLogger.error({ salonId }, 'No active agent for salon');
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  const agentId = agent.id;
+  reqLogger = reqLogger.child({ agentId });
+
+  // 5. CRIAR/BUSCAR CUSTOMER E CHAT (com timeouts)
+  const customer = await withTimeout(
+    findOrCreateCustomer(clientPhone, salonId),
+    DB_TIMEOUT,
+    'findOrCreateCustomer'
+  );
+
+  const chat = await withTimeout(
+    findOrCreateChat(clientPhone, salonId),
+    DB_TIMEOUT,
+    'findOrCreateChat'
+  );
+
+  reqLogger = reqLogger.child({
+    chatId: chat.id,
+    customerId: customer.id,
+  });
+
+  // 6. EXTRAIR CONTEÚDO DA MENSAGEM
+  const messageContent = extractMessageContent(messageData);
+  const mediaType = detectMediaType(messageData);
+  const mediaUrl = extractMediaUrl(messageData);
+
+  // 7. VERIFICAR SE É CLIENTE NOVO (com timeout)
+  const isNewCustomer = await withTimeout(
+    checkIfNewCustomer(salonId, clientPhone),
+    DB_TIMEOUT,
+    'checkIfNewCustomer'
+  );
+
+  // 8. SALVAR MENSAGEM RAW NO BANCO (com timeout)
+  await withTimeout(
+    saveMessage(chat.id, 'user', messageContent),
+    DB_TIMEOUT,
+    'saveMessage'
+  );
+  reqLogger.debug('Message saved to database');
+
+  // 9. ENFILEIRAR PROCESSAMENTO (com timeout)
+  await withTimeout(
+    enqueueMessage({
+      messageId,
+      chatId: chat.id,
+      salonId,
+      agentId,
+      customerId: customer.id,
+      clientPhone,
+      body: messageContent,
+      hasMedia: hasMedia(messageData),
+      mediaType: mediaType ?? undefined,
+      mediaUrl: mediaUrl ?? undefined,
+      receivedAt: new Date(messageData.messageTimestamp * 1000).toISOString(),
+      profileName: messageData.pushName,
+      isNewCustomer,
+      customerName: customer.name,
+    }),
+    REDIS_TIMEOUT,
+    'enqueueMessage'
+  );
+
+  // 10. MARCAR COMO PROCESSADO (idempotência, com timeout)
+  await withTimeout(
+    markMessageProcessed(messageId),
+    REDIS_TIMEOUT,
+    'markMessageProcessed'
+  );
+
+  const duration = getDuration(ctx);
+
+  // Registra métricas de sucesso
+  WebhookMetrics.enqueued({ salonId });
+  WebhookMetrics.latency(duration);
+
+  return NextResponse.json({ status: 'ok' }, { status: 200 });
+}
+
+/**
+ * Handler para evento connection.update (mudança de status de conexão)
+ */
+async function handleConnectionUpdate(
+  data: any,
+  reqLogger: ReturnType<typeof createContextLogger>,
+  ctx: ReturnType<typeof createRequestContext>
+) {
+  const instanceName = data.instance;
+  const connectionData = data.data;
+
+  // Mapeia status da Evolution API para nosso enum
+  const status = mapConnectionState(connectionData.state);
+
+  reqLogger = reqLogger.child({
+    instanceName,
+    evolutionState: connectionData.state,
+    mappedStatus: status,
+  });
+
+  try {
+    // Atualiza status de conexão do salão (com timeout)
+    await withTimeout(
+      db
+        .update(salons)
+        .set({
+          evolutionConnectionStatus: status,
+          ...(status === 'connected' ? { evolutionConnectedAt: new Date() } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(salons.evolutionInstanceName, instanceName)),
+      DB_TIMEOUT,
+      'updateSalonConnectionStatus'
+    );
+
+    // Se conectado, busca número da Evolution e atualiza agents
+    if (status === 'connected') {
+      const salon = await withTimeout(
+        db.query.salons.findFirst({
+          where: eq(salons.evolutionInstanceName, instanceName),
+          columns: { id: true },
+        }),
+        DB_TIMEOUT,
+        'findSalonByInstance'
+      );
+
+      if (salon) {
+        let phoneNumber: string | null = null;
+        try {
+          phoneNumber = await getConnectedPhoneNumber(instanceName);
+        } catch (err) {
+          reqLogger.warn({ err }, 'Could not fetch connected phone number');
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          whatsappStatus: 'verified',
+          whatsappVerifiedAt: new Date(),
+          whatsappConnectedAt: new Date(),
+          updatedAt: new Date(),
+        };
+        if (phoneNumber) {
+          updatePayload.whatsappNumber = phoneNumber;
+        }
+
+        await withTimeout(
+          db
+            .update(agents)
+            .set(updatePayload as any)
+            .where(eq(agents.salonId, salon.id)),
+          DB_TIMEOUT,
+          'updateAgentsStatus'
+        );
+      }
     }
 
-    // Retorna 500 para erros retryable (Twilio vai retentar)
-    return new Response("Internal Server Error", { status: 500 });
+    reqLogger.info('Connection status updated');
+
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  } catch (error) {
+    reqLogger.error({ err: error }, 'Failed to update connection status');
+    throw error;
   }
 }
 
 /**
- * Valida a assinatura do Twilio
- * - Em produção: sempre valida
- * - Em desenvolvimento: pode pular se TWILIO_SKIP_VALIDATION=true
+ * Handler para evento qrcode.updated (QR code atualizado)
  */
-async function validateTwilioSignature(
-  req: NextRequest,
-  formData: Record<string, string>,
-  reqLogger: ReturnType<typeof createContextLogger>
-): Promise<boolean> {
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const skipValidation =
-    isDevelopment && process.env.TWILIO_SKIP_VALIDATION === "true";
+async function handleQRCodeUpdate(
+  data: any,
+  reqLogger: ReturnType<typeof createContextLogger>,
+  ctx: ReturnType<typeof createRequestContext>
+) {
+  const instanceName = data.instance;
+  const qrcode = data.data.qrcode;
 
-  if (skipValidation) {
-    reqLogger.warn("Twilio signature validation skipped (development)");
-    return true;
+  reqLogger = reqLogger.child({ instanceName });
+
+  try {
+    // Importa getRedisClient dinamicamente para evitar circular dependency
+    const { getRedisClient } = await import('@/lib/redis');
+    const redisClient = getRedisClient();
+
+    // Armazena QR code no cache por 5 minutos (com timeout)
+    await withTimeout(
+      redisClient.setex(`evolution:qrcode:${instanceName}`, 300, qrcode),
+      REDIS_TIMEOUT,
+      'storeQRCode'
+    );
+
+    reqLogger.info('QR code updated and cached');
+
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  } catch (error) {
+    reqLogger.error({ err: error }, 'Failed to store QR code');
+    // Não falha - QR code é opcional
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
   }
-
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioSignature = req.headers.get("x-twilio-signature");
-
-  if (!authToken) {
-    reqLogger.error("TWILIO_AUTH_TOKEN not configured");
-    return false;
-  }
-
-  if (!twilioSignature) {
-    reqLogger.error("Missing X-Twilio-Signature header");
-    return false;
-  }
-
-  // Reconstrói a URL pública (considerando proxies)
-  const url = new URL(req.url);
-  const forwardedProto = req.headers.get("x-forwarded-proto");
-  const forwardedHost = req.headers.get("x-forwarded-host");
-  const host = forwardedHost ?? req.headers.get("host") ?? url.host;
-  const proto = forwardedProto ?? url.protocol.replace(":", "");
-  const publicUrl = `${proto}://${host}${url.pathname}${url.search}`;
-
-  const isValid = validateRequest(authToken, twilioSignature, publicUrl, formData);
-
-  if (isValid) {
-    reqLogger.debug("Twilio signature validated");
-  }
-
-  return isValid;
-}
-
-/**
- * Obtém o label do tipo de mídia para o log
- */
-function getMediaLabel(formData: Record<string, string>): string {
-  const contentType = formData.MediaContentType0?.toLowerCase();
-  if (!contentType) return "unknown";
-
-  if (contentType.startsWith("image/")) return "imagem";
-  if (contentType.startsWith("audio/")) return "áudio";
-  if (contentType.startsWith("video/")) return "vídeo";
-  if (contentType.includes("pdf")) return "documento PDF";
-
-  return "mídia";
-}
-
-/**
- * Obtém o tipo de mídia
- */
-function getMediaType(
-  formData: Record<string, string>
-): "image" | "audio" | "video" | "document" | undefined {
-  return detectMediaType(formData.MediaContentType0) ?? undefined;
 }

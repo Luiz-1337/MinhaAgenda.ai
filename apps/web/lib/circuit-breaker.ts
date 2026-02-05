@@ -322,19 +322,9 @@ export class CircuitBreaker {
 // ============================================================================
 
 /**
- * Circuit Breaker para API do Twilio
+ * Circuit Breaker para Evolution API (WhatsApp)
+ * Importado do evolution-api.service.ts
  */
-export const twilioCircuitBreaker = new CircuitBreaker({
-  name: "twilio",
-  timeout: 10000, // 10s - Twilio pode ser lento
-  errorThresholdPercentage: 50,
-  volumeThreshold: 5,
-  resetTimeout: 30000, // 30s
-  fallback: (error) => {
-    logger.error({ err: error }, "Twilio circuit breaker fallback triggered");
-    throw new Error("WhatsApp service temporarily unavailable. Please try again later.");
-  },
-});
 
 /**
  * Circuit Breaker para operações de banco de dados
@@ -371,9 +361,12 @@ export async function withCircuitBreaker<T>(
 /**
  * Retorna status de todos os circuit breakers
  */
-export function getAllCircuitBreakersStatus(): Record<string, CircuitStats & { state: CircuitState }> {
+export async function getAllCircuitBreakersStatus(): Promise<Record<string, CircuitStats & { state: CircuitState }>> {
+  // Import dinâmico para evitar dependência circular
+  const { evolutionCircuitBreaker } = await import('./services/evolution-api.service');
+
   return {
-    twilio: twilioCircuitBreaker.getStats(),
+    evolution: evolutionCircuitBreaker.getStats(),
     database: databaseCircuitBreaker.getStats(),
     ai: aiCircuitBreaker.getStats(),
   };

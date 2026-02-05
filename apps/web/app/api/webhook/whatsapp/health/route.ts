@@ -85,7 +85,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<HealthStatus>>
   // Inclui status dos circuit breakers se solicitado
   if (includeCircuitBreakers) {
     try {
-      response.circuitBreakers = getAllCircuitBreakersStatus();
+      response.circuitBreakers = await getAllCircuitBreakersStatus();
     } catch (error) {
       logger.warn({ err: error }, "Failed to get circuit breakers status");
     }

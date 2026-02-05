@@ -11,7 +11,18 @@
       "Bash(npx supabase:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "WebFetch(domain:doc.evolution-api.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(pnpm dev)",
+      "Bash(taskkill:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm build:*)",
+      "Bash(curl:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker exec:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(python3:*)"
     ]
   }
 }

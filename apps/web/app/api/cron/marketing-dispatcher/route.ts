@@ -1,5 +1,5 @@
 import { db, domainServices, logger, recoveryFlows, recoverySteps, sql } from '@repo/db'
-import { sendWhatsAppMessage } from '@/lib/services/whatsapp.service'
+import { sendWhatsAppMessage } from '@/lib/services/evolution-message.service'
 
 export const runtime = 'nodejs'
 

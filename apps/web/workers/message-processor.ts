@@ -20,11 +20,7 @@ import { logger, createContextLogger, hashPhone } from "../lib/logger";
 import { checkPhoneRateLimit } from "../lib/rate-limit";
 import { generateAIResponse, checkIfNewCustomer } from "../lib/services/ai/generate-response.service";
 import { saveMessage, findOrCreateCustomer, getChatHistory } from "../lib/services/chat.service";
-import { sendWhatsAppMessage } from "../lib/services/whatsapp.service";
-import {
-  downloadAndStoreTwilioMedia,
-  isTwilioMediaUrl,
-} from "../lib/services/media-storage.service";
+import { sendWhatsAppMessage } from "../lib/services/evolution-message.service";
 import { db, chats, domainServices } from "@repo/db";
 import { eq } from "drizzle-orm";
 import {
@@ -126,37 +122,17 @@ async function processMessage(
 
     // 4. Processar mídia
     if (hasMedia) {
-      // 4.1 Tenta armazenar mídia permanentemente (URLs do Twilio expiram!)
-      let permanentMediaUrl = job.data.mediaUrl;
-      
-      if (job.data.mediaUrl && isTwilioMediaUrl(job.data.mediaUrl)) {
-        const storageResult = await downloadAndStoreTwilioMedia(
-          job.data.mediaUrl,
-          messageId,
-          salonId
-        );
+      // Evolution API já fornece URLs acessíveis para mídia
+      const permanentMediaUrl = job.data.mediaUrl;
 
-        if (storageResult.success && storageResult.permanentUrl) {
-          permanentMediaUrl = storageResult.permanentUrl;
-          jobLogger.info(
-            {
-              mediaType,
-              originalUrl: "twilio_url_hidden",
-              permanentUrl: storageResult.permanentUrl.substring(0, 50) + "...",
-              size: storageResult.size,
-            },
-            "Media stored permanently"
-          );
-        } else {
-          // Log de warning mas continua com URL original (melhor que falhar)
-          jobLogger.warn(
-            {
-              mediaType,
-              error: storageResult.error,
-            },
-            "Failed to store media permanently, using original URL"
-          );
-        }
+      if (permanentMediaUrl) {
+        jobLogger.info(
+          {
+            mediaType,
+            hasMediaUrl: !!permanentMediaUrl,
+          },
+          "Media URL available from Evolution API"
+        );
       }
 
       // 4.2 Responde ao cliente (atualmente não processamos mídia)

@@ -8,6 +8,7 @@ import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/age
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { MetaEmbeddedSignup } from "@/components/whatsapp/meta-embedded-signup"
+import { QRCodeModal } from "@/components/whatsapp/qrcode-modal"
 import { VerificationModal } from "@/components/whatsapp/verification-modal"
 
 type WhatsAppNumber = {
@@ -50,6 +51,10 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   const [pendingPhone, setPendingPhone] = useState("")
   const [isVerifying, setIsVerifying] = useState(false)
   const [verificationError, setVerificationError] = useState<string | null>(null)
+
+  // QR code modal (Evolution API)
+  const [qrcodeModalOpen, setQrcodeModalOpen] = useState(false)
+  const [qrcodeData, setQrcodeData] = useState<string | null>(null)
   
   // Connection mode state
   const [connectionMode, setConnectionMode] = useState<"manual" | "embedded">("manual")
@@ -84,10 +89,11 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
     }
   }
 
-  // WhatsApp handlers - Manual connection
-  async function handleConnectWhatsApp() {
+  // WhatsApp handlers - Manual connection (Evolution API com QR code)
+  async function handleConnectWhatsApp(reconnect = false) {
     const raw = whatsappPhoneInput.replace(/\s/g, "").replace(/-/g, "").replace(/[()]/g, "").trim()
-    if (!/^\+[1-9]\d{10,14}$/.test(raw)) {
+    // Phone é opcional para Evolution API (QR code) - só valida se informado
+    if (raw && !/^\+[1-9]\d{10,14}$/.test(raw)) {
       toast.error("Formato de número inválido. Use o formato +5511999999999")
       return
     }
@@ -96,7 +102,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber: raw }),
+        body: JSON.stringify({ phoneNumber: raw || undefined, reconnect }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -104,11 +110,17 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         return
       }
       
-      // Se retornou status pending_verification, abre modal de verificação
-      if (data.status === "pending_verification") {
+      // Evolution API: QR code para escanear
+      if (data.status === "connecting" && data.qrcode) {
+        setQrcodeData(data.qrcode)
+        setQrcodeModalOpen(true)
+        toast.success("Escaneie o QR code com seu WhatsApp")
+      } else if (data.status === "pending_verification") {
         setPendingPhone(raw)
         setVerificationModalOpen(true)
         toast.success("SMS enviado! Digite o código de verificação.")
+      } else if (data.status === "connected") {
+        toast.success("WhatsApp já está conectado!")
       } else {
         toast.success("WhatsApp conectado com sucesso!")
       }
@@ -421,7 +433,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                     <button
                       type="button"
                       disabled={isConnecting}
-                      onClick={handleConnectWhatsApp}
+                      onClick={() => handleConnectWhatsApp()}
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
                     >
                       {isConnecting && <Loader2 size={16} className="animate-spin" />}
@@ -429,7 +441,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                     </button>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Formato: +5511999999999 - Você receberá um SMS para verificar
+                    Clique em Conectar para ver o QR code. Escaneie com o WhatsApp do seu celular.
                   </p>
                 </div>
               </div>
@@ -522,13 +534,23 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                   {n.status}
                 </span>
               )}
-              <button
-                type="button"
-                onClick={() => setDisconnectModalOpen(true)}
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-medium"
-              >
-                Desconectar
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleConnectWhatsApp(true)}
+                  disabled={isConnecting}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                >
+                  Reconectar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisconnectModalOpen(true)}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-medium"
+                >
+                  Desconectar
+                </button>
+              </div>
             </div>
           )
         })()}
@@ -546,6 +568,23 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         phoneNumber={pendingPhone}
         isLoading={isVerifying}
         error={verificationError}
+      />
+
+      <QRCodeModal
+        open={qrcodeModalOpen}
+        onClose={() => {
+          setQrcodeModalOpen(false)
+          setQrcodeData(null)
+          fetchWhatsAppStatus()
+        }}
+        qrcode={qrcodeData || ""}
+        onStatusCheck={async () => {
+          const res = await fetch(`/api/salons/${salonId}/whatsapp/status`)
+          const data = await res.json()
+          const connected = data.numbers?.[0]?.status === "verified"
+          return { connected }
+        }}
+        pollIntervalMs={3000}
       />
 
       <ConfirmModal

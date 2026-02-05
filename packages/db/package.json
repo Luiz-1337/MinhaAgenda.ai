@@ -30,7 +30,7 @@
   "dependencies": {
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
-    "drizzle-orm": "^0.45.0",
+    "drizzle-orm": "^0.45.1",
     "google-auth-library": "^9.0.0",
     "googleapis": "^144.0.0",
     "pg": "^8.12.0",
