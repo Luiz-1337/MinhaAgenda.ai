@@ -1,7 +1,7 @@
 import type { IAppointmentRepository, AppointmentWithRelations } from '../../domain/integrations/interfaces/appointment-repository.interface'
 import type { AppointmentId } from '../../domain/integrations/value-objects/appointment-id'
 import type { SalonId } from '../../domain/integrations/value-objects/salon-id'
-import { db, appointments, professionals, services, profiles, salons } from '../../index'
+import { db, appointments, professionals, services, profiles, salons, customers } from '../../index'
 import { eq } from 'drizzle-orm'
 import { createAppointmentId, createSalonId } from '../../domain/integrations/value-objects/index'
 
@@ -29,14 +29,14 @@ export class AppointmentRepository implements IAppointmentRepository {
         professionalGoogleCalendarId: professionals.googleCalendarId,
         serviceName: services.name,
         serviceDuration: services.duration,
-        clientName: profiles.fullName,
-        clientEmail: profiles.email,
-        clientPhone: profiles.phone,
+        clientName: customers.name,
+        clientEmail: customers.email,
+        clientPhone: customers.phone,
       })
       .from(appointments)
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
       .innerJoin(services, eq(appointments.serviceId, services.id))
-      .innerJoin(profiles, eq(appointments.clientId, profiles.id))
+      .innerJoin(customers, eq(appointments.clientId, customers.id))
       .where(eq(appointments.id, appointmentId))
       .limit(1)
 
@@ -104,7 +104,7 @@ export class AppointmentRepository implements IAppointmentRepository {
     provider: 'google' | 'trinks',
     eventId: string | null
   ): Promise<void> {
-    const updateData = provider === 'google' 
+    const updateData = provider === 'google'
       ? { googleEventId: eventId }
       : { trinksEventId: eventId }
 

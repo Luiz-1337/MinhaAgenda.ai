@@ -26,14 +26,15 @@ import { eq } from "drizzle-orm";
 import {
   WhatsAppError,
   RateLimitError,
-  LockTimeoutError,
   AIGenerationError,
   getUserFriendlyMessage,
 } from "../lib/errors";
+import { withTimeout, TimeoutError } from "../lib/utils/async.utils";
 
 // Configuração do worker
 const QUEUE_NAME = "whatsapp-messages";
-const LOCK_TTL_MS = 60000; // 60 segundos
+const LOCK_TTL_MS = 120000; // 120 segundos - mais tempo para IA
+const AI_TIMEOUT_MS = 90000; // 90 segundos - timeout para geração de IA
 const CONCURRENCY = 10; // Jobs simultâneos
 
 /**
@@ -48,12 +49,16 @@ async function processMessage(
     salonId,
     customerId,
     clientPhone,
+    replyToJid, // JID original para responder (pode ser LID)
     body,
     hasMedia,
     mediaType,
     customerName,
     isNewCustomer,
   } = job.data;
+
+  // Para enviar mensagem, usar replyToJid se disponível (suporte a LID), senão usar clientPhone
+  const sendTo = replyToJid || clientPhone;
 
   const jobLogger = createContextLogger({
     jobId: job.id,
@@ -78,14 +83,14 @@ async function processMessage(
           { resetIn: error.resetIn },
           "Rate limit exceeded, will retry"
         );
-        
+
         // Responde ao cliente sobre rate limit
         await sendWhatsAppMessage(
           clientPhone,
           "Você está enviando muitas mensagens. Por favor, aguarde um momento antes de enviar outra.",
           salonId
         );
-        
+
         return {
           status: "rate_limited",
           chatId,
@@ -99,8 +104,9 @@ async function processMessage(
     // 2. Lock distribuído (garante processamento sequencial por chat)
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
     if (!lockId) {
-      jobLogger.warn("Could not acquire lock, retrying");
-      throw new LockTimeoutError(`chat:${chatId}`);
+      // Continua sem lock - melhor responder do que deixar mensagem sem resposta
+      // O risco é responder duplicado, mas é melhor que não responder
+      jobLogger.warn("Could not acquire lock, proceeding without lock");
     }
 
     // 3. Verificar modo manual
@@ -137,8 +143,8 @@ async function processMessage(
 
       // 4.2 Responde ao cliente (atualmente não processamos mídia)
       const mediaResponse = await handleMediaMessage(mediaType, permanentMediaUrl);
-      
-      await sendWhatsAppMessage(clientPhone, mediaResponse, salonId);
+
+      await sendWhatsAppMessage(sendTo, mediaResponse, salonId);
       await saveMessage(chatId, "assistant", mediaResponse);
 
       jobLogger.info({ mediaType, hasStoredMedia: !!permanentMediaUrl }, "Media message handled");
@@ -152,19 +158,23 @@ async function processMessage(
       };
     }
 
-    // 5. Gerar resposta com AI
-    const response = await generateAIResponse({
-      chatId,
-      salonId,
-      clientPhone,
-      userMessage: body,
-      customerId,
-      customerName,
-      isNewCustomer,
-    });
+    // 5. Gerar resposta com AI (com timeout para evitar travamentos)
+    const response = await withTimeout(
+      generateAIResponse({
+        chatId,
+        salonId,
+        clientPhone,
+        userMessage: body,
+        customerId,
+        customerName,
+        isNewCustomer,
+      }),
+      AI_TIMEOUT_MS,
+      'generateAIResponse'
+    );
 
     // 6. Enviar via WhatsApp
-    await sendWhatsAppMessage(clientPhone, response.text, salonId);
+    await sendWhatsAppMessage(sendTo, response.text, salonId);
 
     // 7. Verificar se a resposta requer resposta do cliente
     const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
@@ -233,9 +243,14 @@ async function processMessage(
     // Re-throw apenas para erros retryable
     throw error;
   } finally {
-    // Sempre libera o lock
+    // Sempre libera o lock se foi adquirido
     if (lockId) {
-      await releaseLock(`chat:${chatId}`, lockId);
+      try {
+        await releaseLock(`chat:${chatId}`, lockId);
+      } catch (releaseError) {
+        jobLogger.error({ err: releaseError }, "Failed to release lock");
+        // Não re-throw - lock vai expirar naturalmente
+      }
     }
   }
 }
@@ -263,7 +278,7 @@ async function handleMediaMessage(
 
   // TODO: Quando implementar processamento de mídia com AI (ex: GPT-4V para imagens),
   // usar permanentUrl para enviar ao modelo. A mídia já está salva permanentemente.
-  
+
   // Log que mídia foi armazenada (para debug)
   if (permanentUrl) {
     logger.debug({ mediaType, hasUrl: true }, "Media stored for future processing");
@@ -336,7 +351,7 @@ export function createMessageWorker(): Worker<MessageJobData, MessageJobResult> 
 // Execução direta do worker
 if (require.main === module) {
   logger.info("Starting message processor worker...");
-  
+
   const worker = createMessageWorker();
 
   // Graceful shutdown

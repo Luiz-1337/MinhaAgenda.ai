@@ -43,8 +43,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', ['ACTIVE', '
 export const professionalRoleEnum = pgEnum('professional_role', ['OWNER', 'MANAGER', 'STAFF'])
 export const paymentStatusEnum = pgEnum('payment_status', ['PENDING', 'APPROVED', 'FAILED', 'REFUNDED'])
 export const paymentMethodEnum = pgEnum('payment_method', ['PIX', 'CARD', 'BOLETO'])
-export const whatsappTemplateStatusEnum = pgEnum('whatsapp_template_status', ['draft', 'pending', 'approved', 'rejected'])
-export const whatsappTemplateCategoryEnum = pgEnum('whatsapp_template_category', ['MARKETING', 'UTILITY', 'AUTHENTICATION'])
+export const syncStatusEnum = pgEnum('sync_status', ['pending', 'synced', 'failed'])
 
 // ============================================================================
 // TABLES - User/Auth
@@ -256,6 +255,7 @@ export const appointments = pgTable(
     status: statusEnum('status').default('pending').notNull(),
     googleEventId: text('google_event_id'),
     trinksEventId: text('trinks_event_id'),
+    syncStatus: syncStatusEnum('sync_status').default('pending').notNull(),
     notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
@@ -602,31 +602,7 @@ export const systemPromptTemplates = pgTable(
 // ============================================================================
 // TABLES - WhatsApp HSM Templates
 // ============================================================================
-export const whatsappTemplates = pgTable(
-  'whatsapp_templates',
-  {
-    id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-    name: text('name').notNull(),
-    language: text('language').default('pt_BR').notNull(),
-    category: whatsappTemplateCategoryEnum('category').notNull(),
-    body: text('body').notNull(),
-    header: text('header'), // Optional header text
-    footer: text('footer'), // Optional footer text
-    buttons: jsonb('buttons'), // Quick reply or CTA buttons
-    status: whatsappTemplateStatusEnum('status').default('draft').notNull(),
-    rejectionReason: text('rejection_reason'),
-    submittedAt: timestamp('submitted_at'),
-    approvedAt: timestamp('approved_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull()
-  },
-  (table) => [
-    index('whatsapp_templates_salon_idx').on(table.salonId),
-    index('whatsapp_templates_status_idx').on(table.status),
-    uniqueIndex('whatsapp_templates_salon_name_unique').on(table.salonId, table.name)
-  ]
-)
+
 
 // ============================================================================
 // RELATIONS
@@ -650,8 +626,7 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   recoveryFlows: many(recoveryFlows),
   integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] }),
   agent: one(agents, { fields: [salons.id], references: [agents.salonId] }),
-  systemPromptTemplates: many(systemPromptTemplates),
-  whatsappTemplates: many(whatsappTemplates)
+  systemPromptTemplates: many(systemPromptTemplates)
 }))
 
 export const salonIntegrationsRelations = relations(salonIntegrations, ({ one }) => ({
@@ -734,13 +709,7 @@ export const systemPromptTemplatesRelations = relations(systemPromptTemplates, (
   salon: one(salons, { fields: [systemPromptTemplates.salonId], references: [salons.id] })
 }))
 
-export const whatsappTemplatesRelations = relations(whatsappTemplates, ({ one }) => ({
-  salon: one(salons, { fields: [whatsappTemplates.salonId], references: [salons.id] })
-}))
 
-export const paymentsRelations = relations(payments, ({ one }) => ({
-  user: one(profiles, { fields: [payments.userId], references: [profiles.id] })
-}))
 
 export const recoveryFlowsRelations = relations(recoveryFlows, ({ one, many }) => ({
   salon: one(salons, { fields: [recoveryFlows.salonId], references: [salons.id] }),

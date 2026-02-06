@@ -4,6 +4,7 @@ import { z } from "zod"
 import { db, appointments, availability, professionals, professionalServices, services } from "../index"
 import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
+import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
 
 /**
  * Tipo de resultado padronizado para operações de serviço.
@@ -167,6 +168,9 @@ export async function createAppointmentService(input: {
 
       return { appointmentId: newAppointment.id }
     })
+
+    // Fire-and-forget: Sync to external calendars (Google Calendar, Trinks)
+    fireAndForgetCreate(result.appointmentId, salonId)
 
     return { success: true, data: result }
   } catch (error) {
@@ -344,7 +348,7 @@ export async function updateAppointmentService(input: {
   try {
     await db.transaction(async (tx) => {
       // Verifica conflitos se data ou profissional mudou
-      const needsConflictCheck = parse.data.date !== undefined || 
+      const needsConflictCheck = parse.data.date !== undefined ||
         finalProfessionalId !== existingAppointment.professionalId
 
       if (needsConflictCheck) {
@@ -376,6 +380,9 @@ export async function updateAppointmentService(input: {
         })
         .where(eq(appointments.id, parse.data.appointmentId))
     })
+
+    // Fire-and-forget: Sync updates to external calendars
+    fireAndForgetUpdate(parse.data.appointmentId, existingAppointment.salonId)
 
     return { success: true, data: { appointmentId: parse.data.appointmentId } }
   } catch (error) {
@@ -415,12 +422,15 @@ export async function deleteAppointmentService(input: {
   // Verifica se o agendamento existe
   const existingAppointment = await db.query.appointments.findFirst({
     where: eq(appointments.id, parse.data.appointmentId),
-    columns: { id: true },
+    columns: { id: true, salonId: true },
   })
 
   if (!existingAppointment) {
     return { success: false, error: "Agendamento não encontrado" }
   }
+
+  // Fire-and-forget: Sync deletion to external calendars BEFORE deleting from DB
+  fireAndForgetDelete(parse.data.appointmentId, existingAppointment.salonId)
 
   // Deleta o agendamento
   await db.delete(appointments).where(eq(appointments.id, parse.data.appointmentId))

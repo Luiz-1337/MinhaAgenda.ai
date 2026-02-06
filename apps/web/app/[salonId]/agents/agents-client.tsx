@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
-import { MetaEmbeddedSignup } from "@/components/whatsapp/meta-embedded-signup"
+
 import { QRCodeModal } from "@/components/whatsapp/qrcode-modal"
 import { VerificationModal } from "@/components/whatsapp/verification-modal"
 
@@ -42,10 +42,10 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   // WhatsApp state
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({ numbers: [] })
   const [whatsappLoading, setWhatsappLoading] = useState(true)
-  const [whatsappPhoneInput, setWhatsappPhoneInput] = useState("")
+
   const [isConnecting, setIsConnecting] = useState(false)
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
-  
+
   // Verification state
   const [verificationModalOpen, setVerificationModalOpen] = useState(false)
   const [pendingPhone, setPendingPhone] = useState("")
@@ -55,9 +55,9 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   // QR code modal (Evolution API)
   const [qrcodeModalOpen, setQrcodeModalOpen] = useState(false)
   const [qrcodeData, setQrcodeData] = useState<string | null>(null)
-  
+
   // Connection mode state
-  const [connectionMode, setConnectionMode] = useState<"manual" | "embedded">("manual")
+
 
   // Derived state
   const whatsappNumbers = whatsappStatus.numbers
@@ -91,32 +91,25 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
 
   // WhatsApp handlers - Manual connection (Evolution API com QR code)
   async function handleConnectWhatsApp(reconnect = false) {
-    const raw = whatsappPhoneInput.replace(/\s/g, "").replace(/-/g, "").replace(/[()]/g, "").trim()
-    // Phone é opcional para Evolution API (QR code) - só valida se informado
-    if (raw && !/^\+[1-9]\d{10,14}$/.test(raw)) {
-      toast.error("Formato de número inválido. Use o formato +5511999999999")
-      return
-    }
     setIsConnecting(true)
     try {
       const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber: raw || undefined, reconnect }),
+        body: JSON.stringify({ reconnect }),
       })
       const data = await res.json()
       if (!res.ok) {
         toast.error(data?.error || "Erro ao conectar")
         return
       }
-      
+
       // Evolution API: QR code para escanear
       if (data.status === "connecting" && data.qrcode) {
         setQrcodeData(data.qrcode)
         setQrcodeModalOpen(true)
         toast.success("Escaneie o QR code com seu WhatsApp")
       } else if (data.status === "pending_verification") {
-        setPendingPhone(raw)
         setVerificationModalOpen(true)
         toast.success("SMS enviado! Digite o código de verificação.")
       } else if (data.status === "connected") {
@@ -124,54 +117,8 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       } else {
         toast.success("WhatsApp conectado com sucesso!")
       }
-      
-      await fetchWhatsAppStatus()
-      setWhatsappPhoneInput("")
-      router.refresh()
-    } catch {
-      toast.error("Erro de conexão. Tente novamente.")
-    } finally {
-      setIsConnecting(false)
-    }
-  }
 
-  // WhatsApp handlers - Meta Embedded Signup
-  async function handleEmbeddedSignupSuccess(data: { wabaId: string; phoneNumberId: string; phoneNumber?: string }) {
-    setIsConnecting(true)
-    try {
-      // Se o Embedded Signup retornou um número, usa ele
-      // Caso contrário, pede para o usuário informar
-      const phone = data.phoneNumber || whatsappPhoneInput
-      if (!phone) {
-        toast.error("Digite o número do WhatsApp")
-        return
-      }
-      
-      const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phoneNumber: phone,
-          wabaId: data.wabaId,
-          phoneNumberId: data.phoneNumberId,
-        }),
-      })
-      const result = await res.json()
-      if (!res.ok) {
-        toast.error(result?.error || "Erro ao conectar")
-        return
-      }
-      
-      if (result.status === "pending_verification") {
-        setPendingPhone(phone)
-        setVerificationModalOpen(true)
-        toast.success("SMS enviado! Digite o código de verificação.")
-      } else {
-        toast.success("WhatsApp conectado com sucesso!")
-      }
-      
       await fetchWhatsAppStatus()
-      setWhatsappPhoneInput("")
       router.refresh()
     } catch {
       toast.error("Erro de conexão. Tente novamente.")
@@ -195,7 +142,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         setVerificationError(data?.error || "Código inválido")
         throw new Error(data?.error)
       }
-      
+
       toast.success("WhatsApp verificado com sucesso!")
       setVerificationModalOpen(false)
       setPendingPhone("")
@@ -211,7 +158,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   // Resend verification code
   async function handleResendCode() {
     if (!pendingPhone) return
-    
+
     try {
       const res = await fetch(`/api/salons/${salonId}/whatsapp/connect`, {
         method: "POST",
@@ -363,110 +310,29 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       </div>
 
       {/* WhatsApp Configuration Card */}
-      <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
+      <div className="w-full md:w-1/2 lg:w-1/3 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <MessageCircle size={18} className="text-emerald-500" />
             <h3 className="text-sm font-bold text-slate-800 dark:text-white">WhatsApp do Salão</h3>
             <span className="text-xs text-slate-500 dark:text-slate-400">(compartilhado por todos os agentes)</span>
           </div>
-          {whatsappNumbers.length > 0 && whatsappNumbers[0].status === "verified" && (
-            <button
-              onClick={() => router.push(`/${salonId}/whatsapp-templates`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors"
-            >
-              <FileText size={14} />
-              Templates HSM
-            </button>
-          )}
         </div>
 
-        {whatsappLoading && (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 size={16} className="animate-spin" />
-            Carregando...
-          </div>
-        )}
-
         {!whatsappLoading && whatsappNumbers.length === 0 && (
-          <div className="space-y-4">
-            {/* Connection Mode Toggle */}
-            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
-              <button
-                type="button"
-                onClick={() => setConnectionMode("manual")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  connectionMode === "manual"
-                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                }`}
-              >
-                Conexão Manual
-              </button>
-              <button
-                type="button"
-                onClick={() => setConnectionMode("embedded")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  connectionMode === "embedded"
-                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                }`}
-              >
-                Meta Business
-              </button>
-            </div>
-
-            {connectionMode === "manual" ? (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
-                    Número do WhatsApp
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={whatsappPhoneInput}
-                      onChange={(e) => setWhatsappPhoneInput(e.target.value)}
-                      placeholder="Ex.: +5511986049295"
-                      className="flex-1 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                    />
-                    <button
-                      type="button"
-                      disabled={isConnecting}
-                      onClick={() => handleConnectWhatsApp()}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
-                    >
-                      {isConnecting && <Loader2 size={16} className="animate-spin" />}
-                      Conectar
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Clique em Conectar para ver o QR code. Escaneie com o WhatsApp do seu celular.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">
-                    Número do WhatsApp (para registro)
-                  </label>
-                  <input
-                    type="text"
-                    value={whatsappPhoneInput}
-                    onChange={(e) => setWhatsappPhoneInput(e.target.value)}
-                    placeholder="Ex.: +5511986049295"
-                    className="w-full max-w-xs bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  />
-                </div>
-                <MetaEmbeddedSignup
-                  salonId={salonId}
-                  onSuccess={handleEmbeddedSignupSuccess}
-                  onError={(error) => toast.error(error)}
-                  disabled={isConnecting || !whatsappPhoneInput}
-                />
-              </div>
-            )}
+          <div className="flex flex-col items-center justify-center py-6">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 text-center max-w-sm">
+              Conecte o WhatsApp do seu salão para que os agentes possam interagir com seus clientes.
+            </p>
+            <button
+              type="button"
+              disabled={isConnecting}
+              onClick={() => handleConnectWhatsApp()}
+              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />}
+              Conectar WhatsApp
+            </button>
           </div>
         )}
 
@@ -603,33 +469,30 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           <button
             type="button"
             onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              filter === "all"
-                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === "all"
+              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
           >
             Todos
           </button>
           <button
             type="button"
             onClick={() => setFilter("active")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              filter === "active"
-                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === "active"
+              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
           >
             Ativos
           </button>
           <button
             type="button"
             onClick={() => setFilter("inactive")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              filter === "inactive"
-                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === "inactive"
+              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
           >
             Inativos
           </button>
@@ -655,9 +518,8 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           return (
             <div
               key={agent.id}
-              className={`group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-xl hover:border-indigo-500/30 transition-all duration-300 ${
-                openMenuAgentId === agent.id ? "relative z-50" : "relative"
-              }`}
+              className={`group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-xl hover:border-indigo-500/30 transition-all duration-300 ${openMenuAgentId === agent.id ? "relative z-50" : "relative"
+                }`}
             >
               <div className="flex items-start md:items-center gap-4 flex-1">
                 {/* Avatar / Initial */}

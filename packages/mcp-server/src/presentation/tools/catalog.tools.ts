@@ -37,6 +37,8 @@ export function createCatalogTools(
       execute: async (input) => {
         try {
           const params = normalizeInput(input)
+          console.log("[MCP] getServices called with:", { salonId, params })
+
           const useCase = container.resolve<GetServicesUseCase>(
             TOKENS.GetServicesUseCase
           )
@@ -46,12 +48,17 @@ export function createCatalogTools(
             includeInactive: params.includeInactive,
           })
 
+          console.log("[MCP] getServices result:", { isOk: isOk(result), data: isOk(result) ? result.data : result.error })
+
           if (!isOk(result)) {
             return ErrorPresenter.format(result.error)
           }
 
-          return CatalogPresenter.servicesToJSON(result.data)
+          const jsonResult = CatalogPresenter.servicesToJSON(result.data)
+          console.log("[MCP] getServices returning:", JSON.stringify(jsonResult, null, 2).substring(0, 500))
+          return jsonResult
         } catch (error) {
+          console.error("[MCP] getServices error:", error)
           return ErrorPresenter.toJSON(error as Error)
         }
       },
@@ -86,7 +93,7 @@ export function createCatalogTools(
     getProfessionals: tool({
       description:
         "Retorna lista de profissionais (barbeiros) do salão para mapear nomes a IDs.",
-        inputSchema: getProfessionalsSchema,
+      inputSchema: getProfessionalsSchema,
       execute: async (input) => {
         try {
           const params = normalizeInput(input)

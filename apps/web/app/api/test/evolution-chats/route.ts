@@ -4,11 +4,11 @@
  * Não exposto no portal — apenas por URL.
  */
 
-import { NextResponse } from 'next/server';
-import { db, salons } from '@repo/db';
-import { isNotNull } from 'drizzle-orm';
-import { getInstanceChats, type EvolutionChat } from '@/lib/services/evolution-instance.service';
-import { logger } from '@/lib/logger';
+import { NextResponse } from "next/server";
+import { db, salons } from "@repo/db";
+import { isNotNull } from "drizzle-orm";
+import { type EvolutionChat, getInstanceChats } from "@/lib/services/evolution-instance.service";
+import { logger } from "@/lib/logger";
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -60,8 +60,7 @@ export async function GET(): Promise<NextResponse> {
           'Evolution chats fetched for test sync'
         );
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        item.error = message;
+        item.error = err instanceof Error ? err.message : String(err);
         logger.warn(
           { err, salonId: salon.id, instanceName },
           'Failed to fetch Evolution chats for instance'

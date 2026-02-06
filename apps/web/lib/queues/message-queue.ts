@@ -23,6 +23,7 @@ export interface MessageJobData {
   agentId: string; // ID do agente que receberá a mensagem
   customerId: string;
   clientPhone: string;
+  replyToJid?: string; // JID original para responder (pode ser LID ou número)
 
   // Conteúdo
   body: string;

@@ -2,10 +2,17 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  reactCompiler: true,
+  reactCompiler: false, // Desativado: babel-plugin-react-compiler não resolve com webpack/pnpm
   transpilePackages: ["@repo/mcp-server", "@repo/db"],
-  // Excluir pino do bundling - usa worker threads que não são compatíveis com Turbopack
-  serverExternalPackages: ["pino", "pino-pretty", "thread-stream"],
+  // Excluir pacotes do bundling - usam recursos nativos não compatíveis com webpack
+  serverExternalPackages: [
+    "pino",
+    "pino-pretty",
+    "thread-stream",
+    "bullmq",
+    "ioredis",
+  ],
 };
 
 export default nextConfig;
+

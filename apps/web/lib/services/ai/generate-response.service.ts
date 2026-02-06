@@ -176,11 +176,18 @@ export async function generateAIResponse(
         console.log("📤 Tool Results:");
         step.toolResults.forEach((result: any, resultIndex: number) => {
           console.log(`  [${resultIndex + 1}] ${result.toolName}`);
+          console.log("  📋 Full result object:", JSON.stringify(result, null, 2).substring(0, 500));
+
+          // Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão
+          const toolOutput = result.result ?? result.output ?? result;
 
           if (result.error || result.isError) {
             console.log("  ❌ ERROR:", result.error || result.result);
+          } else if (toolOutput && typeof toolOutput === "object" && "error" in toolOutput && toolOutput.error === true) {
+            // Nosso ErrorPresenter retorna { error: true, code, message, details }
+            console.log("  ❌ TOOL ERROR:", toolOutput.message || toolOutput.details);
           } else {
-            const resultStr = JSON.stringify(result.result, null, 2);
+            const resultStr = JSON.stringify(toolOutput, null, 2);
             const preview = resultStr ? resultStr.substring(0, 300) : "(empty result)";
             console.log("  ✅ Result:", preview);
           }
@@ -381,6 +388,14 @@ function handleToolErrors(steps: unknown[], contextLogger: Logger): string | nul
     return "Desculpe, tive dificuldade ao tentar agendar. Pode me informar novamente a data e horário desejados?";
   }
 
+  if (errorTypes.includes("update_appointment") || errorTypes.includes("updateAppointment")) {
+    return "Desculpe, não consegui alterar o agendamento. Pode verificar se o horário está disponível e tentar novamente?";
+  }
+
+  if (errorTypes.includes("remove_appointment") || errorTypes.includes("removeAppointment")) {
+    return "Desculpe, não consegui cancelar o agendamento. Pode tentar novamente?";
+  }
+
   if (errorTypes.includes("list_services") || errorTypes.includes("getServices")) {
     return "Desculpe, não consegui carregar nossos serviços no momento. Por favor, tente novamente em instantes.";
   }
@@ -409,18 +424,36 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
     if (!step?.toolResults) return;
 
     step.toolResults.forEach((result: any) => {
+      // Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão
+      const toolOutput = result.result ?? result.output ?? result;
+
+      // Verifica diferentes formatos de erro:
+      // 1. result.error - erro direto do SDK
+      // 2. result.isError - flag de erro do SDK
+      // 3. toolOutput.error === true - nosso ErrorPresenter retorna { error: true, code, message, details }
+      // 4. string contendo "error"
       const hasError =
         result.error ||
         result.isError ||
-        (result.result && typeof result.result === "object" && "error" in result.result) ||
-        (result.result && typeof result.result === "string" && result.result.toLowerCase().includes("error"));
+        (toolOutput && typeof toolOutput === "object" && toolOutput.error === true) ||
+        (typeof toolOutput === "string" && toolOutput.toLowerCase().includes("error"));
 
       if (hasError) {
-        const errorMessage =
-          result.error?.message ||
-          result.error ||
-          (result.result?.error) ||
-          "Unknown error";
+        // Extrai mensagem de erro de diferentes fontes
+        let errorMessage: string;
+
+        if (result.error?.message) {
+          errorMessage = result.error.message;
+        } else if (typeof result.error === "string") {
+          errorMessage = result.error;
+        } else if (toolOutput && typeof toolOutput === "object" && toolOutput.error === true) {
+          // Formato do ErrorPresenter: { error: true, code, message, details }
+          errorMessage = toolOutput.message || toolOutput.details || "Tool error";
+        } else if (typeof toolOutput === "string") {
+          errorMessage = toolOutput;
+        } else {
+          errorMessage = "Unknown error";
+        }
 
         errors.push({
           toolName: result.toolName || "Unknown",

@@ -18,7 +18,7 @@ import {
   mapConnectionState,
 } from '@/lib/schemas/evolution';
 import { logger, createContextLogger, hashPhone, createRequestContext, getDuration } from '@/lib/logger';
-import { isMessageProcessed, markMessageProcessed } from '@/lib/redis';
+import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
 import { checkIfNewCustomer } from '@/lib/services/ai/generate-response.service';
@@ -145,7 +145,72 @@ async function handleMessageUpsert(
   const remoteJid = messageData.key.remoteJid;
 
   // Extrai número de telefone do formato Evolution (5511999999999@s.whatsapp.net)
-  const clientPhone = extractPhoneNumber(remoteJid);
+  // IMPORTANTE: WhatsApp Business às vezes usa LIDs (@lid) em vez de números reais
+  // - remoteJid pode ser: 5511999999999@s.whatsapp.net (normal) ou 123456789@lid (LID)
+  // - Para RESPONDER: usar remoteJid diretamente (Evolution API faz o roteamento)
+  // - Para BANCO: usar senderPn (número real) se disponível, senão usar o número do LID
+  let clientPhone: string;
+  let replyToJid: string = remoteJid; // Sempre usar remoteJid para responder
+
+  if (remoteJid.endsWith('@lid')) {
+    // LID detectado - tentar resolver para número real
+    const lid = remoteJid.split('@')[0];
+    const instanceName = data.instance;
+
+    // 1. Primeiro, verificar cache Redis
+    const cachedPhone = await resolveLidToPhone(lid, instanceName);
+    if (cachedPhone) {
+      clientPhone = extractPhoneNumber(cachedPhone);
+      replyToJid = cachedPhone;
+      reqLogger.info({ remoteJid, cachedPhone, clientPhone }, 'LID resolved from Redis cache');
+    } else {
+      // 2. Tentar extrair de campos do payload
+      const senderPn = messageData.senderPn || data.senderPn;
+      const participant = messageData.key.participant || messageData.participant;
+      const participantPn = (messageData as any).participant_pn || (data as any).participant_pn;
+
+      // DEBUG: Log campos disponíveis
+      reqLogger.debug({
+        remoteJid,
+        senderPn,
+        participant,
+        participantPn,
+        dataSender: data.sender,
+        pushName: messageData.pushName,
+        messageDataKeys: Object.keys(messageData),
+      }, 'LID detected - checking available fields');
+
+      if (senderPn && !senderPn.includes(lid)) {
+        // senderPn tem o formato: 5511999999999@s.whatsapp.net
+        clientPhone = extractPhoneNumber(senderPn);
+        replyToJid = senderPn;
+        // Armazenar mapeamento para uso futuro
+        await storeLidMapping(lid, senderPn, instanceName);
+        reqLogger.info({ remoteJid, senderPn, clientPhone }, 'Using senderPn field and storing LID mapping');
+      } else if (participantPn) {
+        clientPhone = extractPhoneNumber(participantPn);
+        replyToJid = participantPn.includes('@') ? participantPn : `${participantPn}@s.whatsapp.net`;
+        await storeLidMapping(lid, replyToJid, instanceName);
+        reqLogger.info({ remoteJid, participantPn, clientPhone }, 'Using participant_pn field and storing LID mapping');
+      } else if (participant && !participant.includes('@lid')) {
+        clientPhone = extractPhoneNumber(participant);
+        replyToJid = participant;
+        await storeLidMapping(lid, replyToJid, instanceName);
+        reqLogger.info({ remoteJid, participant, clientPhone }, 'Using participant field and storing LID mapping');
+      } else {
+        // Fallback: usar o próprio LID como identificador
+        // ATENÇÃO: Não será possível enviar mensagens para este contato!
+        clientPhone = lid;
+        reqLogger.error({
+          remoteJid,
+          pushName: messageData.pushName,
+          instanceName,
+        }, 'LID NOT RESOLVED - Cannot send messages to this contact. Manual mapping required.');
+      }
+    }
+  } else {
+    clientPhone = extractPhoneNumber(remoteJid);
+  }
 
   reqLogger = reqLogger.child({
     messageId,
@@ -273,6 +338,7 @@ async function handleMessageUpsert(
       agentId,
       customerId: customer.id,
       clientPhone,
+      replyToJid, // JID original para responder (pode ser LID ou número)
       body: messageContent,
       hasMedia: hasMedia(messageData),
       mediaType: mediaType ?? undefined,

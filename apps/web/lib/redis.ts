@@ -22,7 +22,7 @@ export function getRedisClient(): Redis {
   }
 
   const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-  
+
   redis = new Redis(redisUrl, {
     maxRetriesPerRequest: 3,
     retryStrategy(times) {
@@ -57,7 +57,7 @@ export function getRedisClient(): Redis {
  */
 export function createRedisClientForBullMQ(): Redis {
   const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-  
+
   const client = new Redis(redisUrl, {
     maxRetriesPerRequest: null, // Requerido pelo BullMQ
     enableReadyCheck: false,
@@ -88,6 +88,7 @@ const KEYS = {
   PROCESSED_MESSAGE: "twilio:processed:",
   LOCK: "lock:",
   RATE_LIMIT: "rate:",
+  LID_MAPPING: "lid:mapping:",
 } as const;
 
 /**
@@ -312,3 +313,80 @@ function hashPhone(phone: string): string {
 
 // Exporta o cliente para casos de uso avançados
 export { getRedisClient as redis };
+
+// ===== LID MAPPING (WhatsApp Business LID to Phone) =====
+
+/**
+ * LID mapping TTL: 30 days
+ * LID mappings são relativamente estáveis, mas podem mudar se o cliente trocar de número
+ */
+const LID_MAPPING_TTL = 60 * 60 * 24 * 30; // 30 dias
+
+/**
+ * Armazena um mapeamento LID → número de telefone
+ * @param lid - LID do WhatsApp (ex: "123463247351852")
+ * @param phoneJid - JID com número real (ex: "5511993989330@s.whatsapp.net")
+ * @param instanceName - Nome da instância Evolution (para namespacing)
+ */
+export async function storeLidMapping(
+  lid: string,
+  phoneJid: string,
+  instanceName: string
+): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.LID_MAPPING}${instanceName}:${lid}`;
+  await client.set(key, phoneJid, "EX", LID_MAPPING_TTL);
+  logger.info({ lid: hashPhone(lid), phone: hashPhone(phoneJid), instanceName }, "LID mapping stored");
+}
+
+/**
+ * Busca o número real a partir de um LID
+ * @param lid - LID do WhatsApp (ex: "123463247351852")
+ * @param instanceName - Nome da instância Evolution
+ * @returns JID com número real ou null se não encontrado
+ */
+export async function resolveLidToPhone(
+  lid: string,
+  instanceName: string
+): Promise<string | null> {
+  const client = getRedisClient();
+  const key = `${KEYS.LID_MAPPING}${instanceName}:${lid}`;
+  const phoneJid = await client.get(key);
+
+  if (phoneJid) {
+    logger.debug({ lid: hashPhone(lid), phone: hashPhone(phoneJid) }, "LID mapping found");
+  }
+
+  return phoneJid;
+}
+
+/**
+ * Define um mapeamento LID → número manualmente (útil para correções)
+ * @param lid - LID do WhatsApp (ex: "123463247351852")
+ * @param phone - Número de telefone (ex: "5511993989330")
+ * @param instanceName - Nome da instância Evolution
+ */
+export async function setManualLidMapping(
+  lid: string,
+  phone: string,
+  instanceName: string
+): Promise<void> {
+  // Garante formato JID
+  const phoneJid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+  await storeLidMapping(lid, phoneJid, instanceName);
+}
+
+/**
+ * Remove um mapeamento LID
+ * @param lid - LID do WhatsApp
+ * @param instanceName - Nome da instância Evolution
+ */
+export async function removeLidMapping(
+  lid: string,
+  instanceName: string
+): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.LID_MAPPING}${instanceName}:${lid}`;
+  await client.del(key);
+  logger.info({ lid: hashPhone(lid), instanceName }, "LID mapping removed");
+}

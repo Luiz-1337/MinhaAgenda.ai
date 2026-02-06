@@ -11,7 +11,7 @@ import type { calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library'
 import { eq } from 'drizzle-orm'
 
-import { db, appointments, professionals, services, profiles, salonIntegrations, salons } from '../index'
+import { db, appointments, professionals, services, profiles, salonIntegrations, salons, customers } from '../index'
 import { logger as defaultLogger, type ILogger } from '../infrastructure/logger'
 import { GOOGLE_TIMEZONE_DEFAULT, TOKEN_REFRESH_MARGIN_MS, GOOGLE_EVENT_REMINDERS } from '../domain/constants'
 
@@ -276,12 +276,12 @@ export class GoogleCalendarService {
         professionalEmail: professionals.email,
         professionalGoogleCalendarId: professionals.googleCalendarId,
         serviceName: services.name,
-        clientName: profiles.fullName,
+        clientName: customers.name,
       })
       .from(appointments)
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
       .innerJoin(services, eq(appointments.serviceId, services.id))
-      .innerJoin(profiles, eq(appointments.clientId, profiles.id))
+      .innerJoin(customers, eq(appointments.clientId, customers.id))
       .where(eq(appointments.id, appointmentId))
       .limit(1)
 

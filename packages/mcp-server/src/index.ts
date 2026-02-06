@@ -6,6 +6,8 @@
  * 2. Tools locais para Vercel AI SDK: Adapter de tools para uso direto
  */
 
+import { fileURLToPath } from "node:url"
+
 // Container e DI
 import { container as containerInstance, registerProviders as registerProvidersFunc, TOKENS as TOKEN_CONSTANTS } from "./container"
 export { Container } from "./container"
@@ -83,8 +85,12 @@ export async function createMCPTools(salonId: string, clientPhone: string) {
   return registerAllToolsFunc(containerInstance, salonId, clientPhone)
 }
 
-// Entry point para execução direta como MCP server
-if (typeof require !== "undefined" && require.main === module) {
+// Entry point para execução direta como MCP server (ESM-compatible)
+const __filename = fileURLToPath(import.meta.url)
+const isMain =
+  process.argv[1] === __filename || process.argv[1]?.endsWith("index.ts")
+
+if (isMain) {
   const salonId = process.env.SALON_ID
   const clientPhone = process.env.CLIENT_PHONE
 

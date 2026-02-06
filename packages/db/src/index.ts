@@ -21,7 +21,7 @@ try {
 // Ordem de prioridade: .env.local (raiz) > .env (raiz) > apps/web/.env.local
 dotenv.config({ path: resolve(rootPath, '.env.local'), override: false })
 dotenv.config({ path: resolve(rootPath, '.env'), override: false })
-dotenv.config({ path: resolve(rootPath, 'apps/web/.env.local'), override: false }) 
+dotenv.config({ path: resolve(rootPath, 'apps/web/.env.local'), override: false })
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is not set");
@@ -43,13 +43,13 @@ export * as domainServices from './services'
 export { fromBrazilTime, toBrazilTime, getBrazilNow, formatBrazilTime, BRAZIL_TIMEZONE } from './utils/timezone.utils'
 
 // Re-export date parsing utilities
-export { 
-  parseBrazilianDateTime, 
-  parseBrazilianDateTimeString, 
+export {
+  parseBrazilianDateTime,
+  parseBrazilianDateTimeString,
   parseBrazilianDateTimeObject,
   createBrazilDateTimeFromComponents,
   type DateComponents,
-  type ParseDateResult 
+  type ParseDateResult
 } from './utils/date-parsing.utils'
 
 // Re-export infrastructure
@@ -77,9 +77,9 @@ export { DeleteTrinksAppointmentUseCase } from './application/use-cases/trinks/d
 export { FetchTrinksResourcesUseCase } from './application/use-cases/trinks/fetch-trinks-resources.use-case'
 
 // Helper functions for Trinks integration
-export { 
-  createTrinksAppointment, 
-  updateTrinksAppointment, 
+export {
+  createTrinksAppointment,
+  updateTrinksAppointment,
   deleteTrinksAppointment,
   isTrinksIntegrationActive,
   getTrinksProfessionals,
@@ -105,3 +105,14 @@ export {
   getGoogleFreeBusyForProfessional,
   type CalendarEventResult
 } from './services/google-calendar'
+
+// Integration Sync Service - Fire-and-forget calendar sync
+export {
+  fireAndForgetCreate,
+  fireAndForgetUpdate,
+  fireAndForgetDelete,
+  syncAppointmentCreate,
+  syncAppointmentUpdate,
+  syncAppointmentDelete,
+  type SyncResult
+} from './services/integration-sync'
