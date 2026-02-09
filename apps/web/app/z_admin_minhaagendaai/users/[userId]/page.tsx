@@ -11,9 +11,10 @@ import { notFound } from "next/navigation"
 export default async function UserDetailsPage({
     params,
 }: {
-    params: { userId: string }
+    params: Promise<{ userId: string }>
 }) {
-    const { user, error } = await getUserDetails(params.userId)
+    const { userId } = await params
+    const { user, error } = await getUserDetails(userId)
 
     if (error || !user) {
         if (error === "Usuário não encontrado") return notFound()

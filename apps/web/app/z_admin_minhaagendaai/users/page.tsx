@@ -8,10 +8,11 @@ import { Search } from "lucide-react" // Import Search icon
 export default async function UsersPage({
     searchParams,
 }: {
-    searchParams: { page?: string; search?: string }
+    searchParams: Promise<{ page?: string; search?: string }>
 }) {
-    const page = Number(searchParams.page) || 1
-    const search = searchParams.search || ""
+    const { page: pageParam, search: searchParam } = await searchParams
+    const page = Number(pageParam) || 1
+    const search = searchParam || ""
 
     const { users, pagination, error } = await getUsersList(page, 10, search)
 
