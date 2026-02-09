@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { db, profiles, aiUsageStats } from "@repo/db"
 import { desc, sql } from "drizzle-orm"
 
+export const dynamic = 'force-dynamic'
+
 export default async function TokensPage() {
     // Fetch aggregated token usage (simplified - real implementation would be more complex)
     const totalUsage = await db
