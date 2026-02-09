@@ -9,6 +9,7 @@
     "lint": "eslint",
     "worker": "dotenv -e ../../.env -- tsx workers/message-processor.ts",
     "worker:dev": "dotenv -e ../../.env -- tsx watch workers/message-processor.ts",
+    "worker:start": "npx tsx apps/web/workers/message-processor.ts",
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
