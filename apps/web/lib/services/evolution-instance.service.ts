@@ -111,12 +111,15 @@ export async function setInstanceWebhook(instanceName: string): Promise<void> {
   const client = getEvolutionClient();
 
   try {
+    // Evolution API v2.1.1 requires nested "webhook" object
     await client.post(`/webhook/set/${instanceName}`, {
-      enabled: true,
-      url: webhookUrl,
-      webhookByEvents: false,
-      webhookBase64: true,
-      events: [...WEBHOOK_EVENTS],
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        webhookByEvents: false,
+        webhookBase64: true,
+        events: [...WEBHOOK_EVENTS],
+      },
     });
     logger.info({ instanceName, webhookUrl }, 'Evolution API webhook configured');
   } catch (error) {
@@ -153,14 +156,27 @@ export async function getOrCreateInstance(
 
   // If instance exists, ensure webhook is set and return it
   if (salon.evolutionInstanceName) {
-    setInstanceWebhook(salon.evolutionInstanceName).catch((err) => {
-      logger.warn({ err, instanceName: salon.evolutionInstanceName }, 'Webhook set failed (continuing)');
-    });
-    const status = await getInstanceStatus(salon.evolutionInstanceName);
-    return {
-      instanceName: salon.evolutionInstanceName,
-      status,
-    };
+    try {
+      const status = await getInstanceStatus(salon.evolutionInstanceName);
+      setInstanceWebhook(salon.evolutionInstanceName).catch((err) => {
+        logger.warn({ err, instanceName: salon.evolutionInstanceName }, 'Webhook set failed (continuing)');
+      });
+      return {
+        instanceName: salon.evolutionInstanceName,
+        status,
+      };
+    } catch (error) {
+      // If instance was deleted from Evolution API but exists in DB, recreate it
+      if (error instanceof EvolutionAPIError && error.statusCode === 404) {
+        logger.info(
+          { instanceName: salon.evolutionInstanceName, salonId },
+          'Instance not found in Evolution API, will recreate'
+        );
+        // Continue below to create new instance
+      } else {
+        throw error;
+      }
+    }
   }
 
   // Create new instance
@@ -528,7 +544,7 @@ export async function getInstanceChats(
  */
 export interface EvolutionMessage {
   key?: { id?: string; remoteJid?: string; fromMe?: boolean };
-  message?: { conversation?: string; extendedTextMessage?: { text?: string }; [key: string]: unknown };
+  message?: { conversation?: string; extendedTextMessage?: { text?: string };[key: string]: unknown };
   messageTimestamp?: number;
   [key: string]: unknown;
 }
