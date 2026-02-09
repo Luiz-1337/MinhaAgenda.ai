@@ -414,9 +414,9 @@ export async function getInstanceStatus(
 
     return 'disconnected';
   } catch (error) {
-    // If instance not found, it's disconnected
+    // If instance not found, propagate error (so we can recreate it if needed)
     if (error instanceof EvolutionAPIError && error.statusCode === 404) {
-      return 'disconnected';
+      throw error;
     }
 
     logger.error(
