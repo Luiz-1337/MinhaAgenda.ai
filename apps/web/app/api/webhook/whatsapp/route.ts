@@ -293,7 +293,7 @@ async function handleMessageUpsert(
 
   // 5. CRIAR/BUSCAR CUSTOMER E CHAT (com timeouts)
   const customer = await withTimeout(
-    findOrCreateCustomer(clientPhone, salonId),
+    findOrCreateCustomer(clientPhone, salonId, messageData.pushName),
     DB_TIMEOUT,
     'findOrCreateCustomer'
   );

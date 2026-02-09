@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/sheet"
 import {
   LayoutDashboard,
-  Settings,
   Menu,
   MessageSquare,
   Bot,
@@ -24,8 +23,6 @@ import {
   Megaphone,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
-import { createBrowserClient } from "@supabase/ssr"
-import { useEffect, useState } from "react"
 import type { ProfessionalRole } from "@/lib/types/professional"
 
 // Helper para verificar permissões de visualização
@@ -73,7 +70,6 @@ const menuGroups = [
       { href: "services", label: "Serviços", icon: Zap },
       { href: "products", label: "Produtos", icon: Package },
       { href: "marketing", label: "Marketing", icon: Megaphone },
-      { href: "settings", label: "Configurações", icon: Settings },
     ]
   }
 ] as const
@@ -82,24 +78,7 @@ export function SidebarNav() {
   const pathname = usePathname()
   const router = useRouter()
   const { activeSalon } = useSalon()
-  const { role, isSolo, isManager } = useSalonAuth()
-  const [userName, setUserName] = useState<string>("")
-
-  useEffect(() => {
-    async function fetchUser() {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.user_metadata?.full_name) {
-        setUserName(user.user_metadata.full_name)
-      } else if (user?.email) {
-        setUserName(user.email.split("@")[0])
-      }
-    }
-    fetchUser()
-  }, [])
+  const { role, isSolo } = useSalonAuth()
 
   const handleCreateSalon = () => {
     router.push("/onboarding")
@@ -117,7 +96,7 @@ export function SidebarNav() {
   // Verifica se um item está ativo
   const isActive = (href: string) => {
     const hrefWithSalon = buildHref(href)
-    return pathname === hrefWithSalon || 
+    return pathname === hrefWithSalon ||
       (href !== "dashboard" && pathname?.startsWith(`/${activeSalon?.id}/${href}`)) ||
       (href === "dashboard" && pathname?.startsWith(`/${activeSalon?.id}/dashboard`))
   }
@@ -127,7 +106,7 @@ export function SidebarNav() {
       {/* Action Button */}
       {!isSolo && (
         <div className="p-4">
-          <button 
+          <button
             onClick={handleCreateSalon}
             className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-white py-2.5 px-4 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm transition-all duration-200 group"
           >
@@ -142,7 +121,7 @@ export function SidebarNav() {
         {menuGroups.map((group, groupIndex) => {
           // Filtra itens baseados na role
           const visibleItems = group.items.filter(item => shouldShowItem(item.href, role, isSolo))
-          
+
           if (visibleItems.length === 0) return null
 
           return (
@@ -175,21 +154,6 @@ export function SidebarNav() {
           )
         })}
       </nav>
-
-      {/* User Mini Profile */}
-      <div className="p-4 border-t border-slate-200 dark:border-white/5">
-        <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer transition-colors">
-          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-white/10">
-            {userName ? userName.charAt(0).toUpperCase() : "U"}
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{userName || "Usuário"}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {isManager ? 'Administrador' : 'Colaborador'}
-            </p>
-          </div>
-        </div>
-      </div>
     </>
   )
 }
@@ -198,7 +162,7 @@ export function MobileSidebar() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <button 
+        <button
           className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors md:hidden"
           aria-label="Abrir menu"
         >

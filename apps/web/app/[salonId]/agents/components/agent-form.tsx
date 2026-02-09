@@ -14,15 +14,9 @@ import type { SystemPromptTemplateRow } from "@/lib/types/system-prompt-template
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
-import { ConfirmModal } from "@/components/ui/confirm-modal"
 
-const AGENT_MODELS = [
-  { value: "gpt-5.2", label: "GPT-5.2" },
-  { value: "gpt-5.1", label: "GPT-5.1" },
-  { value: "gpt-5-mini", label: "GPT-5 Mini" },
-  { value: "gpt-5-nano", label: "GPT-5 Nano" },
-] as const
-
+// Modelo de IA fixado via variável de ambiente
+const FIXED_MODEL = (process.env.NEXT_PUBLIC_AI_MODEL || "gpt-5-mini") as "gpt-5-mini"
 function ToneTooltip() {
   const [isVisible, setIsVisible] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -45,11 +39,11 @@ function ToneTooltip() {
           })
         }
       }
-      
+
       updatePosition()
       window.addEventListener('scroll', updatePosition, true)
       window.addEventListener('resize', updatePosition)
-      
+
       return () => {
         window.removeEventListener('scroll', updatePosition, true)
         window.removeEventListener('resize', updatePosition)
@@ -69,7 +63,7 @@ function ToneTooltip() {
       onMouseLeave={() => setIsVisible(false)}
     >
       <h4 className="font-bold text-sm mb-2 text-slate-900 dark:text-slate-100">Tipos de Tom</h4>
-      
+
       {/* Tabela */}
       <div className="mb-3 overflow-x-auto">
         <table className="w-full text-xs border-collapse">
@@ -91,13 +85,13 @@ function ToneTooltip() {
           </tbody>
         </table>
       </div>
-      
+
       {/* Explicações */}
       <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
         <p><strong className="text-slate-700 dark:text-slate-300">Formal:</strong> Use para ambientes profissionais, clientes corporativos ou situações que exigem maior formalidade. O agente usará linguagem mais polida, evita gírias e mantém um tom respeitoso e profissional.</p>
         <p><strong className="text-slate-700 dark:text-slate-300">Informal:</strong> Ideal para criar uma conexão mais próxima com os clientes. O agente será mais descontraído, pode usar emojis ocasionalmente e terá uma comunicação mais natural e amigável.</p>
       </div>
-      
+
       {/* Seta do tooltip */}
       <div className="absolute bottom-full left-4 -mb-1">
         <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>
@@ -114,114 +108,7 @@ function ToneTooltip() {
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
       />
-      
-      {mounted && tooltipContent && createPortal(tooltipContent, document.body)}
-    </>
-  )
-}
 
-function ModelTooltip() {
-  const [isVisible, setIsVisible] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const iconRef = useRef<SVGSVGElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (isVisible && iconRef.current) {
-      const updatePosition = () => {
-        if (iconRef.current) {
-          const rect = iconRef.current.getBoundingClientRect()
-          setPosition({
-            top: rect.bottom + 8,
-            left: rect.left,
-          })
-        }
-      }
-      
-      updatePosition()
-      window.addEventListener('scroll', updatePosition, true)
-      window.addEventListener('resize', updatePosition)
-      
-      return () => {
-        window.removeEventListener('scroll', updatePosition, true)
-        window.removeEventListener('resize', updatePosition)
-      }
-    }
-  }, [isVisible])
-
-  const tooltipContent = isVisible && mounted ? (
-    <div
-      ref={tooltipRef}
-      className="fixed w-80 px-4 py-3 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs rounded-lg shadow-lg border border-slate-300 dark:border-slate-700 z-[99999]"
-      style={{
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-      }}
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-          <h4 className="font-bold text-sm mb-2 text-slate-900 dark:text-slate-100">Pesos dos Modelos</h4>
-          
-          {/* Tabela */}
-          <div className="mb-3 overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-300 dark:border-slate-700">
-                  <th className="text-left py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Modelo</th>
-                  <th className="text-right py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Tokens</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-slate-200 dark:border-slate-700/50">
-                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5 Nano</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 0.2</td>
-                </tr>
-                <tr className="border-b border-slate-200 dark:border-slate-700/50">
-                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5 Mini</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 1.0</td>
-                </tr>
-                <tr className="border-b border-slate-200 dark:border-slate-700/50">
-                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5.1</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 5.0</td>
-                </tr>
-                <tr>
-                  <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">GPT-5.2</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-slate-700 dark:text-slate-300">Token * 7.0</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Explicações */}
-          <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5 Nano:</strong> Modelo mais leve, ideal para tarefas simples. Consome 5x menos créditos que o modelo base.</p>
-            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5 Mini:</strong> Modelo padrão, balanceado entre qualidade e custo.</p>
-            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5.1:</strong> Modelo mais avançado, oferece melhor qualidade mas consome 5x mais créditos.</p>
-            <p><strong className="text-slate-700 dark:text-slate-300">GPT-5.2 (7.0):</strong> Modelo mais potente, máxima qualidade mas consome 7x mais créditos que o modelo base.</p>
-          </div>
-          
-          {/* Seta do tooltip */}
-          <div className="absolute bottom-full left-4 -mb-1">
-            <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>
-          </div>
-        </div>
-      ) : null
-
-  return (
-    <>
-      <HelpCircle
-        ref={iconRef}
-        size={12}
-        className="text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 cursor-help transition-colors"
-        onMouseEnter={() => setIsVisible(true)}
-        onMouseLeave={() => setIsVisible(false)}
-      />
-      
       {mounted && tooltipContent && createPortal(tooltipContent, document.body)}
     </>
   )
@@ -258,7 +145,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     defaultValues: {
       name: initialData?.name ?? "",
       systemPrompt: initialData?.systemPrompt ?? "",
-      model: initialData?.model ?? "gpt-4o-mini",
+      model: FIXED_MODEL,
       tone: initialData?.tone ?? "informal",
       isActive: initialData?.isActive ?? false,
     },
@@ -304,7 +191,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
       form.reset({
         name: initialData.name ?? "",
         systemPrompt: initialData.systemPrompt ?? "",
-        model: initialData.model ?? "gpt-4o-mini",
+        model: FIXED_MODEL,
         tone: initialData.tone ?? "informal",
         isActive: initialData.isActive ?? false,
       })
@@ -313,7 +200,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
 
   // Monitora mudanças no systemPrompt
   const systemPromptValue = form.watch("systemPrompt")
-  
+
   useEffect(() => {
     if (selectedTemplate) {
       const promptChanged = systemPromptValue !== selectedTemplate.systemPrompt
@@ -350,7 +237,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     }
 
     setIsSavingTemplate(true)
-    
+
     const result = await updateSystemPromptTemplate(salonId, selectedTemplateId, {
       systemPrompt: systemPromptValue,
     })
@@ -366,14 +253,14 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
     setSelectedTemplate(updatedTemplate)
     setTemplates(templates.map((t) => (t.id === selectedTemplateId ? updatedTemplate : t)))
     setHasPromptChanged(false)
-    
+
     toast.success(`Template "${selectedTemplate.name}" atualizado com sucesso`)
     setIsSavingTemplate(false)
     router.refresh()
   }
 
   const isActive = form.watch("isActive")
-  
+
   // Separa templates globais e do salão
   const globalTemplates = templates.filter((t) => t.salonId === null)
   const salonTemplates = templates.filter((t) => t.salonId === salonId)
@@ -443,8 +330,8 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
             </p>
           </div>
         </div>
-        <Button 
-          type="submit" 
+        <Button
+          type="submit"
           form="agent-form"
           disabled={isPending}
           className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20 px-5 py-2.5 flex items-center gap-2"
@@ -489,68 +376,35 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                   )}
                 </div>
 
-                {/* Modelo e Tom - Lado a Lado */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Modelo</label>
-                      <ModelTooltip />
-                    </div>
-                    <Controller
-                      control={form.control}
-                      name="model"
-                      render={({ field }) => (
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
-                            <SelectValue placeholder="Modelo" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg">
-                            {AGENT_MODELS.map((model) => (
-                              <SelectItem
-                                key={model.value}
-                                value={model.value}
-                                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
-                              >
-                                {model.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                    {form.formState.errors.model && (
-                      <p className="text-xs text-red-500">{form.formState.errors.model.message}</p>
-                    )}
-                  </div>
+                {/* Tom de Conversa */}
+                <div className="space-y-1.5">
 
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tom</label>
-                      <ToneTooltip />
-                    </div>
-                    <Controller
-                      control={form.control}
-                      name="tone"
-                      render={({ field }) => (
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
-                            <SelectValue placeholder="Tom" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg">
-                            <SelectItem value="formal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
-                              Formal
-                            </SelectItem>
-                            <SelectItem value="informal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
-                              Informal
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                    {form.formState.errors.tone && (
-                      <p className="text-xs text-red-500">{form.formState.errors.tone.message}</p>
-                    )}
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tom</label>
+                    <ToneTooltip />
                   </div>
+                  <Controller
+                    control={form.control}
+                    name="tone"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
+                          <SelectValue placeholder="Tom" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg">
+                          <SelectItem value="formal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                            Formal
+                          </SelectItem>
+                          <SelectItem value="informal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                            Informal
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {form.formState.errors.tone && (
+                    <p className="text-xs text-red-500">{form.formState.errors.tone.message}</p>
+                  )}
                 </div>
 
                 {/* Toggle Agente Ativo */}

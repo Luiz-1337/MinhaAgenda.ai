@@ -17,12 +17,13 @@ import { logger } from "../logger"
  */
 export async function findOrCreateCustomer(
   clientPhone: string,
-  salonId: string
+  salonId: string,
+  profileName?: string
 ): Promise<{ id: string; name: string }> {
   // Normaliza telefone (remove caracteres não numéricos)
   // clientPhone vem no formato E.164 (ex: +5511986049295)
   const normalizedPhone = clientPhone.replace(/\D/g, "")
-  
+
   // Busca customer existente
   let customer = await db.query.customers.findFirst({
     where: and(
@@ -31,25 +32,27 @@ export async function findOrCreateCustomer(
     ),
     columns: { id: true, name: true }
   })
-  
+
   // Se não existir, tenta criar com proteção contra race condition
   if (!customer) {
-    // Formata telefone para exibição (mesmo padrão usado em getChatConversations)
-    const formattedName = normalizedPhone.length === 11
-      ? `(${normalizedPhone.slice(0, 2)}) ${normalizedPhone.slice(2, 7)}-${normalizedPhone.slice(7)}`
-      : clientPhone
-    
+    // Usa o nome do perfil do WhatsApp se disponível
+    // Se não, usa fallback para "Novo Cliente" com DDD entre parênteses
+    const customerName = profileName?.trim()
+      || (normalizedPhone.length >= 10
+        ? `Novo Cliente (${normalizedPhone.slice(0, 2)})`
+        : "Novo Cliente")
+
     try {
       // Usa INSERT ... ON CONFLICT DO NOTHING para evitar erro de duplicata
       // Se outra requisição criou o customer entre o SELECT e o INSERT, isso não vai falhar
       await db.insert(customers).values({
         salonId,
-        name: formattedName,
+        name: customerName,
         phone: normalizedPhone,
       }).onConflictDoNothing({
         target: [customers.salonId, customers.phone]
       })
-      
+
       // Busca novamente para pegar o ID (seja do insert ou do existente)
       customer = await db.query.customers.findFirst({
         where: and(
@@ -58,7 +61,7 @@ export async function findOrCreateCustomer(
         ),
         columns: { id: true, name: true }
       })
-      
+
       if (!customer) {
         // Se ainda não encontrou, algo está muito errado
         throw new Error("Falha ao criar ou encontrar customer após insert")
@@ -67,7 +70,7 @@ export async function findOrCreateCustomer(
       // Se for erro de constraint única, busca o registro existente
       if (error instanceof Error && error.message.includes("unique")) {
         logger.warn({ normalizedPhone, salonId }, "Race condition detected on customer creation, fetching existing")
-        
+
         customer = await db.query.customers.findFirst({
           where: and(
             eq(customers.salonId, salonId),
@@ -75,7 +78,7 @@ export async function findOrCreateCustomer(
           ),
           columns: { id: true, name: true }
         })
-        
+
         if (!customer) {
           throw new Error("Falha ao criar customer: constraint violation mas registro não encontrado")
         }
@@ -84,7 +87,32 @@ export async function findOrCreateCustomer(
       }
     }
   }
-  
+
+  // Se existir (ou acabou de ser criado/encontrado), verifica se precisa atualizar o nome (Auto-Healing)
+  if (customer && profileName?.trim()) {
+    // Remove caracteres não alfanuméricos do nome atual para comparação
+    const currentNameClean = customer.name.replace(/[^a-zA-Z0-9]/g, "")
+
+    // Verifica se o nome atual é "genérico" (só números ou contém "Novo Cliente")
+    // Ex: "551199999999", "(11) 99999-9999" -> "551199999999" (só dígitos)
+    const isPhoneName = /^\d+$/.test(currentNameClean) || customer.name.includes("Novo Cliente")
+
+    // Se o nome atual for genérico E o novo nome tiver letras
+    if (isPhoneName && /[a-zA-Z]/.test(profileName)) {
+      try {
+        await db.update(customers)
+          .set({ name: profileName.trim(), updatedAt: new Date() })
+          .where(eq(customers.id, customer.id))
+
+        // Atualiza objeto local para retorno
+        customer.name = profileName.trim()
+      } catch (error) {
+        // Loga erro mas não falha a operação principal
+        logger.warn({ error, customerId: customer.id, newName: profileName }, "Failed to auto-update customer name")
+      }
+    }
+  }
+
   return { id: customer.id, name: customer.name }
 }
 
@@ -122,7 +150,7 @@ export async function findOrCreateChat(
         .onConflictDoNothing({
           target: [chats.salonId, chats.clientPhone]
         })
-      
+
       // Busca novamente para pegar o ID (seja do insert ou do existente)
       chat = await db.query.chats.findFirst({
         where: and(
@@ -140,7 +168,7 @@ export async function findOrCreateChat(
       // Se for erro de constraint única, busca o registro existente
       if (error instanceof Error && error.message.includes("unique")) {
         logger.warn({ clientPhone, salonId }, "Race condition detected on chat creation, fetching existing")
-        
+
         chat = await db.query.chats.findFirst({
           where: and(
             eq(chats.clientPhone, clientPhone),
@@ -148,7 +176,7 @@ export async function findOrCreateChat(
             eq(chats.status, "active")
           ),
         })
-        
+
         if (!chat) {
           throw new Error("Falha ao criar chat: constraint violation mas registro não encontrado")
         }
@@ -236,14 +264,14 @@ export async function updateChatTimestamps(
   role: "user" | "assistant"
 ): Promise<void> {
   const now = new Date()
-  
+
   if (role === "user") {
     // Atualiza first_user_message_at apenas se ainda não foi definido
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
       columns: { firstUserMessageAt: true },
     })
-    
+
     if (!chat?.firstUserMessageAt) {
       await db
         .update(chats)
@@ -256,7 +284,7 @@ export async function updateChatTimestamps(
       where: eq(chats.id, chatId),
       columns: { firstAgentResponseAt: true },
     })
-    
+
     if (!chat?.firstAgentResponseAt) {
       await db
         .update(chats)

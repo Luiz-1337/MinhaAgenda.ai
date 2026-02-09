@@ -4,14 +4,13 @@ import { and, eq } from "drizzle-orm"
 
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
-import { fromBrazilTime } from "@/lib/utils/timezone.utils"
 
 import { db, domainServices as sharedServices, professionals, salons, profiles } from "@repo/db"
-import { 
-  getAppointmentsByRange, 
-  getSalonProfessionals, 
-  type AppointmentDTO, 
-  type ProfessionalDTO 
+import {
+  getAppointmentsByRange,
+  getSalonProfessionals,
+  type AppointmentDTO,
+  type ProfessionalDTO
 } from "@/lib/repositories/appointment.repository"
 import { ProfessionalService } from "@/lib/services/professional.service"
 import { SalonPlanService } from "@/lib/services/services/salon-plan.service"
@@ -103,10 +102,10 @@ export async function getAppointments(
     // Descobrir role atual
     let role = isOwner ? 'MANAGER' : 'STAFF'
     if (!isOwner) {
-       const me = professionalsList.find(p => p.userId === user.id)
-       // Se o profissional tem role OWNER (banco antigo), tratamos como MANAGER
-       if (me?.role === 'OWNER' || me?.role === 'MANAGER') role = 'MANAGER'
-       else if (me?.role) role = me.role
+      const me = professionalsList.find(p => p.userId === user.id)
+      // Se o profissional tem role OWNER (banco antigo), tratamos como MANAGER
+      if (me?.role === 'OWNER' || me?.role === 'MANAGER') role = 'MANAGER'
+      else if (me?.role) role = me.role
     }
 
     let filteredAppointments = appointmentsList
@@ -122,16 +121,12 @@ export async function getAppointments(
       }
     }
 
-    // Converte as datas UTC do banco para Timezone do Brasil para exibição
-    const appointmentsWithLocalTime = filteredAppointments.map(apt => ({
-      ...apt,
-      startTime: fromBrazilTime(apt.startTime),
-      endTime: fromBrazilTime(apt.endTime)
-    }))
-
-    return { 
-      professionals: filteredProfessionals, 
-      appointments: appointmentsWithLocalTime 
+    // Retorna os dados como vêm do banco (UTC).
+    // O frontend usa funções de formatação (formatBrazilTime) para exibição correta
+    // Não fazemos conversão aqui para evitar problemas de timezone entre ambientes (local vs Vercel)
+    return {
+      professionals: filteredProfessionals,
+      appointments: filteredAppointments
     }
   } catch (error) {
     console.error("Erro na action getAppointments:", error)
@@ -263,9 +258,9 @@ export async function getSchedulerHours(
   const isOwner = salon.ownerId === user.id
   const pro = !isOwner
     ? await db.query.professionals.findFirst({
-        where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id)),
-        columns: { id: true },
-      })
+      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id)),
+      columns: { id: true },
+    })
     : null
   if (!isOwner && !pro) {
     return { error: "Acesso negado" }

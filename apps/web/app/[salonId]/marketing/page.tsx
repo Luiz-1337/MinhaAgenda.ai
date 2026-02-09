@@ -2,13 +2,13 @@
 
 import React, { useEffect, useState, useTransition } from 'react';
 import { useParams } from 'next/navigation';
-import { 
-  MessageSquare, 
-  Clock, 
-  Send, 
-  Trash2, 
-  Plus, 
-  Users, 
+import {
+  MessageSquare,
+  Clock,
+  Send,
+  Trash2,
+  Plus,
+  Users,
   ChevronRight,
   Target,
   Zap,
@@ -308,13 +308,13 @@ export default function MarketingPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400">Recupere clientes inativos e impulsione suas vendas com IA.</p>
         </div>
         <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-white/5">
-          <button 
+          <button
             onClick={() => setActiveTab('recovery')}
             className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'recovery' ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
           >
             Fluxo de Recuperação
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('broadcast')}
             className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'broadcast' ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
           >
@@ -359,7 +359,7 @@ export default function MarketingPage() {
                     <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white dark:border-slate-900 bg-slate-50 dark:bg-slate-800 text-indigo-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
                       <Clock size={16} />
                     </div>
-                    
+
                     {/* Card Content */}
                     <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                       <div className="flex justify-between items-center mb-4">
@@ -369,7 +369,7 @@ export default function MarketingPage() {
                             <Zap size={10} /> AUTO
                           </div>
                         </div>
-                        <button 
+                        <button
                           onClick={() => removeStep(step.id)}
                           className="text-slate-400 hover:text-red-500 transition-colors"
                         >
@@ -381,8 +381,8 @@ export default function MarketingPage() {
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[10px] font-bold text-slate-500 uppercase">Enviar após</label>
                           <div className="flex items-center gap-2">
-                            <input 
-                              type="number" 
+                            <input
+                              type="number"
                               value={step.days}
                               onChange={(event) => {
                                 const nextDays = Number(event.target.value);
@@ -396,7 +396,7 @@ export default function MarketingPage() {
 
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[10px] font-bold text-slate-500 uppercase">Mensagem (Suporta variáveis)</label>
-                          <textarea 
+                          <textarea
                             rows={3}
                             value={step.message}
                             onChange={(event) => updateStep(step.id, { message: event.target.value })}
@@ -436,7 +436,7 @@ export default function MarketingPage() {
 
             {/* Add Button */}
             <div className="flex flex-col items-center gap-4 pt-4">
-              <button 
+              <button
                 onClick={addStep}
                 className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-sm font-bold text-slate-400 hover:text-indigo-500 hover:border-indigo-500/50 transition-all group"
               >
@@ -455,9 +455,9 @@ export default function MarketingPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Segmentation Column */}
-            <div className="space-y-6">
-              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-center gap-3 mb-6">
+            <div className="space-y-6 h-full">
+              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl p-6 shadow-sm h-full flex flex-col">
+                <div className="flex items-center gap-3 mb-6 flex-shrink-0">
                   <div className="p-2 bg-indigo-500 rounded-xl text-white shadow-lg shadow-indigo-500/20">
                     <Target size={20} />
                   </div>
@@ -467,7 +467,7 @@ export default function MarketingPage() {
                   </div>
                 </div>
 
-                <div className="space-y-5">
+                <div className="space-y-5 flex-1">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Última Visita</label>
                     <select
@@ -538,7 +538,7 @@ export default function MarketingPage() {
                   </div>
                 </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
+                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/5 flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
                       <Users size={18} />
@@ -560,7 +560,7 @@ export default function MarketingPage() {
                   </button>
                 </div>
                 {previewError && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-medium text-red-600">
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-medium text-red-600 flex-shrink-0">
                     {previewError}
                   </div>
                 )}
@@ -568,7 +568,7 @@ export default function MarketingPage() {
             </div>
 
             {/* Message Column */}
-            <div className="space-y-6">
+            <div className="space-y-6 h-full">
               <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl p-6 shadow-sm flex flex-col h-full">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2 bg-violet-500 rounded-xl text-white shadow-lg shadow-violet-500/20">
@@ -583,7 +583,7 @@ export default function MarketingPage() {
                 <div className="space-y-4 flex-1">
                   <div className="flex flex-col gap-1.5 h-full">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mensagem do Disparo</label>
-                    <textarea 
+                    <textarea
                       placeholder="Ex: Olá! Temos uma oferta imperdível para este final de semana..."
                       value={campaignMessage}
                       onChange={(event) => setCampaignMessage(event.target.value)}
