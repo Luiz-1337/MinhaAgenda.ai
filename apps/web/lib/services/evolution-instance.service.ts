@@ -96,8 +96,15 @@ function getWebhookBaseUrl(): string {
     logger.warn('NEXT_PUBLIC_APP_URL ou VERCEL_URL não definida; webhook não será configurado');
     return '';
   }
-  const base = url.startsWith('http') ? url : `https://${url}`;
-  return base.replace(/\/$/, '');
+  // Ensure we only use the origin (protocol + host), stripping any accidental paths
+  try {
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return parsed.origin;
+  } catch {
+    // Fallback: simple cleanup
+    const base = url.startsWith('http') ? url : `https://${url}`;
+    return base.replace(/\/$/, '').split('/api')[0];
+  }
 }
 
 /**
@@ -108,6 +115,7 @@ export async function setInstanceWebhook(instanceName: string): Promise<void> {
   if (!baseUrl) return;
 
   const webhookUrl = `${baseUrl}/api/webhook/whatsapp`;
+  logger.info({ webhookUrl, envValue: process.env.NEXT_PUBLIC_APP_URL }, '[v2] Setting webhook URL');
   const client = getEvolutionClient();
 
   try {
@@ -170,7 +178,7 @@ export async function getOrCreateInstance(
       if (error instanceof EvolutionAPIError && error.statusCode === 404) {
         logger.info(
           { instanceName: salon.evolutionInstanceName, salonId },
-          'Instance not found in Evolution API, will recreate'
+          '[v2] Instance not found in Evolution API (404), will recreate'
         );
         // Continue below to create new instance
       } else {
