@@ -120,7 +120,7 @@ export async function sendWhatsAppMessage(
           `/message/sendText/${salon.evolutionInstanceName}`,
           {
             number: toNumber,
-            textMessage: { text: body },
+            text: body,
           }
         );
       }

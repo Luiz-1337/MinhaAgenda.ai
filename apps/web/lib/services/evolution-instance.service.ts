@@ -188,7 +188,39 @@ export async function getOrCreateInstance(
   }
 
   // Create new instance
-  const instanceName = `salon-${salonId}`;
+  // Check for environment variable override regarding instance name
+  const instanceName = process.env.EVOLUTION_INSTANCE_NAME || `salon-${salonId}`;
+
+  // If using global instance name, check if it already exists to avoid creation error
+  if (process.env.EVOLUTION_INSTANCE_NAME) {
+    try {
+      const status = await getInstanceStatus(instanceName);
+      // Update DB to link to this global instance
+      await db
+        .update(salons)
+        .set({
+          evolutionInstanceName: instanceName,
+          updatedAt: new Date(),
+        })
+        .where(eq(salons.id, salonId));
+
+      // Ensure webhook is set
+      setInstanceWebhook(instanceName).catch((err) => {
+        logger.warn({ err, instanceName }, 'Webhook set for global instance failed (continuing)');
+      });
+
+      return {
+        instanceName,
+        status,
+      };
+    } catch (error) {
+      // If 404, proceed to creation
+      if (!(error instanceof EvolutionAPIError && error.statusCode === 404)) {
+        throw error;
+      }
+    }
+  }
+
   const client = getEvolutionClient();
 
   // Log instance creation
@@ -635,7 +667,7 @@ export async function sendTestMessage(
   // Usa postWithTimeout para não passar pelo circuit breaker (envio para grupo pode levar >30s)
   const result = await client.postWithTimeout<{ key?: { id?: string }; messageId?: string }>(
     `/message/sendText/${instanceName}`,
-    { number, textMessage: { text } },
+    { number, text },
     TEST_SEND_TIMEOUT_MS
   );
   const messageId = result?.key?.id ?? result?.messageId ?? '';
