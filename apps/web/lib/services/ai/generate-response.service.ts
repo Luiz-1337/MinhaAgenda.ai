@@ -75,7 +75,7 @@ export async function generateAIResponse(
       throw new AIGenerationError("No active agent found", { retryable: false });
     }
 
-    const agentModel = agentInfo.model || "gpt-5-mini";
+    const agentModel = agentInfo.model || "gpt-5-nano";
     const modelName = mapModelToOpenAI(agentModel);
 
     console.log("\n🤖 ========== AI GENERATION START ==========");

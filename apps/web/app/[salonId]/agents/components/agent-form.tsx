@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
 
 // Modelo de IA fixado via variável de ambiente
-const FIXED_MODEL = (process.env.NEXT_PUBLIC_AI_MODEL || "gpt-5-mini") as "gpt-5-mini"
+const FIXED_MODEL = (process.env.NEXT_PUBLIC_AI_MODEL || "gpt-5-nano") as "gpt-5-nano"
 function ToneTooltip() {
   const [isVisible, setIsVisible] = useState(false)
   const [mounted, setMounted] = useState(false)

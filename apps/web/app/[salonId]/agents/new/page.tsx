@@ -40,7 +40,7 @@ export default async function NewAgentPage({
             ? {
               name: `${duplicateAgent.name} (cópia)`,
               systemPrompt: duplicateAgent.systemPrompt,
-              model: duplicateAgent.model as "gpt-5-mini",
+              model: duplicateAgent.model as "gpt-5-nano",
               tone: duplicateAgent.tone,
               isActive: false, // Sempre false para duplicação
             }
