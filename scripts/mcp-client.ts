@@ -12,7 +12,6 @@
  *   MCP_SERVER_COMMAND=node
  *   MCP_SERVER_ARGS=--import,tsx,packages/mcp-server/src/index.ts
  *   MCP_CLIENT_MODEL=gpt-5-mini
- *   MCP_CLIENT_FALLBACK_MODEL=gpt-4o-mini
  */
 
 import dotenv from "dotenv"
@@ -28,9 +27,8 @@ import { generateText, jsonSchema, tool, stepCountIs, type CoreMessage, type Too
 import { getSalonIdByWhatsapp, sanitizeWhatsApp } from "./mcp-chat-utils.js"
 import { db, salons, customers, profiles, eq, and } from "@repo/db"
 
-import { createSalonAssistantPrompt } from "../apps/web/lib/services/ai.service"
+import { createSalonAssistantPrompt } from "../apps/web/lib/services/ai/system-prompt-builder.service"
 import { createMCPTools as createVercelTools } from "../packages/mcp-server/tools/vercel-ai"
-import { MinhaAgendaAITools } from "../packages/mcp-server/src/MinhaAgendaAI_tools"
 
 dotenv.config()
 
@@ -147,7 +145,7 @@ async function getPreferencesForProfile(salonId: string, profileId: string): Pro
     ),
     columns: { preferences: true },
   })
-  
+
   return (customer?.preferences as Record<string, unknown>) || undefined
 }
 
@@ -235,15 +233,17 @@ async function main() {
     }
   } else {
     try {
-      const impl = new MinhaAgendaAITools()
-      const res = await impl.identifyCustomer(clientPhone)
-      const parsed = tryParseJson(String(res)) as any
-      customerId = parsed?.id
+      // Usa as tools locais (factory function)
+      const tools = await createVercelTools(salonId, clientPhone) as unknown as Record<string, any>
+
+      // Chama a tool de identificação (agora retorna objeto direto, sem JSON string)
+      const res = await tools.identifyCustomer.execute({ phone: clientPhone })
+      customerId = res?.id
+
       if (!customerId) {
         const name = await rl.question("👤 Nome do cliente (para criar cadastro): ")
-        const res2 = await impl.identifyCustomer(clientPhone, name.trim())
-        const parsed2 = tryParseJson(String(res2)) as any
-        customerId = parsed2?.id
+        const res2 = await tools.identifyCustomer.execute({ phone: clientPhone, name: name.trim() })
+        customerId = res2?.id
       }
     } catch (e) {
       console.warn("⚠️ Falha ao identificar cliente via tools locais:", e)
@@ -257,7 +257,7 @@ async function main() {
   }
 
   const preferences = customerId ? await getPreferencesForProfile(salonId, customerId) : undefined
-  const systemPrompt = createSalonAssistantPrompt(salonName, preferences)
+  const systemPrompt = await createSalonAssistantPrompt(salonId, preferences)
 
   console.log("\n💬 Chat iniciado. Digite sua mensagem (ou 'sair'):\n")
 
@@ -307,7 +307,7 @@ async function main() {
   console.log(`✅ ${Object.keys(aiTools).length} tools criadas`)
 
   const model = process.env.MCP_CLIENT_MODEL || "gpt-5-mini"
-  const fallbackModel = process.env.MCP_CLIENT_FALLBACK_MODEL || "gpt-4o-mini"
+  const fallbackModel = process.env.MCP_CLIENT_FALLBACK_MODEL || "gpt-5-mini"
   const maxHistory = Number(process.env.MCP_CLIENT_MAX_HISTORY || "30")
 
   // Histórico em memória para manter contexto entre turns (evita “amnésia” do modelo)

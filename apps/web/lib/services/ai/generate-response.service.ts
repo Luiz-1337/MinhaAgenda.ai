@@ -75,7 +75,7 @@ export async function generateAIResponse(
       throw new AIGenerationError("No active agent found", { retryable: false });
     }
 
-    const agentModel = agentInfo.model || "gpt-4o-mini";
+    const agentModel = agentInfo.model || "gpt-5-mini";
     const modelName = mapModelToOpenAI(agentModel);
 
     console.log("\n🤖 ========== AI GENERATION START ==========");
@@ -401,7 +401,7 @@ function handleToolErrors(steps: unknown[], contextLogger: Logger): string | nul
   }
 
   if (errorTypes.includes("check_availability") || errorTypes.includes("checkAvailability")) {
-    return "Tive dificuldade ao verificar disponibilidade. Pode tentar outro horário ou data?";
+    return "Poxa, não consegui acessar a agenda agora, mas me diz o horário que você queria que eu tento confirmar";
   }
 
   if (errorTypes.includes("list_professionals") || errorTypes.includes("getProfessionals")) {
