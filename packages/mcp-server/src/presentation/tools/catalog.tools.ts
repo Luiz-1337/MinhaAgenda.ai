@@ -6,6 +6,7 @@ import {
   GetProductsUseCase,
   GetProfessionalsUseCase,
 } from "../../application/use-cases/catalog"
+import { ISalonRepository } from "../../domain/repositories"
 import {
   getServicesSchema,
   getProductsSchema,
@@ -97,6 +98,19 @@ export function createCatalogTools(
       execute: async (input) => {
         try {
           const params = normalizeInput(input)
+
+          // Verificar plano do salão
+          const salonRepo = container.resolve<ISalonRepository>(TOKENS.SalonRepository)
+          const salon = await salonRepo.findById(salonId)
+
+          if (salon && salon.isSoloPlan()) {
+            return JSON.stringify({
+              error: true,
+              message: "Este recurso não está disponível para o plano SOLO (apenas 1 profissional). Utilize o único profissional que tenha conhecimento",
+              code: "PLAN_RESTRICTION"
+            })
+          }
+
           const useCase = container.resolve<GetProfessionalsUseCase>(
             TOKENS.GetProfessionalsUseCase
           )
