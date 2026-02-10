@@ -329,7 +329,7 @@ export async function restartInstance(instanceName: string): Promise<void> {
   const client = getEvolutionClient();
 
   try {
-    await client.put(`/instance/restart/${instanceName}`, {});
+    await client.post(`/instance/restart/${instanceName}`, {});
     logger.info({ instanceName }, 'Evolution API instance restarted');
   } catch (error) {
     logger.error(
