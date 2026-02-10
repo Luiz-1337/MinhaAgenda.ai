@@ -144,6 +144,12 @@ async function handleMessageUpsert(
   const messageId = messageData.key.id;
   const remoteJid = messageData.key.remoteJid;
 
+  // Ignora mensagens de grupos (@g.us)
+  if (remoteJid.endsWith('@g.us')) {
+    reqLogger.info({ remoteJid }, 'Ignoring group message');
+    return NextResponse.json({ status: 'ignored_group' }, { status: 200 });
+  }
+
   // Extrai número de telefone do formato Evolution (5511999999999@s.whatsapp.net)
   // IMPORTANTE: WhatsApp Business às vezes usa LIDs (@lid) em vez de números reais
   // - remoteJid pode ser: 5511999999999@s.whatsapp.net (normal) ou 123456789@lid (LID)
