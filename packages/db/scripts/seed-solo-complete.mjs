@@ -52,12 +52,12 @@ async function main() {
     // 1. PERFIS (Profissionais e Clientes)
     // ============================================================================
     console.log('👥 Criando perfis de profissionais e clientes...')
-    
+
     const pro1Id = randomUUID()
     const pro2Id = randomUUID()
     const pro3Id = randomUUID()
     const pro4Id = randomUUID()
-    
+
     // Clientes (20 clientes)
     const clientIds = Array.from({ length: 20 }, () => randomUUID())
 
@@ -102,7 +102,7 @@ async function main() {
     // 2. SALÃO
     // ============================================================================
     console.log('🏪 Criando salão...')
-    
+
     const salonId = randomUUID()
     const workHours = {
       monday: { open: '09:00', close: '19:00' },
@@ -152,7 +152,7 @@ async function main() {
     // 3. SERVIÇOS
     // ============================================================================
     console.log('✂️ Criando serviços...')
-    
+
     const services = [
       { name: 'Corte Masculino', description: 'Corte moderno e estiloso com técnicas profissionais', duration: 30, price: 45.00 },
       { name: 'Corte Feminino', description: 'Corte e modelagem para mulheres', duration: 45, price: 60.00 },
@@ -185,7 +185,7 @@ async function main() {
     // 4. PROFISSIONAIS
     // ============================================================================
     console.log('👨‍💼 Criando profissionais...')
-    
+
     const professionals = [
       { profileId: pro1Id, name: 'Carlos Mendes', email: 'carlos.barber@salonpremium.com.br', phone: '+5511998776655' },
       { profileId: pro2Id, name: 'Rafael Costa', email: 'rafael.barber@salonpremium.com.br', phone: '+5511997665544' },
@@ -225,7 +225,7 @@ async function main() {
     // 5. DISPONIBILIDADE DOS PROFISSIONAIS
     // ============================================================================
     console.log('📅 Criando disponibilidade...')
-    
+
     // Carlos - Segunda a Sexta 9h-18h, Sábado 8h-17h
     for (let day = 1; day <= 5; day++) {
       await tx`
@@ -284,7 +284,7 @@ async function main() {
     // 6. CLIENTES
     // ============================================================================
     console.log('👤 Criando clientes...')
-    
+
     const customerIds = []
     for (let i = 0; i < clientIds.length; i++) {
       const [{ id }] = await tx`
@@ -300,7 +300,7 @@ async function main() {
     // 7. AGENDAMENTOS (passados e futuros)
     // ============================================================================
     console.log('📅 Criando agendamentos...')
-    
+
     const now = new Date()
     const appointments = []
 
@@ -312,7 +312,7 @@ async function main() {
       const hour = 9 + Math.floor(Math.random() * 9) // 9-17
       const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)]
       date.setHours(hour, minute, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds.length)
       let serviceIndex = Math.floor(Math.random() * serviceIds.length)
       // Garantir que o profissional oferece o serviço
@@ -320,13 +320,13 @@ async function main() {
         serviceIndex = proServices[proIndex][Math.floor(Math.random() * proServices[proIndex].length)]
       }
       const clientIndex = Math.floor(Math.random() * customerIds.length)
-      
+
       const service = serviceIds[serviceIndex]
       const endTime = new Date(date.getTime() + service.duration * 60 * 1000)
-      
+
       const statuses = ['completed', 'completed', 'completed', 'completed', 'cancelled']
       const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
+
       appointments.push({
         date,
         endTime,
@@ -346,20 +346,20 @@ async function main() {
       const hour = 9 + Math.floor(Math.random() * 9) // 9-17
       const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)]
       date.setHours(hour, minute, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds.length)
       let serviceIndex = Math.floor(Math.random() * serviceIds.length)
       if (!proServices[proIndex].includes(serviceIndex)) {
         serviceIndex = proServices[proIndex][Math.floor(Math.random() * proServices[proIndex].length)]
       }
       const clientIndex = Math.floor(Math.random() * customerIds.length)
-      
+
       const service = serviceIds[serviceIndex]
       const endTime = new Date(date.getTime() + service.duration * 60 * 1000)
-      
+
       const statuses = ['confirmed', 'confirmed', 'confirmed', 'pending']
       const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
+
       appointments.push({
         date,
         endTime,
@@ -375,7 +375,7 @@ async function main() {
       if (isNaN(apt.date.getTime()) || isNaN(apt.endTime.getTime())) {
         continue
       }
-      
+
       await tx`
         INSERT INTO appointments (salon_id, professional_id, client_id, service_id, date, end_time, status, notes)
         VALUES (
@@ -395,20 +395,20 @@ async function main() {
     // 8. SCHEDULE OVERRIDES (exceções de horário)
     // ============================================================================
     console.log('⏰ Criando exceções de horário...')
-    
+
     const overrideReasons = ['Férias', 'Consulta médica', 'Treinamento', 'Evento pessoal', 'Folga']
     for (let i = 0; i < 8; i++) {
       const daysAhead = Math.floor(Math.random() * 30) + 1
       const date = new Date(now)
       date.setDate(date.getDate() + daysAhead)
       date.setHours(9, 0, 0, 0)
-      
+
       const endDate = new Date(date)
       endDate.setHours(18, 0, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds.length)
       const reason = overrideReasons[Math.floor(Math.random() * overrideReasons.length)]
-      
+
       await tx`
         INSERT INTO schedule_overrides (salon_id, professional_id, start_time, end_time, reason)
         VALUES (${salonId}, ${professionalIds[proIndex].id}, ${date.toISOString()}, ${endDate.toISOString()}, ${reason})
@@ -419,9 +419,9 @@ async function main() {
     // 9. CHATS E MENSAGENS
     // ============================================================================
     console.log('💬 Criando chats e mensagens...')
-    
+
     const chatClients = customerIds.slice(0, 12)
-    
+
     for (const customer of chatClients) {
       const [{ id: chatId }] = await tx`
         INSERT INTO chats (salon_id, client_phone, status)
@@ -459,7 +459,7 @@ async function main() {
     // 10. LEADS
     // ============================================================================
     console.log('🎯 Criando leads...')
-    
+
     const leadsData = [
       { phone: '+5511967776655', name: 'Roberto Santos', email: 'roberto.santos@gmail.com', source: 'instagram', status: 'new', notes: 'Interessado em corte + barba' },
       { phone: '+5511966665544', name: 'Daniel Alves', email: 'daniel.alves@hotmail.com', source: 'facebook', status: 'new', notes: 'Primeira vez no salão' },
@@ -493,7 +493,7 @@ async function main() {
     // 11. CAMPANHAS
     // ============================================================================
     console.log('📢 Criando campanhas...')
-    
+
     const campaign1Start = new Date(now)
     campaign1Start.setDate(campaign1Start.getDate() - 7)
     const campaign1End = new Date(now)
@@ -552,7 +552,7 @@ async function main() {
     const customerIdsForCampaigns = await tx`
       SELECT id FROM customers WHERE salon_id = ${salonId} LIMIT 8
     `
-    
+
     for (const customer of customerIdsForCampaigns) {
       await tx`
         INSERT INTO campaign_recipients (campaign_id, customer_id)
@@ -572,7 +572,7 @@ async function main() {
     // 12. INTEGRAÇÕES
     // ============================================================================
     console.log('🔗 Criando integrações...')
-    
+
     await tx`
       INSERT INTO salon_integrations (salon_id, provider, refresh_token, access_token, expires_at, email)
       VALUES (
@@ -609,14 +609,14 @@ async function main() {
     // 13. ESTATÍSTICAS DE IA
     // ============================================================================
     console.log('📊 Criando estatísticas de IA...')
-    
-    const models = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1']
-    
+
+    const models = ['gpt-5-mini', 'gpt-4o', 'gpt-4.1']
+
     // Estatísticas dos últimos 30 dias
     for (let i = 0; i < 30; i++) {
       const date = new Date(now)
       date.setDate(date.getDate() - i)
-      
+
       for (const model of models) {
         const credits = Math.floor(Math.random() * 150) + 20
         await tx`

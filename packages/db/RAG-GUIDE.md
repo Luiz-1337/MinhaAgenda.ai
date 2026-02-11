@@ -46,7 +46,7 @@ RAG_MAX_RESULTS=5  # Padrão: 5 itens
 
 **⚠️ Importante:**
 - Mais itens = mais tokens consumidos
-- GPT-4o-mini tem limite de ~128k tokens (input)
+- gpt-5-mini tem limite de ~128k tokens (input)
 - Cada item de conhecimento pode ter 200-500 tokens
 - 10 itens ≈ 2000-5000 tokens apenas do RAG
 

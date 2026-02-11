@@ -20,7 +20,7 @@ export class CheckAvailabilityUseCase {
     private serviceRepo: IServiceRepository,
     private calendarService?: ICalendarService,
     private externalScheduler?: IExternalScheduler
-  ) {}
+  ) { }
 
   async execute(
     input: CheckAvailabilityDTO
@@ -45,7 +45,7 @@ export class CheckAvailabilityUseCase {
       baseSlots = await this.availabilityRepo.generateSlots(
         input.professionalId,
         date,
-        SLOT_DURATION
+        serviceDuration
       )
     } else {
       // Se não especificou profissional, usa horário do salão
@@ -59,7 +59,7 @@ export class CheckAvailabilityUseCase {
             date,
             workHours.start,
             workHours.end,
-            SLOT_DURATION
+            serviceDuration
           )
         }
       }

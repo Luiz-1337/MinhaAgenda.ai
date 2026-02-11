@@ -34,38 +34,20 @@ async function main() {
         let instances: any[] = []
         let usedEndpoint = ''
 
-        // Tenta /instances (v1)
+        // Tenta /instance/fetchInstances (v2)
         try {
-            console.log('   Tentando GET /instances...')
-            const response = await fetch(`${baseUrl}/instances`, { headers: { 'apikey': apiKey } })
+            console.log('   Tentando GET /instance/fetchInstances...')
+            const response = await fetch(`${baseUrl}/instance/fetchInstances`, { headers: { 'apikey': apiKey } })
             if (response.ok) {
                 const data = await response.json()
                 instances = Array.isArray(data) ? data : (data as any).response || (data as any).data || []
-                usedEndpoint = '/instances'
-                console.log('   ✅ Sucesso com /instances')
+                usedEndpoint = '/instance/fetchInstances'
+                console.log('   ✅ Sucesso com /instance/fetchInstances')
             } else {
-                console.log(`   ❌ /instances retornou ${response.status}`)
+                console.log(`   ❌ /instance/fetchInstances retornou ${response.status}`)
             }
         } catch (e) {
-            console.log(`   ❌ Erro em /instances: ${(e as Error).message}`)
-        }
-
-        // Se falhou, tenta /instance/fetchInstances (v2)
-        if (!usedEndpoint) {
-            try {
-                console.log('   Tentando GET /instance/fetchInstances...')
-                const response = await fetch(`${baseUrl}/instance/fetchInstances`, { headers: { 'apikey': apiKey } })
-                if (response.ok) {
-                    const data = await response.json()
-                    instances = Array.isArray(data) ? data : (data as any).response || (data as any).data || []
-                    usedEndpoint = '/instance/fetchInstances'
-                    console.log('   ✅ Sucesso com /instance/fetchInstances')
-                } else {
-                    console.log(`   ❌ /instance/fetchInstances retornou ${response.status}`)
-                }
-            } catch (e) {
-                console.log(`   ❌ Erro em /instance/fetchInstances: ${(e as Error).message}`)
-            }
+            console.log(`   ❌ Erro em /instance/fetchInstances: ${(e as Error).message}`)
         }
 
         if (!usedEndpoint) {

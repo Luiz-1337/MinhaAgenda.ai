@@ -11,7 +11,7 @@
  *   MCP_CLIENT_TOOL_SOURCE=vercel|mcp (default: mcp)
  *   MCP_SERVER_COMMAND=node
  *   MCP_SERVER_ARGS=--import,tsx,packages/mcp-server/src/index.ts
- *   MCP_CLIENT_MODEL=gpt-5-nano
+ *   MCP_CLIENT_MODEL=gpt-5-mini
  */
 
 import dotenv from "dotenv"
@@ -306,8 +306,8 @@ async function main() {
 
   console.log(`✅ ${Object.keys(aiTools).length} tools criadas`)
 
-  const model = process.env.MCP_CLIENT_MODEL || "gpt-5-nano"
-  const fallbackModel = process.env.MCP_CLIENT_FALLBACK_MODEL || "gpt-5-nano"
+  const model = process.env.MCP_CLIENT_MODEL || "gpt-5-mini"
+  const fallbackModel = process.env.MCP_CLIENT_FALLBACK_MODEL || "gpt-5-mini"
   const maxHistory = Number(process.env.MCP_CLIENT_MAX_HISTORY || "30")
 
   // Histórico em memória para manter contexto entre turns (evita “amnésia” do modelo)

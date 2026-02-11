@@ -20,7 +20,7 @@ const DEFAULT_PASSWORD = 'teste123' // Senha padrão para login
 async function createUserIfNotExists(tx, email, name, userId) {
   // Verifica se existe em auth.users
   const [existingUser] = await tx`SELECT id FROM auth.users WHERE email = ${email}`
-  
+
   if (existingUser) {
     console.log(`   ✅ Usuário ${email} já existe no Auth.`)
     return existingUser.id
@@ -69,7 +69,7 @@ async function createUserIfNotExists(tx, email, name, userId) {
 
   // Inserir em auth.identities
   const identityId = randomUUID()
-  
+
   await tx`
     INSERT INTO auth.identities (
       id,
@@ -105,7 +105,7 @@ async function main() {
     // 1. PERFIL OWNER PRO
     // ============================================================================
     console.log('👤 Criando perfil owner PRO...')
-    
+
     let [ownerProfile] = await tx`
       SELECT id, email FROM profiles WHERE email = ${OWNER_EMAIL}
     `
@@ -114,10 +114,10 @@ async function main() {
     if (!ownerProfile) {
       console.log(`⚠️  Profile ${OWNER_EMAIL} não encontrado. Criando...`)
       ownerId = randomUUID()
-      
+
       // Criar usuário no auth.users primeiro
       await createUserIfNotExists(tx, OWNER_EMAIL, 'Maria Silva Santos', ownerId)
-      
+
       await tx`
         INSERT INTO profiles (
           id, email, system_role, role, tier, full_name, first_name, last_name,
@@ -147,7 +147,7 @@ async function main() {
       ownerProfile = { id: ownerId, email: OWNER_EMAIL }
     } else {
       ownerId = ownerProfile.id
-      
+
       // Verificar se existe no auth.users, se não, criar
       const [authUser] = await tx`SELECT id FROM auth.users WHERE email = ${OWNER_EMAIL}`
       if (!authUser) {
@@ -185,7 +185,7 @@ async function main() {
     // 2. SALÃO 1: SALÃO PREMIUM
     // ============================================================================
     console.log('🏪 Criando Salão 1: Salão Premium...')
-    
+
     const salon1Id = randomUUID()
     const workHours1 = {
       monday: { open: '08:00', close: '20:00' },
@@ -236,7 +236,7 @@ async function main() {
     // 3. PRODUTOS SALÃO 1
     // ============================================================================
     console.log('🛍️  Criando produtos para Salão 1...')
-    
+
     const products1 = [
       { name: 'Shampoo Profissional', description: 'Shampoo para todos os tipos de cabelo', price: 45.00 },
       { name: 'Condicionador Hidratante', description: 'Condicionador com hidratação profunda', price: 48.00 },
@@ -264,7 +264,7 @@ async function main() {
     // 4. SERVIÇOS SALÃO 1
     // ============================================================================
     console.log('✂️  Criando serviços para Salão 1...')
-    
+
     const services1 = [
       { name: 'Corte Masculino', description: 'Corte moderno e estiloso com técnicas profissionais', duration: 30, price: 50.00 },
       { name: 'Corte Feminino', description: 'Corte e modelagem para mulheres', duration: 45, price: 70.00 },
@@ -297,9 +297,9 @@ async function main() {
     // 5. PROFISSIONAIS SALÃO 1
     // ============================================================================
     console.log('👨‍💼 Criando profissionais para Salão 1...')
-    
+
     const pro1Ids = Array.from({ length: 4 }, () => randomUUID())
-    
+
     await tx`
       INSERT INTO profiles (id, email, system_role, role, full_name, phone)
       VALUES 
@@ -413,7 +413,7 @@ async function main() {
     // 6. CLIENTES SALÃO 1
     // ============================================================================
     console.log('👤 Criando clientes para Salão 1...')
-    
+
     const client1Ids = Array.from({ length: 15 }, () => randomUUID())
     const clientNames1 = [
       'Ricardo Almeida', 'Felipe Santos', 'André Souza', 'Bruno Rodrigues', 'Gabriel Lima',
@@ -454,7 +454,7 @@ async function main() {
     // 7. AGENDAMENTOS SALÃO 1
     // ============================================================================
     console.log('📅 Criando agendamentos para Salão 1...')
-    
+
     const now = new Date()
     const appointments1 = []
 
@@ -466,20 +466,20 @@ async function main() {
       const hour = 9 + Math.floor(Math.random() * 9) // 9-17
       const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)]
       date.setHours(hour, minute, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds1.length)
       let serviceIndex = Math.floor(Math.random() * serviceIds1.length)
       if (!proServices1[proIndex].includes(serviceIndex)) {
         serviceIndex = proServices1[proIndex][Math.floor(Math.random() * proServices1[proIndex].length)]
       }
       const clientIndex = Math.floor(Math.random() * customerIds1.length)
-      
+
       const service = serviceIds1[serviceIndex]
       const endTime = new Date(date.getTime() + service.duration * 60 * 1000)
-      
+
       const statuses = ['completed', 'completed', 'completed', 'completed', 'cancelled']
       const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
+
       appointments1.push({
         date,
         endTime,
@@ -499,20 +499,20 @@ async function main() {
       const hour = 9 + Math.floor(Math.random() * 9) // 9-17
       const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)]
       date.setHours(hour, minute, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds1.length)
       let serviceIndex = Math.floor(Math.random() * serviceIds1.length)
       if (!proServices1[proIndex].includes(serviceIndex)) {
         serviceIndex = proServices1[proIndex][Math.floor(Math.random() * proServices1[proIndex].length)]
       }
       const clientIndex = Math.floor(Math.random() * customerIds1.length)
-      
+
       const service = serviceIds1[serviceIndex]
       const endTime = new Date(date.getTime() + service.duration * 60 * 1000)
-      
+
       const statuses = ['confirmed', 'confirmed', 'confirmed', 'pending']
       const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
+
       appointments1.push({
         date,
         endTime,
@@ -528,7 +528,7 @@ async function main() {
       if (isNaN(apt.date.getTime()) || isNaN(apt.endTime.getTime())) {
         continue
       }
-      
+
       await tx`
         INSERT INTO appointments (salon_id, professional_id, client_id, service_id, date, end_time, status, notes)
         VALUES (
@@ -548,9 +548,9 @@ async function main() {
     // 8. CHATS E MENSAGENS SALÃO 1
     // ============================================================================
     console.log('💬 Criando chats e mensagens para Salão 1...')
-    
+
     const chatClients1 = customerIds1.slice(0, 8)
-    
+
     for (const customer of chatClients1) {
       const [{ id: chatId }] = await tx`
         INSERT INTO chats (salon_id, client_phone, status)
@@ -588,7 +588,7 @@ async function main() {
     // 9. LEADS SALÃO 1
     // ============================================================================
     console.log('🎯 Criando leads para Salão 1...')
-    
+
     const leadsData1 = [
       { phone: '+5511967776655', name: 'Roberto Santos', email: 'roberto.santos@gmail.com', source: 'instagram', status: 'new', notes: 'Interessado em corte + barba' },
       { phone: '+5511966665544', name: 'Daniel Alves', email: 'daniel.alves@hotmail.com', source: 'facebook', status: 'new', notes: 'Primeira vez no salão' },
@@ -620,7 +620,7 @@ async function main() {
     // 10. CAMPANHAS SALÃO 1
     // ============================================================================
     console.log('📢 Criando campanhas para Salão 1...')
-    
+
     const campaign1Start = new Date(now)
     campaign1Start.setDate(campaign1Start.getDate() - 7)
     const campaign1End = new Date(now)
@@ -660,7 +660,7 @@ async function main() {
     const customerIdsForCampaigns1 = await tx`
       SELECT id FROM customers WHERE salon_id = ${salon1Id} LIMIT 8
     `
-    
+
     for (const customer of customerIdsForCampaigns1) {
       await tx`
         INSERT INTO campaign_recipients (campaign_id, customer_id)
@@ -683,7 +683,7 @@ async function main() {
     // 11. SALÃO 2: BELEZA & ESTILO
     // ============================================================================
     console.log('🏪 Criando Salão 2: Beleza & Estilo...')
-    
+
     const salon2Id = randomUUID()
     const workHours2 = {
       monday: { open: '09:00', close: '19:00' },
@@ -734,7 +734,7 @@ async function main() {
     // 12. PRODUTOS SALÃO 2
     // ============================================================================
     console.log('🛍️  Criando produtos para Salão 2...')
-    
+
     const products2 = [
       { name: 'Linha Profissional Shampoo', description: 'Shampoo profissional de alta qualidade', price: 52.00 },
       { name: 'Linha Profissional Condicionador', description: 'Condicionador profissional', price: 55.00 },
@@ -762,7 +762,7 @@ async function main() {
     // 13. SERVIÇOS SALÃO 2
     // ============================================================================
     console.log('✂️  Criando serviços para Salão 2...')
-    
+
     const services2 = [
       { name: 'Corte Masculino Premium', description: 'Corte masculino com técnicas avançadas', duration: 35, price: 55.00 },
       { name: 'Corte Feminino Premium', description: 'Corte e modelagem feminina premium', duration: 50, price: 80.00 },
@@ -794,9 +794,9 @@ async function main() {
     // 14. PROFISSIONAIS SALÃO 2
     // ============================================================================
     console.log('👨‍💼 Criando profissionais para Salão 2...')
-    
+
     const pro2Ids = Array.from({ length: 3 }, () => randomUUID())
-    
+
     await tx`
       INSERT INTO profiles (id, email, system_role, role, full_name, phone)
       VALUES 
@@ -887,7 +887,7 @@ async function main() {
     // 15. CLIENTES SALÃO 2
     // ============================================================================
     console.log('👤 Criando clientes para Salão 2...')
-    
+
     const client2Ids = Array.from({ length: 12 }, () => randomUUID())
     const clientNames2 = [
       'Patricia Alves', 'Camila Costa', 'Fernanda Lima', 'Juliana Silva', 'Beatriz Santos',
@@ -928,7 +928,7 @@ async function main() {
     // 16. AGENDAMENTOS SALÃO 2
     // ============================================================================
     console.log('📅 Criando agendamentos para Salão 2...')
-    
+
     const appointments2 = []
 
     // Agendamentos passados (últimos 60 dias) - 25 agendamentos
@@ -939,20 +939,20 @@ async function main() {
       const hour = 9 + Math.floor(Math.random() * 9) // 9-17
       const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)]
       date.setHours(hour, minute, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds2.length)
       let serviceIndex = Math.floor(Math.random() * serviceIds2.length)
       if (!proServices2[proIndex].includes(serviceIndex)) {
         serviceIndex = proServices2[proIndex][Math.floor(Math.random() * proServices2[proIndex].length)]
       }
       const clientIndex = Math.floor(Math.random() * customerIds2.length)
-      
+
       const service = serviceIds2[serviceIndex]
       const endTime = new Date(date.getTime() + service.duration * 60 * 1000)
-      
+
       const statuses = ['completed', 'completed', 'completed', 'completed', 'cancelled']
       const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
+
       appointments2.push({
         date,
         endTime,
@@ -972,20 +972,20 @@ async function main() {
       const hour = 9 + Math.floor(Math.random() * 9) // 9-17
       const minute = [0, 15, 30, 45][Math.floor(Math.random() * 4)]
       date.setHours(hour, minute, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds2.length)
       let serviceIndex = Math.floor(Math.random() * serviceIds2.length)
       if (!proServices2[proIndex].includes(serviceIndex)) {
         serviceIndex = proServices2[proIndex][Math.floor(Math.random() * proServices2[proIndex].length)]
       }
       const clientIndex = Math.floor(Math.random() * customerIds2.length)
-      
+
       const service = serviceIds2[serviceIndex]
       const endTime = new Date(date.getTime() + service.duration * 60 * 1000)
-      
+
       const statuses = ['confirmed', 'confirmed', 'confirmed', 'pending']
       const status = statuses[Math.floor(Math.random() * statuses.length)]
-      
+
       appointments2.push({
         date,
         endTime,
@@ -1001,7 +1001,7 @@ async function main() {
       if (isNaN(apt.date.getTime()) || isNaN(apt.endTime.getTime())) {
         continue
       }
-      
+
       await tx`
         INSERT INTO appointments (salon_id, professional_id, client_id, service_id, date, end_time, status, notes)
         VALUES (
@@ -1021,9 +1021,9 @@ async function main() {
     // 17. CHATS E MENSAGENS SALÃO 2
     // ============================================================================
     console.log('💬 Criando chats e mensagens para Salão 2...')
-    
+
     const chatClients2 = customerIds2.slice(0, 6)
-    
+
     for (const customer of chatClients2) {
       const [{ id: chatId }] = await tx`
         INSERT INTO chats (salon_id, client_phone, status)
@@ -1061,7 +1061,7 @@ async function main() {
     // 18. LEADS SALÃO 2
     // ============================================================================
     console.log('🎯 Criando leads para Salão 2...')
-    
+
     const leadsData2 = [
       { phone: '+5511965554433', name: 'Renata Silva', email: 'renata.silva@gmail.com', source: 'instagram', status: 'new', notes: 'Interessada em mechas' },
       { phone: '+5511964443322', name: 'Cristina Alves', email: 'cristina.alves@hotmail.com', source: 'facebook', status: 'new', notes: 'Primeira vez no salão' },
@@ -1091,7 +1091,7 @@ async function main() {
     // 19. CAMPANHAS SALÃO 2
     // ============================================================================
     console.log('📢 Criando campanhas para Salão 2...')
-    
+
     const campaign3Start = new Date(now)
     campaign3Start.setDate(campaign3Start.getDate() - 5)
     const campaign3End = new Date(now)
@@ -1131,7 +1131,7 @@ async function main() {
     const customerIdsForCampaigns2 = await tx`
       SELECT id FROM customers WHERE salon_id = ${salon2Id} LIMIT 6
     `
-    
+
     for (const customer of customerIdsForCampaigns2) {
       await tx`
         INSERT INTO campaign_recipients (campaign_id, customer_id)
@@ -1154,7 +1154,7 @@ async function main() {
     // 20. INTEGRAÇÕES GOOGLE CALENDAR
     // ============================================================================
     console.log('🔗 Criando integrações Google Calendar...')
-    
+
     // Integração Salão 1
     await tx`
       INSERT INTO salon_integrations (salon_id, provider, refresh_token, access_token, expires_at, email)
@@ -1227,14 +1227,14 @@ async function main() {
     // 21. ESTATÍSTICAS DE IA
     // ============================================================================
     console.log('📊 Criando estatísticas de IA...')
-    
-    const models = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1']
-    
+
+    const models = ['gpt-5-mini', 'gpt-4o', 'gpt-4.1']
+
     // Estatísticas Salão 1 - últimos 30 dias
     for (let i = 0; i < 30; i++) {
       const date = new Date(now)
       date.setDate(date.getDate() - i)
-      
+
       for (const model of models) {
         const credits = Math.floor(Math.random() * 150) + 20
         await tx`
@@ -1249,7 +1249,7 @@ async function main() {
     for (let i = 0; i < 30; i++) {
       const date = new Date(now)
       date.setDate(date.getDate() - i)
-      
+
       for (const model of models) {
         const credits = Math.floor(Math.random() * 150) + 20
         await tx`
@@ -1285,22 +1285,22 @@ async function main() {
     // 22. SCHEDULE OVERRIDES
     // ============================================================================
     console.log('⏰ Criando exceções de horário...')
-    
+
     const overrideReasons = ['Férias', 'Consulta médica', 'Treinamento', 'Evento pessoal', 'Folga']
-    
+
     // Overrides Salão 1
     for (let i = 0; i < 5; i++) {
       const daysAhead = Math.floor(Math.random() * 30) + 1
       const date = new Date(now)
       date.setDate(date.getDate() + daysAhead)
       date.setHours(9, 0, 0, 0)
-      
+
       const endDate = new Date(date)
       endDate.setHours(18, 0, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds1.length)
       const reason = overrideReasons[Math.floor(Math.random() * overrideReasons.length)]
-      
+
       await tx`
         INSERT INTO schedule_overrides (salon_id, professional_id, start_time, end_time, reason)
         VALUES (${salon1Id}, ${professionalIds1[proIndex].id}, ${date.toISOString()}, ${endDate.toISOString()}, ${reason})
@@ -1313,13 +1313,13 @@ async function main() {
       const date = new Date(now)
       date.setDate(date.getDate() + daysAhead)
       date.setHours(9, 0, 0, 0)
-      
+
       const endDate = new Date(date)
       endDate.setHours(18, 0, 0, 0)
-      
+
       const proIndex = Math.floor(Math.random() * professionalIds2.length)
       const reason = overrideReasons[Math.floor(Math.random() * overrideReasons.length)]
-      
+
       await tx`
         INSERT INTO schedule_overrides (salon_id, professional_id, start_time, end_time, reason)
         VALUES (${salon2Id}, ${professionalIds2[proIndex].id}, ${date.toISOString()}, ${endDate.toISOString()}, ${reason})

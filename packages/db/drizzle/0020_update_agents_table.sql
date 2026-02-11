@@ -7,7 +7,7 @@ ALTER TABLE "agents" ADD COLUMN IF NOT EXISTS "tone" text;
 ALTER TABLE "agents" ADD COLUMN IF NOT EXISTS "whatsapp_number" text;
 --> statement-breakpoint
 -- Set default values for existing records
-UPDATE "agents" SET "model" = 'gpt-4o-mini' WHERE "model" IS NULL;
+UPDATE "agents" SET "model" = 'gpt-5-mini' WHERE "model" IS NULL;
 UPDATE "agents" SET "tone" = 'informal' WHERE "tone" IS NULL;
 --> statement-breakpoint
 -- Make model and tone NOT NULL after setting defaults

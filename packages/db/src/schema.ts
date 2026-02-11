@@ -496,7 +496,7 @@ export const aiUsageStats = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     date: date('date').notNull(),
-    model: text('model').notNull(), // 'gpt-4o-mini', 'gpt-4.1', 'gpt-4o'
+    model: text('model').notNull(), // 'gpt-5-mini', 'gpt-4.1', 'gpt-4o'
     credits: integer('credits').default(0).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()

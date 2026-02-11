@@ -388,39 +388,40 @@ export async function getConnectedPhoneNumber(
 ): Promise<string | null> {
   const client = getEvolutionClient();
 
-  const paths = [
-    `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`,
-    `/instances`,
-  ];
+  try {
+    // Evolution API v2: GET /instance/fetchInstances?instanceName=xxx
+    const response = await client.get<unknown>(
+      `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`
+    );
 
-  for (const path of paths) {
-    try {
-      const response = await client.get<unknown>(path);
+    // Normalize response: can be array, object with "instance", or object with "response" array
+    const raw = (response as any)?.response ?? response;
+    const items = Array.isArray(raw) ? raw : [raw];
 
-      const raw = (response as any)?.response ?? response;
-      const items = Array.isArray(raw) ? raw : [raw];
+    const found = items.find(
+      (i: any) =>
+        i?.instance?.instanceName === instanceName ||
+        i?.instanceName === instanceName
+    );
 
-      const found = items.find(
-        (i: any) =>
-          i?.instance?.instanceName === instanceName ||
-          i?.instanceName === instanceName
-      );
-      const instanceData = found?.instance ?? found;
-
-      const owner = instanceData?.owner ?? instanceData?.profilePictureUrl;
-      const phone = extractPhoneFromOwner(owner);
-      if (phone) return phone;
-
-      if (instanceData?.profilePictureUrl) {
-        const fromUrl = extractPhoneFromOwner(instanceData.profilePictureUrl);
-        if (fromUrl) return fromUrl;
-      }
-    } catch {
-      continue;
+    if (!found) {
+      return null;
     }
+
+    const instanceData = found.instance ?? found;
+
+    const owner = instanceData?.owner ?? instanceData?.profilePictureUrl;
+    const phone = extractPhoneFromOwner(owner);
+    if (phone) return phone;
+
+    if (instanceData?.profilePictureUrl) {
+      const fromUrl = extractPhoneFromOwner(instanceData.profilePictureUrl);
+      if (fromUrl) return fromUrl;
+    }
+  } catch (error) {
+    logger.warn({ err: error, instanceName }, 'Error fetching connected phone from Evolution API');
   }
 
-  logger.warn({ instanceName }, 'Could not fetch connected phone from Evolution API');
   return null;
 }
 

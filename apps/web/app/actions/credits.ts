@@ -34,7 +34,7 @@ export async function getRemainingCredits(salonId: string): Promise<{ remaining:
     // Busca o salão e verifica acesso
     const salon = await db.query.salons.findFirst({
       where: eq(salons.id, salonId),
-      columns: { id: true, ownerId: true },
+      columns: { id: true, ownerId: true, settings: true },
     })
 
     if (!salon) {
@@ -51,9 +51,12 @@ export async function getRemainingCredits(salonId: string): Promise<{ remaining:
       return { error: "Perfil não encontrado" }
     }
 
-    // Calcula créditos totais baseado no tier
+    // Calcula créditos totais baseado no tier ou limite customizado
+    const settings = salon.settings as { custom_monthly_limit?: number } | null
+    const customLimit = settings?.custom_monthly_limit
+
     const tier = profile.tier as keyof typeof PLAN_CREDITS
-    const totalCredits = PLAN_CREDITS[tier] || PLAN_CREDITS.SOLO
+    const totalCredits = customLimit || PLAN_CREDITS[tier] || PLAN_CREDITS.SOLO
 
     // Soma todos os créditos usados do salão na tabela aiUsageStats
     const usedCreditsResult = await db

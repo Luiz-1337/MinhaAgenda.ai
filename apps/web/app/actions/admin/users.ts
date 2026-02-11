@@ -2,7 +2,7 @@
 
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { db } from "@repo/db"
-import { profiles, customers } from "@repo/db/schema"
+import { profiles, customers, salons } from "@repo/db/schema"
 import { eq, desc, ilike, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -155,6 +155,9 @@ export async function getUserDetails(userId: string) {
                     orderBy: (payments, { desc }) => [desc(payments.createdAt)],
                     limit: 10
                 },
+                ownedSalons: {
+                    limit: 1
+                }
             }
         })
 
@@ -239,5 +242,61 @@ export async function adminResetPassword(userId: string, newPassword: string) {
         return { success: true }
     } catch (error: any) {
         return { error: error.message || "Erro ao resetar senha" }
+    }
+}
+
+const updateCreditsSchema = z.object({
+    salonId: z.string(),
+    limit: z.number().nullable(),
+})
+
+export async function updateSalonCreditsLimit(salonId: string, limit: number | null) {
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) throw new Error("Unauthorized")
+
+        // Verify admin role
+        const adminProfile = await db.query.profiles.findFirst({
+            where: eq(profiles.id, user.id),
+            columns: { systemRole: true }
+        })
+
+        if (adminProfile?.systemRole !== "admin") {
+            throw new Error("Forbidden")
+        }
+
+        // Get current settings
+        const salon = await db.query.salons.findFirst({
+            where: eq(salons.id, salonId),
+            columns: { settings: true, ownerId: true }
+        })
+
+        if (!salon) {
+            return { error: "Salão não encontrado" }
+        }
+
+        const currentSettings = (salon.settings as Record<string, any>) || {}
+
+        // Update or remove custom_monthly_limit
+        const newSettings = { ...currentSettings }
+
+        if (limit === null) {
+            delete newSettings.custom_monthly_limit
+        } else {
+            newSettings.custom_monthly_limit = limit
+        }
+
+        await db.update(salons)
+            .set({ settings: newSettings })
+            .where(eq(salons.id, salonId))
+
+        revalidatePath(`/z_admin_minhaagendaai/users/${salon.ownerId}`)
+
+        return { success: true }
+    } catch (error: any) {
+        console.error("Error updating credits limit:", error)
+        return { error: error.message || "Erro ao atualizar limite de créditos" }
     }
 }

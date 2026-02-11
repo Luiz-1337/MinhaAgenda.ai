@@ -10,7 +10,7 @@ import { AI_MODEL_CONSTANTS } from "../../constants/ai.constants"
  */
 export class ModelMapper {
   private static readonly MODEL_MAP: Record<string, string> = {
-    "gpt-5-nano": "gpt-5-nano",
+    "gpt-5-mini": "gpt-5-mini",
   }
 
   /**

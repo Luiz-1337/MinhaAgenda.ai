@@ -7,8 +7,15 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { CreditLimitEditor } from "@/components/admin/users/credit-limit-editor"
 
 export const dynamic = 'force-dynamic'
+
+const PLAN_CREDITS = {
+    SOLO: 1_000_000,
+    PRO: 5_000_000,
+    ENTERPRISE: 10_000_000,
+} as const
 
 export default async function UserDetailsPage({
     params,
@@ -23,6 +30,12 @@ export default async function UserDetailsPage({
         return <div>Erro: {error}</div>
     }
 
+    const salon = user.ownedSalons?.[0]
+    const settings = salon?.settings as { custom_monthly_limit?: number } | null
+    const currentLimit = settings?.custom_monthly_limit
+    const tier = user.tier as keyof typeof PLAN_CREDITS
+    const defaultLimit = PLAN_CREDITS[tier] || PLAN_CREDITS.SOLO
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4">
@@ -34,7 +47,17 @@ export default async function UserDetailsPage({
                 <h1 className="text-3xl font-bold">Detalhes do Usuário</h1>
             </div>
 
-            <UsageStats plan={user.tier} tokens={0} /> {/* Tokens logic later */}
+            <div className="grid gap-4 md:grid-cols-2">
+                <UsageStats plan={user.tier} tokens={0} /> {/* Tokens logic later */}
+
+                {salon && (
+                    <CreditLimitEditor
+                        salonId={salon.id}
+                        currentLimit={currentLimit}
+                        defaultLimit={defaultLimit}
+                    />
+                )}
+            </div>
 
             <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-6">
