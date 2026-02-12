@@ -104,7 +104,7 @@ export function addDays(date: Date, days: number): Date {
 export function startOfDay(date: Date): Date {
   const brazil = toBrazilDate(date)
   brazil.setHours(0, 0, 0, 0)
-  return fromBrazilTime(brazil)
+  return toBrazilTime(brazil)
 }
 
 /**
@@ -114,7 +114,7 @@ export function startOfDay(date: Date): Date {
 export function endOfDay(date: Date): Date {
   const brazil = toBrazilDate(date)
   brazil.setHours(23, 59, 59, 999)
-  return fromBrazilTime(brazil)
+  return toBrazilTime(brazil)
 }
 
 /**
@@ -248,4 +248,4 @@ function toBrazilDate(date: Date): Date {
 }
 
 // Re-export para uso externo
-export { toBrazilDate, getBrazilNow, BRAZIL_TIMEZONE, fromBrazilTime }
+export { toBrazilDate, getBrazilNow, BRAZIL_TIMEZONE, toBrazilTime }

@@ -1,5 +1,5 @@
 import { Result, ok, fail } from "../../../shared/types"
-import { formatDate, getDayOfWeek, formatTime, toBrazilDate, fromBrazilTime } from "../../../shared/utils/date.utils"
+import { formatDate, getDayOfWeek, formatTime, toBrazilDate, toBrazilTime } from "../../../shared/utils/date.utils"
 import { SLOT_DURATION } from "../../../shared/constants"
 import { DomainError } from "../../../domain/errors"
 import { TimeSlot } from "../../../domain/entities"
@@ -238,13 +238,13 @@ export class CheckAvailabilityUseCase {
 
       // Cria horário em Brasília e converte para UTC
       const slotStartBrazil = new Date(baseYear, baseMonth, baseDay, slotHour, slotMin, 0, 0)
-      const slotStart = fromBrazilTime(slotStartBrazil)
+      const slotStart = toBrazilTime(slotStartBrazil)
 
       const endMinutesTotal = minutes + slotDuration
       const endHourSlot = Math.floor(endMinutesTotal / 60)
       const endMinSlot = endMinutesTotal % 60
       const slotEndBrazil = new Date(baseYear, baseMonth, baseDay, endHourSlot, endMinSlot, 0, 0)
-      const slotEnd = fromBrazilTime(slotEndBrazil)
+      const slotEnd = toBrazilTime(slotEndBrazil)
 
       slots.push(
         new TimeSlot({
