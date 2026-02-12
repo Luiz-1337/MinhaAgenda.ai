@@ -9,11 +9,24 @@ const workHoursDaySchema = z.object({
   path: ["end"],
 })
 
-// Schema para horários de funcionamento (0 = domingo, 6 = sábado)
-const workHoursSchema = z.record(
-  z.enum(["0", "1", "2", "3", "4", "5", "6"]),
-  workHoursDaySchema
-).optional()
+const workHoursSchema = z.preprocess(
+  (val) => {
+    if (typeof val === 'object' && val !== null) {
+      const cleanObj: Record<string, unknown> = {};
+      Object.entries(val).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          cleanObj[key] = value;
+        }
+      });
+      return Object.keys(cleanObj).length > 0 ? cleanObj : undefined;
+    }
+    return val;
+  },
+  z.record(
+    z.enum(["0", "1", "2", "3", "4", "5", "6"]),
+    workHoursDaySchema
+  ).optional()
+);
 
 // Schema para configurações do salão
 const salonSettingsSchema = z.object({

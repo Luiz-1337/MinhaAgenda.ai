@@ -118,6 +118,9 @@ export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonR
     return { success: true, data: { salonId: newSalon.id } }
   } catch (error) {
     console.error("Erro detalhado em createSalon:", error)
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
+      return { error: "Este número de WhatsApp já está cadastrado em outro salão." }
+    }
     return { error: error instanceof Error ? error.message : "Erro ao criar salão" }
   }
 }

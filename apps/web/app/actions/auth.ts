@@ -269,7 +269,13 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
     return { error: `Erro ao configurar sua conta. Detalhe: ${(err as Error).message}` }
   }
 
-  // Novos usuários sempre precisam fazer onboarding
+  // Signup já criou o salão na transação acima, redireciona para o dashboard
+  const salonResult = await getOwnerSalonId()
+  if (!isSalonOwnerError(salonResult)) {
+    redirect(`/${salonResult.salonId}/dashboard`)
+  }
+
+  // Fallback: se por algum motivo o salão não foi encontrado, vai para onboarding
   redirect("/onboarding")
 }
 

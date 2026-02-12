@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { db, salons, eq } from "@repo/db"
 
 export default async function OnboardingLayout({
   children,
@@ -7,16 +8,24 @@ export default async function OnboardingLayout({
   const supabase = await createClient()
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+  } = await supabase.auth.getUser()
 
   // Se não estiver autenticado, redireciona para login
-  if (!session) {
+  if (!user) {
     redirect("/login")
   }
 
-  // Permite acesso ao onboarding mesmo se já tiver salões
-  // Isso permite criar múltiplos salões
+  // Se o usuário já tem salão, redireciona para o dashboard
+  const existingSalon = await db.query.salons.findFirst({
+    where: eq(salons.ownerId, user.id),
+    columns: { id: true },
+  })
+
+  if (existingSalon) {
+    redirect(`/${existingSalon.id}/dashboard`)
+  }
+
   return <>{children}</>
 }
 

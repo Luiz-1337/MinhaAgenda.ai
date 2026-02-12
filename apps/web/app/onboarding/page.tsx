@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useTransition, useEffect } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { createSalon, getUserSalons } from "@/app/actions/salon"
@@ -23,28 +23,27 @@ const DAYS_OF_WEEK = [
 export default function OnboardingPage() {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [hasSalons, setHasSalons] = useState(false)
 
-  // Verifica se é plano SOLO e já tem salão
+  // Verifica se o usuário já tem algum salão — se sim, redireciona para o dashboard
   useEffect(() => {
-    async function checkSoloPlan() {
+    async function checkExistingSalons() {
       try {
         const salons = await getUserSalons()
         if (salons.length > 0) {
-          const soloSalon = salons.find(s => s.planTier === 'SOLO')
-          if (soloSalon) {
-            // Plano SOLO já tem salão, redireciona para o dashboard
-            router.replace(`/${soloSalon.id}/dashboard`)
-            return
-          }
+          setHasSalons(true)
+          // Redireciona para o primeiro salão encontrado
+          router.replace(`/${salons[0].id}/dashboard`)
         }
       } catch (error) {
         console.error("Erro ao verificar salões:", error)
       }
     }
-    checkSoloPlan()
+    checkExistingSalons()
   }, [router])
 
   const form = useForm<CreateSalonSchema>({
+    shouldUnregister: true,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createSalonSchema as any),
     defaultValues: {
@@ -384,13 +383,15 @@ export default function OnboardingPage() {
 
             {/* Footer Buttons */}
             <div className="pt-4 border-t border-slate-200 dark:border-white/5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-              >
-                Cancelar
-              </button>
+              {hasSalons && (
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  Cancelar
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={isPending}
