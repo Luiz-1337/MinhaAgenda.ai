@@ -371,10 +371,16 @@ export async function restartInstance(instanceName: string): Promise<void> {
   }
 }
 
-/** Extrai número do owner (5511999999999@s.whatsapp.net) ou profilePictureUrl/JID */
+/** Extrai número do owner (5511999999999@s.whatsapp.net, +5511999999999, etc.) */
 function extractPhoneFromOwner(owner: unknown): string | null {
   const str = typeof owner === 'string' ? owner : String(owner ?? '');
-  const match = str.match(/^(\d{10,15})@?/);
+  if (!str || str === 'undefined' || str === 'null') return null;
+
+  // Remove espaços, traços e parênteses
+  const cleaned = str.replace(/[\s\-()]/g, '');
+
+  // Tenta extrair número no formato: +5511999999999, 5511999999999@s.whatsapp.net, etc.
+  const match = cleaned.match(/\+?(\d{10,15})(?:@.*)?/);
   return match ? `+${match[1]}` : null;
 }
 
@@ -397,13 +403,25 @@ export async function getConnectedPhoneNumber(
     const raw = (response as any)?.response ?? response;
     const items = Array.isArray(raw) ? raw : [raw];
 
+    logger.debug({
+      instanceName,
+      responseType: typeof response,
+      isArray: Array.isArray(raw),
+      itemCount: items.length,
+    }, 'getConnectedPhoneNumber: raw response info');
+
     const found = items.find(
       (i: any) =>
         i?.instance?.instanceName === instanceName ||
-        i?.instanceName === instanceName
+        i?.instanceName === instanceName ||
+        i?.name === instanceName
     );
 
     if (!found) {
+      logger.warn({
+        instanceName,
+        itemNames: items.map((i: any) => i?.instance?.instanceName ?? i?.instanceName ?? i?.name ?? 'unknown'),
+      }, 'getConnectedPhoneNumber: instance not found in response items');
       return null;
     }
 
@@ -411,28 +429,44 @@ export async function getConnectedPhoneNumber(
 
     // Check multiple fields for the phone number
     const candidates = [
-      instanceData.number, // Often present in v2
-      instanceData.owner,  // Standard field
-      instanceData.id,     // Sometimes the JID
+      instanceData.number,      // Often present in v2
+      instanceData.owner,       // Standard field
+      instanceData.ownerJid,    // Alternative owner field
+      instanceData.id,          // Sometimes the JID
+      instanceData.wuid,        // WhatsApp User ID
+      instanceData.phone,       // Direct phone field
+      instanceData.phoneNumber, // Alternative phone field
     ];
 
     for (const candidate of candidates) {
       const phone = extractPhoneFromOwner(candidate);
-      if (phone) return phone;
+      if (phone) {
+        logger.info({ instanceName, phone, sourceField: candidate }, 'getConnectedPhoneNumber: extracted phone successfully');
+        return phone;
+      }
     }
 
     // Fallback: Try to extract from profilePictureUrl
     if (instanceData?.profilePictureUrl) {
       const fromUrl = extractPhoneFromOwner(instanceData.profilePictureUrl);
-      if (fromUrl) return fromUrl;
+      if (fromUrl) {
+        logger.info({ instanceName, phone: fromUrl }, 'getConnectedPhoneNumber: extracted phone from profilePictureUrl');
+        return fromUrl;
+      }
     }
 
-    // Debug logging if we can't find the number
+    // Debug logging if we can't find the number - log ALL available data
     logger.warn({
       instanceName,
       availableKeys: Object.keys(instanceData),
-      data: JSON.stringify(instanceData).substring(0, 200)
-    }, 'Could not extract connected phone from Evolution API response');
+      data: JSON.stringify(instanceData).substring(0, 500),
+      number: instanceData.number,
+      owner: instanceData.owner,
+      ownerJid: instanceData.ownerJid,
+      id: instanceData.id,
+      wuid: instanceData.wuid,
+      phone: instanceData.phone,
+    }, 'Could not extract connected phone from Evolution API response - check raw data above');
 
   } catch (error) {
     logger.warn({ err: error, instanceName }, 'Error fetching connected phone from Evolution API');

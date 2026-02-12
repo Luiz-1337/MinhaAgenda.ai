@@ -125,7 +125,7 @@ export async function GET(
       currentStatus === 'verified'
         ? [
           {
-            phoneNumber: phoneNumber ?? 'Número conectado',
+            phoneNumber: phoneNumber ?? salon.evolutionInstanceName ?? 'WhatsApp',
             status: currentStatus as 'verified',
             connectedAt: agent?.whatsappConnectedAt?.toISOString() ?? new Date().toISOString(),
           },

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
-import { getInstanceStatus, mapEvolutionStatusToAgentStatus } from '@/lib/services/evolution-instance.service';
+import { getInstanceStatus, getConnectedPhoneNumber, mapEvolutionStatusToAgentStatus } from '@/lib/services/evolution-instance.service';
 import { logger } from '@/lib/logger';
 
 /**
@@ -95,19 +95,53 @@ export async function GET(
       currentStatus = mapDatabaseStatus(agent.whatsappStatus);
     }
 
+    // Se Evolution conectada mas sem número no agente, tenta buscar da Evolution API
+    let phoneNumber = agent.whatsappNumber;
+    if (currentStatus === 'verified' && salon.evolutionInstanceName && !phoneNumber) {
+      try {
+        const fetched = await getConnectedPhoneNumber(salon.evolutionInstanceName);
+        if (fetched) {
+          phoneNumber = fetched;
+          // Persiste o número no agente para próximas consultas
+          await db
+            .update(agents)
+            .set({
+              whatsappNumber: fetched,
+              whatsappConnectedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(agents.id, agentId));
+        }
+      } catch {
+        // Ignora falha - número permanece vazio
+      }
+    }
+
     // Return array for backward compatibility with frontend
-    const numbers = agent.whatsappNumber
-      ? [
-        {
-          phoneNumber: agent.whatsappNumber,
-          status: currentStatus,
-          connectedAt: agent.whatsappConnectedAt?.toISOString() ?? '',
-          ...(agent.whatsappVerifiedAt
-            ? { verifiedAt: agent.whatsappVerifiedAt.toISOString() }
-            : {}),
-        },
-      ]
-      : [];
+    const numbers =
+      currentStatus === 'verified'
+        ? [
+          {
+            phoneNumber: phoneNumber ?? salon.evolutionInstanceName ?? 'WhatsApp',
+            status: currentStatus as 'verified',
+            connectedAt: agent.whatsappConnectedAt?.toISOString() ?? new Date().toISOString(),
+            ...(agent.whatsappVerifiedAt
+              ? { verifiedAt: agent.whatsappVerifiedAt.toISOString() }
+              : {}),
+          },
+        ]
+        : phoneNumber
+          ? [
+            {
+              phoneNumber,
+              status: currentStatus,
+              connectedAt: agent.whatsappConnectedAt?.toISOString() ?? '',
+              ...(agent.whatsappVerifiedAt
+                ? { verifiedAt: agent.whatsappVerifiedAt.toISOString() }
+                : {}),
+            },
+          ]
+          : [];
 
     return NextResponse.json({ numbers });
   } catch (err) {
