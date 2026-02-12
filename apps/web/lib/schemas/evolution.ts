@@ -52,6 +52,7 @@ export function normalizeWebhookEvent(raw: string): string {
  */
 const MessageKeySchema = z.object({
   remoteJid: z.string(), // Phone number in format: 5511999999999@s.whatsapp.net
+  remoteJidAlt: z.string().optional(), // Alternative JID (often the real number when remoteJid is LID)
   fromMe: z.boolean(),
   id: z.string(), // Message ID
 });
