@@ -25,7 +25,7 @@ export async function login(prevState: ActionState, formData: FormData): Promise
 
   // Verifica se o usuário tem um salão
   const salonResult = await getOwnerSalonId()
-  
+
   // Se não tiver salão, redireciona para onboarding
   if (isSalonOwnerError(salonResult)) {
     redirect("/onboarding")
@@ -44,7 +44,7 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
   const password = normalizeString(String(formData.get("password") || ""))
   const salon_name = normalizeString(String(formData.get("salon_name") || ""))
   let planInput = String(formData.get("plan") || "SOLO").toUpperCase()
-  
+
   // Valid tiers
   const VALID_TIERS = ['SOLO', 'PRO', 'ENTERPRISE']
   if (!VALID_TIERS.includes(planInput)) {
@@ -61,8 +61,8 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
 
   // 1. Preparar tipos e função no banco ANTES de criar usuário
   try {
-        // Criar tipos se não existirem (usando verificação explícita, pois IF NOT EXISTS não funciona para enums)
-        await db.execute(sql`
+    // Criar tipos se não existirem (usando verificação explícita, pois IF NOT EXISTS não funciona para enums)
+    await db.execute(sql`
           DO $$ BEGIN
             IF NOT EXISTS (
               SELECT 1 FROM pg_type t
@@ -73,8 +73,8 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
             END IF;
           END $$;
         `)
-        
-        await db.execute(sql`
+
+    await db.execute(sql`
           DO $$ BEGIN
             IF NOT EXISTS (
               SELECT 1 FROM pg_type t
@@ -86,8 +86,8 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
           END $$;
         `)
 
-        // Criar função atualizada que verifica colunas dinamicamente
-        await db.execute(sql`
+    // Criar função atualizada que verifica colunas dinamicamente
+    await db.execute(sql`
           CREATE OR REPLACE FUNCTION "public"."update_profile_on_signup"(
             p_user_id uuid,
             p_full_name text,
@@ -248,7 +248,7 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
     })
   } catch (err) {
     console.error("Erro CRÍTICO ao configurar conta no DB:", err)
-    
+
     // Deletar o usuário do Auth se a criação do perfil/salão falhar
     // Isso garante que não fiquem usuários órfãos no sistema
     if (userId) {
@@ -265,7 +265,7 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
         // Continuar mesmo se a deleção falhar - o importante é reportar o erro original
       }
     }
-    
+
     return { error: `Erro ao configurar sua conta. Detalhe: ${(err as Error).message}` }
   }
 
@@ -285,7 +285,7 @@ export async function resetPasswordRequest(prevState: ActionState, formData: For
   }
 
   const supabase = await createClient()
-  
+
   // Obter a URL base do ambiente
   const headersList = await headers()
   const host = headersList.get('host') || 'localhost:3000'
@@ -330,10 +330,10 @@ export async function resetPassword(prevState: ActionState, formData: FormData):
   }
 
   const supabase = await createClient()
-  
+
   // Verificar se há uma sessão ativa (criada pelo link do email)
   const { data: { session } } = await supabase.auth.getSession()
-  
+
   if (!session) {
     return { error: "Link inválido ou expirado. Por favor, solicite um novo link de recuperação." }
   }

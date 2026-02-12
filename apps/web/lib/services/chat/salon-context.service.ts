@@ -2,8 +2,7 @@
  * Serviço para contexto do salão (APPLICATION LAYER)
  */
 
-import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, salons, eq } from "@repo/db"
 import { SALON_CONSTANTS } from "@/lib/constants/ai.constants"
 
 export class SalonContextService {

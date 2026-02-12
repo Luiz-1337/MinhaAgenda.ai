@@ -4,8 +4,7 @@
 
 import { findRelevantContext } from "@/lib/services/ai/rag-context.service"
 import { RAG_CONSTANTS } from "@/lib/constants/ai.constants"
-import { db, agents } from "@repo/db"
-import { and, eq } from "drizzle-orm"
+import { db, agents, and, eq } from "@repo/db"
 
 export class KnowledgeContextService {
   /**

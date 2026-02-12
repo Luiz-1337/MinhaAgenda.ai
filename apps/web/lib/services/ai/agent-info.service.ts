@@ -2,8 +2,7 @@
  * Serviço para informações do agente (APPLICATION LAYER)
  */
 
-import { db, agents, agentKnowledgeBase } from "@repo/db"
-import { and, eq, sql } from "drizzle-orm"
+import { db, agents, agentKnowledgeBase, and, eq, sql } from "@repo/db"
 
 export interface AgentInfo {
   id: string

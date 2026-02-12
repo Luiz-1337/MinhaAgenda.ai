@@ -1,7 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray } from "drizzle-orm"
-import { db, chats, messages, profiles } from "@repo/db"
+import { db, chats, messages, profiles, and, desc, eq, inArray } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { sendWhatsAppMessage } from "@/lib/services/evolution-message.service"
 import { saveMessage } from "@/lib/services/chat.service"
@@ -41,7 +40,7 @@ function formatMessageTime(date: Date): string {
   if (diffHours < 24) return `${diffHours}h`
   if (diffDays === 1) return "Ontem"
   if (diffDays < 7) return `${diffDays}d`
-  
+
   // Formato completo para datas mais antigas
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
 }
@@ -68,7 +67,7 @@ function formatPreviewTime(date: Date): string {
   if (diffDays < 7) {
     return `${diffDays}d`
   }
-  
+
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
@@ -100,7 +99,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
     // Busca a última mensagem de cada chat para o preview
     const chatIds = salonChats.map((chat) => chat.id)
     const lastMessageByChat = new Map<string, typeof messages.$inferSelect>()
-    
+
     if (chatIds.length > 0) {
       // Busca mensagens de todos os chats do salão
       const allMessages = await db.query.messages.findMany({
@@ -108,7 +107,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
         orderBy: desc(messages.createdAt),
         limit: 1000, // Limite alto para garantir que pegamos as últimas de cada chat
       })
-      
+
       // Agrupa mensagens por chat e pega a última de cada
       for (const msg of allMessages) {
         if (!lastMessageByChat.has(msg.chatId)) {
@@ -120,7 +119,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
     // Busca perfis dos clientes pelos telefones
     const phoneNumbers = salonChats.map((chat) => chat.clientPhone)
     const profileByPhone = new Map<string, { id: string; fullName: string | null; phone: string | null }>()
-    
+
     if (phoneNumbers.length > 0) {
       // Busca todos os perfis e filtra pelos telefones
       const allProfiles = await db.query.profiles.findMany({
@@ -130,7 +129,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           phone: true,
         },
       })
-      
+
       for (const profile of allProfiles) {
         if (profile.phone && phoneNumbers.includes(profile.phone)) {
           profileByPhone.set(profile.phone, profile)
@@ -144,7 +143,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
       .map((chat) => {
         const profile = profileByPhone.get(chat.clientPhone)
         const lastMessage = lastMessageByChat.get(chat.id)!
-        
+
         // Formata telefone para exibição
         const phone = chat.clientPhone.replace(/\D/g, "")
         const formattedPhone = phone.length === 11
@@ -196,10 +195,10 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[] | {
       orderBy: desc(messages.createdAt),
       limit: 100,
     })
-    
+
     // Filtra apenas user e assistant (remove system) e mensagens vazias
     const validMessages = allChatMessages.filter(
-      (msg) => 
+      (msg) =>
         (msg.role === "user" || msg.role === "assistant") &&
         msg.content &&
         msg.content.trim().length > 0
@@ -245,7 +244,7 @@ export async function setChatManualMode(
   try {
     await db
       .update(chats)
-      .set({ 
+      .set({
         isManual,
         updatedAt: new Date()
       })

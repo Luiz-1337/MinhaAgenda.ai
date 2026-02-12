@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 import { agentConfigSchema, type AgentConfigSchema } from "@/lib/schemas"
-import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, salons, eq } from "@repo/db"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 

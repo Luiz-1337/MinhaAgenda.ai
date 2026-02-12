@@ -1,5 +1,4 @@
-import { and, asc, eq, gte, lte, desc } from "drizzle-orm"
-import { appointments, db, professionals, profiles, services, customers } from "@repo/db"
+import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, desc } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
 
 // ============================================================================

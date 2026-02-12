@@ -18,8 +18,7 @@ import { getChatHistory } from "../chat.service";
 import { findRelevantContext } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
-import { db, customers, profiles, appointments } from "@repo/db";
-import { eq, and } from "drizzle-orm";
+import { db, customers, profiles, appointments, eq, and } from "@repo/db";
 
 /**
  * Parâmetros para geração de resposta

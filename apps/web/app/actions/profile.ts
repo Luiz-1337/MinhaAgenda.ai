@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 import type { UpdateProfileSchema } from "@/lib/schemas"
-import { db, profiles } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, profiles, eq } from "@repo/db"
 
 export type ProfileDetails = {
   id: string

@@ -4,8 +4,7 @@ import { embed } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { createClient } from "../../lib/supabase/server"
 import type { ActionResult } from "../../lib/types/common"
-import { db, agentKnowledgeBase, agents, postgresClient } from "@repo/db"
-import { eq, and, desc, sql } from "drizzle-orm"
+import { db, agentKnowledgeBase, agents, postgresClient, eq, and, desc, sql } from "@repo/db"
 import { hasSalonPermission } from "../../lib/services/permissions.service"
 import { AgentInfoService } from "../../lib/services/ai/agent-info.service"
 import {
@@ -321,9 +320,8 @@ export async function uploadKnowledgeFile(
 
         chunksCreated++
       } catch (error) {
-        const errorMsg = `Erro ao processar chunk ${i + 1}/${chunks.length}: ${
-          error instanceof Error ? error.message : "Erro desconhecido"
-        }`
+        const errorMsg = `Erro ao processar chunk ${i + 1}/${chunks.length}: ${error instanceof Error ? error.message : "Erro desconhecido"
+          }`
         console.error(errorMsg, error)
         errors.push(errorMsg)
       }

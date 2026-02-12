@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { db, agents, salons } from '@repo/db';
-import { eq } from 'drizzle-orm';
+import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
 import { getInstanceStatus, getConnectedPhoneNumber, mapEvolutionStatusToAgentStatus } from '@/lib/services/evolution-instance.service';
 import { logger } from '@/lib/logger';
@@ -125,20 +124,20 @@ export async function GET(
     const numbers =
       currentStatus === 'verified'
         ? [
-            {
-              phoneNumber: phoneNumber ?? 'Número conectado',
-              status: currentStatus as 'verified',
-              connectedAt: agent?.whatsappConnectedAt?.toISOString() ?? new Date().toISOString(),
-            },
-          ]
+          {
+            phoneNumber: phoneNumber ?? 'Número conectado',
+            status: currentStatus as 'verified',
+            connectedAt: agent?.whatsappConnectedAt?.toISOString() ?? new Date().toISOString(),
+          },
+        ]
         : phoneNumber
           ? [
-              {
-                phoneNumber,
-                status: currentStatus,
-                connectedAt: agent?.whatsappConnectedAt?.toISOString() ?? '',
-              },
-            ]
+            {
+              phoneNumber,
+              status: currentStatus,
+              connectedAt: agent?.whatsappConnectedAt?.toISOString() ?? '',
+            },
+          ]
           : [];
 
     return NextResponse.json({ numbers });

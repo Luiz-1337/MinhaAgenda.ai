@@ -1,8 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, aiUsageStats, salons, profiles, sql } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, aiUsageStats, salons, profiles, sql, eq } from "@repo/db"
 
 /**
  * Limites de créditos por plano

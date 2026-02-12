@@ -8,8 +8,7 @@
  * - Phone number formatting
  */
 
-import { db, salons, agents } from '@repo/db';
-import { and, eq } from 'drizzle-orm';
+import { db, salons, agents, and, eq } from '@repo/db';
 import { getEvolutionClient, evolutionCircuitBreaker, EvolutionAPIError } from './evolution-api.service';
 import { CircuitOpenError } from '../circuit-breaker';
 import { logger, hashPhone } from '../logger';

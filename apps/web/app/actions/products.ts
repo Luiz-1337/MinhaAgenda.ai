@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { asc, eq, and } from "drizzle-orm"
+import { db, products, salons, asc, eq, and } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
-import { db, products, salons } from "@repo/db"
 import { formatZodError, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import type { ProductRow, UpsertProductInput, ProductPayload } from "@/lib/types/product"
 import type { ActionResult } from "@/lib/types/common"

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getRawOAuth2Client } from '@/lib/google'
 import { createClient } from '@/lib/supabase/server'
-import { db, salons } from '@repo/db'
-import { eq } from 'drizzle-orm'
+import { db, salons, eq } from '@repo/db'
 
 /**
  * Gera URL de autenticação OAuth do Google

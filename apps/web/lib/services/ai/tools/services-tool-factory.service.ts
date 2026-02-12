@@ -4,8 +4,7 @@
 
 import { tool } from "ai"
 import { z } from "zod"
-import { and, eq } from "drizzle-orm"
-import { db, services } from "@repo/db"
+import { db, services, and, eq } from "@repo/db"
 
 export class ServicesToolFactory {
   /**

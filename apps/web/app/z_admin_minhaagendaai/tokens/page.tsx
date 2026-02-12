@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { db, profiles, aiUsageStats } from "@repo/db"
-import { desc, sql } from "drizzle-orm"
+import { db, profiles, aiUsageStats, desc, sql } from "@repo/db"
 
 export const dynamic = 'force-dynamic'
 

@@ -1,5 +1,4 @@
-import { db, salons, professionals, profiles } from "@repo/db"
-import { eq, and, or, inArray } from "drizzle-orm"
+import { db, salons, professionals, profiles, eq, and, or, inArray } from "@repo/db"
 
 /**
  * Verifica se o usuário tem permissão de gerenciamento no salão.
@@ -21,12 +20,12 @@ export async function hasSalonPermission(salonId: string, userId: string): Promi
       where: eq(profiles.id, userId),
       columns: { tier: true }
     })
-    
+
     // Se o owner tem tier SOLO, sempre retorna true (acesso total como administrador)
     if (ownerProfile?.tier === 'SOLO') {
       return true
     }
-    
+
     // Owner de outros planos também tem acesso
     return true
   }

@@ -5,8 +5,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { db, salons } from "@repo/db";
-import { isNotNull } from "drizzle-orm";
+import { db, salons, isNotNull } from "@repo/db";
 import { type EvolutionChat, getInstanceChats } from "@/lib/services/evolution-instance.service";
 import { logger } from "@/lib/logger";
 

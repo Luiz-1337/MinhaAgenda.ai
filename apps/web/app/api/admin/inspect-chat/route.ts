@@ -4,8 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@repo/db';
-import { sql } from 'drizzle-orm';
+import { db, sql } from '@repo/db';
 import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {

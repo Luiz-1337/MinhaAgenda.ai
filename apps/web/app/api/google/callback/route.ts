@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { getRawOAuth2Client } from '@/lib/google'
 import { createClient } from '@/lib/supabase/server'
-import { db, salonIntegrations, salons } from '@repo/db'
-import { eq } from 'drizzle-orm'
+import { db, salonIntegrations, salons, eq } from '@repo/db'
 
 /**
  * Obtém a URL base da aplicação
@@ -13,11 +12,11 @@ function getBaseUrl(req: NextRequest): string {
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return process.env.NEXT_PUBLIC_APP_URL
   }
-  
+
   const host = req.headers.get('host') || req.headers.get('x-forwarded-host') || 'localhost:3000'
-  const protocol = req.headers.get('x-forwarded-proto') || 
-                   (process.env.NODE_ENV === 'production' ? 'https' : 'http')
-  
+  const protocol = req.headers.get('x-forwarded-proto') ||
+    (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+
   return `${protocol}://${host}`
 }
 
@@ -27,7 +26,7 @@ function getBaseUrl(req: NextRequest): string {
  */
 export async function GET(req: NextRequest) {
   const baseUrl = getBaseUrl(req)
-  
+
   try {
     const searchParams = req.nextUrl.searchParams
     const code = searchParams.get('code')
@@ -81,12 +80,12 @@ export async function GET(req: NextRequest) {
     // Verifica autenticação - tenta múltiplas vezes se necessário
     let user = null
     let supabase = null
-    
+
     try {
       supabase = await createClient()
       const authResult = await supabase.auth.getUser()
       user = authResult.data.user
-      
+
       if (!user) {
         console.warn('⚠️ Usuário não autenticado no callback. Tentando verificar novamente...')
         // Aguarda um pouco e tenta novamente (pode ser problema de sincronização de cookies)
@@ -163,7 +162,7 @@ export async function GET(req: NextRequest) {
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client })
       const userInfo = await oauth2.userinfo.get()
       email = userInfo.data.email || null
-      
+
       if (email) {
         console.log('✅ Email obtido com sucesso:', email)
       } else {
@@ -204,7 +203,7 @@ export async function GET(req: NextRequest) {
     if (existingIntegration) {
       // Atualiza existente (mantém isActive atual, não sobrescreve)
       console.log('🔄 Atualizando integração existente:', existingIntegration.id)
-      
+
       const updateResult = await db
         .update(salonIntegrations)
         .set({
@@ -216,28 +215,28 @@ export async function GET(req: NextRequest) {
           // isActive não é atualizado aqui - mantém o valor atual
         })
         .where(eq(salonIntegrations.id, existingIntegration.id))
-        .returning({ 
-          id: salonIntegrations.id, 
+        .returning({
+          id: salonIntegrations.id,
           refreshToken: salonIntegrations.refreshToken,
           email: salonIntegrations.email,
         })
-      
+
       console.log('📝 Resultado do update:', {
         updatedId: updateResult[0]?.id,
         hasRefreshToken: !!updateResult[0]?.refreshToken,
         savedEmail: updateResult[0]?.email,
       })
-      
+
       // Verifica se o refresh token e email foram salvos corretamente
       const verifyIntegration = await db.query.salonIntegrations.findFirst({
         where: eq(salonIntegrations.id, existingIntegration.id),
-        columns: { 
-          id: true, 
+        columns: {
+          id: true,
           refreshToken: true,
           email: true,
         },
       })
-      
+
       if (!verifyIntegration?.refreshToken || verifyIntegration.refreshToken !== tokens.refresh_token) {
         console.error('❌ ERRO: Refresh token não foi salvo corretamente!', {
           expectedLength: tokens.refresh_token?.length,
@@ -245,7 +244,7 @@ export async function GET(req: NextRequest) {
         })
         throw new Error('Falha ao salvar refresh token no banco de dados')
       }
-      
+
       if (email && verifyIntegration.email !== email) {
         console.error('❌ ERRO: Email não foi salvo corretamente!', {
           expected: email,
@@ -253,7 +252,7 @@ export async function GET(req: NextRequest) {
         })
         throw new Error('Falha ao salvar email no banco de dados')
       }
-      
+
       console.log('✅ Integração atualizada com sucesso:', {
         refreshTokenSaved: true,
         emailSaved: email ? verifyIntegration.email === email : 'N/A (email não fornecido)',
@@ -262,7 +261,7 @@ export async function GET(req: NextRequest) {
     } else {
       // Cria novo (isActive será true por padrão)
       console.log('🆕 Criando nova integração')
-      
+
       const result = await db.insert(salonIntegrations).values({
         salonId,
         provider: 'google',
@@ -271,26 +270,26 @@ export async function GET(req: NextRequest) {
         expiresAt,
         email, // Garante que o email seja salvo
         isActive: true, // Ativa sincronização automática por padrão ao conectar
-      }).returning({ 
+      }).returning({
         id: salonIntegrations.id,
         email: salonIntegrations.email,
       })
-      
+
       console.log('📝 Resultado do insert:', {
         createdId: result[0]?.id,
         savedEmail: result[0]?.email,
       })
-      
+
       // Verifica se o refresh token e email foram salvos corretamente
       const verifyIntegration = await db.query.salonIntegrations.findFirst({
         where: eq(salonIntegrations.id, result[0]?.id),
-        columns: { 
-          id: true, 
+        columns: {
+          id: true,
           refreshToken: true,
           email: true,
         },
       })
-      
+
       if (!verifyIntegration?.refreshToken || verifyIntegration.refreshToken !== tokens.refresh_token) {
         console.error('❌ ERRO: Refresh token não foi salvo corretamente!', {
           expectedLength: tokens.refresh_token?.length,
@@ -298,7 +297,7 @@ export async function GET(req: NextRequest) {
         })
         throw new Error('Falha ao salvar refresh token no banco de dados')
       }
-      
+
       if (email && verifyIntegration.email !== email) {
         console.error('❌ ERRO: Email não foi salvo corretamente!', {
           expected: email,
@@ -306,7 +305,7 @@ export async function GET(req: NextRequest) {
         })
         throw new Error('Falha ao salvar email no banco de dados')
       }
-      
+
       console.log('✅ Integração criada com sucesso:', {
         id: result[0]?.id,
         refreshTokenSaved: true,

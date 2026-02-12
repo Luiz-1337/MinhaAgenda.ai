@@ -7,8 +7,7 @@ import { UserNav } from "@/components/dashboard/user-nav"
 import { SalonSelector } from "@/components/dashboard/salon-selector"
 import { RouteGuard } from "@/components/auth/route-guard"
 import { Bot } from 'lucide-react'
-import { db, profiles } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, profiles, eq } from "@repo/db"
 
 export default async function SalonLayout({
   children,
@@ -79,7 +78,7 @@ export default async function SalonLayout({
           {/* Ambient Background Effects */}
           <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-100/50 dark:from-indigo-900/10 to-transparent pointer-events-none z-0"></div>
           <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-indigo-500/5 dark:bg-indigo-600/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
-          
+
           {/* Header */}
           <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-white/5 relative z-10 backdrop-blur-sm transition-colors duration-300">
             <div className="flex items-center gap-4">

@@ -1,5 +1,5 @@
 import type { CoreMessage } from 'ai'
-import { db, chatMessages, domainServices } from '@repo/db'
+import { db, domainServices } from '@repo/db'
 import { logger } from '@repo/db/infrastructure/logger'
 import { findOrCreateWebChat, saveMessage } from '@/lib/services/chat.service'
 
@@ -46,22 +46,6 @@ export class SaveChatMessageUseCase {
         }, err as Error)
       }
     }
-
-    await db
-      .insert(chatMessages)
-      .values({
-        salonId,
-        clientId: clientId || null,
-        role: 'user',
-        content: message,
-      })
-      .catch((err) => {
-        logger.error('Error saving user message to chatMessages table', {
-          salonId,
-          clientId,
-          error: err instanceof Error ? err.message : String(err),
-        }, err as Error)
-      })
   }
 
   async executeAssistantMessage(
@@ -87,22 +71,6 @@ export class SaveChatMessageUseCase {
         }, err as Error)
       })
     }
-
-    await db
-      .insert(chatMessages)
-      .values({
-        salonId,
-        clientId: clientId || null,
-        role: 'assistant',
-        content: text,
-      })
-      .catch((err) => {
-        logger.error('Error saving assistant message to chatMessages table', {
-          salonId,
-          clientId,
-          error: err instanceof Error ? err.message : String(err),
-        }, err as Error)
-      })
   }
 
   async findOrCreateChat(clientId: string, salonId: string): Promise<string | null> {

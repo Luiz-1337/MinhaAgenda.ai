@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { type CreateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import type { ActionResult } from "@/lib/types/common"
-import { db, salons, professionals, profiles } from "@repo/db"
-import { eq, asc, or, and } from "drizzle-orm"
+import { db, salons, professionals, profiles, eq, asc, or, and } from "@repo/db"
 import type { SalonListItem } from "@/lib/types/salon"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { createSalonWithOwner } from "@/lib/services/salon.service"
@@ -60,9 +59,9 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     .from(salons)
     .innerJoin(profiles, eq(profiles.id, salons.ownerId))
     .leftJoin(
-      professionals, 
+      professionals,
       and(
-        eq(professionals.salonId, salons.id), 
+        eq(professionals.salonId, salons.id),
         eq(professionals.userId, user.id)
       )
     )
@@ -114,7 +113,7 @@ export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonR
 
   try {
     const newSalon = await createSalonWithOwner(user.id, data)
-    
+
     revalidatePath("/")
     return { success: true, data: { salonId: newSalon.id } }
   } catch (error) {
@@ -161,7 +160,7 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
     const professional = await db.query.professionals.findFirst({
       where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id))
     })
-    
+
     if (!professional) {
       return { error: "Você não tem permissão para acessar este salão" }
     }

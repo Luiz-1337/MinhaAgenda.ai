@@ -2,7 +2,6 @@
  * Serviço para persistência de mensagens (APPLICATION LAYER)
  */
 
-import { db, chatMessages } from "@repo/db"
 import { saveMessage, findOrCreateWebChat } from "@/lib/services/chat.service"
 
 interface SaveMessageOptions {
@@ -28,7 +27,6 @@ export class MessagePersistenceService {
       const chat = await findOrCreateWebChat(clientId, salonId)
       return chat.id
     } catch {
-      // Continua sem chatId - ainda salva em chatMessages para compatibilidade
       return null
     }
   }
@@ -42,31 +40,11 @@ export class MessagePersistenceService {
     clientId: string | null,
     content: string
   ): Promise<void> {
-    const savePromises: Promise<unknown>[] = []
-
     if (chatId) {
-      savePromises.push(
-        saveMessage(chatId, "user", content).catch(() => {
-          // Silenciosamente falha - não interrompe o fluxo
-        })
-      )
+      await saveMessage(chatId, "user", content).catch(() => {
+        // Silenciosamente falha - não interrompe o fluxo
+      })
     }
-
-    savePromises.push(
-      db
-        .insert(chatMessages)
-        .values({
-          salonId,
-          clientId,
-          role: "user",
-          content,
-        })
-        .catch(() => {
-          // Silenciosamente falha - não interrompe o fluxo
-        })
-    )
-
-    await Promise.all(savePromises)
   }
 
   /**
@@ -79,30 +57,10 @@ export class MessagePersistenceService {
     content: string,
     options?: SaveMessageOptions
   ): Promise<void> {
-    const savePromises: Promise<unknown>[] = []
-
     if (chatId) {
-      savePromises.push(
-        saveMessage(chatId, "assistant", content, options).catch(() => {
-          // Silenciosamente falha - não interrompe o fluxo
-        })
-      )
+      await saveMessage(chatId, "assistant", content, options).catch(() => {
+        // Silenciosamente falha - não interrompe o fluxo
+      })
     }
-
-    savePromises.push(
-      db
-        .insert(chatMessages)
-        .values({
-          salonId,
-          clientId,
-          role: "assistant",
-          content,
-        })
-        .catch(() => {
-          // Silenciosamente falha - não interrompe o fluxo
-        })
-    )
-
-    await Promise.all(savePromises)
   }
 }

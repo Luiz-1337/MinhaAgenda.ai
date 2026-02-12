@@ -2,8 +2,7 @@
  * Repository para disponibilidade de profissionais (INFRASTRUCTURE LAYER)
  */
 
-import { eq } from "drizzle-orm"
-import { db, availability, professionals } from "@repo/db"
+import { db, availability, professionals, eq } from "@repo/db"
 
 export interface AvailabilityRow {
   dayOfWeek: number

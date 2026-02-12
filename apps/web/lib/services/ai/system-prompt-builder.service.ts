@@ -2,8 +2,7 @@
  * Builder para construção do system prompt do assistente (APPLICATION LAYER)
  */
 
-import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, salons, eq } from "@repo/db"
 import { AgentInfoService } from "./agent-info.service"
 
 const TIMEZONE = "America/Sao_Paulo"

@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { uploadKnowledgeFile } from "@/app/actions/knowledge"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
-import { db, agents } from "@repo/db"
-import { eq, and } from "drizzle-orm"
+import { db, agents, eq, and } from "@repo/db"
 
 export const maxDuration = 300 // 5 minutos para processar arquivos grandes
 

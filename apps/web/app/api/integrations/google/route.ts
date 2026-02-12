@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { db, salonIntegrations } from '@repo/db'
-import { eq, and } from 'drizzle-orm'
+import { db, salonIntegrations, profiles, eq, and } from '@repo/db'
 import { hasSalonPermission } from '@/lib/services/permissions.service'
 
 /**

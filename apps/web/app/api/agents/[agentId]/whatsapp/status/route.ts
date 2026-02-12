@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { db, agents, salons } from '@repo/db';
-import { eq } from 'drizzle-orm';
+import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
 import { getInstanceStatus, mapEvolutionStatusToAgentStatus } from '@/lib/services/evolution-instance.service';
 import { logger } from '@/lib/logger';
@@ -29,16 +28,18 @@ export async function GET(
     }
 
     // Get agent
-    const agent = await db.query.agents.findFirst({
-      where: eq(agents.id, agentId),
-      columns: {
-        salonId: true,
-        whatsappNumber: true,
-        whatsappStatus: true,
-        whatsappConnectedAt: true,
-        whatsappVerifiedAt: true,
-      },
-    });
+    // Get agent
+    const [agent] = await db
+      .select({
+        id: agents.id,
+        salonId: agents.salonId,
+        whatsappNumber: agents.whatsappNumber,
+        whatsappStatus: agents.whatsappStatus,
+        whatsappConnectedAt: agents.whatsappConnectedAt,
+        whatsappVerifiedAt: agents.whatsappVerifiedAt,
+      })
+      .from(agents)
+      .where(eq(agents.id, agentId));
 
     if (!agent) {
       return NextResponse.json({ error: 'Agente não encontrado' }, { status: 404 });
@@ -97,15 +98,15 @@ export async function GET(
     // Return array for backward compatibility with frontend
     const numbers = agent.whatsappNumber
       ? [
-          {
-            phoneNumber: agent.whatsappNumber,
-            status: currentStatus,
-            connectedAt: agent.whatsappConnectedAt?.toISOString() ?? '',
-            ...(agent.whatsappVerifiedAt
-              ? { verifiedAt: agent.whatsappVerifiedAt.toISOString() }
-              : {}),
-          },
-        ]
+        {
+          phoneNumber: agent.whatsappNumber,
+          status: currentStatus,
+          connectedAt: agent.whatsappConnectedAt?.toISOString() ?? '',
+          ...(agent.whatsappVerifiedAt
+            ? { verifiedAt: agent.whatsappVerifiedAt.toISOString() }
+            : {}),
+        },
+      ]
       : [];
 
     return NextResponse.json({ numbers });

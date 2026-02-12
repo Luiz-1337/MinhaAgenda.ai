@@ -1,8 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, appointments, chats, chatMessages, aiUsageStats, agentStats, salons, profiles, sql, messages, agents } from "@repo/db"
-import { eq, and, gte, desc } from "drizzle-orm"
+import { db, appointments, chats, aiUsageStats, agentStats, salons, profiles, sql, messages, agents, eq, and, gte, desc, asc, inArray } from "@repo/db"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { calculateCredits } from "@/lib/utils/credits"
@@ -51,9 +50,9 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     db.query.salons.findFirst({
       where: eq(salons.id, salonId),
       columns: {
-      id: true,
-      ownerId: true,
-    },
+        id: true,
+        ownerId: true,
+      },
     }),
     db.select({ tier: profiles.tier, fullName: profiles.fullName, firstName: profiles.firstName, email: profiles.email }).from(salons).innerJoin(profiles, eq(salons.ownerId, profiles.id)).where(eq(salons.id, salonId)).limit(1),
     // Atendimentos concluídos = chats do WhatsApp com status 'completed'
@@ -67,11 +66,14 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       .select("id", { count: "exact", head: true })
       .eq("salon_id", salonId)
       .eq("status", "active"),
-    supabase
-      .from("chat_messages")
-      .select("created_at, role")
-      .eq("salon_id", salonId)
-      .order("created_at", { ascending: false })
+    db.select({
+      createdAt: messages.createdAt,
+      role: messages.role,
+    })
+      .from(messages)
+      .innerJoin(chats, eq(messages.chatId, chats.id))
+      .where(eq(chats.salonId, salonId))
+      .orderBy(desc(messages.createdAt))
       .limit(1000),
     supabase
       .from("chats")
@@ -155,7 +157,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       const avgSeconds = Math.round(avgMs / 1000)
       const minutes = Math.floor(avgSeconds / 60)
       const seconds = avgSeconds % 60
-      
+
       if (minutes > 0) {
         averageResponseTime = `${minutes}m ${seconds}s`
       } else {
@@ -165,8 +167,8 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   }
 
   // Calcula taxa de resposta (mensagens do assistente / mensagens do usuário)
-  if (messagesResult.data && messagesResult.data.length > 0) {
-    const messages = messagesResult.data
+  if (messagesResult && messagesResult.length > 0) {
+    const messages = messagesResult
     const userMessages = messages.filter(m => m.role === "user").length
     const assistantMessages = messages.filter(m => m.role === "assistant").length
     responseRate = userMessages > 0 ? Math.round((assistantMessages / userMessages) * 100) : 0
@@ -177,24 +179,28 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   if (chatsResult.data && chatsResult.data.length > 0) {
     // Busca primeira mensagem de cada chat em uma única query
     const chatIds = chatsResult.data.map(c => c.id)
-    const firstMessagesResult = await supabase
-      .from("chat_messages")
-      .select("created_at, salon_id")
-      .eq("salon_id", salonId)
-      .in("salon_id", [salonId]) // Filtro adicional para performance
-      .order("created_at", { ascending: true })
-      .limit(chatIds.length * 2) // Limite maior para garantir que pegamos as primeiras
+    const firstMessagesData = await db
+      .select({
+        createdAt: messages.createdAt,
+        chatId: messages.chatId,
+      })
+      .from(messages)
+      .innerJoin(chats, eq(messages.chatId, chats.id))
+      .where(
+        and(
+          eq(chats.salonId, salonId),
+          inArray(chats.id, chatIds)
+        )
+      )
+      .orderBy(asc(messages.createdAt))
+      .limit(chatIds.length * 5) // Aumentando o limite para garantir que pegamos as primeiras mensagens
 
     // Agrupa por chat e pega a primeira mensagem de cada
     const messagesByChat = new Map<string, Date>()
-    if (firstMessagesResult.data) {
-      for (const msg of firstMessagesResult.data) {
-        // Usa uma chave simples baseada no salon_id já que não temos chat_id direto
-        // Para uma solução mais precisa, seria necessário adicionar chat_id na tabela chat_messages
-        const key = msg.salon_id
-        if (!messagesByChat.has(key)) {
-          messagesByChat.set(key, new Date(msg.created_at))
-        }
+    for (const msg of firstMessagesData) {
+      // Como estamos ordenando por createdAt ASC, a primeira vez que encontramos um chatId é a mensagem mais antiga
+      if (msg.chatId && !messagesByChat.has(msg.chatId)) {
+        messagesByChat.set(msg.chatId, new Date(msg.createdAt))
       }
     }
 
@@ -202,9 +208,8 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     let queueCount = 0
 
     for (const chat of chatsResult.data) {
-      // Tenta encontrar a primeira mensagem correspondente
-      // Como não temos chat_id direto, usamos uma aproximação
-      const firstMessageTime = Array.from(messagesByChat.values())[0]
+      // Encontra a primeira mensagem correspondente pelo chatId
+      const firstMessageTime = messagesByChat.get(chat.id)
       if (firstMessageTime) {
         const timeDiff = firstMessageTime.getTime() - new Date(chat.created_at).getTime()
         totalQueueTime += Math.abs(timeDiff)
@@ -241,13 +246,13 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
 
   // Combina créditos de aiUsageStats e messages (aplicando pesos)
   const creditsMap = new Map<string, number>()
-  
+
   // Adiciona créditos de aiUsageStats (já ponderados)
   creditsData.forEach((item) => {
     const dateStr = new Date(item.date).toISOString().split("T")[0]
     creditsMap.set(dateStr, (creditsMap.get(dateStr) || 0) + (Number(item.credits) || 0))
   })
-  
+
   // Adiciona créditos de messages aplicando pesos
   messagesRaw.forEach((msg) => {
     if (!msg.date || !msg.totalTokens) return
@@ -342,7 +347,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
 
   // Combina com dados de aiUsageStats para garantir que temos todos os modelos
   const modelMap = new Map<string, number>()
-  
+
   // Adiciona dados reais de messages aplicando pesos
   modelUsageRaw.forEach((msg) => {
     if (msg.model && msg.totalTokens) {
@@ -364,9 +369,9 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
 
   const planTier = (profileResult[0]?.tier as 'SOLO' | 'PRO' | 'ENTERPRISE') || 'SOLO'
   const profile = profileResult[0]
-  const userName = profile?.firstName 
-    || profile?.fullName?.split(' ')[0] 
-    || profile?.email?.split('@')[0] 
+  const userName = profile?.firstName
+    || profile?.fullName?.split(' ')[0]
+    || profile?.email?.split('@')[0]
     || 'Usuário'
 
   return {
@@ -410,10 +415,10 @@ async function syncRealUsageData(salonId: string): Promise<void> {
 
     // Agrupa por data e modelo, aplicando pesos aos tokens
     const creditsByDateAndModel = new Map<string, number>()
-    
+
     for (const msg of rawMessages) {
       if (!msg.model || !msg.totalTokens) continue
-      
+
       const key = `${msg.date}|${msg.model}`
       const credits = calculateCredits(msg.totalTokens, msg.model)
       creditsByDateAndModel.set(key, (creditsByDateAndModel.get(key) || 0) + credits)
@@ -422,7 +427,7 @@ async function syncRealUsageData(salonId: string): Promise<void> {
     // Sincroniza para ai_usage_stats (agrupa por data e modelo)
     for (const [key, credits] of creditsByDateAndModel.entries()) {
       const [date, model] = key.split('|')
-      
+
       if (!date || !model || credits <= 0) continue
 
       const existing = await db
@@ -626,7 +631,7 @@ export async function initializeDashboardData(salonId: string): Promise<{ succes
   })
 
   if (!salon) {
-     return { error: "Salão não encontrado" }
+    return { error: "Salão não encontrado" }
   }
 
   // Sincroniza dados reais da tabela messages
@@ -740,6 +745,6 @@ export async function updateAgentCredits(
       console.error("Stack:", error.stack)
     }
   }
-  
+
   console.log(`✅ updateAgentCredits: concluído para ${salonId} - ${agentName}`)
 }

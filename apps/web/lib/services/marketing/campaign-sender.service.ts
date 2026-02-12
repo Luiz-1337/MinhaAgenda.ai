@@ -6,8 +6,7 @@ import { sendWhatsAppMessage, normalizePhoneNumber, formatPhoneToE164 } from "@/
 import { MarketingRepository } from "./marketing.repository"
 import { SegmentationService } from "./segmentation.service"
 import { VariableReplacerService } from "./variable-replacer.service"
-import { db, salons, profiles, appointments, services } from "@repo/db"
-import { and, eq, desc } from "drizzle-orm"
+import { db, salons, profiles, appointments, services, and, eq, desc } from "@repo/db"
 
 export interface SendCampaignResult {
   success: boolean

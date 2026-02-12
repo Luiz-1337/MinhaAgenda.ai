@@ -2,8 +2,7 @@
  * Repository para serviços (INFRASTRUCTURE LAYER)
  */
 
-import { and, asc, eq, inArray } from "drizzle-orm"
-import { db, services, professionalServices, professionals, profiles, salons } from "@repo/db"
+import { db, services, professionalServices, professionals, profiles, salons, and, asc, eq, inArray } from "@repo/db"
 import type { ServiceRow } from "@/lib/types/service"
 
 import type { PriceType } from "@/lib/types/service"
@@ -53,7 +52,7 @@ export class ServiceRepository {
       price_max: row.priceMax ?? null,
       is_active: row.isActive,
     }))
-    
+
     return mappedRows
   }
 

@@ -1,5 +1,4 @@
-import { db, professionals, salons, profiles } from "@repo/db"
-import { eq, count, and } from "drizzle-orm"
+import { db, professionals, salons, profiles, eq, and, sql } from "@repo/db"
 import { canAddProfessional } from "@/lib/utils/permissions"
 import type { UpsertProfessionalInput } from "@/lib/types/professional"
 import type { PlanTier } from "@/lib/types/salon"
@@ -11,7 +10,7 @@ export class ProfessionalService {
    */
   static async countActiveProfessionals(salonId: string): Promise<number> {
     const [result] = await db
-      .select({ count: count() })
+      .select({ count: sql<number>`count(*)` })
       .from(professionals)
       .where(and(eq(professionals.salonId, salonId), eq(professionals.isActive, true)))
 
@@ -74,7 +73,7 @@ export class ProfessionalService {
       if (data.userId && data.userId !== ownerId) {
         throw new Error("O plano SOLO permite apenas você como profissional. Não é possível adicionar outros usuários ao salão. Faça upgrade para adicionar membros à equipe.")
       }
-      
+
       // Verifica se já existe algum profissional (deve ser apenas o owner)
       const currentCount = await this.countActiveProfessionals(salonId)
       if (currentCount >= 1) {
@@ -113,7 +112,7 @@ export class ProfessionalService {
    * Atualiza um profissional existente (sem verificação de limite de quantidade, pois já existe)
    */
   static async updateProfessional(id: string, salonId: string, data: UpsertProfessionalInput) {
-     const payload = {
+    const payload = {
       name: normalizeString(data.name),
       email: normalizeEmail(data.email),
       phone: emptyStringToNull(data.phone),
@@ -133,7 +132,7 @@ export class ProfessionalService {
       .set(cleanPayload)
       .where(and(eq(professionals.id, id), eq(professionals.salonId, salonId)))
       .returning()
-    
+
     return updated
   }
 
@@ -198,8 +197,8 @@ export class ProfessionalService {
     }
 
     // 5. Prepara nome do profissional (fullName ou firstName + lastName)
-    const professionalName = ownerProfile.fullName || 
-      (ownerProfile.firstName && ownerProfile.lastName 
+    const professionalName = ownerProfile.fullName ||
+      (ownerProfile.firstName && ownerProfile.lastName
         ? `${ownerProfile.firstName} ${ownerProfile.lastName}`.trim()
         : ownerProfile.firstName || ownerProfile.lastName || 'Profissional')
 

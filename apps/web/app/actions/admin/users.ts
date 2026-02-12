@@ -1,9 +1,7 @@
 "use server"
 
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { db } from "@repo/db"
-import { profiles, customers, salons } from "@repo/db/schema"
-import { eq, desc, ilike, or, sql } from "drizzle-orm"
+import { db, profiles, customers, salons, eq, desc, ilike, or, sql } from "@repo/db"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 

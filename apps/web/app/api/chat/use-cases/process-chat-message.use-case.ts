@@ -1,8 +1,7 @@
 import type { CoreMessage } from 'ai'
 import { streamText } from 'ai'
 import { openai } from '@ai-sdk/openai'
-import { db, salons, agents } from '@repo/db'
-import { and, eq } from 'drizzle-orm'
+import { db, salons, agents, and, eq } from '@repo/db'
 import {
   createAvailabilityTool,
   createBookAppointmentTool,

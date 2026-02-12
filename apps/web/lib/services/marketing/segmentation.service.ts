@@ -2,8 +2,7 @@
  * Serviço para segmentação de leads/customers para campanhas
  */
 
-import { and, eq, gte, sql, desc, inArray } from "drizzle-orm"
-import { db, customers, appointments, services, profiles, leads } from "@repo/db"
+import { db, customers, appointments, services, profiles, leads, and, eq, gte, sql, desc, inArray } from "@repo/db"
 
 export interface SegmentationCriteria {
   distanceRadius?: string // "all" | "1km" | "5km" | "10km"
@@ -35,7 +34,7 @@ export class SegmentationService {
   ): Promise<SegmentedLead[]> {
     // Para simplificar inicialmente, vamos buscar apenas customers do salão
     // Filtros avançados (última visita, serviços) serão adicionados depois
-    
+
     const allCustomers = await db.query.customers.findMany({
       where: eq(customers.salonId, salonId),
       columns: {

@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 import { agentSchema, createAgentSchema, updateAgentSchema, type AgentSchema } from "@/lib/schemas"
-import { db, agents } from "@repo/db"
-import { eq, and, ne } from "drizzle-orm"
+import { db, agents, eq, and, ne } from "@repo/db"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 
 export type AgentRow = {

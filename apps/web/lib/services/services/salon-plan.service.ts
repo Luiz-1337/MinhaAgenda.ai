@@ -2,8 +2,7 @@
  * Serviço de regras de negócio relacionadas a planos do salão (DOMAIN LAYER)
  */
 
-import { db, salons, profiles, professionals } from "@repo/db"
-import { and, eq } from "drizzle-orm"
+import { db, salons, profiles, professionals, and, eq } from "@repo/db"
 
 export type SalonTier = "SOLO" | "TEAM" | "ENTERPRISE"
 

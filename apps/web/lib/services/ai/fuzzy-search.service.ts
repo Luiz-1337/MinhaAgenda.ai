@@ -2,8 +2,7 @@
  * Serviço de busca fuzzy para serviços e profissionais (DOMAIN LAYER)
  */
 
-import { and, eq, ilike } from "drizzle-orm"
-import { db, services, professionals } from "@repo/db"
+import { db, services, professionals, and, eq, ilike } from "@repo/db"
 
 export interface ServiceSearchResult {
   id: string

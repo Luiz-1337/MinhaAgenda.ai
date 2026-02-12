@@ -9,8 +9,7 @@ import {
   type SystemPromptTemplateSchema,
 } from "@/lib/schemas"
 import type { SystemPromptTemplateRow } from "@/lib/types/system-prompt-template"
-import { db, systemPromptTemplates, profiles } from "@repo/db"
-import { eq, and, or, isNull } from "drizzle-orm"
+import { db, systemPromptTemplates, profiles, eq, and, or, isNull } from "@repo/db"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { emptyStringToNull } from "@/lib/services/validation.service"
 

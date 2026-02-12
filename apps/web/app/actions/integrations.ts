@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { eq, and } from "drizzle-orm"
+import { db, salonIntegrations, eq, and } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
-import { db, salonIntegrations } from "@repo/db"
 import { formatZodError } from "@/lib/services/validation.service"
 import type { ActionResult } from "@/lib/types/common"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
@@ -175,7 +174,7 @@ export async function getTrinksIntegration(
     }
 
     const isActive = await isTrinksIntegrationActive(salonId)
-    
+
     const integration = await db.query.salonIntegrations.findFirst({
       where: and(
         eq(salonIntegrations.salonId, salonId),

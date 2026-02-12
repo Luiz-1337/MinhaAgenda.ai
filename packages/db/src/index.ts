@@ -34,7 +34,7 @@ export { client as postgresClient }
 export * from './schema'
 
 // Re-export drizzle-orm helpers for convenience
-export { and, eq, gt, lt, gte, lte, ne, or, like, ilike, inArray, notInArray, isNull, isNotNull, desc, asc, sql } from 'drizzle-orm'
+export { and, eq, gt, lt, gte, lte, ne, or, like, ilike, inArray, notInArray, isNull, isNotNull, desc, asc, sql, count, sum, min, max, avg } from 'drizzle-orm'
 
 // Re-export domain services
 export * as domainServices from './services'

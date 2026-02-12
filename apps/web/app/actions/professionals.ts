@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionalServices, appointments, profiles, professionals } from "@repo/db"
-import { eq, and } from "drizzle-orm"
+import { db, salons, professionalServices, appointments, profiles, professionals, eq, and } from "@repo/db"
 import { formatZodError } from "@/lib/services/validation.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import type { ProfessionalRow, UpsertProfessionalInput } from "@/lib/types/professional"
@@ -83,7 +82,7 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
 
   // Agrupa os dias por profissional
   const daysByProfessional = new Map<string, Set<number>>()
-  
+
   if (!availabilityResult.error && availabilityResult.data) {
     for (const item of availabilityResult.data as Array<{ professional_id: string; day_of_week: number }>) {
       if (!daysByProfessional.has(item.professional_id)) {
@@ -158,7 +157,7 @@ export async function upsertProfessional(
       const existingUser = await db.query.profiles.findFirst({
         where: eq(profiles.email, normalizeEmail(parsed.data.email))
       })
-      
+
       if (existingUser && existingUser.id !== salonInfo[0].ownerId) {
         return { error: "O plano SOLO permite apenas você como profissional. Não é possível adicionar outros usuários ao salão. Faça upgrade para adicionar membros à equipe." }
       }
@@ -245,10 +244,10 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
   try {
     // Remove primeiro os agendamentos relacionados
     await db.delete(appointments).where(eq(appointments.professionalId, id))
-    
+
     // Remove as associações com serviços
     await db.delete(professionalServices).where(eq(professionalServices.professionalId, id))
-    
+
     // Remove a disponibilidade do profissional
     const deleteAvailabilityResult = await supabase
       .from("availability")

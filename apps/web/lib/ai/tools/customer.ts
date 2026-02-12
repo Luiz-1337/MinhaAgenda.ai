@@ -5,8 +5,7 @@
 
 import { tool } from "ai"
 import { z } from "zod"
-import { and, eq } from "drizzle-orm"
-import { db, customers } from "@repo/db"
+import { db, customers, and, eq } from "@repo/db"
 
 /**
  * Normaliza um número de telefone removendo caracteres especiais

@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, salons, eq } from "@repo/db"
 
 // Redireciona rotas antigas para a nova estrutura
 export default async function DashboardRedirect() {

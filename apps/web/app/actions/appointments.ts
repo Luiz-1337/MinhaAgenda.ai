@@ -1,11 +1,9 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
-
+import { db, domainServices as sharedServices, professionals, salons, profiles, and, eq } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 
-import { db, domainServices as sharedServices, professionals, salons, profiles } from "@repo/db"
 import {
   getAppointmentsByRange,
   getSalonProfessionals,

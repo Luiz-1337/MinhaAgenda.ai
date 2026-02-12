@@ -1,8 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, customers } from "@repo/db"
-import { eq, desc, and } from "drizzle-orm"
+import { db, customers, eq, desc, and } from "@repo/db"
 import { ActionResult } from "@/lib/types/common"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
@@ -385,7 +384,7 @@ export async function updateSalonCustomer(
       const preferencesData: Record<string, unknown> | null = input.preferences.trim()
         ? { notes: input.preferences.trim() }
         : null
-      
+
       // Mescla com preferências existentes se houver
       const currentPreferences = (existingCustomer.preferences as Record<string, unknown>) || {}
       updates.preferences = preferencesData

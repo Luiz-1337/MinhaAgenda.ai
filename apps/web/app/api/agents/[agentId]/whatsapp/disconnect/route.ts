@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { db, agents, salons } from '@repo/db';
-import { eq } from 'drizzle-orm';
+import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
 import { disconnectInstance } from '@/lib/services/evolution-instance.service';
 import { checkRateLimit } from '@/lib/redis';

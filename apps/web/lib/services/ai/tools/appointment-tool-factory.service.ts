@@ -4,8 +4,7 @@
 
 import { tool } from "ai"
 import { z } from "zod"
-import { and, eq } from "drizzle-orm"
-import { db, appointments, professionals, professionalServices } from "@repo/db"
+import { db, appointments, professionals, professionalServices, and, eq } from "@repo/db"
 import { FuzzySearchService } from "../fuzzy-search.service"
 
 export class AppointmentToolFactory {

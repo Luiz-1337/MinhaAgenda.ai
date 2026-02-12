@@ -2,8 +2,7 @@
  * Serviço para operações relacionadas a chats e mensagens
  */
 
-import { and, asc, desc, eq, sql } from "drizzle-orm"
-import { db, chats, messages, salons, chatMessages, profiles, customers } from "@repo/db"
+import { db, chats, messages, salons, profiles, customers, and, asc, desc, eq, sql } from "@repo/db"
 import type { ChatMessage } from "../types/chat"
 import { logger } from "../logger"
 
@@ -308,30 +307,7 @@ export async function updateChatTimestamps(
   }
 }
 
-/**
- * Salva uma mensagem na tabela chatMessages (relacionada a salonId e clientId)
- */
-export async function saveChatMessage(
-  salonId: string,
-  clientPhone: string,
-  role: "user" | "assistant",
-  content: string
-): Promise<void> {
-  // Busca o profileId pelo telefone (pode ser null se o cliente não existir)
-  const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.phone, clientPhone),
-    columns: { id: true },
-  })
 
-  const clientId = profile?.id || null
-
-  await db.insert(chatMessages).values({
-    salonId,
-    clientId,
-    role,
-    content,
-  })
-}
 
 /**
  * Obtém o histórico de mensagens de um chat

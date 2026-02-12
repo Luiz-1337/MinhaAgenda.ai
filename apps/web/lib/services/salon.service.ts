@@ -4,8 +4,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionals, profiles, agents } from "@repo/db"
-import { and, asc, eq } from "drizzle-orm"
+import { db, salons, professionals, profiles, agents, and, asc, eq } from "@repo/db"
 import type { SalonOwnerResult } from "@/lib/types/salon"
 import type { CreateSalonSchema } from "@/lib/schemas"
 import { headers } from "next/headers"

@@ -12,8 +12,7 @@
  * - Closed: Connection terminated
  */
 
-import { db, salons } from '@repo/db';
-import { eq } from 'drizzle-orm';
+import { db, salons, eq } from '@repo/db';
 import QRCode from 'qrcode';
 import { getEvolutionClient, EvolutionAPIError } from './evolution-api.service';
 import { logger } from '../logger';

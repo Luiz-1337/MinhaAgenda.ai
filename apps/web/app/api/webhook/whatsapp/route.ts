@@ -27,8 +27,7 @@ import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { WebhookMetrics } from '@/lib/metrics';
 import { RateLimitError, wrapError } from '@/lib/errors';
 import { getConnectedPhoneNumber } from '@/lib/services/evolution-instance.service';
-import { db, salons, agents } from '@repo/db';
-import { eq, and } from 'drizzle-orm';
+import { db, salons, chats, chatStatusEnum, messages, agents, eq, and, desc, sql } from '@repo/db';
 
 // Timeout - webhook deve apenas validar e enfileirar
 export const maxDuration = 10;

@@ -15,8 +15,7 @@ import { getQueueStats } from "@/lib/queues/message-queue";
 import { getMetricsSummary } from "@/lib/metrics";
 import { getAllCircuitBreakersStatus } from "@/lib/circuit-breaker";
 import { logger } from "@/lib/logger";
-import { db } from "@repo/db";
-import { sql } from "drizzle-orm";
+import { db, sql } from "@repo/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,7 +51,7 @@ const startTime = Date.now();
 export async function GET(req: NextRequest): Promise<NextResponse<HealthStatus>> {
   const includeMetrics = req.nextUrl.searchParams.get("metrics") === "true";
   const includeCircuitBreakers = req.nextUrl.searchParams.get("circuit_breakers") === "true";
-  
+
   const checks = await Promise.all([
     checkRedis(),
     checkQueue(),
@@ -63,7 +62,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<HealthStatus>>
 
   // Determina status geral
   let overallStatus: "healthy" | "degraded" | "unhealthy" = "healthy";
-  
+
   // Database e Redis são críticos
   if (redisCheck.status === "fail" || queueCheck.status === "fail" || dbCheck.status === "fail") {
     overallStatus = "unhealthy";
@@ -111,14 +110,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<HealthStatus>>
  */
 async function checkRedis(): Promise<HealthCheck> {
   const start = Date.now();
-  
+
   try {
     const redis = getRedisClient();
-    
+
     // Testa conexão com PING
     const pong = await Promise.race([
       redis.ping(),
-      new Promise<null>((_, reject) => 
+      new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error("Redis PING timeout")), 2000)
       ),
     ]);
@@ -160,11 +159,11 @@ async function checkRedis(): Promise<HealthCheck> {
  */
 async function checkQueue(): Promise<HealthCheck> {
   const start = Date.now();
-  
+
   try {
     const stats = await Promise.race([
       getQueueStats(),
-      new Promise<null>((_, reject) => 
+      new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error("Queue stats timeout")), 2000)
       ),
     ]);
@@ -277,11 +276,11 @@ export async function HEAD(): Promise<Response> {
     const redis = getRedisClient();
     await Promise.race([
       redis.ping(),
-      new Promise<null>((_, reject) => 
+      new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 1000)
       ),
     ]);
-    
+
     return new Response(null, { status: 200 });
   } catch {
     return new Response(null, { status: 503 });

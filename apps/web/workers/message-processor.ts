@@ -21,8 +21,7 @@ import { checkPhoneRateLimit } from "../lib/rate-limit";
 import { generateAIResponse, checkIfNewCustomer } from "../lib/services/ai/generate-response.service";
 import { saveMessage, findOrCreateCustomer, getChatHistory } from "../lib/services/chat.service";
 import { sendWhatsAppMessage } from "../lib/services/evolution-message.service";
-import { db, chats, domainServices } from "@repo/db";
-import { eq } from "drizzle-orm";
+import { db, chats, domainServices, eq } from "@repo/db";
 import {
   WhatsAppError,
   RateLimitError,

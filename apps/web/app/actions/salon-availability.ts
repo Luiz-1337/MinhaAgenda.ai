@@ -17,8 +17,7 @@ import { AvailabilityMapper } from "@/lib/services/availability/availability-map
 import { AvailabilityRepository } from "@/lib/services/availability/availability.repository"
 import { ScheduleValidator } from "@/lib/services/availability/schedule-validator.service"
 import { SalonPlanService } from "@/lib/services/services/salon-plan.service"
-import { db, salons } from "@repo/db"
-import { eq } from "drizzle-orm"
+import { db, salons, eq } from "@repo/db"
 
 // ============================================================================
 // Server Actions
@@ -41,7 +40,7 @@ function workHoursToSchedule(workHours: Record<string, { start: string; end: str
   for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
     const dayKey = String(dayOfWeek)
     const dayHours = workHours[dayKey]
-    
+
     if (dayHours && dayHours.start && dayHours.end) {
       schedule.push({
         dayOfWeek,
@@ -107,7 +106,7 @@ export async function getSalonAvailability(
 
     const workHours = salon.workHours as Record<string, { start: string; end: string }> | null | undefined
     const schedule = workHoursToSchedule(workHours)
-    
+
     // Garante que sempre retorna 7 itens
     if (schedule.length !== 7) {
       return Array.from({ length: 7 }, (_, i) => ({
