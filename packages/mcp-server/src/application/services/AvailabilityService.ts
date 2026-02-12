@@ -7,7 +7,7 @@ import {
 } from "../../domain/repositories"
 import { ICalendarService, IExternalScheduler } from "../ports"
 import { SLOT_DURATION } from "../../shared/constants"
-import { startOfDay, endOfDay, getDayOfWeek } from "../../shared/utils/date.utils"
+import { startOfDay, endOfDay, getDayOfWeek, toBrazilDate, fromBrazilTime } from "../../shared/utils/date.utils"
 
 /**
  * Serviço que combina múltiplas fontes de disponibilidade
@@ -19,7 +19,7 @@ export class AvailabilityService {
     private salonRepo: ISalonRepository,
     private calendarService?: ICalendarService,
     private externalScheduler?: IExternalScheduler
-  ) {}
+  ) { }
 
   /**
    * Calcula disponibilidade combinando todas as fontes
@@ -37,7 +37,7 @@ export class AvailabilityService {
     let baseSlots = await this.availabilityRepo.generateSlots(
       professionalId,
       date,
-      SLOT_DURATION
+      serviceDuration
     )
 
     // Se não tem regras de disponibilidade, usar horário do salão
@@ -51,7 +51,7 @@ export class AvailabilityService {
             date,
             workHours.start,
             workHours.end,
-            SLOT_DURATION,
+            serviceDuration,
             professionalId
           )
         }
@@ -79,19 +79,22 @@ export class AvailabilityService {
       try {
         const isConfigured = await this.calendarService.isConfigured(salonId)
         if (isConfigured) {
-          // Buscar calendarId do profissional
-          // TODO: Implementar busca do calendarId
-          // const busyPeriods = await this.calendarService.getFreeBusy(calendarId, dayStart, dayEnd)
-          // for (const busy of busyPeriods) {
-          //   for (const slot of baseSlots) {
-          //     if (slot.dateRange.overlaps(busy)) {
-          //       slot.markUnavailable()
-          //     }
-          //   }
-          // }
+          const busyPeriods = await this.calendarService.getFreeBusy(
+            professionalId,
+            dayStart,
+            dayEnd
+          )
+
+          for (const busy of busyPeriods) {
+            for (const slot of baseSlots) {
+              if (slot.dateRange.overlaps(busy)) {
+                slot.markUnavailable()
+              }
+            }
+          }
         }
       } catch (error) {
-        console.warn("Erro ao buscar disponibilidade do Google Calendar:", error)
+        console.warn("[AVAILABILITY_SERVICE] Erro ao buscar Google Calendar:", error)
       }
     }
 
@@ -114,14 +117,19 @@ export class AvailabilityService {
           }
         }
       } catch (error) {
-        console.warn("Erro ao buscar disponibilidade do Trinks:", error)
+        console.warn("[AVAILABILITY_SERVICE] Erro ao buscar Trinks:", error)
       }
     }
 
     // 5. Filtrar slots que podem acomodar a duração do serviço
     // e que ainda não passaram (se for hoje)
     const now = new Date()
-    const isToday = date.toDateString() === now.toDateString()
+    const nowBrazil = toBrazilDate(now)
+    const dateBrazil = toBrazilDate(date)
+    const isToday =
+      dateBrazil.getFullYear() === nowBrazil.getFullYear() &&
+      dateBrazil.getMonth() === nowBrazil.getMonth() &&
+      dateBrazil.getDate() === nowBrazil.getDate()
 
     return baseSlots.filter((slot) => {
       // Se for hoje, filtra slots passados
@@ -159,7 +167,14 @@ export class AvailabilityService {
       try {
         const isConfigured = await this.calendarService.isConfigured(salonId)
         if (isConfigured) {
-          // TODO: Implementar verificação específica de horário
+          const busyPeriods = await this.calendarService.getFreeBusy(
+            professionalId,
+            startsAt,
+            endsAt
+          )
+          if (busyPeriods.length > 0) {
+            return false
+          }
         }
       } catch {
         // Ignora erro - assume disponível
@@ -188,6 +203,10 @@ export class AvailabilityService {
     return true
   }
 
+  /**
+   * Gera slots a partir do horário de funcionamento,
+   * usando timezone de Brasília.
+   */
   private generateSlotsFromWorkHours(
     date: Date,
     startTime: string,
@@ -196,7 +215,12 @@ export class AvailabilityService {
     professionalId?: string
   ): TimeSlot[] {
     const slots: TimeSlot[] = []
-    const baseDate = startOfDay(date)
+
+    // Extrair componentes da data em Brasília
+    const brazilDate = toBrazilDate(date)
+    const baseYear = brazilDate.getFullYear()
+    const baseMonth = brazilDate.getMonth()
+    const baseDay = brazilDate.getDate()
 
     const [startHour, startMin] = startTime.split(":").map(Number)
     const [endHour, endMin] = endTime.split(":").map(Number)
@@ -205,11 +229,18 @@ export class AvailabilityService {
     const endMinutes = endHour * 60 + endMin
 
     for (let minutes = startMinutes; minutes + slotDuration <= endMinutes; minutes += slotDuration) {
-      const slotStart = new Date(baseDate)
-      slotStart.setMinutes(slotStart.getMinutes() + minutes)
+      const slotHour = Math.floor(minutes / 60)
+      const slotMin = minutes % 60
 
-      const slotEnd = new Date(baseDate)
-      slotEnd.setMinutes(slotEnd.getMinutes() + minutes + slotDuration)
+      // Cria horário em Brasília e converte para UTC
+      const slotStartBrazil = new Date(baseYear, baseMonth, baseDay, slotHour, slotMin, 0, 0)
+      const slotStart = fromBrazilTime(slotStartBrazil)
+
+      const endMinutesTotal = minutes + slotDuration
+      const endHourSlot = Math.floor(endMinutesTotal / 60)
+      const endMinSlot = endMinutesTotal % 60
+      const slotEndBrazil = new Date(baseYear, baseMonth, baseDay, endHourSlot, endMinSlot, 0, 0)
+      const slotEnd = fromBrazilTime(slotEndBrazil)
 
       slots.push(
         new TimeSlot({

@@ -40,7 +40,8 @@ export class GoogleCalendarService implements ICalendarService {
     end: Date
   ): Promise<DateRange[]> {
     if (!this.salonId) {
-      throw new Error("salonId não configurado. Use setSalonId() primeiro.")
+      console.warn("[GoogleCalendarService] salonId não configurado - retornando sem dados de FreeBusy")
+      return []
     }
 
     try {
@@ -62,7 +63,7 @@ export class GoogleCalendarService implements ICalendarService {
         }))
       )
     } catch (error) {
-      console.error("Erro ao buscar FreeBusy:", error)
+      console.error("[GoogleCalendarService] Erro ao buscar FreeBusy:", error)
       return []
     }
   }
@@ -95,6 +96,9 @@ export class GoogleCalendarService implements ICalendarService {
 
   async isConfigured(salonId: string): Promise<boolean> {
     try {
+      // Auto-setar salonId para uso no getFreeBusy
+      this.salonId = salonId
+
       // Verifica se existe integração ativa
       const { db, salonIntegrations, and, eq } = await import("@repo/db")
 

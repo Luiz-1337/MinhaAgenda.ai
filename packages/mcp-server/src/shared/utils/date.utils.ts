@@ -1,5 +1,8 @@
 /**
  * Utilitários para manipulação de datas
+ * 
+ * IMPORTANTE: Todas as datas no banco estão em UTC.
+ * As funções deste módulo convertem para/de horário de Brasília quando necessário.
  */
 
 import {
@@ -9,23 +12,32 @@ import {
   ISO_DATETIME_WITHOUT_TZ,
   ISO_DATE_ONLY,
 } from "../constants"
+import {
+  fromBrazilTime,
+  toBrazilTime,
+  getBrazilNow,
+  BRAZIL_TIMEZONE,
+} from "@repo/db"
 
 /**
- * Formata uma data para exibição no formato brasileiro
+ * Formata uma data (UTC) para exibição no formato brasileiro,
+ * convertendo para timezone de Brasília
  */
 export function formatDate(date: Date): string {
-  const day = String(date.getDate()).padStart(2, "0")
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const year = date.getFullYear()
+  const brazil = toBrazilDate(date)
+  const day = String(brazil.getDate()).padStart(2, "0")
+  const month = String(brazil.getMonth() + 1).padStart(2, "0")
+  const year = brazil.getFullYear()
   return `${day}/${month}/${year}`
 }
 
 /**
- * Formata uma hora para exibição
+ * Formata uma hora (UTC) para exibição em Brasília
  */
 export function formatTime(date: Date): string {
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
+  const brazil = toBrazilDate(date)
+  const hours = String(brazil.getHours()).padStart(2, "0")
+  const minutes = String(brazil.getMinutes()).padStart(2, "0")
   return `${hours}:${minutes}`
 }
 
@@ -86,21 +98,23 @@ export function addDays(date: Date, days: number): Date {
 }
 
 /**
- * Retorna o início do dia (00:00:00)
+ * Retorna o início do dia em Brasília (00:00:00 BRT) convertido para UTC.
+ * Ex: 2026-02-12 00:00:00 BRT = 2026-02-12 03:00:00 UTC
  */
 export function startOfDay(date: Date): Date {
-  const result = new Date(date)
-  result.setHours(0, 0, 0, 0)
-  return result
+  const brazil = toBrazilDate(date)
+  brazil.setHours(0, 0, 0, 0)
+  return fromBrazilTime(brazil)
 }
 
 /**
- * Retorna o fim do dia (23:59:59.999)
+ * Retorna o fim do dia em Brasília (23:59:59.999 BRT) convertido para UTC.
+ * Ex: 2026-02-12 23:59:59 BRT = 2026-02-13 02:59:59 UTC
  */
 export function endOfDay(date: Date): Date {
-  const result = new Date(date)
-  result.setHours(23, 59, 59, 999)
-  return result
+  const brazil = toBrazilDate(date)
+  brazil.setHours(23, 59, 59, 999)
+  return fromBrazilTime(brazil)
 }
 
 /**
@@ -190,10 +204,15 @@ export function minutesToTime(minutes: number): string {
 }
 
 /**
- * Obtém o dia da semana (0-6) de uma data
+ * Obtém o dia da semana (0-6) de uma data UTC,
+ * convertendo para timezone de Brasília antes.
+ * 
+ * IMPORTANTE: Sem essa conversão, uma data como "quinta 23h BRT"
+ * seria vista como "sexta 02h UTC", retornando o dia errado.
  */
 export function getDayOfWeek(date: Date): number {
-  return date.getDay()
+  const brazil = toBrazilDate(date)
+  return brazil.getDay()
 }
 
 /**
@@ -211,3 +230,22 @@ export function getDayOfWeekName(dayOfWeek: number): string {
   ]
   return days[dayOfWeek] || ""
 }
+
+/**
+ * Converte uma data UTC para um Date com componentes no horário de Brasília.
+ * Usado internamente para extrair hora/dia/etc corretos.
+ */
+function toBrazilDate(date: Date): Date {
+  // Calcula o offset de Brasília (-3h = -180min)
+  // toZonedTime retorna um Date cujos métodos getHours(), getDay(), etc.
+  // refletem o horário de Brasília
+  const utcTime = date.getTime()
+  const brazilOffset = -3 * 60 // -180 minutos
+  const localOffset = date.getTimezoneOffset() // offset local em minutos (positivo para oeste)
+  // Ajusta: UTC + brazilOffset(em ms) + localOffset(em ms) para compensar
+  const brazilTime = new Date(utcTime + (brazilOffset + localOffset) * 60 * 1000)
+  return brazilTime
+}
+
+// Re-export para uso externo
+export { toBrazilDate, getBrazilNow, BRAZIL_TIMEZONE, fromBrazilTime }

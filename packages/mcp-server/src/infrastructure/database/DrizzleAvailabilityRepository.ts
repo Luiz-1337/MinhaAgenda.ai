@@ -6,7 +6,7 @@ import {
 } from "../../domain/repositories"
 import { TimeSlot } from "../../domain/entities"
 import { SLOT_DURATION } from "../../shared/constants"
-import { startOfDay } from "../../shared/utils/date.utils"
+import { getDayOfWeek, toBrazilDate, fromBrazilTime } from "../../shared/utils/date.utils"
 
 /**
  * Implementação do repositório de disponibilidade usando Drizzle ORM
@@ -104,7 +104,8 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
     date: Date,
     slotDuration: number = SLOT_DURATION
   ): Promise<TimeSlot[]> {
-    const dayOfWeek = date.getDay()
+    // Usar dia da semana em Brasília (não UTC)
+    const dayOfWeek = getDayOfWeek(date)
     const rules = await this.findByProfessionalAndDay(professionalId, dayOfWeek)
 
     // Filtra regras de trabalho (não break)
@@ -116,7 +117,11 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
     }
 
     const slots: TimeSlot[] = []
-    const baseDate = startOfDay(date)
+    // Pega a data no timezone de Brasília para extrair ano/mês/dia corretos
+    const brazilDate = toBrazilDate(date)
+    const baseYear = brazilDate.getFullYear()
+    const baseMonth = brazilDate.getMonth()
+    const baseDay = brazilDate.getDate()
 
     for (const rule of workRules) {
       const [startHour, startMin] = rule.startTime.split(":").map(Number)
@@ -126,11 +131,18 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
       const endMinutes = endHour * 60 + endMin
 
       for (let minutes = startMinutes; minutes + slotDuration <= endMinutes; minutes += slotDuration) {
-        const slotStart = new Date(baseDate)
-        slotStart.setMinutes(slotStart.getMinutes() + minutes)
+        const slotHour = Math.floor(minutes / 60)
+        const slotMin = minutes % 60
 
-        const slotEnd = new Date(baseDate)
-        slotEnd.setMinutes(slotEnd.getMinutes() + minutes + slotDuration)
+        // Cria horário em Brasília e converte para UTC
+        const slotStartBrazil = new Date(baseYear, baseMonth, baseDay, slotHour, slotMin, 0, 0)
+        const slotStart = fromBrazilTime(slotStartBrazil)
+
+        const endMinutesTotal = minutes + slotDuration
+        const endHourSlot = Math.floor(endMinutesTotal / 60)
+        const endMinSlot = endMinutesTotal % 60
+        const slotEndBrazil = new Date(baseYear, baseMonth, baseDay, endHourSlot, endMinSlot, 0, 0)
+        const slotEnd = fromBrazilTime(slotEndBrazil)
 
         // Verifica se está em intervalo de pausa
         const isInBreak = breakRules.some((br) => {
