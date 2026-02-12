@@ -28,7 +28,9 @@ export const createSalonSchema = z.object({
   slug: z
     .string()
     .min(3)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .optional()
+    .or(z.literal("")),
   whatsapp: z.string().optional().or(z.literal("")),
   address: z.string().optional().or(z.literal("")),
   phone: z.string().optional().or(z.literal("")),

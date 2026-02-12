@@ -142,7 +142,7 @@ const MessagesUpsertDataSchema = z.object({
   message: MessageContentSchema,
   messageType: z.string(), // 'conversation', 'imageMessage', etc.
   messageTimestamp: z.number(), // Unix timestamp
-  pushName: z.string().optional(), // Sender name
+  pushName: z.string().optional().nullable(), // Sender name (can be null/undefined)
   broadcast: z.boolean().optional(),
 });
 

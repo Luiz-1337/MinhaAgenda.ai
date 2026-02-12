@@ -23,7 +23,7 @@ async function tableExists(schema, tableName) {
 
 async function truncateAll() {
   console.log('🗑️  Limpando todas as tabelas do banco de dados...')
-  
+
   // Lista de todas as tabelas possíveis (na ordem correta para respeitar FKs)
   const publicTables = [
     'schedule_overrides',
@@ -31,11 +31,9 @@ async function truncateAll() {
     'campaign_recipients',
     'campaigns',
     'messages',
-    'chat_messages',
     'chats',
     'appointments',
     'availability',
-    'integrations',
     'salon_integrations',
     'leads',
     'customers',
@@ -49,7 +47,7 @@ async function truncateAll() {
     'salons',
     'profiles'
   ]
-  
+
   // Verificar e coletar apenas tabelas que existem
   console.log('📋 Verificando tabelas existentes no schema public...')
   const existingPublicTables = []
@@ -61,7 +59,7 @@ async function truncateAll() {
       console.log(`   ⚠️  ${table} (não existe, pulando)`)
     }
   }
-  
+
   // Truncar tabelas do schema public que existem
   if (existingPublicTables.length > 0) {
     console.log(`\n🗑️  Limpando ${existingPublicTables.length} tabelas do schema public...`)
@@ -71,13 +69,13 @@ async function truncateAll() {
   } else {
     console.log('⚠️  Nenhuma tabela encontrada no schema public')
   }
-  
+
   // Depois, limpar tabelas do Supabase Auth
   console.log('\n🔐 Verificando tabelas do Supabase Auth...')
   try {
     const authTables = ['identities', 'users']
     const existingAuthTables = []
-    
+
     for (const table of authTables) {
       if (await tableExists('auth', table)) {
         existingAuthTables.push(`auth.${table}`)
@@ -86,18 +84,18 @@ async function truncateAll() {
         console.log(`   ⚠️  auth.${table} (não existe, pulando)`)
       }
     }
-    
+
     if (existingAuthTables.length > 0) {
       // Limpar auth.identities primeiro (tem FK para auth.users)
       if (existingAuthTables.includes('auth.identities')) {
         await sql`truncate table auth.identities restart identity cascade`
       }
-      
+
       // Limpar auth.users (isso também limpará os profiles via trigger)
       if (existingAuthTables.includes('auth.users')) {
         await sql`truncate table auth.users restart identity cascade`
       }
-      
+
       console.log('✅ Tabelas do Auth limpas com sucesso')
     } else {
       console.log('⚠️  Nenhuma tabela do Auth encontrada')
@@ -106,7 +104,7 @@ async function truncateAll() {
     console.warn('⚠️  Aviso ao limpar tabelas do Auth (pode ser normal se não houver permissões):', authError.message)
     // Não falhar completamente se não conseguir limpar auth (pode ser questão de permissões)
   }
-  
+
   console.log('\n✅ Limpeza concluída!')
 }
 
@@ -114,9 +112,9 @@ async function main() {
   console.log('🔄 Iniciando reset completo do banco de dados...')
   console.log('📍 Banco:', url.replace(/:[^@]*@/, ':****@'))
   console.log('')
-  
+
   await truncateAll()
-  
+
   await sql.end({ timeout: 0 })
   console.log('')
   console.log('✨ Reset completo concluído!')

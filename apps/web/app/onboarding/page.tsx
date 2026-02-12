@@ -23,7 +23,7 @@ const DAYS_OF_WEEK = [
 export default function OnboardingPage() {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  
+
   // Verifica se é plano SOLO e já tem salão
   useEffect(() => {
     async function checkSoloPlan() {
@@ -43,13 +43,12 @@ export default function OnboardingPage() {
     }
     checkSoloPlan()
   }, [router])
-  
+
   const form = useForm<CreateSalonSchema>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createSalonSchema as any),
     defaultValues: {
       name: "",
-      slug: "",
       address: "",
       phone: "",
       whatsapp: "",
@@ -68,29 +67,28 @@ export default function OnboardingPage() {
   function onSubmit(values: CreateSalonSchema) {
     startTransition(async () => {
       // Processa workHours: filtra apenas dias com horários válidos
-      const workHoursObj: Record<string, { start: string; end: string }> | undefined = 
+      const workHoursObj: Record<string, { start: string; end: string }> | undefined =
         values.workHours && typeof values.workHours === 'object'
           ? Object.entries(values.workHours).reduce((acc, [day, hours]) => {
-              if (hours && typeof hours === 'object' && 'start' in hours && 'end' in hours && hours.start && hours.end) {
-                acc[day] = { start: hours.start, end: hours.end }
-              }
-              return acc
-            }, {} as Record<string, { start: string; end: string }>)
+            if (hours && typeof hours === 'object' && 'start' in hours && 'end' in hours && hours.start && hours.end) {
+              acc[day] = { start: hours.start, end: hours.end }
+            }
+            return acc
+          }, {} as Record<string, { start: string; end: string }>)
           : undefined
 
       // Processa settings: remove campos vazios
       const settingsObj = values.settings && typeof values.settings === 'object'
         ? Object.entries(values.settings).reduce((acc, [key, value]) => {
-            if (value !== undefined && value !== null && value !== '') {
-              acc[key] = value
-            }
-            return acc
-          }, {} as Record<string, unknown>)
+          if (value !== undefined && value !== null && value !== '') {
+            acc[key] = value
+          }
+          return acc
+        }, {} as Record<string, unknown>)
         : undefined
 
       const res = await createSalon({
         name: values.name.trim(),
-        slug: values.slug.trim().toLowerCase(),
         address: (values.address || "").trim(),
         phone: (values.phone || "").trim(),
         whatsapp: (values.whatsapp || "").trim(),
@@ -103,7 +101,7 @@ export default function OnboardingPage() {
         toast.error(res.error)
         return
       }
-      
+
       toast.success("Salão criado com sucesso")
       if (res.data?.salonId) {
         router.replace(`/${res.data.salonId}/dashboard`)
@@ -116,7 +114,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-950 font-sans">
       {/* Modal Content */}
       <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/50 rounded-t-2xl backdrop-blur-md z-10">
           <div className="flex items-center gap-3">
@@ -136,17 +134,17 @@ export default function OnboardingPage() {
             console.error("Erros de validação:", errors)
             toast.error("Verifique os campos destacados em vermelho")
           })} className="space-y-8" noValidate>
-            
+
             {/* Section: Basic Info */}
             <div className="space-y-5">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                   Nome do Salão <span className="text-indigo-500">*</span>
                 </label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   {...form.register("name")}
-                  placeholder="Ex: Barber Club Premium" 
+                  placeholder="Ex: Barber Club Premium"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
                 />
                 {form.formState.errors.name && (
@@ -154,40 +152,14 @@ export default function OnboardingPage() {
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                  URL Personalizada (Slug) <span className="text-indigo-500">*</span>
-                </label>
-                <div className="flex rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 overflow-hidden focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/50 transition-all">
-                  <span className="px-4 py-3 text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-white/5 bg-white/50 dark:bg-white/5 select-none text-xs font-mono flex items-center">minhaagenda.ai/</span>
-                  <input 
-                    type="text" 
-                    {...form.register("slug", {
-                      onChange: (e) => {
-                        // Auto-formata slug: lowercase e substitui espaços/símbolos por hífens
-                        const val = e.target.value
-                          .toLowerCase()
-                          .replace(/\s+/g, '-')
-                          .replace(/[^a-z0-9-]/g, '')
-                        e.target.value = val // Atualiza visualmente
-                        form.setValue("slug", val, { shouldValidate: true }) // Atualiza form state
-                      }
-                    })}
-                    placeholder="meu-salao" 
-                    className="flex-1 bg-transparent px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none text-sm"
-                  />
-                </div>
-                {form.formState.errors.slug && (
-                  <p className="text-xs text-red-500 dark:text-red-400 mt-1">{form.formState.errors.slug.message}</p>
-                )}
-              </div>
+
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Descrição</label>
-                <textarea 
+                <textarea
                   rows={3}
                   {...form.register("description")}
-                  placeholder="Descreva seu salão, especialidades e ambiente..." 
+                  placeholder="Descreva seu salão, especialidades e ambiente..."
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all resize-none text-sm"
                 />
               </div>
@@ -198,13 +170,13 @@ export default function OnboardingPage() {
               <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-white/5 pb-2">
                 <MapPin size={16} className="text-indigo-500 dark:text-indigo-400" /> Localização & Contato
               </h3>
-              
+
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Endereço Completo</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   {...form.register("address")}
-                  placeholder="Rua Exemplo, 123 - Bairro, Cidade - UF" 
+                  placeholder="Rua Exemplo, 123 - Bairro, Cidade - UF"
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
                 />
               </div>
@@ -214,10 +186,10 @@ export default function OnboardingPage() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Telefone</label>
                   <div className="relative">
                     <Phone size={16} className="absolute left-4 top-3.5 text-slate-500 dark:text-slate-400" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       {...form.register("phone")}
-                      placeholder="(11) 0000-0000" 
+                      placeholder="(11) 0000-0000"
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
                     />
                   </div>
@@ -226,10 +198,10 @@ export default function OnboardingPage() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">WhatsApp</label>
                   <div className="relative">
                     <MessageCircle size={16} className="absolute left-4 top-3.5 text-slate-500 dark:text-slate-400" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       {...form.register("whatsapp")}
-                      placeholder="(11) 99999-9999" 
+                      placeholder="(11) 99999-9999"
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
                     />
                   </div>
@@ -255,8 +227,8 @@ export default function OnboardingPage() {
                   const endTime = dayHours?.end || "18:00"
 
                   return (
-                    <div 
-                      key={day.value} 
+                    <div
+                      key={day.value}
                       className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/10 transition-colors group"
                     >
                       <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{day.label}</span>
@@ -278,10 +250,10 @@ export default function OnboardingPage() {
                         ) : (
                           <span className="text-xs text-slate-500 dark:text-slate-400 font-mono bg-white/50 dark:bg-white/5 px-2 py-1 rounded">Fechado</span>
                         )}
-                        <div 
+                        <div
                           className={cn(
                             "w-10 h-5 rounded-full relative cursor-pointer transition-colors",
-                            isActive 
+                            isActive
                               ? "bg-indigo-500/20 dark:bg-indigo-500/30 hover:bg-indigo-500/30 dark:hover:bg-indigo-500/40"
                               : "bg-slate-200 dark:bg-slate-700/50 hover:bg-slate-300 dark:hover:bg-slate-700"
                           )}
@@ -294,8 +266,8 @@ export default function OnboardingPage() {
                             } else {
                               updatedWorkHours[day.value] = { start: "09:00", end: "18:00" }
                             }
-                            const valueToSet = Object.keys(updatedWorkHours).length > 0 
-                              ? updatedWorkHours 
+                            const valueToSet = Object.keys(updatedWorkHours).length > 0
+                              ? updatedWorkHours
                               : undefined
                             form.setValue("workHours", valueToSet as any, {
                               shouldDirty: true,
@@ -331,7 +303,7 @@ export default function OnboardingPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Toggle Card */}
-                <div 
+                <div
                   className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/5 flex items-start gap-4 hover:border-indigo-500/20 transition-colors group cursor-pointer"
                   onClick={() => form.setValue("settings.accepts_card", !form.watch("settings.accepts_card"))}
                 >
@@ -360,7 +332,7 @@ export default function OnboardingPage() {
                 </div>
 
                 {/* Toggle Parking */}
-                <div 
+                <div
                   className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/5 flex items-start gap-4 hover:border-slate-300 dark:hover:border-white/10 transition-colors group cursor-pointer"
                   onClick={() => form.setValue("settings.parking", !form.watch("settings.parking"))}
                 >
@@ -391,8 +363,8 @@ export default function OnboardingPage() {
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Tolerância de Atraso (minutos)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   {...form.register("settings.late_tolerance_minutes", { valueAsNumber: true })}
                   defaultValue={10}
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-sm"
@@ -401,10 +373,10 @@ export default function OnboardingPage() {
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Política de Cancelamento</label>
-                <textarea 
+                <textarea
                   rows={2}
                   {...form.register("settings.cancellation_policy")}
-                  placeholder="Ex: Cancelamentos devem ser feitos com pelo menos 24h de antecedência." 
+                  placeholder="Ex: Cancelamentos devem ser feitos com pelo menos 24h de antecedência."
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all resize-none text-sm"
                 />
               </div>

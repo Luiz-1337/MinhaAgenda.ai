@@ -410,14 +410,31 @@ export async function getConnectedPhoneNumber(
 
     const instanceData = found.instance ?? found;
 
-    const owner = instanceData?.owner ?? instanceData?.profilePictureUrl;
-    const phone = extractPhoneFromOwner(owner);
-    if (phone) return phone;
+    // Check multiple fields for the phone number
+    const candidates = [
+      instanceData.number, // Often present in v2
+      instanceData.owner,  // Standard field
+      instanceData.id,     // Sometimes the JID
+    ];
 
+    for (const candidate of candidates) {
+      const phone = extractPhoneFromOwner(candidate);
+      if (phone) return phone;
+    }
+
+    // Fallback: Try to extract from profilePictureUrl
     if (instanceData?.profilePictureUrl) {
       const fromUrl = extractPhoneFromOwner(instanceData.profilePictureUrl);
       if (fromUrl) return fromUrl;
     }
+
+    // Debug logging if we can't find the number
+    logger.warn({
+      instanceName,
+      availableKeys: Object.keys(instanceData),
+      data: JSON.stringify(instanceData).substring(0, 200)
+    }, 'Could not extract connected phone from Evolution API response');
+
   } catch (error) {
     logger.warn({ err: error, instanceName }, 'Error fetching connected phone from Evolution API');
   }

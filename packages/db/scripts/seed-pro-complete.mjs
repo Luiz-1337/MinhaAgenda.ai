@@ -575,12 +575,12 @@ async function main() {
       }
 
       await tx`
-        INSERT INTO chat_messages (salon_id, client_id, role, content)
-        VALUES 
-          (${salon1Id}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar um corte para esta semana.'),
-          (${salon1Id}, ${customer.profileId}, 'assistant', 'Olá! Claro, tenho disponibilidade. Que dia e horário você prefere?'),
-          (${salon1Id}, ${customer.profileId}, 'user', 'Prefiro quinta-feira à tarde, por volta das 15h.'),
-          (${salon1Id}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quinta-feira às 15h. Qual serviço você deseja?')
+        -- INSERT INTO chat_messages (salon_id, client_id, role, content)
+        -- VALUES 
+        --   (${salon1Id}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar um corte para esta semana.'),
+        --   (${salon1Id}, ${customer.profileId}, 'assistant', 'Olá! Claro, tenho disponibilidade. Que dia e horário você prefere?'),
+        --   (${salon1Id}, ${customer.profileId}, 'user', 'Prefiro quinta-feira à tarde, por volta das 15h.'),
+        --   (${salon1Id}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quinta-feira às 15h. Qual serviço você deseja?')
       `
     }
 
@@ -1048,12 +1048,12 @@ async function main() {
       }
 
       await tx`
-        INSERT INTO chat_messages (salon_id, client_id, role, content)
-        VALUES 
-          (${salon2Id}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar uma coloração.'),
-          (${salon2Id}, ${customer.profileId}, 'assistant', 'Olá! Claro, temos disponibilidade. Que dia você prefere?'),
-          (${salon2Id}, ${customer.profileId}, 'user', 'Prefiro na próxima semana, quarta-feira.'),
-          (${salon2Id}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quarta-feira às 14h. Qual tipo de coloração você deseja?')
+        -- INSERT INTO chat_messages (salon_id, client_id, role, content)
+        -- VALUES 
+        --   (${salon2Id}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar uma coloração.'),
+        --   (${salon2Id}, ${customer.profileId}, 'assistant', 'Olá! Claro, temos disponibilidade. Que dia você prefere?'),
+        --   (${salon2Id}, ${customer.profileId}, 'user', 'Prefiro na próxima semana, quarta-feira.'),
+        --   (${salon2Id}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quarta-feira às 14h. Qual tipo de coloração você deseja?')
       `
     }
 
@@ -1191,35 +1191,35 @@ async function main() {
 
     // Integrações por profissional - Salão 1
     for (const pro of professionalIds1) {
-      await tx`
-        INSERT INTO integrations (provider, salon_id, professional_id, access_token, refresh_token, token_type, scope, expires_at)
-        VALUES (
-          'google',
-          ${salon1Id},
-          ${pro.id},
-          'access_token_demo',
-          'refresh_token_demo',
-          'Bearer',
-          'https://www.googleapis.com/auth/calendar',
-          ${new Date(Date.now() + 3600000).toISOString()}
-        )
-      `
+      // await tx`
+      //   INSERT INTO integrations (provider, salon_id, professional_id, access_token, refresh_token, token_type, scope, expires_at)
+      //   VALUES (
+      //     'google',
+      //     ${salon1Id},
+      //     ${pro.id},
+      //     'access_token_demo',
+      //     'refresh_token_demo',
+      //     'Bearer',
+      //     'https://www.googleapis.com/auth/calendar',
+      //     ${new Date(Date.now() + 3600000).toISOString()}
+      //   )
+      // `
     }
 
     // Integrações por profissional - Salão 2
     for (const pro of professionalIds2) {
       await tx`
-        INSERT INTO integrations (provider, salon_id, professional_id, access_token, refresh_token, token_type, scope, expires_at)
-        VALUES (
-          'google',
-          ${salon2Id},
-          ${pro.id},
-          'access_token_demo',
-          'refresh_token_demo',
-          'Bearer',
-          'https://www.googleapis.com/auth/calendar',
-          ${new Date(Date.now() + 3600000).toISOString()}
-        )
+        -- INSERT INTO integrations (provider, salon_id, professional_id, access_token, refresh_token, token_type, scope, expires_at)
+        -- VALUES (
+        --   'google',
+        --   ${salon2Id},
+        --   ${pro.id},
+        --   'access_token_demo',
+        --   'refresh_token_demo',
+        --   'Bearer',
+        --   'https://www.googleapis.com/auth/calendar',
+        --   ${new Date(Date.now() + 3600000).toISOString()}
+        -- )
       `
     }
 

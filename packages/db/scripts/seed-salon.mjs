@@ -437,14 +437,14 @@ async function main() {
       }
 
       // Mensagens na tabela chat_messages
-      await tx`
-        insert into chat_messages (salon_id, client_id, role, content)
-        values 
-          (${SALON_ID}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar um corte para esta semana.'),
-          (${SALON_ID}, ${customer.profileId}, 'assistant', 'Olá! Claro, tenho disponibilidade. Que dia e horário você prefere?'),
-          (${SALON_ID}, ${customer.profileId}, 'user', 'Prefiro quinta-feira à tarde, por volta das 15h.'),
-          (${SALON_ID}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quinta-feira às 15h. Qual serviço você deseja?')
-      `
+      // await tx`
+      //   insert into chat_messages (salon_id, client_id, role, content)
+      //   values 
+      //     (${SALON_ID}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar um corte para esta semana.'),
+      //     (${SALON_ID}, ${customer.profileId}, 'assistant', 'Olá! Claro, tenho disponibilidade. Que dia e horário você prefere?'),
+      //     (${SALON_ID}, ${customer.profileId}, 'user', 'Prefiro quinta-feira à tarde, por volta das 15h.'),
+      //     (${SALON_ID}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quinta-feira às 15h. Qual serviço você deseja?')
+      // `
     }
 
     // ============================================================================

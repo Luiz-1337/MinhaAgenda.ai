@@ -441,18 +441,18 @@ async function main() {
       for (const msg of messages) {
         await tx`
           INSERT INTO messages (chat_id, role, content)
-          VALUES (${chatId}, ${msg.role}::chat_message_role, ${msg.content})
+        VALUES (${chatId}, ${msg.role}::chat_message_role, ${msg.content})
         `
       }
 
-      await tx`
-        INSERT INTO chat_messages (salon_id, client_id, role, content)
-        VALUES 
-          (${salonId}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar um corte para esta semana.'),
-          (${salonId}, ${customer.profileId}, 'assistant', 'Olá! Claro, tenho disponibilidade. Que dia e horário você prefere?'),
-          (${salonId}, ${customer.profileId}, 'user', 'Prefiro quinta-feira à tarde, por volta das 15h.'),
-          (${salonId}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quinta-feira às 15h. Qual serviço você deseja?')
-      `
+      // await tx`
+      //   INSERT INTO chat_messages (salon_id, client_id, role, content)
+      //   VALUES 
+      //     (${salonId}, ${customer.profileId}, 'user', 'Olá, gostaria de agendar um corte para esta semana.'),
+      //     (${salonId}, ${customer.profileId}, 'assistant', 'Olá! Claro, tenho disponibilidade. Que dia e horário você prefere?'),
+      //     (${salonId}, ${customer.profileId}, 'user', 'Prefiro quinta-feira à tarde, por volta das 15h.'),
+      //     (${salonId}, ${customer.profileId}, 'assistant', 'Perfeito! Tenho horário disponível na quinta-feira às 15h. Qual serviço você deseja?')
+      // `
     }
 
     // ============================================================================
@@ -586,24 +586,14 @@ async function main() {
       ON CONFLICT (salon_id) DO UPDATE SET
         refresh_token = excluded.refresh_token,
         access_token = excluded.access_token
-    `
-
     // Integrações por profissional
-    for (const pro of professionalIds) {
-      await tx`
-        INSERT INTO integrations (provider, salon_id, professional_id, access_token, refresh_token, token_type, scope, expires_at)
-        VALUES (
-          'google',
-          ${salonId},
-          ${pro.id},
-          'access_token_demo',
-          'refresh_token_demo',
-          'Bearer',
-          'https://www.googleapis.com/auth/calendar',
-          ${new Date(Date.now() + 3600000).toISOString()}
-        )
-      `
-    }
+    // for (const pro of professionalIds) {
+    //   await tx`
+    //   INSERT INTO integrations (provider, salon_id, professional_id, access_token, refresh_token, token_type, scope, expires_at)
+    //   VALUES
+    //     ('google', ${salonId}, ${pro.id}, 'mock_access_token', 'mock_refresh_token', 'Bearer', 'https://www.googleapis.com/auth/calendar', NOW() + INTERVAL '10 days')
+    //   `
+    // }
 
     // ============================================================================
     // 13. ESTATÍSTICAS DE IA
@@ -620,10 +610,10 @@ async function main() {
       for (const model of models) {
         const credits = Math.floor(Math.random() * 150) + 20
         await tx`
-          INSERT INTO ai_usage_stats (salon_id, date, model, credits)
-          VALUES (${salonId}, ${date.toISOString().split('T')[0]}::date, ${model}, ${credits})
-          ON CONFLICT (salon_id, date, model) DO UPDATE SET credits = excluded.credits
-        `
+          INSERT INTO ai_usage_stats(salon_id, date, model, credits)
+    VALUES(${salonId}, ${date.toISOString().split('T')[0]}:: date, ${model}, ${credits})
+          ON CONFLICT(salon_id, date, model) DO UPDATE SET credits = excluded.credits
+      `
       }
     }
 
@@ -632,22 +622,22 @@ async function main() {
     for (const agent of agents) {
       const totalCredits = Math.floor(Math.random() * 8000) + 2000
       await tx`
-        INSERT INTO agent_stats (salon_id, agent_name, total_credits)
-        VALUES (${salonId}, ${agent}, ${totalCredits})
-        ON CONFLICT (salon_id, agent_name) DO UPDATE SET total_credits = excluded.total_credits
+        INSERT INTO agent_stats(salon_id, agent_name, total_credits)
+    VALUES(${salonId}, ${agent}, ${totalCredits})
+        ON CONFLICT(salon_id, agent_name) DO UPDATE SET total_credits = excluded.total_credits
       `
     }
 
     console.log('')
     console.log('✅ Seed completo finalizado com sucesso!')
     console.log('📋 Resumo:')
-    console.log(`   - Salão: ${salonId}`)
-    console.log(`   - Profissionais: ${professionalIds.length}`)
-    console.log(`   - Serviços: ${serviceIds.length}`)
-    console.log(`   - Clientes: ${customerIds.length}`)
-    console.log(`   - Agendamentos: ${appointments.length}`)
-    console.log(`   - Chats: ${chatClients.length}`)
-    console.log(`   - Leads: ${leadsData.length}`)
+    console.log(`   - Salão: ${salonId} `)
+    console.log(`   - Profissionais: ${professionalIds.length} `)
+    console.log(`   - Serviços: ${serviceIds.length} `)
+    console.log(`   - Clientes: ${customerIds.length} `)
+    console.log(`   - Agendamentos: ${appointments.length} `)
+    console.log(`   - Chats: ${chatClients.length} `)
+    console.log(`   - Leads: ${leadsData.length} `)
     console.log(`   - Campanhas: 3`)
   })
 

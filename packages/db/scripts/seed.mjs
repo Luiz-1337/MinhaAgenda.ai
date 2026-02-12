@@ -90,10 +90,11 @@ async function main() {
       values (${salonId}, ${professionalId}, ${overrideStart.toISOString()}, ${overrideEnd.toISOString()}, 'consulta médica')
     `
 
-    await tx`
-      insert into integrations (provider, salon_id, professional_id, access_token, token_type, scope)
-      values ('google', ${salonId}, ${professionalId}, 'seed-access-token', 'Bearer', 'calendar.readonly')
-    `
+    // integrations removed
+    // await tx`
+    //   insert into integrations (provider, salon_id, professional_id, access_token, token_type, scope)
+    //   values ('google', ${salonId}, ${professionalId}, 'seed-access-token', 'Bearer', 'calendar.readonly')
+    // `
 
     // Cria chat usando a tabela chats atual
     const [{ id: chatId }] = await tx`
@@ -103,11 +104,11 @@ async function main() {
     `
 
     // Cria mensagens usando chatMessages (tabela atual para mensagens do salão)
-    await tx`
-      insert into chat_messages (salon_id, client_id, role, content)
-      values (${salonId}, ${clientId}, 'user', 'Olá, gostaria de agendar um corte.'),
-             (${salonId}, ${clientId}, 'assistant', 'Claro! Tenho horário amanhã às 10h.')
-    `
+    // await tx`
+    //   insert into chat_messages (salon_id, client_id, role, content)
+    //   values (${salonId}, ${clientId}, 'user', 'Olá, gostaria de agendar um corte.'),
+    //          (${salonId}, ${clientId}, 'assistant', 'Claro! Tenho horário amanhã às 10h.')
+    // `
 
     // Também cria mensagens na tabela messages (relacionada ao chat)
     await tx`

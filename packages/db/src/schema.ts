@@ -273,20 +273,7 @@ export const appointments = pgTable(
 // ============================================================================
 // TABLES - Integrations
 // ============================================================================
-export const integrations = pgTable('integrations', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  provider: text('provider').notNull(),
-  salonId: uuid('salon_id').references(() => salons.id),
-  professionalId: uuid('professional_id').references(() => professionals.id),
-  googleCalendarId: text('google_calendar_id'),
-  accessToken: text('access_token').notNull(),
-  refreshToken: text('refresh_token'),
-  tokenType: text('token_type').default('Bearer').notNull(),
-  scope: text('scope'),
-  expiresAt: timestamp('expires_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-})
+// integrations removed (obsolete)
 
 export const salonIntegrations = pgTable(
   'salon_integrations',
@@ -346,21 +333,7 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at').defaultNow().notNull()
 })
 
-export const chatMessages = pgTable(
-  'chat_messages',
-  {
-    id: uuid('id').defaultRandom().primaryKey().notNull(),
-    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
-    clientId: uuid('client_id').references(() => profiles.id, { onDelete: 'set null' }),
-    role: text('role').notNull(), // 'user' | 'assistant'
-    content: text('content').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull()
-  },
-  (table) => [
-    index('chat_messages_salon_client_idx').on(table.salonId, table.clientId),
-    index('chat_messages_salon_created_idx').on(table.salonId, table.createdAt)
-  ]
-)
+// chatMessages removed (obsolete)
 
 export const leads = pgTable(
   'leads',
@@ -682,10 +655,7 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   chat: one(chats, { fields: [messages.chatId], references: [chats.id] })
 }))
 
-export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
-  salon: one(salons, { fields: [chatMessages.salonId], references: [salons.id] }),
-  client: one(profiles, { fields: [chatMessages.clientId], references: [profiles.id] })
-}))
+// chatMessagesRelations removed (obsolete)
 
 export const customersRelations = relations(customers, ({ one }) => ({
   salon: one(salons, { fields: [customers.salonId], references: [salons.id] })

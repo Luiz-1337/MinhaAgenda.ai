@@ -42,7 +42,7 @@ async function main() {
 
     if (salonIds.length > 0) {
       // Deletar dados relacionados aos salões em ordem (respeitando FKs)
-      
+
       // 1. Schedule overrides
       console.log('🗑️  Deletando schedule_overrides...')
       await tx`
@@ -84,10 +84,10 @@ async function main() {
       `
 
       // 6. Chat messages
-      console.log('🗑️  Deletando chat_messages...')
-      await tx`
-        DELETE FROM chat_messages WHERE salon_id = ANY(${salonIds})
-      `
+      // console.log('🗑️  Deletando chat_messages...')
+      // await tx`
+      //   DELETE FROM chat_messages WHERE salon_id = ANY(${salonIds})
+      // `
 
       // 7. Chats
       console.log('🗑️  Deletando chats...')
@@ -111,14 +111,14 @@ async function main() {
       `
 
       // 10. Integrations (por profissional)
-      console.log('🗑️  Deletando integrations...')
-      await tx`
-        DELETE FROM integrations 
-        WHERE salon_id = ANY(${salonIds})
-           OR professional_id IN (
-          SELECT id FROM professionals WHERE salon_id = ANY(${salonIds})
-        )
-      `
+      // console.log('🗑️  Deletando integrations...')
+      // await tx`
+      //   DELETE FROM integrations 
+      //   WHERE salon_id = ANY(${salonIds})
+      //      OR professional_id IN (
+      //     SELECT id FROM professionals WHERE salon_id = ANY(${salonIds})
+      //   )
+      // `
 
       // 11. Salon integrations
       console.log('🗑️  Deletando salon_integrations...')
@@ -194,7 +194,7 @@ async function main() {
     }
 
     // Deletar outros dados relacionados ao profile (não relacionados a salões)
-    
+
     // Leads (que podem não ter salon_id)
     console.log('🗑️  Deletando leads do profile...')
     await tx`
@@ -214,10 +214,10 @@ async function main() {
     `
 
     // Chat messages por client_id
-    console.log('🗑️  Deletando chat_messages do profile...')
-    await tx`
-      DELETE FROM chat_messages WHERE client_id = ${profileId}
-    `
+    // console.log('🗑️  Deletando chat_messages do profile...')
+    // await tx`
+    //   DELETE FROM chat_messages WHERE client_id = ${profileId}
+    // `
 
     // Appointments como client
     console.log('🗑️  Deletando appointments como client...')

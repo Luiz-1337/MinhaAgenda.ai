@@ -187,61 +187,61 @@ export async function createSalonWithOwner(userId: string, data: CreateSalonSche
   console.log("Iniciando createSalonWithOwner para user:", userId)
   return await db.transaction(async (tx) => {
     try {
-    // 1. Cria o salão
-    console.log("Tentando criar salão:", data.name)
-    const [newSalon] = await tx
-      .insert(salons)
-      .values({
-        ownerId: userId,
-        name: data.name,
-        slug: data.slug,
-        whatsapp: data.whatsapp || null,
-        address: data.address || null,
-        phone: data.phone || null,
-        description: data.description || null,
-        workHours: data.workHours || null,
-        settings: data.settings || null,
-        subscriptionStatus: 'TRIAL',
+      // 1. Cria o salão
+      console.log("Tentando criar salão:", data.name)
+      const [newSalon] = await tx
+        .insert(salons)
+        .values({
+          ownerId: userId,
+          name: data.name,
+          slug: data.slug || normalizeString(data.name).toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7),
+          whatsapp: data.whatsapp || null,
+          address: data.address || null,
+          phone: data.phone || null,
+          description: data.description || null,
+          workHours: data.workHours || null,
+          settings: data.settings || null,
+          subscriptionStatus: 'TRIAL',
+        })
+        .returning()
+
+      if (!newSalon) {
+        throw new Error("Falha ao criar salão")
+      }
+
+      // 2. Busca dados do usuário para criar o profissional
+      const userProfile = await tx.query.profiles.findFirst({
+        where: eq(profiles.id, userId),
+        columns: {
+          fullName: true,
+          email: true,
+          phone: true,
+        },
       })
-      .returning()
 
-    if (!newSalon) {
-      throw new Error("Falha ao criar salão")
-    }
+      const ownerName = userProfile?.fullName || data.name // Fallback para nome do salão se não tiver nome
+      const ownerEmail = userProfile?.email || "" // Deve ter email, mas typescript reclama
 
-    // 2. Busca dados do usuário para criar o profissional
-    const userProfile = await tx.query.profiles.findFirst({
-      where: eq(profiles.id, userId),
-      columns: {
-        fullName: true,
-        email: true,
-        phone: true,
-      },
-    })
+      // 3. Cria o profissional dono
+      await tx.insert(professionals).values({
+        salonId: newSalon.id,
+        userId: userId,
+        name: normalizeString(ownerName),
+        email: ownerEmail, // Email do profissional = email do user
+        phone: userProfile?.phone || null,
+        role: 'MANAGER', // Dono é criado como MANAGER
+        isActive: true,
+        commissionRate: '0',
+      })
 
-    const ownerName = userProfile?.fullName || data.name // Fallback para nome do salão se não tiver nome
-    const ownerEmail = userProfile?.email || "" // Deve ter email, mas typescript reclama
+      // 4. Atualiza role do usuário (se necessário, ex: primeira vez criando salão)
+      await tx
+        .update(profiles)
+        .set({ systemRole: "admin" })
+        .where(eq(profiles.id, userId))
 
-    // 3. Cria o profissional dono
-    await tx.insert(professionals).values({
-      salonId: newSalon.id,
-      userId: userId,
-      name: normalizeString(ownerName),
-      email: ownerEmail, // Email do profissional = email do user
-      phone: userProfile?.phone || null,
-      role: 'MANAGER', // Dono é criado como MANAGER
-      isActive: true,
-      commissionRate: '0',
-    })
-
-    // 4. Atualiza role do usuário (se necessário, ex: primeira vez criando salão)
-    await tx
-      .update(profiles)
-      .set({ systemRole: "admin" })
-      .where(eq(profiles.id, userId))
-
-    console.log("Salão criado com sucesso:", newSalon.id)
-    return newSalon
+      console.log("Salão criado com sucesso:", newSalon.id)
+      return newSalon
     } catch (e) {
       console.error("Erro na transação de createSalonWithOwner:", e)
       throw e

@@ -27,7 +27,7 @@ export default function RegisterPage() {
   const store = useOnboardingStore()
   const [data, setDataState] = useState(store.data)
   const [currentStep, setStepState] = useState(store.currentStep)
-  
+
   // Sincronizar com sessionStorage
   useEffect(() => {
     const handleStorage = () => {
@@ -35,38 +35,38 @@ export default function RegisterPage() {
       setDataState(updated.data)
       setStepState(updated.currentStep)
     }
-    
+
     window.addEventListener('onboarding-storage', handleStorage)
-    
+
     // Limpar storage quando a aba for fechada (pagehide é mais confiável que beforeunload)
     const handlePageHide = () => {
       store.reset()
     }
-    
+
     window.addEventListener('pagehide', handlePageHide)
-    
+
     return () => {
       window.removeEventListener('onboarding-storage', handleStorage)
       window.removeEventListener('pagehide', handlePageHide)
     }
   }, [store])
-  
+
   const setData = (newData: Partial<typeof data>) => {
     store.setData(newData)
     setDataState({ ...data, ...newData })
   }
-  
+
   const setStep = (step: number) => {
     store.setStep(step)
     setStepState(step)
   }
-  
+
   const reset = () => {
     store.reset()
     setDataState({})
     setStepState(1)
   }
-  
+
   const rawPlan = searchParams.get('plan')
   const VALID_PLANS = ['SOLO', 'PRO', 'ENTERPRISE']
   const isValidPlan = rawPlan && VALID_PLANS.includes(rawPlan.toUpperCase())
@@ -93,7 +93,7 @@ export default function RegisterPage() {
           <p className="text-slate-500 dark:text-slate-400">
             O plano selecionado não existe ou o link está incorreto.
           </p>
-          <button 
+          <button
             onClick={() => router.push('/#plans')}
             className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 transition-colors w-full sm:w-auto"
           >
@@ -107,65 +107,38 @@ export default function RegisterPage() {
 
   // Step 1: Apenas validar credenciais (salvar no store, não criar usuário ainda)
   const handleStep1Next = async () => {
-    if (!data.email || !data.password) {
-      toast.error("E-mail e senha são obrigatórios")
-      return
-    }
-
-    // Apenas validar e avançar - dados já foram salvos no store pelo StepCredentials
+    // Apenas avançar - validação feita pelo StepCredentials
     setStep(2)
   }
 
   // Step 2: Preencher dados pessoais (apenas salva no store)
   const handleStep2Next = async () => {
-    if (!data.firstName || !data.lastName || !data.phone || 
-        !data.billingAddress || !data.billingPostalCode || !data.billingCity || !data.billingState ||
-        !data.documentType || !data.document) {
-      toast.error("Preencha todos os campos obrigatórios")
-      return
-    }
-
-    // Dados já foram salvos no store pelo StepAccount, apenas avança
+    // Apenas avançar - validação feita pelo StepAccount
     setStep(3)
   }
 
   // Step 3: Preencher dados do salão (apenas salva no store)
   const handleStep3Next = async () => {
-    if (!data.salonName) {
-      toast.error("Preencha o nome do salão")
-      return
-    }
-    // Dados já foram salvos no store pelo StepSalon, apenas avança
+    // Apenas avançar - validação feita pelo StepSalon
     setStep(4)
   }
 
   // Step 4: Selecionar plano (apenas valida, não cria nada ainda)
   const handleStep4Next = async () => {
-    if (!data.plan) {
-      toast.error("Selecione um plano para continuar")
-      return
-    }
-
-    if (!data.email || !data.password || !data.salonName || !data.firstName || !data.lastName || !data.phone || 
-        !data.billingAddress || !data.billingPostalCode || !data.billingCity || !data.billingState ||
-        !data.documentType || !data.document) {
-      toast.error("Dados incompletos. Por favor, preencha todos os campos obrigatórios.")
-      return
-    }
-
-    // Apenas validar e avançar - dados já foram salvos no store pelo StepPlan
+    // Apenas avançar - validação feita pelo StepPlan
     setStep(5)
   }
 
   // Step 5: Finalizar onboarding - criar tudo de uma vez após pagamento confirmado
   const handleStep5Complete = async () => {
-    // Ler dados diretamente do store para garantir que não foram perdidos
-    const storeData = store.data
-    
+    // Ler dados diretamente do store (sessionStorage) para garantir que não estão stale
+    const currentStore = useOnboardingStore()
+    const storeData = currentStore.data
+
     // Validar todos os dados obrigatórios
-    if (!storeData.email || !storeData.password || !storeData.salonName || !storeData.firstName || !storeData.lastName || !storeData.phone || 
-        !storeData.billingAddress || !storeData.billingPostalCode || !storeData.billingCity || !storeData.billingState ||
-        !storeData.documentType || !storeData.document || !storeData.plan) {
+    if (!storeData.email || !storeData.password || !storeData.salonName || !storeData.firstName || !storeData.lastName || !storeData.phone ||
+      !storeData.billingAddress || !storeData.billingPostalCode || !storeData.billingCity || !storeData.billingState ||
+      !storeData.documentType || !storeData.document || !storeData.plan) {
       toast.error("Dados incompletos. Por favor, preencha todos os campos obrigatórios.")
       return
     }

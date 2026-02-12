@@ -18,7 +18,7 @@ import { logger } from "../logger"
 export async function findOrCreateCustomer(
   clientPhone: string,
   salonId: string,
-  profileName?: string
+  profileName?: string | null
 ): Promise<{ id: string; name: string }> {
   // Normaliza telefone (remove caracteres não numéricos)
   // clientPhone vem no formato E.164 (ex: +5511986049295)
@@ -35,9 +35,11 @@ export async function findOrCreateCustomer(
 
   // Se não existir, tenta criar com proteção contra race condition
   if (!customer) {
-    // Usa o nome do perfil do WhatsApp se disponível
+    // Usa o nome do perfil do WhatsApp se disponível e válido
     // Se não, usa fallback para "Novo Cliente" com DDD entre parênteses
-    const customerName = profileName?.trim()
+    const validProfileName = profileName && profileName.trim().length > 0 ? profileName.trim() : null;
+
+    const customerName = validProfileName
       || (normalizedPhone.length >= 10
         ? `Novo Cliente (${normalizedPhone.slice(0, 2)})`
         : "Novo Cliente")
@@ -89,26 +91,37 @@ export async function findOrCreateCustomer(
   }
 
   // Se existir (ou acabou de ser criado/encontrado), verifica se precisa atualizar o nome (Auto-Healing)
-  if (customer && profileName?.trim()) {
+  // Só atualiza se tiver um nome de perfil válido vindo do WhatsApp
+  if (customer && profileName && profileName.trim().length > 0) {
+    const newName = profileName.trim();
+
     // Remove caracteres não alfanuméricos do nome atual para comparação
     const currentNameClean = customer.name.replace(/[^a-zA-Z0-9]/g, "")
 
-    // Verifica se o nome atual é "genérico" (só números ou contém "Novo Cliente")
-    // Ex: "551199999999", "(11) 99999-9999" -> "551199999999" (só dígitos)
-    const isPhoneName = /^\d+$/.test(currentNameClean) || customer.name.includes("Novo Cliente")
+    // Verifica se o nome atual é "genérico"
+    // 1. Só números (ex: "551199999999")
+    // 2. Contém "Novo Cliente"
+    // 3. Contém "Cliente" seguido de números (ex: "Cliente 1234")
+    const isGenericName =
+      /^\d+$/.test(currentNameClean) ||
+      customer.name.includes("Novo Cliente") ||
+      /Cliente\s*\d+/.test(customer.name);
 
-    // Se o nome atual for genérico E o novo nome tiver letras
-    if (isPhoneName && /[a-zA-Z]/.test(profileName)) {
+    // Se o nome atual for genérico E o novo nome tiver letras (não for só número)
+    // E o novo nome for diferente do atual
+    if (isGenericName && /[a-zA-Z]/.test(newName) && customer.name !== newName) {
       try {
         await db.update(customers)
-          .set({ name: profileName.trim(), updatedAt: new Date() })
+          .set({ name: newName, updatedAt: new Date() })
           .where(eq(customers.id, customer.id))
 
+        logger.info({ customerId: customer.id, oldName: customer.name, newName }, "Auto-updated generic customer name to pushName");
+
         // Atualiza objeto local para retorno
-        customer.name = profileName.trim()
+        customer.name = newName
       } catch (error) {
         // Loga erro mas não falha a operação principal
-        logger.warn({ error, customerId: customer.id, newName: profileName }, "Failed to auto-update customer name")
+        logger.warn({ error, customerId: customer.id, newName }, "Failed to auto-update customer name")
       }
     }
   }
@@ -206,7 +219,8 @@ export async function findOrCreateWebChat(
   // Usa o telefone do perfil se disponível, caso contrário usa um identificador único baseado no clientId
   const clientPhone = profile?.phone || `web-${clientId}`
 
-  return findOrCreateChat(clientPhone, salonId)
+  // Para web chat, não temos pushName, então passamos null
+  return findOrCreateCustomer(clientPhone, salonId, null)
 }
 
 /**

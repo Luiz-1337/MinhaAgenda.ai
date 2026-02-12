@@ -68,18 +68,18 @@ export async function completeOnboardingWithPayment(
 ): Promise<ActionResult<{ userId: string; salonId: string }>> {
   // VALIDAÇÃO E PREPARAÇÃO ANTES DE CRIAR O USUÁRIO NO AUTH
   // Isso garante que se der erro, o usuário não será criado no Supabase Auth
-  
+
   // 1. Validar dados obrigatórios
-  if (!data.firstName || !data.lastName || !data.phone || !data.billingAddress || 
-      !data.billingPostalCode || !data.billingCity || !data.billingState ||
-      !data.documentType || !data.document) {
+  if (!data.firstName || !data.lastName || !data.phone || !data.billingAddress ||
+    !data.billingPostalCode || !data.billingCity || !data.billingState ||
+    !data.documentType || !data.document) {
     return { error: "Campos obrigatórios não preenchidos" }
   }
 
   // 2. Preparar tipos e função no banco ANTES de criar usuário
   try {
     // Garantir que tipos e função existem
-      await db.execute(sql`
+    await db.execute(sql`
         DO $$ BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_type t
@@ -90,8 +90,8 @@ export async function completeOnboardingWithPayment(
           END IF;
         END $$;
       `)
-      
-      await db.execute(sql`
+
+    await db.execute(sql`
         DO $$ BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_type t
@@ -103,8 +103,8 @@ export async function completeOnboardingWithPayment(
         END $$;
       `)
 
-      // Criar função atualizada que verifica colunas dinamicamente
-      await db.execute(sql`
+    // Criar função atualizada que verifica colunas dinamicamente
+    await db.execute(sql`
           CREATE OR REPLACE FUNCTION "public"."update_profile_on_signup"(
             p_user_id uuid,
             p_full_name text,
@@ -179,10 +179,10 @@ export async function completeOnboardingWithPayment(
   // 3. AGORA SIM: Criar usuário no Supabase Auth (após tudo estar pronto)
   const supabase = await createClient()
   const fullName = `${data.firstName} ${data.lastName}`.trim()
-  
+
   let authData: { user: { id: string } | null } | null = null
   let userId: string | null = null
-  
+
   try {
     const signUpResult = await supabase.auth.signUp({
       email: normalizeEmail(data.email),
@@ -214,7 +214,7 @@ export async function completeOnboardingWithPayment(
 
       const fullName = `${data.firstName} ${data.lastName}`.trim()
       const documentNumber = data.document.replace(/\D/g, '')
-      
+
       // Atualizar perfil com todos os dados
       await tx.execute(sql`
         SELECT update_profile_on_signup(
@@ -247,16 +247,16 @@ export async function completeOnboardingWithPayment(
       const slug = normalizeString(data.salonName)
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7)
-      
+
       const salonData = {
         name: normalizeString(data.salonName),
         ownerId: userId,
         slug,
         subscriptionStatus: 'ACTIVE' as const,
-        address: data.address !== undefined ? normalizeString(data.address) : null,
-        phone: data.salonPhone !== undefined ? normalizeString(data.salonPhone) : null,
-        whatsapp: data.whatsapp !== undefined ? normalizeString(data.whatsapp) : null,
-        description: data.description !== undefined ? normalizeString(data.description) : null,
+        address: emptyStringToNull(data.address),
+        phone: emptyStringToNull(data.salonPhone),
+        whatsapp: emptyStringToNull(data.whatsapp),
+        description: emptyStringToNull(data.description),
         workHours: data.workHours !== undefined ? data.workHours : null,
         settings: data.settings !== undefined ? data.settings : null,
       }
@@ -328,7 +328,7 @@ export async function completeOnboardingWithPayment(
     return { success: true, data: result }
   } catch (err) {
     console.error("Erro ao configurar conta:", err)
-    
+
     // Deletar o usuário do Auth se a criação do perfil/salão falhar
     // Isso garante que não fiquem usuários órfãos no sistema
     if (userId) {
@@ -345,7 +345,7 @@ export async function completeOnboardingWithPayment(
         // Continuar mesmo se a deleção falhar - o importante é reportar o erro original
       }
     }
-    
+
     return { error: `Erro ao configurar conta: ${(err as Error).message}` }
   }
 }
@@ -360,7 +360,7 @@ export async function onboardingStep2(
   try {
     // Remove formatação do documento (apenas números)
     const documentNumber = data.document.replace(/\D/g, '')
-    
+
     // Atualizar profile com dados legais
     await db.update(profiles)
       .set({

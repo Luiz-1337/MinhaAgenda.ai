@@ -27,9 +27,9 @@ async function main() {
       INNER JOIN profiles p ON p.id = s.owner_id
       WHERE p.tier = 'SOLO'
     `
-    
+
     console.log(`📋 Encontrados ${soloSalons.length} salão(ões) com plano SOLO`)
-    
+
     if (soloSalons.length === 0) {
       console.log('✅ Nenhum salão SOLO encontrado. Nada para limpar.')
       return
@@ -66,7 +66,7 @@ async function main() {
       const extraProfessionalIds = extraProfessionals.map(p => p.id)
 
       // 4. Remover dados relacionados aos profissionais extras
-      
+
       // 4.1. Schedule overrides
       console.log(`   🗑️  Deletando schedule_overrides...`)
       const overridesDeleted = await tx`
@@ -92,12 +92,12 @@ async function main() {
       console.log(`      ✅ ${availabilityDeleted.count || 0} horários de disponibilidade removidos`)
 
       // 4.4. Integrations (por profissional)
-      console.log(`   🗑️  Deletando integrations...`)
-      const integrationsDeleted = await tx`
-        DELETE FROM integrations 
-        WHERE professional_id = ANY(${extraProfessionalIds})
-      `
-      console.log(`      ✅ ${integrationsDeleted.count || 0} integrações removidas`)
+      // console.log(`   🗑️  Deletando integrations...`)
+      // const integrationsDeleted = await tx`
+      //   DELETE FROM integrations 
+      //   WHERE professional_id = ANY(${extraProfessionalIds})
+      // `
+      // console.log(`      ✅ ${integrationsDeleted.count || 0} integrações removidas`)
 
       // 4.5. Appointments futuros (cancelar agendamentos futuros desses profissionais)
       console.log(`   🗑️  Cancelando appointments futuros...`)
@@ -130,13 +130,13 @@ async function main() {
           FROM profiles
           WHERE id = ${owner_id}
         `
-        
+
         if (ownerProfile) {
-          const professionalName = ownerProfile.full_name || 
+          const professionalName = ownerProfile.full_name ||
             (ownerProfile.first_name && ownerProfile.last_name
               ? `${ownerProfile.first_name} ${ownerProfile.last_name}`.trim()
               : ownerProfile.first_name || ownerProfile.last_name || 'Profissional')
-          
+
           await tx`
             INSERT INTO professionals (salon_id, user_id, name, email, phone, role, is_active, commission_rate)
             VALUES (
