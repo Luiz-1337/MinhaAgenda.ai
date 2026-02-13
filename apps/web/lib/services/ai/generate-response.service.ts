@@ -8,12 +8,13 @@
  * - Tratamento de erros de tools
  */
 
-import { generateText, convertToModelMessages, UIMessage, stepCountIs } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { createMCPTools } from "@repo/mcp-server/tools/vercel-ai";
 import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
 import { getActiveAgentInfo } from "./agent-info.service";
 import { mapModelToOpenAI } from "./model-mapper.service";
+import { runOpenAIResponses } from "./openai-responses-runner.service";
+import type { ResponsesRunnerInputMessage } from "./openai-responses-runner.service";
+import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
 import { findRelevantContext } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../logger";
@@ -111,26 +112,22 @@ export async function generateAIResponse(
     } else {
       if (AI_DEBUG) console.log("⏭️  RAG: Skipped (hasKnowledgeBase=false)");
     }
-
-    // 3. Montar mensagens UI
-    const uiMessages: UIMessage[] = historyMessages.map((msg, idx) => ({
-      id: `hist-${idx}`,
+    // 3. Montar mensagens para Responses API
+    const conversationMessages: ResponsesRunnerInputMessage[] = historyMessages.map((msg) => ({
       role: msg.role as "user" | "assistant",
-      parts: [{ type: "text" as const, text: msg.content }],
+      content: msg.content,
     }));
 
-    uiMessages.push({
-      id: `temp-${Date.now()}`,
+    conversationMessages.push({
       role: "user",
-      parts: [{ type: "text" as const, text: userMessage }],
+      content: userMessage,
     });
 
     if (AI_DEBUG) {
       console.log("\n💬 ========== CONVERSATION HISTORY ==========");
-      console.log("Total messages:", uiMessages.length);
-      uiMessages.forEach((msg, idx) => {
-        const part = msg.parts[0];
-        const text = part && part.type === "text" ? part.text : "";
+      console.log("Total messages:", conversationMessages.length);
+      conversationMessages.forEach((msg, idx) => {
+        const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
         const preview = text.substring(0, 80);
         console.log(`  [${idx + 1}] ${msg.role}: ${preview}${text.length >= 80 ? "..." : ""}`);
       });
@@ -158,13 +155,12 @@ export async function generateAIResponse(
     contextLogger.info({ model: modelName }, "Generating AI response");
 
     if (AI_DEBUG) console.log("⚙️  Calling OpenAI with", Object.keys(mcpTools).length, "tools...\n");
-
-    const { text, usage, steps } = await generateText({
-      model: openai(modelName),
-      system: systemPrompt,
-      messages: convertToModelMessages(uiMessages),
-      tools: mcpTools as any, //adicionado as any para o railway parar de chorar
-      stopWhen: stepCountIs(5), // Permite até 5 iterações: tool call → resultado → resposta textual
+    const { text, usage, steps } = await runOpenAIResponses({
+      model: modelName,
+      instructions: systemPrompt,
+      input: conversationMessages,
+      tools: mcpTools as unknown as ToolSetDefinition,
+      maxToolRounds: 5,
     });
 
     // Log das tool calls e resultados
@@ -179,7 +175,7 @@ export async function generateAIResponse(
           console.log("🛠️  Tool Calls:");
           step.toolCalls.forEach((call: any, callIndex: number) => {
             console.log(`  [${callIndex + 1}] ${call.toolName}`);
-            console.log("  📥 Arguments:", JSON.stringify(call.args, null, 2));
+            console.log("  📥 Arguments:", JSON.stringify(call.input, null, 2));
           });
         }
 
@@ -512,3 +508,4 @@ export async function checkIfNewCustomer(
     return true;
   }
 }
+

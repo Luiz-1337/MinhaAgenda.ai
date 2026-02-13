@@ -2,12 +2,48 @@
  * Validação de mensagens de chat (DOMAIN LAYER)
  */
 
-import { chatRequestSchema } from "@/lib/schemas/chat.schema"
-import { convertToModelMessages, type CoreMessage, type UIMessage } from "ai"
+import { chatRequestSchema, type CoreMessage, type UIMessage, type UIMessagePart } from "@/lib/schemas/chat.schema"
 
 interface ValidatedMessagesResult {
   messages: CoreMessage[]
   salonId: string | undefined
+}
+
+function extractTextFromParts(parts: UIMessagePart[]): string {
+  return parts
+    .map((part) => {
+      if (part.type === "text" && typeof part.text === "string") {
+        return part.text
+      }
+
+      if (typeof part.text === "string") {
+        return part.text
+      }
+
+      return ""
+    })
+    .join("\n")
+    .trim()
+}
+
+function convertUIToCoreMessages(uiMessages: UIMessage[]): CoreMessage[] {
+  return uiMessages
+    .map((message): CoreMessage | null => {
+      const role = message.role === "developer" ? "system" : message.role
+      const content = extractTextFromParts(message.parts)
+
+      if (role === "system") {
+        if (!content) return null
+        return { role: "system", content, id: message.id }
+      }
+
+      if (role === "user") {
+        return { role: "user", content, id: message.id }
+      }
+
+      return { role: "assistant", content, id: message.id }
+    })
+    .filter((message): message is CoreMessage => message !== null)
 }
 
 /**
@@ -32,7 +68,7 @@ export class MessageValidator {
     ) {
       const uiMessages = bodyObj.messages as UIMessage[]
       return {
-        messages: convertToModelMessages(uiMessages),
+        messages: convertUIToCoreMessages(uiMessages),
         salonId: bodyObj.salonId as string | undefined,
       }
     }

@@ -1,4 +1,3 @@
-import { tool } from "ai"
 import { Container, TOKENS } from "../../container"
 import { isOk } from "../../shared/types"
 import {
@@ -13,9 +12,10 @@ import {
   qualifyLeadSchema,
 } from "../schemas"
 import { ErrorPresenter } from "../presenters"
+import type { ToolSet } from "./types"
 
 /**
- * Normaliza input que pode vir como undefined do Vercel AI SDK
+ * Normaliza input que pode vir como undefined
  * quando a IA chama uma tool sem argumentos
  */
 function normalizeInput<T>(input: T | undefined): T {
@@ -29,15 +29,17 @@ export function createSalonTools(
   container: Container,
   salonId: string,
   clientPhone: string
-) {
+): ToolSet {
   return {
-    getSalonInfo: tool({
+    getSalonInfo: {
       description:
         "Retorna informações do salão: nome, endereço, horários de funcionamento, política de cancelamento.",
       inputSchema: getSalonInfoSchema,
       execute: async (input) => {
         try {
           const params = normalizeInput(input)
+          void params
+
           const useCase = container.resolve<GetSalonDetailsUseCase>(
             TOKENS.GetSalonDetailsUseCase
           )
@@ -62,9 +64,9 @@ export function createSalonTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    saveCustomerPreference: tool({
+    saveCustomerPreference: {
       description:
         "Salva uma preferência do cliente no CRM do salão. Útil para armazenar informações extraídas da conversa (ex: alergias, preferências).",
       inputSchema: saveCustomerPreferenceSchema,
@@ -114,9 +116,9 @@ export function createSalonTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    qualifyLead: tool({
+    qualifyLead: {
       description:
         "Qualifica um lead baseado no nível de interesse demonstrado.",
       inputSchema: qualifyLeadSchema,
@@ -146,6 +148,6 @@ export function createSalonTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
   }
 }

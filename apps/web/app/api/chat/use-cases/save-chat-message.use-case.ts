@@ -1,4 +1,4 @@
-import type { CoreMessage } from 'ai'
+import type { CoreMessage } from '@/lib/schemas/chat.schema'
 import { db, domainServices } from '@repo/db'
 import { logger } from '@repo/db/infrastructure/logger'
 import { findOrCreateWebChat, saveMessage } from '@/lib/services/chat.service'

@@ -2,16 +2,16 @@
  * Factory para criação da tool de produtos (APPLICATION LAYER)
  */
 
-import { tool } from "ai"
 import { z } from "zod"
 import { db, products, and, eq } from "@repo/db"
+import type { ToolDefinition } from "./tool-definition"
 
 export class ProductsToolFactory {
   /**
    * Cria tool para buscar produtos do salão
    */
-  static create(salonId: string) {
-    return tool({
+  static create(salonId: string): ToolDefinition {
+    return {
       description: "Lista os produtos disponíveis no salão com seus preços.",
       inputSchema: z.object({}),
       execute: async () => {
@@ -26,6 +26,6 @@ export class ProductsToolFactory {
 
         return { products: results }
       },
-    })
+    }
   }
 }

@@ -5,9 +5,8 @@
  * Usado por: Chat Web, Worker WhatsApp
  */
 
-import { embed } from "ai"
-import { openai } from "@ai-sdk/openai"
 import { postgresClient } from "@repo/db"
+import { getOpenAIClient } from "./openai-client"
 
 export type RAGContextItem = {
   content: string
@@ -37,20 +36,26 @@ export async function findRelevantContext(
       return { error: "agentId e query são obrigatórios" }
     }
 
-    console.log("🧠 Generating embedding for query...");
+    console.log("🧠 Generating embedding for query...")
 
     // Gera o embedding da query
-    const { embedding: queryEmbedding } = await embed({
-      model: openai.embedding("text-embedding-3-small"),
-      value: query.trim(),
+    const openai = getOpenAIClient()
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: query.trim(),
     })
+    const queryEmbedding = embeddingResponse.data[0]?.embedding
 
-    console.log("✅ Embedding generated:", queryEmbedding.length, "dimensions");
+    if (!queryEmbedding) {
+      return { error: "Falha ao gerar embedding da query" }
+    }
+
+    console.log("✅ Embedding generated:", queryEmbedding.length, "dimensions")
 
     // Formato PostgreSQL array para o tipo vector
     const embeddingArrayString = `[${queryEmbedding.join(",")}]`
 
-    console.log("🔎 Searching in database with pgvector...");
+    console.log("🔎 Searching in database with pgvector...")
 
     // Busca por similaridade usando pgvector
     // <=> = distância cosseno (menor = mais similar)
@@ -68,10 +73,10 @@ export async function findRelevantContext(
       similarity: number
     }>
 
-    console.log(`📊 pgvector query returned ${results.length} result(s)`);
+    console.log(`📊 pgvector query returned ${results.length} result(s)`)
 
     if (results.length === 0) {
-      console.log("💡 Tip: Try lowering the similarity threshold (current:", similarityThreshold, ")");
+      console.log("💡 Tip: Try lowering the similarity threshold (current:", similarityThreshold, ")")
     }
 
     const formattedResults: RAGContextItem[] = results.map((row) => ({

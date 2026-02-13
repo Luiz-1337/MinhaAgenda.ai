@@ -2,15 +2,15 @@
  * Factory para criação da tool de preferências (APPLICATION LAYER)
  */
 
-import { tool } from "ai"
 import { z } from "zod"
 import { db, customers, profiles, and, eq } from "@repo/db"
+import type { ToolDefinition } from "./tool-definition"
 
 export class PreferencesToolFactory {
   /**
    * Cria tool para salvar preferências do usuário proativamente
    */
-  static create(salonId: string, clientId?: string) {
+  static create(salonId: string, clientId?: string): ToolDefinition {
     const paramsSchema = z.object({
       key: z
         .string()
@@ -24,7 +24,7 @@ export class PreferencesToolFactory {
         ),
     })
 
-    return tool({
+    return {
       description:
         "Salva preferências do cliente no CRM. Chame esta tool PROATIVAMENTE (em background) quando detectar que o usuário expressou uma preferência, como: preferência por profissional específico (ex: 'Só corto com o João'), alergias (ex: 'Tenho alergia a lâmina'), preferência por serviço, ou outras informações relevantes. Não é necessário informar ao usuário que está salvando - faça silenciosamente.",
       inputSchema: paramsSchema,
@@ -77,6 +77,6 @@ export class PreferencesToolFactory {
           message: `Preferência "${key}" salva com sucesso`,
         }
       },
-    })
+    }
   }
 }

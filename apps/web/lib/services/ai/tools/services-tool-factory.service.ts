@@ -2,16 +2,16 @@
  * Factory para criação da tool de serviços (APPLICATION LAYER)
  */
 
-import { tool } from "ai"
 import { z } from "zod"
 import { db, services, and, eq } from "@repo/db"
+import type { ToolDefinition } from "./tool-definition"
 
 export class ServicesToolFactory {
   /**
    * Cria tool para buscar serviços do salão
    */
-  static create(salonId: string) {
-    return tool({
+  static create(salonId: string): ToolDefinition {
+    return {
       description: "Lista os serviços disponíveis no salão com seus preços.",
       inputSchema: z.object({}),
       execute: async () => {
@@ -27,6 +27,6 @@ export class ServicesToolFactory {
 
         return { services: results }
       },
-    })
+    }
   }
 }

@@ -2,16 +2,16 @@
  * Factory para criação da tool de profissionais (APPLICATION LAYER)
  */
 
-import { tool } from "ai"
 import { z } from "zod"
 import { db, professionals, services, professionalServices, and, eq } from "@repo/db"
+import type { ToolDefinition } from "./tool-definition"
 
 export class ProfessionalsToolFactory {
   /**
    * Cria tool para buscar profissionais
    */
-  static create(salonId: string) {
-    return tool({
+  static create(salonId: string): ToolDefinition {
+    return {
       description: "Lista os profissionais do salão e os serviços que realizam.",
       inputSchema: z.object({}),
       execute: async () => {
@@ -45,6 +45,6 @@ export class ProfessionalsToolFactory {
 
         return { professionals: results }
       },
-    })
+    }
   }
 }

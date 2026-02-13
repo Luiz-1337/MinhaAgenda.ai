@@ -1,12 +1,11 @@
 "use server"
 
-import { embed } from "ai"
-import { openai } from "@ai-sdk/openai"
 import { createClient } from "../../lib/supabase/server"
 import type { ActionResult } from "../../lib/types/common"
 import { db, agentKnowledgeBase, agents, postgresClient, eq, and, desc, sql } from "@repo/db"
 import { hasSalonPermission } from "../../lib/services/permissions.service"
 import { AgentInfoService } from "../../lib/services/ai/agent-info.service"
+import { getOpenAIClient } from "../../lib/services/ai/openai-client"
 import {
   extractTextFromFile,
   splitIntelligentChunks,
@@ -62,10 +61,16 @@ export async function createKnowledgeItem(
     }
 
     // Gera o embedding do conteúdo
-    const { embedding: embeddingVector } = await embed({
-      model: openai.embedding("text-embedding-3-small"),
-      value: content.trim(),
+    const openai = getOpenAIClient()
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: content.trim(),
     })
+    const embeddingVector = embeddingResponse.data[0]?.embedding
+
+    if (!embeddingVector) {
+      return { error: "Falha ao gerar embedding do conteúdo" }
+    }
 
     // Formata o vetor como string PostgreSQL array para o tipo vector
     // O formato deve ser: [valor1,valor2,...]
@@ -294,10 +299,16 @@ export async function uploadKnowledgeFile(
         const chunk = chunks[i]
 
         // Gera o embedding do chunk
-        const { embedding: embeddingVector } = await embed({
-          model: openai.embedding("text-embedding-3-small"),
-          value: chunk,
+        const openai = getOpenAIClient()
+        const embeddingResponse = await openai.embeddings.create({
+          model: "text-embedding-3-small",
+          input: chunk,
         })
+        const embeddingVector = embeddingResponse.data[0]?.embedding
+
+        if (!embeddingVector) {
+          throw new Error(`Falha ao gerar embedding para chunk ${i + 1}`)
+        }
 
         // Formata o vetor como string PostgreSQL array
         const embeddingString = `[${embeddingVector.join(",")}]`

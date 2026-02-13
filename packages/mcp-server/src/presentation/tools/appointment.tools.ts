@@ -1,4 +1,3 @@
-import { tool } from "ai"
 import { Container, TOKENS } from "../../container"
 import { isOk } from "../../shared/types"
 import { ensureIsoWithTimezone } from "../../shared/utils/date.utils"
@@ -16,6 +15,7 @@ import {
   getMyFutureAppointmentsSchema,
 } from "../schemas"
 import { AppointmentPresenter, ErrorPresenter } from "../presenters"
+import type { ToolSet } from "./types"
 
 /**
  * Cria as tools de agendamento
@@ -24,9 +24,9 @@ export function createAppointmentTools(
   container: Container,
   salonId: string,
   clientPhone: string
-) {
+): ToolSet {
   return {
-    addAppointment: tool({
+    addAppointment: {
       description:
         "Cria um novo agendamento para o cliente. PRÉ-REQUISITOS: Cliente identificado, professionalId e serviceId obtidos via getProfessionals e getServices.",
       inputSchema: createAppointmentSchema,
@@ -69,9 +69,9 @@ export function createAppointmentTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    updateAppointment: tool({
+    updateAppointment: {
       description:
         "Atualiza um agendamento existente (reagendamento). PRÉ-REQUISITO: Obter appointmentId via getMyFutureAppointments.",
       inputSchema: updateAppointmentSchema,
@@ -98,9 +98,9 @@ export function createAppointmentTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    removeAppointment: tool({
+    removeAppointment: {
       description:
         "Cancela um agendamento existente. PRÉ-REQUISITO: Obter appointmentId via getMyFutureAppointments.",
       inputSchema: deleteAppointmentSchema,
@@ -125,9 +125,9 @@ export function createAppointmentTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    getMyFutureAppointments: tool({
+    getMyFutureAppointments: {
       description:
         "Lista agendamentos futuros do cliente atual. Use esta tool SEMPRE antes de cancelar ou reagendar para obter os IDs.",
       inputSchema: getMyFutureAppointmentsSchema,
@@ -152,6 +152,6 @@ export function createAppointmentTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
   }
 }

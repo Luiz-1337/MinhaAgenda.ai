@@ -2,16 +2,16 @@
  * Factory para criação da tool de agendamento (APPLICATION LAYER)
  */
 
-import { tool } from "ai"
 import { z } from "zod"
 import { db, appointments, professionals, professionalServices, and, eq } from "@repo/db"
 import { FuzzySearchService } from "../fuzzy-search.service"
+import type { ToolDefinition } from "./tool-definition"
 
 export class AppointmentToolFactory {
   /**
    * Cria tool para agendar horário
    */
-  static create(salonId: string, clientId?: string) {
+  static create(salonId: string, clientId?: string): ToolDefinition {
     const paramsSchema = z.object({
       date: z.string().describe("Data do agendamento (ISO date string YYYY-MM-DD)."),
       time: z.string().describe("Horário do agendamento (HH:mm)."),
@@ -19,7 +19,7 @@ export class AppointmentToolFactory {
       professionalName: z.string().optional().describe("Nome do profissional (opcional)."),
     })
 
-    return tool({
+    return {
       description: "Realiza o agendamento de um serviço.",
       inputSchema: paramsSchema,
       execute: async ({
@@ -113,6 +113,6 @@ export class AppointmentToolFactory {
           },
         }
       },
-    })
+    }
   }
 }

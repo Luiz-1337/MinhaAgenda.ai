@@ -1,7 +1,5 @@
-import type { CoreMessage } from 'ai'
-import { streamText } from 'ai'
-import { openai } from '@ai-sdk/openai'
-import { db, salons, agents, and, eq } from '@repo/db'
+import type { CoreMessage } from '@/lib/schemas/chat.schema'
+import { db, agents, and, eq } from '@repo/db'
 import {
   createAvailabilityTool,
   createBookAppointmentTool,
@@ -13,8 +11,9 @@ import {
 import { createSalonAssistantPrompt } from '@/lib/services/ai/system-prompt-builder.service'
 import { getActiveAgentInfo } from '@/lib/services/ai/agent-info.service'
 import { mapModelToOpenAI } from '@/lib/services/ai/model-mapper.service'
+import { runOpenAIResponses } from '@/lib/services/ai/openai-responses-runner.service'
+import type { ToolSetDefinition } from '@/lib/services/ai/tools/tool-definition'
 import { getAvailableSlots } from '@/lib/availability'
-import { createClient } from '@/lib/supabase/server'
 import { RetrieveKnowledgeContextUseCase } from './retrieve-knowledge-context.use-case'
 import { SaveChatMessageUseCase } from './save-chat-message.use-case'
 import { logger } from '@repo/db/infrastructure/logger'
@@ -37,12 +36,6 @@ export class ProcessChatMessageUseCase {
   }
 
   async execute() {
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.id, this.salonId),
-      columns: { name: true },
-    })
-
-    const salonName = salon?.name || 'nosso salão'
     const preferences: Record<string, unknown> | undefined = undefined
 
     const knowledgeContext = await this.retrieveKnowledgeContext()
@@ -65,58 +58,39 @@ export class ProcessChatMessageUseCase {
     const agentModel = agentInfo?.model || 'gpt-5-mini'
     const modelName = mapModelToOpenAI(agentModel)
 
-    let usageData: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null =
-      null
-
-    const result = streamText({
-      model: openai(modelName),
-      system: systemPrompt,
-      messages: this.messages,
+    const response = await runOpenAIResponses({
+      model: modelName,
+      instructions: systemPrompt,
+      input: this.messages,
       tools,
-      onFinish: async ({ text, usage }) => {
-        if (usage) {
-          usageData = {
-            inputTokens: usage.inputTokens ?? undefined,
-            outputTokens: usage.outputTokens ?? undefined,
-            totalTokens: usage.totalTokens ?? undefined,
-          }
-          logger.debug('Tokens captured in onFinish', {
-            input: usageData.inputTokens,
-            output: usageData.outputTokens,
-            total: usageData.totalTokens,
-          })
-        }
-
-        await this.saveMessageUseCase.executeAssistantMessage(
-          this.salonId,
-          this.clientId,
-          chatId,
-          text,
-          {
-            inputTokens: usageData?.inputTokens,
-            outputTokens: usageData?.outputTokens,
-            totalTokens: usageData?.totalTokens,
-            model: agentModel,
-          }
-        )
-      },
+      maxToolRounds: 5,
     })
 
-    if (!usageData && result.usage) {
-      const usage = await result.usage
-      usageData = {
-        inputTokens: usage.inputTokens ?? undefined,
-        outputTokens: usage.outputTokens ?? undefined,
-        totalTokens: usage.totalTokens ?? undefined,
-      }
-      logger.debug('Tokens obtained from result', {
-        input: usageData.inputTokens,
-        output: usageData.outputTokens,
-        total: usageData.totalTokens,
-      })
-    }
+    logger.debug('Tokens captured in response', {
+      input: response.usage.inputTokens,
+      output: response.usage.outputTokens,
+      total: response.usage.totalTokens,
+    })
 
-    return result.toTextStreamResponse()
+    await this.saveMessageUseCase.executeAssistantMessage(
+      this.salonId,
+      this.clientId,
+      chatId,
+      response.text,
+      {
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        totalTokens: response.usage.totalTokens,
+        model: agentModel,
+      }
+    )
+
+    return new Response(response.text, {
+      status: 200,
+      headers: {
+        'content-type': 'text/plain; charset=utf-8',
+      },
+    })
   }
 
   private async retrieveKnowledgeContext(): Promise<string | undefined> {
@@ -138,7 +112,7 @@ export class ProcessChatMessageUseCase {
     return this.knowledgeContextUseCase.execute(activeAgent.id, userMessage)
   }
 
-  private createTools() {
+  private createTools(): ToolSetDefinition {
     return {
       checkAvailability: createAvailabilityTool(this.salonId, async (params) => {
         return await getAvailableSlots({

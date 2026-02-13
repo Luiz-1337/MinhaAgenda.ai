@@ -1,6 +1,4 @@
-import type { CoreMessage, UIMessage } from 'ai'
-import { convertToModelMessages } from 'ai'
-import { chatRequestSchema } from '@/lib/schemas/chat.schema'
+import { chatRequestSchema, type CoreMessage, type UIMessage, type UIMessagePart } from '@/lib/schemas/chat.schema'
 
 /**
  * Validation result for chat messages
@@ -10,9 +8,58 @@ export interface MessageValidationResult {
   salonId: string
 }
 
+function extractTextFromParts(parts: UIMessagePart[]): string {
+  return parts
+    .map((part) => {
+      if (part.type === 'text' && typeof part.text === 'string') {
+        return part.text
+      }
+
+      if (typeof part.text === 'string') {
+        return part.text
+      }
+
+      return ''
+    })
+    .join('\n')
+    .trim()
+}
+
+function convertUIMessageToCoreMessage(uiMessages: UIMessage[]): CoreMessage[] {
+  return uiMessages
+    .map((uiMessage): CoreMessage | null => {
+      const role = uiMessage.role === 'developer' ? 'system' : uiMessage.role
+      const textContent = extractTextFromParts(uiMessage.parts)
+
+      if (role === 'system') {
+        if (!textContent) return null
+        return {
+          role: 'system',
+          content: textContent,
+          id: uiMessage.id,
+        }
+      }
+
+      if (role === 'user') {
+        return {
+          role: 'user',
+          content: textContent,
+          id: uiMessage.id,
+        }
+      }
+
+      return {
+        role: 'assistant',
+        content: textContent,
+        id: uiMessage.id,
+      }
+    })
+    .filter((message): message is CoreMessage => message !== null)
+}
+
 /**
  * Validates and converts chat messages
- * Handles both UIMessage[] (from useChat) and CoreMessage[] (direct format)
+ * Handles both UIMessage[] payloads (with parts) and CoreMessage[] payloads
  */
 export class MessageValidator {
   static validate(body: unknown): MessageValidationResult {
@@ -26,7 +73,7 @@ export class MessageValidator {
 
     if (bodyObj.messages && Array.isArray(bodyObj.messages) && bodyObj.messages[0]?.parts) {
       const uiMessages = bodyObj.messages as UIMessage[]
-      messages = convertToModelMessages(uiMessages)
+      messages = convertUIMessageToCoreMessage(uiMessages)
       salonId = bodyObj.salonId as string | undefined
     } else {
       const parsed = chatRequestSchema.parse(body)

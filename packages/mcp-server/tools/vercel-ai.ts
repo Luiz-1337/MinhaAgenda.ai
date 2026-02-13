@@ -1,5 +1,5 @@
 /**
- * Adapter de compatibilidade para Vercel AI SDK
+ * Adapter de compatibilidade para OpenAI Responses API
  * 
  * Este arquivo mantém compatibilidade com o import existente:
  * import { createMCPTools } from "@repo/mcp-server/tools/vercel-ai"
@@ -11,3 +11,4 @@ export { createMCPTools } from "../src/index"
 
 // Re-exporta tipos úteis
 export type { MCPTools } from "../src/presentation/tools"
+

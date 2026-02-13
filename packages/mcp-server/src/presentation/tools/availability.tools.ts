@@ -1,4 +1,3 @@
-import { tool } from "ai"
 import { Container, TOKENS } from "../../container"
 import { isOk } from "../../shared/types"
 import { ensureIsoWithTimezone } from "../../shared/utils/date.utils"
@@ -12,6 +11,7 @@ import {
   getProfessionalAvailabilityRulesSchema,
 } from "../schemas"
 import { AvailabilityPresenter, ErrorPresenter } from "../presenters"
+import type { ToolSet } from "./types"
 
 /**
  * Cria as tools de disponibilidade
@@ -20,9 +20,9 @@ export function createAvailabilityTools(
   container: Container,
   salonId: string,
   _clientPhone: string
-) {
+): ToolSet {
   return {
-    checkAvailability: tool({
+    checkAvailability: {
       description:
         "Verifica horários disponíveis para agendamento. PRÉ-REQUISITO: Obter professionalId via getProfessionals se quiser filtrar por profissional.",
       inputSchema: checkAvailabilitySchema,
@@ -49,9 +49,9 @@ export function createAvailabilityTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    getAvailableSlots: tool({
+    getAvailableSlots: {
       description:
         "Retorna apenas os horários disponíveis (filtrados) para agendamento.",
       inputSchema: checkAvailabilitySchema,
@@ -78,9 +78,9 @@ export function createAvailabilityTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    getProfessionalAvailabilityRules: tool({
+    getProfessionalAvailabilityRules: {
       description:
         "Verifica os turnos de trabalho de um profissional específico (ex: 'João trabalha terças e quintas?').",
       inputSchema: getProfessionalAvailabilityRulesSchema,
@@ -109,6 +109,6 @@ export function createAvailabilityTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
   }
 }

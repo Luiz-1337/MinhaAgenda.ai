@@ -1,4 +1,4 @@
-import type { CoreMessage } from 'ai'
+import type { CoreMessage } from '@/lib/schemas/chat.schema'
 import { findRelevantContext } from '@/lib/services/ai/rag-context.service'
 import { RAG_SIMILARITY_THRESHOLD } from '@repo/db/domain/constants'
 import { logger } from '@repo/db/infrastructure/logger'

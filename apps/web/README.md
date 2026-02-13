@@ -4,7 +4,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 O webhook principal fica em `app/api/webhook/whatsapp/route.ts`.
 
-- O `apps/web` atua como **host** chamando o modelo via Vercel AI SDK (`ai`).
+- O `apps/web` atua como **host** chamando o modelo via OpenAI SDK (`responses.create`).
 - As “tools” são **locais** (sem servidor MCP remoto). Elas são montadas via:
   - `@repo/mcp-server/tools/vercel-ai` → `createMCPTools(salonId, clientPhone)`
 - Os schemas de entrada das tools são validados/tipados com **Zod**.
@@ -43,3 +43,4 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+

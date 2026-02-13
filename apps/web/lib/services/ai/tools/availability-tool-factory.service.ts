@@ -2,9 +2,9 @@
  * Factory para criação da tool de disponibilidade (APPLICATION LAYER)
  */
 
-import { tool } from "ai"
 import { z } from "zod"
 import { FuzzySearchService } from "../fuzzy-search.service"
+import type { ToolDefinition } from "./tool-definition"
 
 export class AvailabilityToolFactory {
   /**
@@ -18,14 +18,14 @@ export class AvailabilityToolFactory {
       serviceDuration: number
       professionalId: string
     }) => Promise<string[]>
-  ) {
+  ): ToolDefinition {
     const paramsSchema = z.object({
       date: z.string().describe("Data (ISO) do dia solicitado."),
       serviceName: z.string().describe("Nome do serviço desejado."),
       professionalName: z.string().describe("Nome do profissional."),
     })
 
-    return tool({
+    return {
       description:
         "Verifica horários disponíveis para um serviço em uma data específica com um profissional específico.",
       inputSchema: paramsSchema,
@@ -54,6 +54,6 @@ export class AvailabilityToolFactory {
           professional: professionalName,
         }
       },
-    })
+    }
   }
 }

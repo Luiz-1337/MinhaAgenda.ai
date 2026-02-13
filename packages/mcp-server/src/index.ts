@@ -3,7 +3,7 @@
  *
  * Este pacote tem dois usos:
  * 1. MCP server (stdio): Servidor MCP via stdio para uso com Claude Desktop
- * 2. Tools locais para Vercel AI SDK: Adapter de tools para uso direto
+ * 2. Tools locais para OpenAI Responses API: Adapter de tools para uso direto
  */
 
 import { fileURLToPath } from "node:url"
@@ -15,7 +15,7 @@ export const container = containerInstance
 export const registerProviders = registerProvidersFunc
 export const TOKENS = TOKEN_CONSTANTS
 
-// Tools para Vercel AI SDK
+// Tools locais para OpenAI Responses API (mantendo compatibilidade de import)
 import { registerAllTools as registerAllToolsFunc } from "./presentation/tools"
 export {
   registerAllTools,
@@ -73,7 +73,7 @@ export const start = startServer
 export const stop = stopServer
 
 /**
- * Cria as tools MCP para uso com Vercel AI SDK
+ * Cria as tools MCP para uso local com OpenAI Responses API.
  * Esta é a função principal para integração
  */
 export async function createMCPTools(salonId: string, clientPhone: string) {
@@ -104,3 +104,4 @@ if (isMain) {
     process.exit(1)
   })
 }
+

@@ -1,4 +1,3 @@
-import { tool } from "ai"
 import { Container, TOKENS } from "../../container"
 import { isOk } from "../../shared/types"
 import {
@@ -13,9 +12,10 @@ import {
   getProfessionalsSchema,
 } from "../schemas"
 import { CatalogPresenter, ErrorPresenter } from "../presenters"
+import type { ToolSet } from "./types"
 
 /**
- * Normaliza input que pode vir como undefined do Vercel AI SDK
+ * Normaliza input que pode vir como undefined
  * quando a IA chama uma tool sem argumentos
  */
 function normalizeInput<T>(input: T | undefined): T {
@@ -29,9 +29,9 @@ export function createCatalogTools(
   container: Container,
   salonId: string,
   _clientPhone: string
-) {
+): ToolSet {
   return {
-    getServices: tool({
+    getServices: {
       description:
         "Busca lista de serviços disponíveis no salão com preços e durações.",
       inputSchema: getServicesSchema,
@@ -63,9 +63,9 @@ export function createCatalogTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    getProducts: tool({
+    getProducts: {
       description: "Busca lista de produtos disponíveis no salão com preços.",
       inputSchema: getProductsSchema,
       execute: async (input) => {
@@ -89,9 +89,9 @@ export function createCatalogTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
 
-    getProfessionals: tool({
+    getProfessionals: {
       description:
         "Retorna lista de profissionais (barbeiros) do salão para mapear nomes a IDs.",
       inputSchema: getProfessionalsSchema,
@@ -129,6 +129,6 @@ export function createCatalogTools(
           return ErrorPresenter.toJSON(error as Error)
         }
       },
-    }),
+    },
   }
 }
