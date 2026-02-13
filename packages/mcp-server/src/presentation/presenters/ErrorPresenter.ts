@@ -7,6 +7,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   // Erros de Agendamento
   SLOT_UNAVAILABLE:
     "Desculpe, esse horário não está mais disponível. Posso sugerir outros horários?",
+  APPOINTMENT_CREATION_FAILED:
+    "Não foi possível criar o agendamento. Verifique os dados e tente novamente.",
   APPOINTMENT_CONFLICT:
     "Já existe um agendamento neste horário. Gostaria de ver outros horários disponíveis?",
   PAST_APPOINTMENT:
@@ -68,7 +70,7 @@ export class ErrorPresenter {
    */
   static toJSON(error: DomainError | Error): Record<string, unknown> {
     const code = "code" in error ? (error as DomainError).code : "UNKNOWN_ERROR"
-    
+
     return {
       error: true,
       code,
@@ -93,19 +95,19 @@ export class ErrorPresenter {
    */
   static formatWithSuggestion(error: DomainError | Error): string {
     const message = this.format(error)
-    
+
     // Adiciona sugestões baseadas no tipo de erro
     if ("code" in error) {
       const code = (error as DomainError).code
-      
+
       switch (code) {
         case "SLOT_UNAVAILABLE":
         case "APPOINTMENT_CONFLICT":
           return `${message}\n\nUse a ferramenta checkAvailability para ver horários disponíveis.`
-        
+
         case "CUSTOMER_NOT_FOUND":
           return `${message}\n\nUse a ferramenta identifyCustomer com o nome para cadastrar.`
-        
+
         case "APPOINTMENT_NOT_FOUND":
           return `${message}\n\nUse getMyFutureAppointments para listar seus agendamentos.`
       }

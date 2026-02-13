@@ -12,6 +12,17 @@ export class SlotUnavailableError extends DomainError {
 }
 
 /**
+ * Erro quando não é possível criar o agendamento
+ */
+export class AppointmentCreationError extends DomainError {
+  readonly code = "APPOINTMENT_CREATION_FAILED"
+
+  constructor(message = "Não foi possível criar o agendamento") {
+    super(message)
+  }
+}
+
+/**
  * Erro quando há conflito com outro agendamento
  */
 export class AppointmentConflictError extends DomainError {

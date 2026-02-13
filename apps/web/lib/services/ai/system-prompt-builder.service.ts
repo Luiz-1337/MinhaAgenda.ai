@@ -164,6 +164,10 @@ export class SystemPromptBuilder {
   - Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${customerInfoText}${preferencesText}${salonInfoText}${knowledgeContextText}
 
   🛡️ REGRAS DE SEGURANÇA (GATILHOS DE TOOLS) - LEIA COM ATENÇÃO
+  0. **ZERO TOOL CALLS:** Se o cliente disser "Não", "Somente isso", "Obrigado", "Tchau" ou qualquer variante de despedida/negação de mais serviços:
+    - **NÃO CHAME NENHUMA TOOL.**
+    - Apenas responda cordialmente encerrando a conversa.
+
   1. **PROIBIDO:** NUNCA chame a ferramenta checkAvailability, google_checkAvailability ou trinks_checkAvailability se você ainda não têm a **DATA** desejada pelo cliente.
     - Se o cliente disser apenas "Quero agendar", sua resposta deve ser TEXTO: "Claro! Para qual dia você gostaria de ver horários?"
     - Não tente adivinhar a data. Não use "hoje" ou "amanhã" a menos que o cliente especifique.

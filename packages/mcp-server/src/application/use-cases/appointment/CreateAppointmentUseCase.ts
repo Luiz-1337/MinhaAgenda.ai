@@ -1,7 +1,11 @@
 import { Result, ok, fail } from "../../../shared/types"
 import { formatDateTime } from "../../../shared/utils/date.utils"
 import { DomainError } from "../../../domain/errors"
-import { CustomerNotFoundError, AppointmentNotFoundError } from "../../../domain/errors"
+import {
+  CustomerNotFoundError,
+  AppointmentNotFoundError,
+  AppointmentCreationError,
+} from "../../../domain/errors"
 import {
   ICustomerRepository,
   IProfessionalRepository,
@@ -29,7 +33,7 @@ export class CreateAppointmentUseCase {
     private customerRepo: ICustomerRepository,
     private professionalRepo: IProfessionalRepository,
     private serviceRepo: IServiceRepository
-  ) {}
+  ) { }
 
   async execute(
     input: CreateAppointmentDTO
@@ -43,13 +47,13 @@ export class CreateAppointmentUseCase {
     // 2. Validar que o profissional existe
     const professional = await this.professionalRepo.findById(input.professionalId)
     if (!professional) {
-      return fail(new AppointmentNotFoundError("Profissional não encontrado"))
+      return fail(new AppointmentCreationError("Profissional não encontrado"))
     }
 
     // 3. Validar que o serviço existe
     const service = await this.serviceRepo.findById(input.serviceId)
     if (!service) {
-      return fail(new AppointmentNotFoundError("Serviço não encontrado"))
+      return fail(new AppointmentCreationError("Serviço não encontrado"))
     }
 
     // 4. Delega para o serviço centralizado que executa todas as validações:
@@ -68,7 +72,7 @@ export class CreateAppointmentUseCase {
     })
 
     if (!result.success) {
-      return fail(new AppointmentNotFoundError(result.error))
+      return fail(new AppointmentCreationError(result.error))
     }
 
     // 5. Busca o agendamento criado para calcular endTime
