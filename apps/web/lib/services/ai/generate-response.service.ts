@@ -1,6 +1,6 @@
 /**
  * Serviço para geração de respostas da IA
- * 
+ *
  * Centraliza a lógica de:
  * - Busca de contexto RAG
  * - Construção do system prompt
@@ -19,6 +19,9 @@ import { findRelevantContext } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments, eq, and } from "@repo/db";
+
+// Debug verboso controlado por env var (desligado em produção)
+const AI_DEBUG = process.env.AI_DEBUG === 'true';
 
 /**
  * Parâmetros para geração de resposta
@@ -77,32 +80,36 @@ export async function generateAIResponse(
     const agentModel = agentInfo.model || "gpt-5-mini";
     const modelName = mapModelToOpenAI(agentModel);
 
-    console.log("\n🤖 ========== AI GENERATION START ==========");
-    console.log("📋 Agent Info:", {
-      name: agentInfo.name,
-      model: modelName,
-      hasKnowledgeBase: agentInfo.hasKnowledgeBase,
-    });
-    console.log("🛠️  MCP Tools Available:", Object.keys(mcpTools));
+    if (AI_DEBUG) {
+      console.log("\n🤖 ========== AI GENERATION START ==========");
+      console.log("📋 Agent Info:", {
+        name: agentInfo.name,
+        model: modelName,
+        hasKnowledgeBase: agentInfo.hasKnowledgeBase,
+      });
+      console.log("🛠️  MCP Tools Available:", Object.keys(mcpTools));
+    }
 
     contextLogger.debug({ model: modelName, agentName: agentInfo.name, toolsCount: Object.keys(mcpTools).length }, "Context loaded in parallel");
 
     // 2. RAG: Só busca se agente tiver knowledge base configurada
     let knowledgeContext: string | undefined;
     if (agentInfo.id && agentInfo.hasKnowledgeBase) {
-      console.log("\n🔍 RAG: Searching for knowledge context...");
+      if (AI_DEBUG) console.log("\n🔍 RAG: Searching for knowledge context...");
       knowledgeContext = await fetchKnowledgeContext(agentInfo.id, userMessage, contextLogger);
 
-      if (knowledgeContext) {
-        console.log("✅ RAG: Context found!");
-        console.log("\n📚 ========== RAG FULL CONTENT ==========");
-        console.log(knowledgeContext);
-        console.log("=========================================\n");
-      } else {
-        console.log("❌ RAG: No relevant context found (similarity < threshold or empty)");
+      if (AI_DEBUG) {
+        if (knowledgeContext) {
+          console.log("✅ RAG: Context found!");
+          console.log("\n📚 ========== RAG FULL CONTENT ==========");
+          console.log(knowledgeContext);
+          console.log("=========================================\n");
+        } else {
+          console.log("❌ RAG: No relevant context found (similarity < threshold or empty)");
+        }
       }
     } else {
-      console.log("⏭️  RAG: Skipped (hasKnowledgeBase=false)");
+      if (AI_DEBUG) console.log("⏭️  RAG: Skipped (hasKnowledgeBase=false)");
     }
 
     // 3. Montar mensagens UI
@@ -118,15 +125,17 @@ export async function generateAIResponse(
       parts: [{ type: "text" as const, text: userMessage }],
     });
 
-    console.log("\n💬 ========== CONVERSATION HISTORY ==========");
-    console.log("Total messages:", uiMessages.length);
-    uiMessages.forEach((msg, idx) => {
-      const part = msg.parts[0];
-      const text = part && part.type === "text" ? part.text : "";
-      const preview = text.substring(0, 80);
-      console.log(`  [${idx + 1}] ${msg.role}: ${preview}${text.length >= 80 ? "..." : ""}`);
-    });
-    console.log("===========================================\n");
+    if (AI_DEBUG) {
+      console.log("\n💬 ========== CONVERSATION HISTORY ==========");
+      console.log("Total messages:", uiMessages.length);
+      uiMessages.forEach((msg, idx) => {
+        const part = msg.parts[0];
+        const text = part && part.type === "text" ? part.text : "";
+        const preview = text.substring(0, 80);
+        console.log(`  [${idx + 1}] ${msg.role}: ${preview}${text.length >= 80 ? "..." : ""}`);
+      });
+      console.log("===========================================\n");
+    }
 
     // 4. Criar system prompt (passa agentInfo para evitar query duplicada)
     const systemPrompt = await createSalonAssistantPrompt(
@@ -139,14 +148,16 @@ export async function generateAIResponse(
       agentInfo // Passa agentInfo para evitar query duplicada
     );
 
-    console.log("\n📝 ========== SYSTEM PROMPT ==========");
-    console.log(systemPrompt);
-    console.log("=====================================\n");
+    if (AI_DEBUG) {
+      console.log("\n📝 ========== SYSTEM PROMPT ==========");
+      console.log(systemPrompt);
+      console.log("=====================================\n");
+    }
 
     // 5. Gerar resposta
     contextLogger.info({ model: modelName }, "Generating AI response");
 
-    console.log("⚙️  Calling OpenAI with", Object.keys(mcpTools).length, "tools...\n");
+    if (AI_DEBUG) console.log("⚙️  Calling OpenAI with", Object.keys(mcpTools).length, "tools...\n");
 
     const { text, usage, steps } = await generateText({
       model: openai(modelName),
@@ -157,48 +168,50 @@ export async function generateAIResponse(
     });
 
     // Log das tool calls e resultados
-    console.log("\n🔧 ========== TOOL EXECUTION ==========");
-    console.log("Total steps:", steps.length);
+    if (AI_DEBUG) {
+      console.log("\n🔧 ========== TOOL EXECUTION ==========");
+      console.log("Total steps:", steps.length);
 
-    steps.forEach((step: any, stepIndex: number) => {
-      console.log(`\n--- Step ${stepIndex + 1} ---`);
+      steps.forEach((step: any, stepIndex: number) => {
+        console.log(`\n--- Step ${stepIndex + 1} ---`);
 
-      if (step.toolCalls && step.toolCalls.length > 0) {
-        console.log("🛠️  Tool Calls:");
-        step.toolCalls.forEach((call: any, callIndex: number) => {
-          console.log(`  [${callIndex + 1}] ${call.toolName}`);
-          console.log("  📥 Arguments:", JSON.stringify(call.args, null, 2));
-        });
-      }
+        if (step.toolCalls && step.toolCalls.length > 0) {
+          console.log("🛠️  Tool Calls:");
+          step.toolCalls.forEach((call: any, callIndex: number) => {
+            console.log(`  [${callIndex + 1}] ${call.toolName}`);
+            console.log("  📥 Arguments:", JSON.stringify(call.args, null, 2));
+          });
+        }
 
-      if (step.toolResults && step.toolResults.length > 0) {
-        console.log("📤 Tool Results:");
-        step.toolResults.forEach((result: any, resultIndex: number) => {
-          console.log(`  [${resultIndex + 1}] ${result.toolName}`);
-          console.log("  📋 Full result object:", JSON.stringify(result, null, 2).substring(0, 500));
+        if (step.toolResults && step.toolResults.length > 0) {
+          console.log("📤 Tool Results:");
+          step.toolResults.forEach((result: any, resultIndex: number) => {
+            console.log(`  [${resultIndex + 1}] ${result.toolName}`);
+            console.log("  📋 Full result object:", JSON.stringify(result, null, 2).substring(0, 500));
 
-          // Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão
-          const toolOutput = result.result ?? result.output ?? result;
+            // Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão
+            const toolOutput = result.result ?? result.output ?? result;
 
-          if (result.error || result.isError) {
-            console.log("  ❌ ERROR:", result.error || result.result);
-          } else if (toolOutput && typeof toolOutput === "object" && "error" in toolOutput && toolOutput.error === true) {
-            // Nosso ErrorPresenter retorna { error: true, code, message, details }
-            console.log("  ❌ TOOL ERROR:", toolOutput.message || toolOutput.details);
-          } else {
-            const resultStr = JSON.stringify(toolOutput, null, 2);
-            const preview = resultStr ? resultStr.substring(0, 300) : "(empty result)";
-            console.log("  ✅ Result:", preview);
-          }
-        });
-      }
+            if (result.error || result.isError) {
+              console.log("  ❌ ERROR:", result.error || result.result);
+            } else if (toolOutput && typeof toolOutput === "object" && "error" in toolOutput && toolOutput.error === true) {
+              // Nosso ErrorPresenter retorna { error: true, code, message, details }
+              console.log("  ❌ TOOL ERROR:", toolOutput.message || toolOutput.details);
+            } else {
+              const resultStr = JSON.stringify(toolOutput, null, 2);
+              const preview = resultStr ? resultStr.substring(0, 300) : "(empty result)";
+              console.log("  ✅ Result:", preview);
+            }
+          });
+        }
 
-      if (step.text) {
-        const textPreview = step.text ? step.text.substring(0, 200) : "(empty text)";
-        console.log("💬 AI Response:", textPreview);
-      }
-    });
-    console.log("======================================\n");
+        if (step.text) {
+          const textPreview = step.text ? step.text.substring(0, 200) : "(empty text)";
+          console.log("💬 AI Response:", textPreview);
+        }
+      });
+      console.log("======================================\n");
+    }
 
     // 9. Verificar e tratar erros de tools
     const toolErrorMessage = handleToolErrors(steps, contextLogger);
@@ -213,16 +226,18 @@ export async function generateAIResponse(
 
     const duration = Date.now() - startTime;
 
-    console.log("\n✅ ========== GENERATION COMPLETE ==========");
-    console.log("📊 Usage:", {
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      totalTokens: usage.totalTokens,
-    });
-    console.log("⏱️  Duration:", duration, "ms");
-    const responsePreview = finalText ? finalText.substring(0, 300) : "(empty response)";
-    console.log("💬 Final Response:", responsePreview);
-    console.log("===========================================\n");
+    if (AI_DEBUG) {
+      console.log("\n✅ ========== GENERATION COMPLETE ==========");
+      console.log("📊 Usage:", {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        totalTokens: usage.totalTokens,
+      });
+      console.log("⏱️  Duration:", duration, "ms");
+      const responsePreview = finalText ? finalText.substring(0, 300) : "(empty response)";
+      console.log("💬 Final Response:", responsePreview);
+      console.log("===========================================\n");
+    }
 
     contextLogger.info(
       {
@@ -277,12 +292,14 @@ async function fetchKnowledgeContext(
     const similarityThreshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.65');
     const maxResults = parseInt(process.env.RAG_MAX_RESULTS || '5'); // Padrão: 5 itens
 
-    console.log("🔍 RAG Query:", {
-      agentId: agentId ? agentId.substring(0, 8) + "..." : "(no agentId)",
-      userMessage: userMessage ? userMessage.substring(0, 100) : "(no message)",
-      threshold: similarityThreshold,
-      limit: maxResults,
-    });
+    if (AI_DEBUG) {
+      console.log("🔍 RAG Query:", {
+        agentId: agentId ? agentId.substring(0, 8) + "..." : "(no agentId)",
+        userMessage: userMessage ? userMessage.substring(0, 100) : "(no message)",
+        threshold: similarityThreshold,
+        limit: maxResults,
+      });
+    }
 
     const contextResult = await findRelevantContext(
       agentId,
@@ -292,29 +309,31 @@ async function fetchKnowledgeContext(
     );
 
     if ("error" in contextResult) {
-      console.log("❌ RAG Error:", contextResult.error);
+      if (AI_DEBUG) console.log("❌ RAG Error:", contextResult.error);
       return undefined;
     }
 
     if (!contextResult.data || contextResult.data.length === 0) {
-      console.log("📭 RAG: No results (similarity < 0.7 or empty database)");
+      if (AI_DEBUG) console.log("📭 RAG: No results (similarity < 0.7 or empty database)");
       contextLogger.debug("No relevant RAG context found");
       return undefined;
     }
 
     // Log detalhado dos resultados
-    console.log(`\n✅ RAG: Found ${contextResult.data.length} relevant item(s):\n`);
-    contextResult.data.forEach((item, idx) => {
-      console.log(`╔═══ [${idx + 1}] Similarity: ${(item.similarity * 100).toFixed(1)}% ═══`);
-      console.log(`║ Length: ${item.content.length} chars`);
-      if (item.metadata) {
-        console.log(`║ Metadata:`, item.metadata);
-      }
-      console.log(`║ Full Content:`);
-      console.log(`╠${"═".repeat(60)}`);
-      console.log(item.content.split('\n').map(line => `║ ${line}`).join('\n'));
-      console.log(`╚${"═".repeat(60)}\n`);
-    });
+    if (AI_DEBUG) {
+      console.log(`\n✅ RAG: Found ${contextResult.data.length} relevant item(s):\n`);
+      contextResult.data.forEach((item, idx) => {
+        console.log(`╔═══ [${idx + 1}] Similarity: ${(item.similarity * 100).toFixed(1)}% ═══`);
+        console.log(`║ Length: ${item.content.length} chars`);
+        if (item.metadata) {
+          console.log(`║ Metadata:`, item.metadata);
+        }
+        console.log(`║ Full Content:`);
+        console.log(`╠${"═".repeat(60)}`);
+        console.log(item.content.split('\n').map(line => `║ ${line}`).join('\n'));
+        console.log(`╚${"═".repeat(60)}\n`);
+      });
+    }
 
     const knowledgeContext = contextResult.data
       .map((item) => item.content)
@@ -330,7 +349,7 @@ async function fetchKnowledgeContext(
 
     return knowledgeContext;
   } catch (error) {
-    console.log("❌ RAG Exception:", error);
+    if (AI_DEBUG) console.log("❌ RAG Exception:", error);
     contextLogger.warn({ err: error }, "Error fetching RAG context, continuing without");
     return undefined;
   }

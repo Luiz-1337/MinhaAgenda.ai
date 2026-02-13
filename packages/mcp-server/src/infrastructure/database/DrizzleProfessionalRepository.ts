@@ -2,17 +2,29 @@ import { db, professionals, professionalServices, and, eq, ilike } from "@repo/d
 import { IProfessionalRepository } from "../../domain/repositories"
 import { Professional } from "../../domain/entities"
 import { ProfessionalMapper } from "../mappers"
+import { InMemoryCache } from "../cache"
+
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
 
 /**
  * Implementação do repositório de profissionais usando Drizzle ORM
  */
 export class DrizzleProfessionalRepository implements IProfessionalRepository {
+  private listCache = new InMemoryCache<Professional[]>(CACHE_TTL)
+  private idCache = new InMemoryCache<Professional | null>(CACHE_TTL)
+
   async findById(id: string): Promise<Professional | null> {
+    const cached = this.idCache.get(id)
+    if (cached !== undefined) return cached
+
     const row = await db.query.professionals.findFirst({
       where: eq(professionals.id, id),
     })
 
-    if (!row) return null
+    if (!row) {
+      this.idCache.set(id, null)
+      return null
+    }
 
     // Busca os serviços do profissional
     const services = await db.query.professionalServices.findMany({
@@ -21,7 +33,7 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
 
     const serviceIds = services.map((s) => s.serviceId)
 
-    return ProfessionalMapper.toDomain(
+    const professional = ProfessionalMapper.toDomain(
       {
         id: row.id,
         salonId: row.salonId,
@@ -37,6 +49,9 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
       },
       serviceIds
     )
+
+    this.idCache.set(id, professional)
+    return professional
   }
 
   async findByName(name: string, salonId: string): Promise<Professional | null> {
@@ -74,6 +89,10 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
   }
 
   async findBySalon(salonId: string, includeInactive = false): Promise<Professional[]> {
+    const cacheKey = `${salonId}:${includeInactive}`
+    const cached = this.listCache.get(cacheKey)
+    if (cached) return cached
+
     const conditions = [eq(professionals.salonId, salonId)]
     if (!includeInactive) {
       conditions.push(eq(professionals.isActive, true))
@@ -84,9 +103,7 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
       orderBy: (professionals, { asc }) => [asc(professionals.name)],
     })
 
-    // Para simplificar, retorna sem buscar serviços individualmente
-    // Em produção, poderia usar uma query com join
-    return rows.map((row) =>
+    const result = rows.map((row) =>
       ProfessionalMapper.toDomain(
         {
           id: row.id,
@@ -104,6 +121,9 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
         [] // Sem serviços carregados para lista
       )
     )
+
+    this.listCache.set(cacheKey, result)
+    return result
   }
 
   async findAvailable(salonId: string, _date: Date): Promise<Professional[]> {
@@ -178,6 +198,9 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
         }))
       )
     }
+
+    this.listCache.clear()
+    this.idCache.clear()
   }
 
   async update(professional: Professional): Promise<void> {
@@ -195,5 +218,8 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
         commissionRate: data.commissionRate?.toString() ?? "0",
       })
       .where(eq(professionals.id, data.id))
+
+    this.listCache.clear()
+    this.idCache.clear()
   }
 }

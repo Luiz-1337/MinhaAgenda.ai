@@ -2,6 +2,9 @@ import { db, salons, salonIntegrations, and, eq } from "@repo/db"
 import { ISalonRepository } from "../../domain/repositories"
 import { Salon, SalonIntegration } from "../../domain/entities"
 import { SalonMapper } from "../mappers"
+import { InMemoryCache } from "../cache"
+
+const CACHE_TTL = 10 * 60 * 1000 // 10 minutos
 
 // Mapeia status interno para status do schema
 type SchemaSubscriptionStatus = "ACTIVE" | "PAID" | "PAST_DUE" | "CANCELED" | "TRIAL"
@@ -26,12 +29,21 @@ function mapSubscriptionStatus(status: string | undefined): SchemaSubscriptionSt
  * Implementação do repositório de salões usando Drizzle ORM
  */
 export class DrizzleSalonRepository implements ISalonRepository {
+  private salonCache = new InMemoryCache<Salon | null>(CACHE_TTL)
+  private integrationCache = new InMemoryCache<boolean>(CACHE_TTL)
+
   async findById(id: string): Promise<Salon | null> {
+    const cached = this.salonCache.get(id)
+    if (cached !== undefined) return cached
+
     const row = await db.query.salons.findFirst({
       where: eq(salons.id, id),
     })
 
-    if (!row) return null
+    if (!row) {
+      this.salonCache.set(id, null)
+      return null
+    }
 
     const salon = SalonMapper.toDomain({
       id: row.id,
@@ -55,6 +67,7 @@ export class DrizzleSalonRepository implements ISalonRepository {
       salon.setIntegration(integration)
     }
 
+    this.salonCache.set(id, salon)
     return salon
   }
 
@@ -91,6 +104,10 @@ export class DrizzleSalonRepository implements ISalonRepository {
   }
 
   async hasIntegration(salonId: string, provider: "google" | "trinks"): Promise<boolean> {
+    const cacheKey = `${salonId}:${provider}`
+    const cached = this.integrationCache.get(cacheKey)
+    if (cached !== undefined) return cached
+
     const row = await db.query.salonIntegrations.findFirst({
       where: and(
         eq(salonIntegrations.salonId, salonId),
@@ -99,7 +116,9 @@ export class DrizzleSalonRepository implements ISalonRepository {
       ),
     })
 
-    return !!row
+    const result = !!row
+    this.integrationCache.set(cacheKey, result)
+    return result
   }
 
   async save(salon: Salon): Promise<void> {
@@ -118,6 +137,9 @@ export class DrizzleSalonRepository implements ISalonRepository {
       settings: data.settings,
       subscriptionStatus,
     })
+
+    this.salonCache.clear()
+    this.integrationCache.clear()
   }
 
   async update(salon: Salon): Promise<void> {
@@ -138,5 +160,8 @@ export class DrizzleSalonRepository implements ISalonRepository {
         subscriptionStatus,
       })
       .where(eq(salons.id, data.id))
+
+    this.salonCache.clear()
+    this.integrationCache.clear()
   }
 }

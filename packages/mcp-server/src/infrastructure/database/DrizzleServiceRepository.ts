@@ -2,19 +2,31 @@ import { db, services, and, eq } from "@repo/db"
 import { IServiceRepository } from "../../domain/repositories"
 import { Service } from "../../domain/entities"
 import { ServiceMapper } from "../mappers"
+import { InMemoryCache } from "../cache"
+
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
 
 /**
  * Implementação do repositório de serviços usando Drizzle ORM
  */
 export class DrizzleServiceRepository implements IServiceRepository {
+  private listCache = new InMemoryCache<Service[]>(CACHE_TTL)
+  private idCache = new InMemoryCache<Service | null>(CACHE_TTL)
+
   async findById(id: string): Promise<Service | null> {
+    const cached = this.idCache.get(id)
+    if (cached !== undefined) return cached
+
     const row = await db.query.services.findFirst({
       where: eq(services.id, id),
     })
 
-    if (!row) return null
+    if (!row) {
+      this.idCache.set(id, null)
+      return null
+    }
 
-    return ServiceMapper.toDomain({
+    const service = ServiceMapper.toDomain({
       id: row.id,
       salonId: row.salonId,
       name: row.name,
@@ -27,9 +39,16 @@ export class DrizzleServiceRepository implements IServiceRepository {
       isActive: row.isActive,
       createdAt: row.createdAt,
     })
+
+    this.idCache.set(id, service)
+    return service
   }
 
   async findBySalon(salonId: string, includeInactive = false): Promise<Service[]> {
+    const cacheKey = `${salonId}:${includeInactive}`
+    const cached = this.listCache.get(cacheKey)
+    if (cached) return cached
+
     const conditions = [eq(services.salonId, salonId)]
     if (!includeInactive) {
       conditions.push(eq(services.isActive, true))
@@ -40,7 +59,7 @@ export class DrizzleServiceRepository implements IServiceRepository {
       orderBy: (services, { asc }) => [asc(services.name)],
     })
 
-    return rows.map((row) =>
+    const result = rows.map((row) =>
       ServiceMapper.toDomain({
         id: row.id,
         salonId: row.salonId,
@@ -55,6 +74,9 @@ export class DrizzleServiceRepository implements IServiceRepository {
         createdAt: row.createdAt,
       })
     )
+
+    this.listCache.set(cacheKey, result)
+    return result
   }
 
   async findActive(salonId: string): Promise<Service[]> {
@@ -75,6 +97,9 @@ export class DrizzleServiceRepository implements IServiceRepository {
       priceMax: data.priceMax?.toString() ?? null,
       isActive: data.isActive,
     })
+
+    this.listCache.clear()
+    this.idCache.clear()
   }
 
   async update(service: Service): Promise<void> {
@@ -93,5 +118,8 @@ export class DrizzleServiceRepository implements IServiceRepository {
         isActive: data.isActive,
       })
       .where(eq(services.id, data.id))
+
+    this.listCache.clear()
+    this.idCache.clear()
   }
 }

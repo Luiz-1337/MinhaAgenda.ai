@@ -173,29 +173,29 @@ export function registerProviders(container: Container): void {
   ))
 
   // ==========================================================================
-  // Use Cases - Appointment
+  // Use Cases - Appointment (Singletons - todos stateless)
   // ==========================================================================
 
-  container.register(TOKENS.CreateAppointmentUseCase, () => new CreateAppointmentUseCase(
+  container.singleton(TOKENS.CreateAppointmentUseCase, () => new CreateAppointmentUseCase(
     container.resolve(TOKENS.CustomerRepository),
     container.resolve(TOKENS.ProfessionalRepository),
     container.resolve(TOKENS.ServiceRepository)
   ))
 
-  container.register(TOKENS.UpdateAppointmentUseCase, () => new UpdateAppointmentUseCase(
+  container.singleton(TOKENS.UpdateAppointmentUseCase, () => new UpdateAppointmentUseCase(
     container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.CustomerRepository),
     container.resolve(TOKENS.ProfessionalRepository),
     container.resolve(TOKENS.ServiceRepository)
   ))
 
-  container.register(TOKENS.DeleteAppointmentUseCase, () => new DeleteAppointmentUseCase(
+  container.singleton(TOKENS.DeleteAppointmentUseCase, () => new DeleteAppointmentUseCase(
     container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.ProfessionalRepository),
     container.resolve(TOKENS.IntegrationSyncService)
   ))
 
-  container.register(TOKENS.GetUpcomingAppointmentsUseCase, () => new GetUpcomingAppointmentsUseCase(
+  container.singleton(TOKENS.GetUpcomingAppointmentsUseCase, () => new GetUpcomingAppointmentsUseCase(
     container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.CustomerRepository),
     container.resolve(TOKENS.ProfessionalRepository),
@@ -203,10 +203,10 @@ export function registerProviders(container: Container): void {
   ))
 
   // ==========================================================================
-  // Use Cases - Availability
+  // Use Cases - Availability (Singletons - todos stateless)
   // ==========================================================================
 
-  container.register(TOKENS.CheckAvailabilityUseCase, () => new CheckAvailabilityUseCase(
+  container.singleton(TOKENS.CheckAvailabilityUseCase, () => new CheckAvailabilityUseCase(
     container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.AvailabilityRepository),
     container.resolve(TOKENS.SalonRepository),
@@ -215,60 +215,60 @@ export function registerProviders(container: Container): void {
     container.resolve(TOKENS.ExternalScheduler)
   ))
 
-  container.register(TOKENS.GetAvailableSlotsUseCase, () => new GetAvailableSlotsUseCase(
+  container.singleton(TOKENS.GetAvailableSlotsUseCase, () => new GetAvailableSlotsUseCase(
     container.resolve(TOKENS.CheckAvailabilityUseCase)
   ))
 
   // ==========================================================================
-  // Use Cases - Customer
+  // Use Cases - Customer (Singletons - todos stateless)
   // ==========================================================================
 
-  container.register(TOKENS.IdentifyCustomerUseCase, () => new IdentifyCustomerUseCase(
+  container.singleton(TOKENS.IdentifyCustomerUseCase, () => new IdentifyCustomerUseCase(
     container.resolve(TOKENS.CustomerRepository)
   ))
 
-  container.register(TOKENS.CreateCustomerUseCase, () => new CreateCustomerUseCase(
+  container.singleton(TOKENS.CreateCustomerUseCase, () => new CreateCustomerUseCase(
     container.resolve(TOKENS.CustomerRepository)
   ))
 
-  container.register(TOKENS.UpdateCustomerUseCase, () => new UpdateCustomerUseCase(
+  container.singleton(TOKENS.UpdateCustomerUseCase, () => new UpdateCustomerUseCase(
     container.resolve(TOKENS.CustomerRepository)
   ))
 
   // ==========================================================================
-  // Use Cases - Catalog
+  // Use Cases - Catalog (Singletons - todos stateless)
   // ==========================================================================
 
-  container.register(TOKENS.GetServicesUseCase, () => new GetServicesUseCase(
+  container.singleton(TOKENS.GetServicesUseCase, () => new GetServicesUseCase(
     container.resolve(TOKENS.ServiceRepository)
   ))
 
-  container.register(TOKENS.GetProductsUseCase, () => new GetProductsUseCase(
+  container.singleton(TOKENS.GetProductsUseCase, () => new GetProductsUseCase(
     container.resolve(TOKENS.ProductRepository)
   ))
 
-  container.register(TOKENS.GetProfessionalsUseCase, () => new GetProfessionalsUseCase(
+  container.singleton(TOKENS.GetProfessionalsUseCase, () => new GetProfessionalsUseCase(
     container.resolve(TOKENS.ProfessionalRepository),
     container.resolve(TOKENS.ServiceRepository)
   ))
 
   // ==========================================================================
-  // Use Cases - Salon
+  // Use Cases - Salon (Singletons - todos stateless)
   // ==========================================================================
 
-  container.register(TOKENS.GetSalonDetailsUseCase, () => new GetSalonDetailsUseCase(
+  container.singleton(TOKENS.GetSalonDetailsUseCase, () => new GetSalonDetailsUseCase(
     container.resolve(TOKENS.SalonRepository)
   ))
 
-  container.register(TOKENS.SaveCustomerPreferenceUseCase, () => new SaveCustomerPreferenceUseCase(
+  container.singleton(TOKENS.SaveCustomerPreferenceUseCase, () => new SaveCustomerPreferenceUseCase(
     container.resolve(TOKENS.CustomerRepository)
   ))
 
-  container.register(TOKENS.QualifyLeadUseCase, () => new QualifyLeadUseCase(
+  container.singleton(TOKENS.QualifyLeadUseCase, () => new QualifyLeadUseCase(
     container.resolve(TOKENS.LeadRepository)
   ))
 
-  container.register(TOKENS.GetProfessionalAvailabilityRulesUseCase, () => new GetProfessionalAvailabilityRulesUseCase(
+  container.singleton(TOKENS.GetProfessionalAvailabilityRulesUseCase, () => new GetProfessionalAvailabilityRulesUseCase(
     container.resolve(TOKENS.ProfessionalRepository),
     container.resolve(TOKENS.AvailabilityRepository)
   ))

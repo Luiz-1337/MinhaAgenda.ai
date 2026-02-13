@@ -2,11 +2,16 @@ import { db, products, and, eq } from "@repo/db"
 import { IProductRepository } from "../../domain/repositories"
 import { Product } from "../../domain/entities"
 import { ProductMapper } from "../mappers"
+import { InMemoryCache } from "../cache"
+
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
 
 /**
  * Implementação do repositório de produtos usando Drizzle ORM
  */
 export class DrizzleProductRepository implements IProductRepository {
+  private listCache = new InMemoryCache<Product[]>(CACHE_TTL)
+
   async findById(id: string): Promise<Product | null> {
     const row = await db.query.products.findFirst({
       where: eq(products.id, id),
@@ -26,6 +31,10 @@ export class DrizzleProductRepository implements IProductRepository {
   }
 
   async findBySalon(salonId: string, includeInactive = false): Promise<Product[]> {
+    const cacheKey = `${salonId}:${includeInactive}`
+    const cached = this.listCache.get(cacheKey)
+    if (cached) return cached
+
     const conditions = [eq(products.salonId, salonId)]
     if (!includeInactive) {
       conditions.push(eq(products.isActive, true))
@@ -36,7 +45,7 @@ export class DrizzleProductRepository implements IProductRepository {
       orderBy: (products, { asc }) => [asc(products.name)],
     })
 
-    return rows.map((row) =>
+    const result = rows.map((row) =>
       ProductMapper.toDomain({
         id: row.id,
         salonId: row.salonId,
@@ -47,6 +56,9 @@ export class DrizzleProductRepository implements IProductRepository {
         createdAt: row.createdAt,
       })
     )
+
+    this.listCache.set(cacheKey, result)
+    return result
   }
 
   async findActive(salonId: string): Promise<Product[]> {
@@ -63,6 +75,8 @@ export class DrizzleProductRepository implements IProductRepository {
       price: data.price.toString(),
       isActive: data.isActive,
     })
+
+    this.listCache.clear()
   }
 
   async update(product: Product): Promise<void> {
@@ -77,5 +91,7 @@ export class DrizzleProductRepository implements IProductRepository {
         isActive: data.isActive,
       })
       .where(eq(products.id, data.id))
+
+    this.listCache.clear()
   }
 }

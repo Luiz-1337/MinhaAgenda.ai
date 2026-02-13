@@ -299,6 +299,7 @@ export function createMessageWorker(): Worker<MessageJobData, MessageJobResult> 
     {
       connection,
       concurrency: CONCURRENCY,
+      lockDuration: LOCK_TTL_MS, // 120s - deve exceder AI_TIMEOUT_MS (90s) para evitar stalled jobs
       limiter: {
         max: 100, // Máximo 100 jobs
         duration: 60000, // Por minuto
