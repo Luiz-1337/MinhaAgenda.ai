@@ -163,7 +163,7 @@ export async function generateAIResponse(
       model: openai(modelName),
       system: systemPrompt,
       messages: convertToModelMessages(uiMessages),
-      tools: mcpTools,
+      tools: mcpTools as any, //adicionado as any para o railway parar de chorar
       stopWhen: stepCountIs(5), // Permite até 5 iterações: tool call → resultado → resposta textual
     });
 
