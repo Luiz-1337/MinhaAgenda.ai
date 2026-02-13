@@ -30,7 +30,7 @@
     "google-auth-library": "^9.0.0",
     "googleapis": "^144.0.0",
     "uuid": "^9.0.0",
-    "zod": "^4.1.13"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
@@ -39,4 +39,3 @@
     "typescript": "^5.3.3"
   }
 }
-
