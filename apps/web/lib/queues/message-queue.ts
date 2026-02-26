@@ -22,6 +22,10 @@ export interface MessageJobData {
   salonId: string;
   agentId: string; // ID do agente que receberá a mensagem
   customerId: string;
+  instanceName: string;
+  remoteJid: string;
+  remoteJidAlt?: string;
+  addressingMode: "lid" | "jid";
   clientPhone: string;
   replyToJid?: string; // JID original para responder (pode ser LID ou número)
 

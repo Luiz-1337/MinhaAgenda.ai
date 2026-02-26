@@ -12,12 +12,13 @@ import {
   EvolutionWebhookSchema,
   extractMessageContent,
   extractPhoneNumber,
+  getAddressingMode,
   detectMediaType,
   hasMedia,
   extractMediaUrl,
   mapConnectionState,
 } from '@/lib/schemas/evolution';
-import { logger, createContextLogger, hashPhone, createRequestContext, getDuration } from '@/lib/logger';
+import { logger, createContextLogger, hashPhone, createRequestContext, getDuration, getReplicaId } from '@/lib/logger';
 import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
@@ -35,6 +36,10 @@ export const maxDuration = 10;
 // Timeouts para operações (em ms)
 const DB_TIMEOUT = 5000; // 5 segundos
 const REDIS_TIMEOUT = 2000; // 2 segundos
+
+function ensureJid(value: string): string {
+  return value.includes('@') ? value : `${value}@s.whatsapp.net`;
+}
 
 /**
  * Handler principal do webhook Evolution API
@@ -154,72 +159,66 @@ async function handleMessageUpsert(
   // - remoteJid pode ser: 5511999999999@s.whatsapp.net (normal) ou 123456789@lid (LID)
   // - Para RESPONDER: usar remoteJid diretamente (Evolution API faz o roteamento)
   // - Para BANCO: usar senderPn (número real) se disponível, senão usar o número do LID
+  const remoteJidAlt = messageData.key.remoteJidAlt || messageData.remoteJidAlt || data.remoteJidAlt;
+  const addressingMode = getAddressingMode(remoteJid);
+
+  // Keep reply addressing exactly as inbound remoteJid to preserve Signal session routing.
+  const replyToJid: string = remoteJid;
   let clientPhone: string;
-  let replyToJid: string = remoteJid; // Sempre usar remoteJid para responder
 
-  if (remoteJid.endsWith('@lid')) {
-    // LID detectado - tentar resolver para número real
+  if (addressingMode === 'lid') {
     const lid = remoteJid.split('@')[0];
-    const instanceName = data.instance;
 
-    // 1. Primeiro, verificar cache Redis
-    const cachedPhone = await resolveLidToPhone(lid, instanceName);
-    if (cachedPhone) {
-      clientPhone = extractPhoneNumber(cachedPhone);
-      replyToJid = cachedPhone;
-      reqLogger.info({ remoteJid, cachedPhone, clientPhone }, 'LID resolved from Redis cache');
+    const senderPn = messageData.senderPn || data.senderPn;
+    const participant = messageData.key.participant || messageData.participant;
+    const participantPn = (messageData as any).participant_pn || (data as any).participant_pn;
+
+    if (remoteJidAlt && !remoteJidAlt.endsWith('@lid')) {
+      const normalizedAlt = ensureJid(remoteJidAlt);
+      clientPhone = extractPhoneNumber(normalizedAlt);
+      await storeLidMapping(lid, normalizedAlt, instanceName);
+      reqLogger.info({ remoteJid, remoteJidAlt: normalizedAlt, clientPhone }, 'Using remoteJidAlt and storing LID mapping');
     } else {
-      // 2. Tentar extrair de campos do payload
-      const senderPn = messageData.senderPn || data.senderPn;
-      const participant = messageData.key.participant || messageData.participant;
-      const participantPn = (messageData as any).participant_pn || (data as any).participant_pn;
+      const cachedPhone = await resolveLidToPhone(lid, instanceName);
 
-      // DEBUG: Log campos disponíveis
-      reqLogger.debug({
-        remoteJid,
-        senderPn,
-        participant,
-        participantPn,
-        dataSender: data.sender,
-        pushName: messageData.pushName,
-        messageDataKeys: Object.keys(messageData),
-      }, 'LID detected - checking available fields');
-
-      if (senderPn && !senderPn.includes(lid)) {
-        // senderPn tem o formato: 5511999999999@s.whatsapp.net
-        clientPhone = extractPhoneNumber(senderPn);
-        replyToJid = senderPn;
-        // Armazenar mapeamento para uso futuro
-        await storeLidMapping(lid, senderPn, instanceName);
-        reqLogger.info({ remoteJid, senderPn, clientPhone }, 'Using senderPn field and storing LID mapping');
+      if (cachedPhone) {
+        clientPhone = extractPhoneNumber(cachedPhone);
+        reqLogger.info({ remoteJid, cachedPhone, clientPhone }, 'LID resolved from Redis cache');
+      } else if (senderPn && !senderPn.includes(lid)) {
+        const normalizedSenderPn = ensureJid(senderPn);
+        clientPhone = extractPhoneNumber(normalizedSenderPn);
+        await storeLidMapping(lid, normalizedSenderPn, instanceName);
+        reqLogger.info({ remoteJid, senderPn: normalizedSenderPn, clientPhone }, 'Using senderPn field and storing LID mapping');
       } else if (participantPn) {
-        clientPhone = extractPhoneNumber(participantPn);
-        replyToJid = participantPn.includes('@') ? participantPn : `${participantPn}@s.whatsapp.net`;
-        await storeLidMapping(lid, replyToJid, instanceName);
-        reqLogger.info({ remoteJid, participantPn, clientPhone }, 'Using participant_pn field and storing LID mapping');
+        const normalizedParticipantPn = ensureJid(participantPn);
+        clientPhone = extractPhoneNumber(normalizedParticipantPn);
+        await storeLidMapping(lid, normalizedParticipantPn, instanceName);
+        reqLogger.info({ remoteJid, participantPn: normalizedParticipantPn, clientPhone }, 'Using participant_pn field and storing LID mapping');
       } else if (participant && !participant.includes('@lid')) {
-        clientPhone = extractPhoneNumber(participant);
-        replyToJid = participant;
-        await storeLidMapping(lid, replyToJid, instanceName);
-        reqLogger.info({ remoteJid, participant, clientPhone }, 'Using participant field and storing LID mapping');
+        const normalizedParticipant = ensureJid(participant);
+        clientPhone = extractPhoneNumber(normalizedParticipant);
+        await storeLidMapping(lid, normalizedParticipant, instanceName);
+        reqLogger.info({ remoteJid, participant: normalizedParticipant, clientPhone }, 'Using participant field and storing LID mapping');
       } else {
-        // Fallback: usar o próprio LID como identificador
-        // ATENÇÃO: Não será possível enviar mensagens para este contato!
         clientPhone = lid;
-        reqLogger.error({
-          remoteJid,
-          pushName: messageData.pushName,
-          instanceName,
-        }, 'LID NOT RESOLVED - Cannot send messages to this contact. Manual mapping required.');
+        reqLogger.error(
+          { remoteJid, remoteJidAlt, pushName: messageData.pushName, instanceName },
+          'LID NOT RESOLVED - using LID as fallback client identifier'
+        );
       }
     }
   } else {
-    clientPhone = extractPhoneNumber(remoteJid);
+    clientPhone = extractPhoneNumber(remoteJidAlt || remoteJid);
   }
 
   reqLogger = reqLogger.child({
     messageId,
     from: hashPhone(clientPhone),
+    remoteJid,
+    remoteJidAlt,
+    addressingMode,
+    instanceName,
+    replica: getReplicaId(),
     hasMedia: hasMedia(messageData),
   });
 
@@ -342,7 +341,11 @@ async function handleMessageUpsert(
       salonId,
       agentId,
       customerId: customer.id,
+      instanceName,
       clientPhone,
+      remoteJid,
+      remoteJidAlt: remoteJidAlt ?? undefined,
+      addressingMode,
       replyToJid, // JID original para responder (pode ser LID ou número)
       body: messageContent,
       hasMedia: hasMedia(messageData),
@@ -383,6 +386,10 @@ async function handleConnectionUpdate(
 ) {
   const instanceName = data.instance;
   const connectionData = data.data;
+  const statusReason =
+    typeof connectionData.statusReason === 'number' || typeof connectionData.statusReason === 'string'
+      ? String(connectionData.statusReason)
+      : undefined;
 
   // Mapeia status da Evolution API para nosso enum
   const status = mapConnectionState(connectionData.state);
@@ -390,10 +397,17 @@ async function handleConnectionUpdate(
   reqLogger = reqLogger.child({
     instanceName,
     evolutionState: connectionData.state,
+    statusReason,
     mappedStatus: status,
+    replica: getReplicaId(),
   });
 
   try {
+    WebhookMetrics.connectionUpdate(status, { instanceName, ...(statusReason ? { statusReason } : {}) });
+    if (status === 'closed' || status === 'disconnected') {
+      WebhookMetrics.connectionAnomaly(status, { instanceName, ...(statusReason ? { statusReason } : {}) });
+    }
+
     // Atualiza status de conexão do salão (com timeout)
     await withTimeout(
       db
@@ -491,3 +505,4 @@ async function handleQRCodeUpdate(
     return NextResponse.json({ status: 'ok' }, { status: 200 });
   }
 }
+

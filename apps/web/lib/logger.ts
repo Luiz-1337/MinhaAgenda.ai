@@ -10,6 +10,18 @@
 
 import pino, { Logger, LoggerOptions } from "pino";
 
+export function getReplicaId(): string {
+  return (
+    process.env.RAILWAY_REPLICA_ID ||
+    process.env.HOSTNAME ||
+    "unknown"
+  );
+}
+
+export function getDeploymentName(): string {
+  return process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || "unknown";
+}
+
 // Configuração base do logger
 const baseConfig: LoggerOptions = {
   level: process.env.LOG_LEVEL || "info",
@@ -53,6 +65,10 @@ const baseConfig: LoggerOptions = {
   base: {
     service: "whatsapp-webhook",
     env: process.env.NODE_ENV || "development",
+    railwayService: process.env.RAILWAY_SERVICE_NAME,
+    deployment: getDeploymentName(),
+    replica: getReplicaId(),
+    pod: process.env.HOSTNAME,
   },
 };
 

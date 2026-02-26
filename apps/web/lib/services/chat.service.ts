@@ -2,7 +2,7 @@
  * Serviço para operações relacionadas a chats e mensagens
  */
 
-import { db, chats, messages, salons, profiles, customers, and, asc, desc, eq, sql } from "@repo/db"
+import { db, chats, messages, salons, profiles, customers, and, asc, desc, eq, gte, sql, BRAZIL_TIMEZONE } from "@repo/db"
 import type { ChatMessage } from "../types/chat"
 import { logger } from "../logger"
 
@@ -311,11 +311,23 @@ export async function updateChatTimestamps(
 
 /**
  * Obtém o histórico de mensagens de um chat
+ * 
+ * REGRA DE CONTEXTO POR DIA:
+ * - Retorna apenas mensagens do mesmo dia (timezone Brasil/São Paulo)
+ * - Se não houver mensagens de hoje, retorna array vazio (contexto limpo)
+ * - Isso faz com que a primeira mensagem de um novo dia seja tratada como
+ *   um novo início de conversa, sem arrastar contexto de dias anteriores
  */
 export async function getChatHistory(chatId: string, limit = 10): Promise<ChatMessage[]> {
-  // Importante: queremos as mensagens MAIS RECENTES, mas retornadas em ordem cronológica (asc)
+  // Calcula o início do dia atual no timezone do Brasil (America/Sao_Paulo)
+  const startOfTodayBrazil = sql`(now() AT TIME ZONE ${BRAZIL_TIMEZONE})::date::timestamp AT TIME ZONE ${BRAZIL_TIMEZONE}`
+
+  // Busca apenas mensagens de HOJE, respeitando o limite
   const latestMessages = await db.query.messages.findMany({
-    where: eq(messages.chatId, chatId),
+    where: and(
+      eq(messages.chatId, chatId),
+      gte(messages.createdAt, startOfTodayBrazil)
+    ),
     orderBy: desc(messages.createdAt),
     limit,
   })

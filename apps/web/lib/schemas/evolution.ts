@@ -53,6 +53,7 @@ export function normalizeWebhookEvent(raw: string): string {
 const MessageKeySchema = z.object({
   remoteJid: z.string(), // Phone number in format: 5511999999999@s.whatsapp.net
   remoteJidAlt: z.string().optional(), // Alternative JID (often the real number when remoteJid is LID)
+  participant: z.string().optional(),
   fromMe: z.boolean(),
   id: z.string(), // Message ID
 });
@@ -145,6 +146,10 @@ const MessagesUpsertDataSchema = z.object({
   messageTimestamp: z.number(), // Unix timestamp
   pushName: z.string().optional().nullable(), // Sender name (can be null/undefined)
   broadcast: z.boolean().optional(),
+  senderPn: z.string().optional(),
+  participant_pn: z.string().optional(),
+  participant: z.string().optional(),
+  remoteJidAlt: z.string().optional(),
 });
 
 /**
@@ -238,6 +243,8 @@ export type QRCodeUpdatedEvent = {
   data: z.infer<typeof QRCodeUpdatedDataSchema>;
 };
 
+export type AddressingMode = "lid" | "jid";
+
 /**
  * Supported media types
  */
@@ -290,6 +297,13 @@ export function detectMediaType(
  */
 export function extractPhoneNumber(remoteJid: string): string {
   return remoteJid.split('@')[0];
+}
+
+/**
+ * Detect addressing mode from JID.
+ */
+export function getAddressingMode(remoteJid: string): AddressingMode {
+  return remoteJid.endsWith("@lid") ? "lid" : "jid";
 }
 
 /**

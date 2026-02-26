@@ -18,6 +18,13 @@ import { logger, hashPhone } from '../logger';
  */
 export type MediaType = 'image' | 'audio' | 'video' | 'document';
 
+export type SessionErrorReason =
+  | 'no_session_record'
+  | 'session_error'
+  | 'bad_mac'
+  | 'identity_changed'
+  | 'key_error';
+
 /**
  * Message send options
  */
@@ -32,7 +39,7 @@ export interface SendMessageOptions {
  * WhatsApp Message Send Error
  */
 export class WhatsAppMessageError extends Error {
-  readonly name = 'WhatsAppMessageError';
+  readonly name: string = 'WhatsAppMessageError';
   readonly retryable: boolean;
   readonly statusCode?: number;
 
@@ -41,6 +48,62 @@ export class WhatsAppMessageError extends Error {
     this.retryable = retryable;
     this.statusCode = statusCode;
   }
+}
+
+export class WhatsAppSessionError extends WhatsAppMessageError {
+  readonly name = 'WhatsAppSessionError';
+  readonly reason: SessionErrorReason;
+
+  constructor(message: string, reason: SessionErrorReason, statusCode?: number) {
+    super(message, true, statusCode);
+    this.reason = reason;
+  }
+}
+
+function getErrorText(error: unknown): string {
+  if (!error) return '';
+
+  if (typeof error === 'string') return error;
+
+  if (error instanceof Error) {
+    const cause =
+      error.cause instanceof Error
+        ? ` ${error.cause.message}`
+        : typeof error.cause === 'string'
+          ? ` ${error.cause}`
+          : '';
+    return `${error.message}${cause}`;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+export function getSessionErrorReason(error: unknown): SessionErrorReason | null {
+  const normalized = getErrorText(error).toLowerCase();
+
+  if (!normalized) return null;
+  if (normalized.includes('no session record')) return 'no_session_record';
+  if (normalized.includes('sessionerror') || normalized.includes('session error')) return 'session_error';
+  if (normalized.includes('bad mac') || normalized.includes('invalid mac')) return 'bad_mac';
+  if (normalized.includes('identity changed') || normalized.includes('key changed')) return 'identity_changed';
+  if (
+    normalized.includes('prekey') ||
+    normalized.includes('sender key') ||
+    normalized.includes('identity key') ||
+    normalized.includes('decrypt fail')
+  ) {
+    return 'key_error';
+  }
+
+  return null;
+}
+
+export function isSessionError(error: unknown): boolean {
+  return getSessionErrorReason(error) !== null;
 }
 
 /**
@@ -171,6 +234,25 @@ export async function sendWhatsAppMessage(
       throw new WhatsAppMessageError(
         'WhatsApp service temporarily unavailable',
         true
+      );
+    }
+
+    // Session/key errors should always retry.
+    const sessionReason = getSessionErrorReason(error);
+    if (sessionReason) {
+      logger.error(
+        {
+          err: error,
+          to: hashPhone(toNumber),
+          salonId,
+          reason: sessionReason,
+          duration,
+        },
+        'Detected recoverable WhatsApp session error'
+      );
+      throw new WhatsAppSessionError(
+        error instanceof Error ? error.message : 'Session error while sending WhatsApp message',
+        sessionReason
       );
     }
 

@@ -259,6 +259,49 @@ apps/web/
 
 ## Troubleshooting
 
+### Evolution API Signal Store (Railway)
+
+Para evitar erros como `No session record`, o store de sessao do Baileys/Evolution precisa ser persistente.
+
+Checklist de producao:
+1. No servico da Evolution API na Railway, configurar um Volume persistente.
+2. Montar o volume em `/evolution/instances`.
+3. Confirmar no shell da Railway:
+   - `ls -la /evolution/instances`
+   - Verificar se existem pastas/arquivos por `instanceName`.
+4. Fazer redeploy e repetir o `ls -la /evolution/instances`.
+5. Validar envio/recebimento apos restart sem `No session record`.
+
+Observacao: sem volume, o filesystem do container e efemero e as sessions/prekeys/senderKeys/identityKeys podem ser perdidas.
+
+### Topologia e Escala
+
+Configuracao recomendada atual:
+1. Evolution API com 1 replica (sem autoscale).
+2. Worker BullMQ em 1 instancia ou, se escalar, sempre usando o mesmo Redis compartilhado.
+
+Regra para escalar Evolution API para 2+ replicas:
+1. Store compartilhado entre replicas (`/evolution/instances` em volume compartilhado).
+2. Sticky routing por instancia/device no ingress/load balancer.
+
+### Observabilidade de decrypt/session
+
+Metricas adicionadas:
+1. `whatsapp.decrypt_fail_total` com labels:
+   - `reason`
+   - `addressingMode` (`lid` ou `jid`)
+   - `replica`
+   - `instanceName` (quando disponivel)
+
+Logs enriquecidos incluem:
+1. `remoteJid`
+2. `remoteJidAlt`
+3. `addressingMode`
+4. `instanceName`
+5. `replica`
+6. `deployment`
+7. `pod`
+
 ### Mensagens não estão sendo processadas
 
 1. Verifique se o Redis está rodando:

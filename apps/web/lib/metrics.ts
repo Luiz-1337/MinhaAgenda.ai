@@ -8,7 +8,7 @@
  * - CloudWatch
  */
 
-import { logger } from "./logger";
+import { getReplicaId, logger } from "./logger";
 import { getRedisClient } from "./redis";
 
 // Tipos de métricas
@@ -246,6 +246,12 @@ export const WebhookMetrics = {
   
   latency: (durationMs: number, tags?: Record<string, string>) => 
     recordHistogram("webhook.latency", durationMs, tags),
+
+  connectionUpdate: (status: string, tags?: Record<string, string>) =>
+    incrementCounter("webhook.connection_update", 1, { ...tags, status }),
+
+  connectionAnomaly: (status: string, tags?: Record<string, string>) =>
+    incrementCounter("webhook.connection_anomaly", 1, { ...tags, status }),
 };
 
 export const WorkerMetrics = {
@@ -260,4 +266,19 @@ export const WorkerMetrics = {
   
   queueSize: (size: number) => 
     setGauge("worker.queue_size", size),
+};
+
+export const WhatsAppMetrics = {
+  decryptFail: (params: {
+    reason: string;
+    addressingMode: "lid" | "jid";
+    replica?: string;
+    instanceName?: string;
+  }) =>
+    incrementCounter("whatsapp.decrypt_fail_total", 1, {
+      reason: params.reason,
+      addressingMode: params.addressingMode,
+      replica: params.replica || getReplicaId(),
+      ...(params.instanceName ? { instanceName: params.instanceName } : {}),
+    }),
 };
