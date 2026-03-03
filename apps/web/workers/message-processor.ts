@@ -142,6 +142,30 @@ async function processMessage(
       };
     }
 
+    const { getSalonRemainingCredits } = await import("../lib/services/credits.service");
+    const creditsResult = await getSalonRemainingCredits(salonId);
+
+    if ('error' in creditsResult) {
+      jobLogger.error({ salonId, error: creditsResult.error }, "Failed to fetch remaining credits");
+      // Fallback: If we can't find credits, we still skip AI processing to be safe and avoid overcharging
+      return {
+        status: "manual_mode",
+        chatId,
+        messageId,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    if (creditsResult.remaining <= 0) {
+      jobLogger.info({ salonId, total: creditsResult.total, used: creditsResult.used }, "Salon out of credits, skipping AI processing");
+      return {
+        status: "out_of_credits",
+        chatId,
+        messageId,
+        duration: Date.now() - startTime,
+      };
+    }
+
     if (hasMedia) {
       const permanentMediaUrl = job.data.mediaUrl;
 

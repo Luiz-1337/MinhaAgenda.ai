@@ -1,0 +1,67 @@
+import { db, aiUsageStats, salons, profiles, sql, eq } from "@repo/db"
+
+/**
+ * Limites de créditos por plano
+ */
+export const PLAN_CREDITS = {
+    SOLO: 1_000_000, // 1 milhão
+    PRO: 5_000_000, // 5 milhões
+    ENTERPRISE: 10_000_000, // 10 milhões
+} as const
+
+/**
+ * Obtém os créditos restantes do salão sem depender de sessão de autenticação client-side.
+ * Útil para processos em background e server actions que já passaram por auth.
+ */
+export async function getSalonRemainingCredits(salonId: string): Promise<{ remaining: number; total: number; used: number } | { error: string }> {
+    try {
+        // Busca o salão
+        const salon = await db.query.salons.findFirst({
+            where: eq(salons.id, salonId),
+            columns: { id: true, ownerId: true, settings: true },
+        })
+
+        if (!salon) {
+            return { error: "Salão não encontrado" }
+        }
+
+        // Busca o perfil do usuário para obter o tier
+        const profile = await db.query.profiles.findFirst({
+            where: eq(profiles.id, salon.ownerId),
+            columns: { tier: true },
+        })
+
+        if (!profile) {
+            return { error: "Perfil não encontrado" }
+        }
+
+        // Calcula créditos totais baseado no tier ou limite customizado
+        const settings = salon.settings as { custom_monthly_limit?: number } | null
+        const customLimit = settings?.custom_monthly_limit
+
+        const tier = profile.tier as keyof typeof PLAN_CREDITS
+        const totalCredits = customLimit || PLAN_CREDITS[tier] || PLAN_CREDITS.SOLO
+
+        // Soma todos os créditos usados do salão na tabela aiUsageStats
+        const usedCreditsResult = await db
+            .select({
+                totalUsed: sql<number>`COALESCE(SUM(${aiUsageStats.credits}), 0)::int`,
+            })
+            .from(aiUsageStats)
+            .where(eq(aiUsageStats.salonId, salonId))
+
+        const usedCredits = Number(usedCreditsResult[0]?.totalUsed) || 0
+
+        // Calcula créditos restantes (não pode ser negativo)
+        const remainingCredits = Math.max(0, totalCredits - usedCredits)
+
+        return {
+            remaining: remainingCredits,
+            total: totalCredits,
+            used: usedCredits,
+        }
+    } catch (error) {
+        console.error("Erro ao buscar créditos restantes:", error)
+        return { error: "Erro ao buscar créditos" }
+    }
+}
