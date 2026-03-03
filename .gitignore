@@ -68,5 +68,9 @@ yarn-error.log*
 next-env.d.ts
 Tutoriais/
 
+#IA
+.agent/
+*.MD
+
 .gitignore
- 
+

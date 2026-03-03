@@ -2,7 +2,7 @@
  * Serviço para operações relacionadas a chats e mensagens
  */
 
-import { db, chats, messages, salons, profiles, customers, and, asc, desc, eq, gte, sql, BRAZIL_TIMEZONE } from "@repo/db"
+import { db, chats, messages, salons, profiles, customers, and, desc, eq, gte, sql, BRAZIL_TIMEZONE } from "@repo/db"
 import type { ChatMessage } from "../types/chat"
 import { logger } from "../logger"
 
@@ -266,44 +266,6 @@ export async function saveMessage(
         updatedAt: new Date(),
       })
       .where(eq(chats.id, chatId))
-  }
-}
-
-/**
- * Atualiza timestamps do chat para cálculo de tempo de resposta
- */
-export async function updateChatTimestamps(
-  chatId: string,
-  role: "user" | "assistant"
-): Promise<void> {
-  const now = new Date()
-
-  if (role === "user") {
-    // Atualiza first_user_message_at apenas se ainda não foi definido
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      columns: { firstUserMessageAt: true },
-    })
-
-    if (!chat?.firstUserMessageAt) {
-      await db
-        .update(chats)
-        .set({ firstUserMessageAt: now })
-        .where(eq(chats.id, chatId))
-    }
-  } else if (role === "assistant") {
-    // Atualiza first_agent_response_at apenas se ainda não foi definido
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      columns: { firstAgentResponseAt: true },
-    })
-
-    if (!chat?.firstAgentResponseAt) {
-      await db
-        .update(chats)
-        .set({ firstAgentResponseAt: now })
-        .where(eq(chats.id, chatId))
-    }
   }
 }
 
