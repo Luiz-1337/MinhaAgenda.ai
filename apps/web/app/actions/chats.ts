@@ -316,3 +316,40 @@ export async function sendManualMessage(
   }
 }
 
+/**
+ * Busca o risco de No-Show para o cliente do chat
+ */
+export async function getNoShowRiskForChat(chatId: string): Promise<{ isHighRisk: boolean } | { error: string }> {
+  if (!chatId) return { error: "chatId obrigatório" };
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado" }
+
+  try {
+    // Busca phone e salon
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: { clientPhone: true, salonId: true }
+    });
+
+    if (!chat || !chat.clientPhone) return { isHighRisk: false };
+
+    // Busca cliente
+    const profile = await db.query.profiles.findFirst({
+      where: eq(profiles.phone, chat.clientPhone),
+      columns: { id: true }
+    })
+
+    if (!profile) return { isHighRisk: false };
+
+    const { evaluateNoShowRisk } = await import("@repo/db/src/services/no-show-predictor.service");
+    const risk = await evaluateNoShowRisk(profile.id, chat.salonId);
+
+    return { isHighRisk: risk.isHighRisk };
+  } catch (err) {
+    console.error("Erro ao avaliar risco para o chat:", err);
+    return { isHighRisk: false };
+  }
+}
+

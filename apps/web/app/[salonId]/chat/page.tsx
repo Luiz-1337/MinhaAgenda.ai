@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
+import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, getNoShowRiskForChat, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
 
 type ConversationStatus = "Ativo" | "Finalizado" | "Aguardando humano"
 
@@ -50,7 +50,7 @@ function getStatusBadge(status: ConversationStatus) {
 export default function ChatPage() {
   const params = useParams()
   const salonId = params?.salonId as string
-  
+
   const [filter, setFilter] = useState<"all" | "waiting">("all")
   const [query, setQuery] = useState("")
   const [conversations, setConversations] = useState<ChatConversation[]>([])
@@ -62,10 +62,16 @@ export default function ChatPage() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isTogglingManual, setIsTogglingManual] = useState(false)
+  const [activeRisk, setActiveRisk] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isLoadingRef = useRef(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageCountRef = useRef<number>(0)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
   // Busca conversas quando o componente carrega ou salonId muda
   useEffect(() => {
@@ -146,7 +152,7 @@ export default function ChatPage() {
     async function loadMessages() {
       // Evita carregar se já estiver carregando
       if (isLoadingRef.current) return
-      
+
       isLoadingRef.current = true
       setIsLoadingMessages(true)
       try {
@@ -175,7 +181,7 @@ export default function ChatPage() {
 
     // Carrega mensagens imediatamente
     loadMessages()
-    
+
     return () => {
       isMounted = false
       isLoadingRef.current = false
@@ -200,7 +206,7 @@ export default function ChatPage() {
     async function checkForNewMessages() {
       // Evita verificar se já estiver carregando
       if (isLoadingRef.current || !isMounted || !activeId) return
-      
+
       isLoadingRef.current = true
       try {
         const result = await getChatMessages(activeId)
@@ -226,7 +232,7 @@ export default function ChatPage() {
         checkForNewMessages()
       }
     }, 3000)
-    
+
     return () => {
       isMounted = false
       if (pollingIntervalRef.current) {
@@ -236,9 +242,29 @@ export default function ChatPage() {
     }
   }, [isManualMode, activeId])
 
+  // Busca o risco de No-Show quando o chat ativo muda
+  useEffect(() => {
+    if (!activeId) return
+    let isMounted = true
+    setActiveRisk(false)
+
+    getNoShowRiskForChat(activeId).then((res) => {
+      if (!isMounted) return
+      if ("isHighRisk" in res) {
+        setActiveRisk(res.isHighRisk)
+      }
+    }).catch(err => {
+      console.error("Erro ao carregar risco:", err)
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeId])
+
   async function handleToggleManualMode() {
     if (!activeId) return
-    
+
     setIsTogglingManual(true)
     try {
       const result = await setChatManualMode(activeId, !isManualMode)
@@ -263,11 +289,11 @@ export default function ChatPage() {
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault()
     if (!messageText.trim() || !activeId || !isManualMode) return
-    
+
     setIsSendingMessage(true)
     const messageToSend = messageText.trim()
     setMessageText("")
-    
+
     // Adiciona mensagem otimisticamente ao estado local
     const optimisticMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
@@ -277,7 +303,7 @@ export default function ChatPage() {
     }
     setMessages(prev => [...prev, optimisticMessage])
     lastMessageCountRef.current += 1
-    
+
     try {
       const result = await sendManualMessage(activeId, messageToSend)
       if ("error" in result) {
@@ -338,244 +364,247 @@ export default function ChatPage() {
   return (
     <div className="h-full p-2 md:p-6">
       <div className="flex h-full bg-slate-50 dark:bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-white/5 shadow-2xl relative">
-      {/* Sidebar List */}
-      <div className={cn(
-        "border-r border-slate-200 dark:border-white/5 flex flex-col bg-white/50 dark:bg-slate-900/50 backdrop-blur-md",
-        "w-full md:w-80",
-        "absolute md:relative inset-0 z-20 md:z-auto",
-        !showConversationList && "hidden md:flex"
-      )}>
-        {/* Sidebar Header */}
-        <div className="p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Conversas</h2>
+        {/* Sidebar List */}
+        <div className={cn(
+          "border-r border-slate-200 dark:border-white/5 flex flex-col bg-white/50 dark:bg-slate-900/50 backdrop-blur-md",
+          "w-full md:w-80",
+          "absolute md:relative inset-0 z-20 md:z-auto",
+          !showConversationList && "hidden md:flex"
+        )}>
+          {/* Sidebar Header */}
+          <div className="p-4 space-y-4">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Conversas</h2>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilter("all")}
-              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-                filter === "all"
-                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => setFilter("waiting")}
-              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-                filter === "waiting"
-                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
-            >
-              Em espera
-            </button>
-          </div>
-
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Buscar..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
-            />
-          </div>
-        </div>
-
-        {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {isLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <Loader2 className="animate-spin text-slate-400" size={20} />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">
-              Nenhuma conversa encontrada
-            </div>
-          ) : (
-            filtered.map((chat) => (
-            <div
-              key={chat.id}
-              onClick={() => handleSelectConversation(chat.id)}
-              className={`p-4 flex gap-3 cursor-pointer transition-colors border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 ${
-                activeId === chat.id
-                  ? "bg-indigo-50/50 dark:bg-indigo-500/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-indigo-500"
-                  : ""
-              }`}
-            >
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400">
-                  {getInitials(chat.customer.name)}
-                </div>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start mb-1">
-                  <h3
-                    className={`text-sm font-semibold truncate ${
-                      activeId === chat.id ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-slate-200"
-                    }`}
-                  >
-                    {chat.customer.name}
-                  </h3>
-                  <span className="text-[10px] text-slate-400 font-mono">{chat.lastMessageAt}</span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-2">{chat.preview}</p>
-                {getStatusBadge(chat.status)}
-              </div>
-            </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className={cn(
-        "flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-950/30 backdrop-blur-sm relative",
-        showConversationList && "hidden md:flex"
-      )}>
-        {/* Background Grid Pattern */}
-        <div
-          className="absolute inset-0 z-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, #808080 1px, transparent 1px), linear-gradient(to bottom, #808080 1px, transparent 1px)",
-            backgroundSize: "40px 40px",
-          }}
-        />
-
-        {/* Chat Header */}
-        {active && (
-          <header className="h-16 md:h-20 flex items-center justify-between px-3 md:px-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md z-10">
-            <div className="flex items-center gap-2 md:gap-4">
-              {/* Botao voltar - apenas mobile */}
+            <div className="flex gap-2">
               <button
-                onClick={() => setShowConversationList(true)}
-                className="md:hidden p-2 -ml-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                onClick={() => setFilter("all")}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${filter === "all"
+                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  }`}
               >
-                <ArrowLeft size={20} />
+                Todos
               </button>
-              <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-xs md:text-sm font-bold text-white shadow-lg">
-                {getInitials(active.customer.name)}
-              </div>
-              <div>
-                <h2 className="text-xs md:text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                  {active.customer.name}
-                </h2>
-                <p className="text-[10px] md:text-xs text-slate-500 font-mono">{active.customer.phone}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 md:gap-2">
-              <Button
-                onClick={handleToggleManualMode}
-                disabled={isTogglingManual}
-                variant={isManualMode ? "default" : "outline"}
-                size="sm"
-                className={cn(
-                  "text-xs px-2 md:px-3",
-                  isManualMode ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""
-                )}
+              <button
+                onClick={() => setFilter("waiting")}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${filter === "waiting"
+                  ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  }`}
               >
-                <UserRound size={16} />
-                <span className="hidden lg:inline ml-1">
-                  {isManualMode ? "Passar para a IA" : "Assumir Manualmente"}
-                </span>
-              </Button>
-              <div className="text-right hidden lg:block">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Atendente</p>
-                <p className="text-xs text-slate-600 dark:text-slate-300">{active.assignedTo}</p>
+                Em espera
+              </button>
+            </div>
+
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Buscar..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+
+          {/* Conversation List */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {isLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="animate-spin text-slate-400" size={20} />
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="p-2 text-slate-400 hover:text-white transition-colors">
-                    <MoreHorizontal size={20} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleTransferConversation(active.id)}>Transferir</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFinishConversation(active.id)}>Finalizar</DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-red-600 dark:text-red-400"
-                    onClick={() => handleBlockConversation(active.id)}
-                  >
-                    Bloquear
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </header>
-        )}
-
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 custom-scrollbar z-10">
-          {isLoadingMessages ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="animate-spin text-slate-400" size={24} />
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm text-slate-500">
-              Nenhuma mensagem ainda
-            </div>
-          ) : (
-            messages.map((msg) => {
-              const isClient = msg.from === "cliente"
-
-              return (
-                <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
-                  <div className="max-w-[85%] md:max-w-[70%] relative group">
-                    {/* Message Bubble */}
-                    <div
-                      className={`p-3 md:p-4 shadow-sm relative ${
-                        isClient
-                          ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl rounded-tl-none shadow-indigo-500/20"
-                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl rounded-tr-none border border-slate-200 dark:border-white/10"
-                      }`}
-                    >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
-                      <span
-                        className={`text-[10px] font-mono mt-1 block opacity-60 ${
-                          isClient ? "text-indigo-200" : "text-slate-400"
-                        }`}
-                      >
-                        {msg.time}
-                      </span>
+            ) : filtered.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">
+                Nenhuma conversa encontrada
+              </div>
+            ) : (
+              filtered.map((chat) => (
+                <div
+                  key={chat.id}
+                  onClick={() => handleSelectConversation(chat.id)}
+                  className={`p-4 flex gap-3 cursor-pointer transition-colors border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 ${activeId === chat.id
+                    ? "bg-indigo-50/50 dark:bg-indigo-500/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-indigo-500"
+                    : ""
+                    }`}
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400">
+                      {getInitials(chat.customer.name)}
                     </div>
                   </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3
+                        className={`text-sm font-semibold truncate ${activeId === chat.id ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-slate-200"
+                          }`}
+                      >
+                        {chat.customer.name}
+                      </h3>
+                      <span className="text-[10px] text-slate-400 font-mono">{chat.lastMessageAt}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-2">{chat.preview}</p>
+                    {getStatusBadge(chat.status)}
+                  </div>
                 </div>
-              )
-            })
-          )}
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Input Area */}
-        <div className="p-3 md:p-6 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-white/5 z-10">
-          {isManualMode ? (
-            <form onSubmit={handleSendMessage} className="relative">
-              <textarea
-                ref={textareaRef}
-                rows={2}
-                placeholder="Digite sua mensagem..."
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 pr-12 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
-              />
-              <button
-                type="submit"
-                disabled={!messageText.trim() || isSendingMessage}
-                className="absolute right-3 bottom-3 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSendingMessage ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-              </button>
-            </form>
-          ) : (
-            <div className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
-              Ative o modo manual para enviar mensagens
-            </div>
+        {/* Main Chat Area */}
+        <div className={cn(
+          "flex-1 flex flex-col bg-slate-50/30 dark:bg-slate-950/30 backdrop-blur-sm relative",
+          showConversationList && "hidden md:flex"
+        )}>
+          {/* Background Grid Pattern */}
+          <div
+            className="absolute inset-0 z-0 opacity-[0.03]"
+            style={{
+              backgroundImage:
+                "linear-gradient(to right, #808080 1px, transparent 1px), linear-gradient(to bottom, #808080 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
+            }}
+          />
+
+          {/* Chat Header */}
+          {active && (
+            <header className="h-16 md:h-20 flex items-center justify-between px-3 md:px-6 border-b border-slate-200 dark:border-white/5 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md z-10">
+              <div className="flex items-center gap-2 md:gap-4">
+                {/* Botao voltar - apenas mobile */}
+                <button
+                  onClick={() => setShowConversationList(true)}
+                  className="md:hidden p-2 -ml-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-xs md:text-sm font-bold text-white shadow-lg">
+                  {getInitials(active.customer.name)}
+                </div>
+                <div>
+                  <h2 className="text-xs md:text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    {active.customer.name}
+                    {activeRisk && (
+                      <span
+                        className="px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-[10px] font-medium text-red-500"
+                        title="ALERTA: Este cliente possui histórico de faltas em mais de 30% dos agendamentos no salão."
+                      >
+                        ⚠️ Alto Risco
+                      </span>
+                    )}
+                  </h2>
+                  <p className="text-[10px] md:text-xs text-slate-500 font-mono">{active.customer.phone}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 md:gap-2">
+                <Button
+                  onClick={handleToggleManualMode}
+                  disabled={isTogglingManual}
+                  variant={isManualMode ? "default" : "outline"}
+                  size="sm"
+                  className={cn(
+                    "text-xs px-2 md:px-3",
+                    isManualMode ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""
+                  )}
+                >
+                  <UserRound size={16} />
+                  <span className="hidden lg:inline ml-1">
+                    {isManualMode ? "Passar para a IA" : "Assumir Manualmente"}
+                  </span>
+                </Button>
+                <div className="text-right hidden lg:block">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Atendente</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">{active.assignedTo}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-2 text-slate-400 hover:text-white transition-colors">
+                      <MoreHorizontal size={20} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleTransferConversation(active.id)}>Transferir</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleFinishConversation(active.id)}>Finalizar</DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-red-600 dark:text-red-400"
+                      onClick={() => handleBlockConversation(active.id)}
+                    >
+                      Bloquear
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </header>
           )}
+
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 custom-scrollbar z-10">
+            {isLoadingMessages ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-slate-400" size={24} />
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-slate-500">
+                Nenhuma mensagem ainda
+              </div>
+            ) : (
+              messages.map((msg) => {
+                const isClient = msg.from === "cliente"
+
+                return (
+                  <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
+                    <div className="max-w-[85%] md:max-w-[70%] relative group">
+                      {/* Message Bubble */}
+                      <div
+                        className={`p-3 md:p-4 shadow-sm relative ${isClient
+                          ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-2xl rounded-tl-none shadow-indigo-500/20"
+                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl rounded-tr-none border border-slate-200 dark:border-white/10"
+                          }`}
+                      >
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
+                        <span
+                          className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-indigo-200" : "text-slate-400"
+                            }`}
+                        >
+                          {msg.time}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="p-3 md:p-6 bg-white/50 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-white/5 z-10">
+            {isManualMode ? (
+              <form onSubmit={handleSendMessage} className="relative">
+                <textarea
+                  ref={textareaRef}
+                  rows={2}
+                  placeholder="Digite sua mensagem..."
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 pr-12 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none placeholder:text-slate-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!messageText.trim() || isSendingMessage}
+                  className="absolute right-3 bottom-3 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSendingMessage ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                </button>
+              </form>
+            ) : (
+              <div className="w-full bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+                Ative o modo manual para enviar mensagens
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
     </div>
   )
 }

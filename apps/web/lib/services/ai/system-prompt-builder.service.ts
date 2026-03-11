@@ -64,11 +64,16 @@ function formatKnowledgeContextText(knowledgeContext?: string): string {
 function formatCustomerInfoText(
   customerName?: string,
   customerId?: string,
-  isNewCustomer?: boolean
+  isNewCustomer?: boolean,
+  noShowRisk?: { isHighRisk: boolean; cancellationRatio: number }
 ): string {
   if (!customerName && !customerId) {
     return ""
   }
+
+  const noShowWarning = noShowRisk?.isHighRisk
+    ? `\n- ⚠️ ALERTA DE NO-SHOW: Este cliente tem um histórico alto de faltas/cancelamentos (${Math.round(noShowRisk.cancellationRatio * 100)}%). Tente confirmar firmemente o compromisso e lembrar das políticas de cancelamento do salão.`
+    : ""
 
   if (customerName) {
     const isGenericName = isPhoneFormattedName(customerName)
@@ -78,16 +83,16 @@ function formatCustomerInfoText(
 - IMPORTANTE: Este não é o nome real do cliente. Você DEVE perguntar educadamente o nome do cliente na primeira oportunidade (ex: "Olá! Para personalizar melhor o atendimento, qual é o seu nome?").
 - Quando o cliente fornecer o nome, use a tool updateCustomerName para atualizar o cadastro com o nome real.
 - O customerId é: ${customerId}
-- Tipo: CLIENTE NOVA - Cadastro incompleto, precisa solicitar dados básicos primeiro`
+- Tipo: CLIENTE NOVA - Cadastro incompleto, precisa solicitar dados básicos primeiro${noShowWarning}`
     } else {
       return `\n\nINFORMAÇÃO DO CLIENTE:
 - Nome: ${customerName}
-- Tipo: ${isNewCustomer === true ? "CLIENTE NOVA" : isNewCustomer === false ? "CLIENTE RECORRENTE" : "Cliente"}${isNewCustomer === false ? " - Tem histórico de atendimentos, pode personalizar conversa lembrando preferências anteriores" : ""}`
+- Tipo: ${isNewCustomer === true ? "CLIENTE NOVA" : isNewCustomer === false ? "CLIENTE RECORRENTE" : "Cliente"}${isNewCustomer === false ? " - Tem histórico de atendimentos, pode personalizar conversa lembrando preferências anteriores" : ""}${noShowWarning}`
     }
   } else if (customerId) {
     return `\n\nINFORMAÇÃO DO CLIENTE:
 - Tipo: ${isNewCustomer === true ? "CLIENTE NOVA" : isNewCustomer === false ? "CLIENTE RECORRENTE" : "Cliente"}
-- O customerId é: ${customerId}`
+- O customerId é: ${customerId}${noShowWarning}`
   }
 
   return ""
@@ -131,14 +136,15 @@ export class SystemPromptBuilder {
     customerName?: string,
     customerId?: string,
     isNewCustomer?: boolean,
-    existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>
+    existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
+    noShowRisk?: { isHighRisk: boolean; cancellationRatio: number }
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
     const { formattedDate, formattedTime } = formatDateTime()
     const preferencesText = formatPreferencesText(preferences)
     const knowledgeContextText = formatKnowledgeContextText(knowledgeContext)
-    const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer)
+    const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer, noShowRisk)
 
     // Query única para settings do salão (removida duplicação)
     const salonInfo = await db.query.salons.findFirst({
@@ -208,7 +214,8 @@ export async function createSalonAssistantPrompt(
   customerName?: string,
   customerId?: string,
   isNewCustomer?: boolean,
-  agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>
+  agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
+  noShowRisk?: { isHighRisk: boolean; cancellationRatio: number }
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -217,6 +224,7 @@ export async function createSalonAssistantPrompt(
     customerName,
     customerId,
     isNewCustomer,
-    agentInfo
+    agentInfo,
+    noShowRisk
   )
 }

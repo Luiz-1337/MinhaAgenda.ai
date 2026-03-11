@@ -257,6 +257,7 @@ export const appointments = pgTable(
     trinksEventId: text('trinks_event_id'),
     syncStatus: syncStatusEnum('sync_status').default('pending').notNull(),
     notes: text('notes'),
+    reminderSentAt: timestamp('reminder_sent_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -267,6 +268,28 @@ export const appointments = pgTable(
     index('appt_trinks_event_idx').on(table.trinksEventId),
     index('appt_prof_time_idx').on(table.professionalId, table.date, table.endTime),
     index('appt_service_idx').on(table.serviceId)
+  ]
+)
+
+export const waitingList = pgTable(
+  'waiting_list',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    clientId: uuid('client_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    preferredDateFrom: timestamp('preferred_date_from'),
+    preferredDateTo: timestamp('preferred_date_to'),
+    status: text('status', { enum: ['active', 'fulfilled', 'cancelled', 'expired'] }).default('active').notNull(),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('waiting_salon_idx').on(table.salonId),
+    index('waiting_client_idx').on(table.clientId),
+    index('waiting_status_idx').on(table.status)
   ]
 )
 

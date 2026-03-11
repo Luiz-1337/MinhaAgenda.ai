@@ -20,6 +20,7 @@ import { findRelevantContext } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments, eq, and } from "@repo/db";
+import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 
 // Debug verboso controlado por env var (desligado em produção)
 const AI_DEBUG = process.env.AI_DEBUG === 'true';
@@ -66,11 +67,12 @@ export async function generateAIResponse(
 
   try {
     // 1. PARALELO: Buscar dados independentes simultaneamente
-    const [agentInfo, preferences, historyMessages, mcpTools] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, 6), // Reduzido de 10 para 6
       createMCPTools(salonId, clientPhone),
+      customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined)
     ]);
 
     if (!agentInfo) {
@@ -142,7 +144,8 @@ export async function generateAIResponse(
       customerName,
       customerId,
       isNewCustomer,
-      agentInfo // Passa agentInfo para evitar query duplicada
+      agentInfo, // Passa agentInfo para evitar query duplicada
+      noShowRisk // Flag de Risco de Falta
     );
 
     if (AI_DEBUG) {

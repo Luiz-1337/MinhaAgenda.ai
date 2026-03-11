@@ -5,6 +5,7 @@ import { db, appointments, availability, professionals, professionalServices, se
 import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
+import { processVacantSlot } from "./slot-filler.service"
 
 /**
  * Tipo de resultado padronizado para operações de serviço.
@@ -422,7 +423,7 @@ export async function deleteAppointmentService(input: {
   // Verifica se o agendamento existe
   const existingAppointment = await db.query.appointments.findFirst({
     where: eq(appointments.id, parse.data.appointmentId),
-    columns: { id: true, salonId: true },
+    columns: { id: true, salonId: true, professionalId: true, serviceId: true, date: true },
   })
 
   if (!existingAppointment) {
@@ -434,6 +435,14 @@ export async function deleteAppointmentService(input: {
 
   // Deleta o agendamento
   await db.delete(appointments).where(eq(appointments.id, parse.data.appointmentId))
+
+  // Tenta preencher a vaga (não trava o processo)
+  processVacantSlot({
+    salonId: existingAppointment.salonId,
+    professionalId: existingAppointment.professionalId,
+    serviceId: existingAppointment.serviceId,
+    dateUtc: existingAppointment.date
+  }).catch(console.error)
 
   return { success: true, data: undefined }
 }
