@@ -13,6 +13,11 @@ import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
 import { getActiveAgentInfo } from "./agent-info.service";
 import { mapModelToOpenAI } from "./model-mapper.service";
 import { runOpenAIResponses } from "./openai-responses-runner.service";
+import {
+  AVAILABILITY_TECHNICAL_FALLBACK_MESSAGE,
+  enforceAgendaAvailabilityPolicy,
+  resolveFriendlyAvailabilityErrorMessage,
+} from "./availability-message-policy";
 import type { ResponsesRunnerInputMessage } from "./openai-responses-runner.service";
 import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
@@ -24,6 +29,14 @@ import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.serv
 
 // Debug verboso controlado por env var (desligado em produção)
 const AI_DEBUG = process.env.AI_DEBUG === 'true';
+const UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const UUID_REGEX = new RegExp(`\\b${UUID_PATTERN}\\b`, "gi");
+const SENSITIVE_ID_LABEL_PATTERN =
+  "(?:ID(?:\\s+do\\s+(?:agendamento|servico|serviço|profissional|cliente))?|customerId|serviceId|professionalId|appointmentId)";
+const SENSITIVE_ID_REGEX = new RegExp(
+  `\\(?[ \\t]*${SENSITIVE_ID_LABEL_PATTERN}[ \\t]*[:#-][ \\t]*${UUID_PATTERN}[ \\t]*\\)?`,
+  "gi"
+);
 
 /**
  * Parâmetros para geração de resposta
@@ -215,7 +228,7 @@ export async function generateAIResponse(
     // 9. Verificar e tratar erros de tools
     const toolErrorMessage = handleToolErrors(steps, contextLogger);
     const hasToolErrors = !!toolErrorMessage;
-    const finalText = toolErrorMessage || text;
+    const finalText = sanitizeAssistantText(toolErrorMessage || text);
 
     // 10. Validar resposta final
     if (!finalText || !finalText.trim()) {
@@ -418,7 +431,12 @@ function handleToolErrors(steps: unknown[], contextLogger: Logger): string | nul
   }
 
   if (errorTypes.includes("check_availability") || errorTypes.includes("checkAvailability")) {
-    return "Poxa, não consegui acessar a agenda agora, mas me diz o horário que você queria que eu tento confirmar";
+    const availabilityMessage = resolveFriendlyAvailabilityErrorMessage(errors);
+    if (availabilityMessage) {
+      return availabilityMessage;
+    }
+
+    return AVAILABILITY_TECHNICAL_FALLBACK_MESSAGE;
   }
 
   if (errorTypes.includes("list_professionals") || errorTypes.includes("getProfessionals")) {
@@ -481,6 +499,25 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
   });
 
   return errors;
+}
+
+/**
+ * Remove dados internos/sensíveis da resposta final ao cliente
+ */
+function sanitizeAssistantText(text: string): string {
+  if (!text || !text.trim()) return "";
+
+  const sanitized = text
+    .replace(SENSITIVE_ID_REGEX, "")
+    .replace(UUID_REGEX, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .trim();
+
+  return enforceAgendaAvailabilityPolicy(sanitized);
 }
 
 /**
