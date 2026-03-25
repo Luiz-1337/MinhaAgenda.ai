@@ -65,6 +65,8 @@ export const profiles = pgTable('profiles', {
   // Dados legais
   documentType: text('document_type'), // 'CPF' ou 'CNPJ'
   documentNumber: text('document_number'),
+  // Stripe
+  stripeCustomerId: text('stripe_customer_id').unique(),
   // Google Calendar
   googleAccessToken: text('google_access_token'),
   googleRefreshToken: text('google_refresh_token'),
@@ -119,6 +121,8 @@ export const salons = pgTable(
     phone: text('phone'),
     description: text('description'),
     subscriptionStatus: subscriptionStatusEnum('subscription_status').default('TRIAL').notNull(),
+    stripeSubscriptionId: text('stripe_subscription_id').unique(),
+    extraCredits: bigint('extra_credits', { mode: 'number' }).default(0).notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
     // Evolution API fields

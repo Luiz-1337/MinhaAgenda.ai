@@ -7,7 +7,7 @@ import type { ActionState } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
 import { getOwnerSalonId, isSalonOwnerError } from "@/lib/services/salon.service"
-import { db, profiles, salons, eq, sql } from "@repo/db"
+import { db, profiles, salons, eq } from "@repo/db"
 
 /**
  * Realiza login do usuário
@@ -56,112 +56,8 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
     return { error: "Nome do salão é obrigatório." }
   }
 
-  // VALIDAÇÃO E PREPARAÇÃO ANTES DE CRIAR O USUÁRIO NO AUTH
-  // Isso garante que se der erro, o usuário não será criado no Supabase Auth
-
-  // 1. Preparar tipos e função no banco ANTES de criar usuário
-  try {
-    // Criar tipos se não existirem (usando verificação explícita, pois IF NOT EXISTS não funciona para enums)
-    await db.execute(sql`
-          DO $$ BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_type t
-              JOIN pg_namespace n ON n.oid = t.typnamespace
-              WHERE t.typname = 'profile_role' AND n.nspname = 'public'
-            ) THEN
-              CREATE TYPE "public"."profile_role" AS ENUM('OWNER', 'PROFESSIONAL', 'CLIENT');
-            END IF;
-          END $$;
-        `)
-
-    await db.execute(sql`
-          DO $$ BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_type t
-              JOIN pg_namespace n ON n.oid = t.typnamespace
-              WHERE t.typname = 'subscription_tier' AND n.nspname = 'public'
-            ) THEN
-              CREATE TYPE "public"."subscription_tier" AS ENUM('SOLO', 'PRO', 'ENTERPRISE');
-            END IF;
-          END $$;
-        `)
-
-    // Criar função atualizada que verifica colunas dinamicamente
-    await db.execute(sql`
-          CREATE OR REPLACE FUNCTION "public"."update_profile_on_signup"(
-            p_user_id uuid,
-            p_full_name text,
-            p_first_name text,
-            p_last_name text,
-            p_phone text,
-            p_billing_address text,
-            p_billing_postal_code text,
-            p_billing_city text,
-            p_billing_state text,
-            p_billing_country text,
-            p_billing_address_complement text,
-            p_role text,
-            p_tier text,
-            p_salon_id uuid default null
-          )
-          RETURNS void
-          LANGUAGE plpgsql
-          SECURITY DEFINER
-          SET search_path = public
-          AS $$
-          DECLARE
-            v_set_clauses text := '';
-            v_has_first_name boolean;
-            v_has_last_name boolean;
-            v_has_billing_address boolean;
-            v_has_billing_postal_code boolean;
-            v_has_billing_city boolean;
-            v_has_billing_state boolean;
-            v_has_billing_country boolean;
-            v_has_billing_address_complement boolean;
-            v_has_role boolean;
-            v_has_tier boolean;
-            v_has_salon_id boolean;
-          BEGIN
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'first_name') INTO v_has_first_name;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'last_name') INTO v_has_last_name;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_address') INTO v_has_billing_address;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_postal_code') INTO v_has_billing_postal_code;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_city') INTO v_has_billing_city;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_state') INTO v_has_billing_state;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_country') INTO v_has_billing_country;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'billing_address_complement') INTO v_has_billing_address_complement;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'role') INTO v_has_role;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'tier') INTO v_has_tier;
-            SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'salon_id') INTO v_has_salon_id;
-            
-            v_set_clauses := 'full_name = ' || quote_literal(p_full_name);
-            IF v_has_first_name THEN v_set_clauses := v_set_clauses || ', first_name = ' || quote_literal(p_first_name); END IF;
-            IF v_has_last_name THEN v_set_clauses := v_set_clauses || ', last_name = ' || quote_literal(p_last_name); END IF;
-            IF p_phone IS NOT NULL THEN v_set_clauses := v_set_clauses || ', phone = ' || quote_literal(p_phone); END IF;
-            IF v_has_billing_address AND p_billing_address IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_address = ' || quote_literal(p_billing_address); END IF;
-            IF v_has_billing_postal_code AND p_billing_postal_code IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_postal_code = ' || quote_literal(p_billing_postal_code); END IF;
-            IF v_has_billing_city AND p_billing_city IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_city = ' || quote_literal(p_billing_city); END IF;
-            IF v_has_billing_state AND p_billing_state IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_state = ' || quote_literal(p_billing_state); END IF;
-            IF v_has_billing_country THEN v_set_clauses := v_set_clauses || ', billing_country = ' || quote_literal(COALESCE(p_billing_country, 'BR')); END IF;
-            IF v_has_billing_address_complement AND p_billing_address_complement IS NOT NULL THEN v_set_clauses := v_set_clauses || ', billing_address_complement = ' || quote_literal(p_billing_address_complement); END IF;
-            IF v_has_role AND p_role IS NOT NULL THEN v_set_clauses := v_set_clauses || ', role = ' || quote_literal(p_role) || '::profile_role'; END IF;
-            IF v_has_tier AND p_tier IS NOT NULL THEN v_set_clauses := v_set_clauses || ', tier = ' || quote_literal(p_tier) || '::subscription_tier'; END IF;
-            IF v_has_salon_id AND p_salon_id IS NOT NULL THEN v_set_clauses := v_set_clauses || ', salon_id = ' || quote_literal(p_salon_id); END IF;
-            v_set_clauses := v_set_clauses || ', updated_at = now()';
-            EXECUTE format('UPDATE "public"."profiles" SET %s WHERE id = %L', v_set_clauses, p_user_id);
-          END;
-          $$;
-        `)
-  } catch (createErr) {
-    // Se falhar ao preparar tipos/função, retornar erro SEM criar usuário
-    console.error("Erro ao preparar tipos/função no banco:", createErr)
-    return { error: `Erro ao preparar banco de dados: ${(createErr as Error).message}` }
-  }
-
-  // 2. AGORA SIM: Criar usuário no Supabase Auth (após tudo estar pronto)
+  // Criar usuário no Supabase Auth
   const supabase = await createClient()
-  let authData: { user: { id: string } | null } | null = null
   let userId: string | null = null
 
   try {
@@ -181,98 +77,77 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
       return { error: "Erro ao criar usuário" }
     }
 
-    authData = signUpResult.data
     userId = signUpResult.data.user.id
 
-    // Aguardar um pouco para garantir que o trigger do Supabase criou o perfil
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // Aguarda o trigger do Supabase criar o perfil (polling ao invés de sleep fixo)
+    let profileReady = false
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 250))
+      const existing = await db.query.profiles.findFirst({
+        where: eq(profiles.id, userId),
+        columns: { id: true },
+      })
+      if (existing) { profileReady = true; break }
+    }
+    if (!profileReady) {
+      throw new Error("Perfil não criado pelo trigger após cadastro. Tente novamente.")
+    }
 
-    // 3. Fazer tudo em uma transação usando Drizzle
-    // Usar função stored procedure para bypassar RLS
+    // Configurar perfil e salão em uma única transação
+    // O cliente direto do Drizzle (service-level) bypassa RLS automaticamente
     await db.transaction(async (tx) => {
-      // 1. Atualizar o perfil usando função stored procedure (bypassa RLS)
-      // O trigger já criou o perfil, então apenas atualizamos
-      // Nota: auth.ts usa fluxo simplificado, campos de billing podem ser preenchidos depois
-      await tx.execute(sql`
-        SELECT update_profile_on_signup(
-          ${userId}::uuid,
-            ${full_name}::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            'BR'::text,
-            NULL::text,
-            ${'OWNER'}::text,
-            ${plan}::text,
-            NULL::uuid
-          )
-        `)
+      // 1. Atualizar perfil com role e tier
+      await tx.update(profiles).set({
+        fullName: full_name,
+        role: 'OWNER',
+        tier: plan,
+        billingCountry: 'BR',
+        updatedAt: new Date(),
+      }).where(eq(profiles.id, userId!))
 
       // 2. Criar salão
-      if (!userId) {
-        throw new Error("User ID is required to create salon")
-      }
       const slug = salon_name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7)
       const [newSalon] = await tx.insert(salons)
         .values({
           name: salon_name,
-          ownerId: userId!, // Non-null assertion: userId is guaranteed to exist at this point
+          ownerId: userId!,
           slug,
-          subscriptionStatus: 'ACTIVE', // Mock payment as active
+          subscriptionStatus: 'TRIAL',
         })
         .returning({ id: salons.id })
 
-      // 3. Vincular salão ao perfil usando função stored procedure
-      await tx.execute(sql`
-        SELECT update_profile_on_signup(
-          ${userId}::uuid,
-            ${full_name}::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            NULL::text,
-            'BR'::text,
-            NULL::text,
-            ${'OWNER'}::text,
-            ${plan}::text,
-          ${newSalon.id}::uuid
-        )
-      `)
+      // 3. Vincular salão ao perfil
+      await tx.update(profiles).set({
+        salonId: newSalon.id,
+        updatedAt: new Date(),
+      }).where(eq(profiles.id, userId!))
     })
   } catch (err) {
     console.error("Erro CRÍTICO ao configurar conta no DB:", err)
 
-    // Deletar o usuário do Auth se a criação do perfil/salão falhar
-    // Isso garante que não fiquem usuários órfãos no sistema
     if (userId) {
       try {
         const adminClient = createAdminClient()
         if (adminClient) {
           await adminClient.auth.admin.deleteUser(userId)
-          console.log(`Usuário ${userId} deletado do Auth devido a erro na criação do perfil`)
+          console.log(`Usuário ${userId} deletado do Auth (rollback de signup)`)
         } else {
-          console.warn(`Não foi possível deletar usuário ${userId} do Auth: SUPABASE_SERVICE_ROLE_KEY não configurada`)
+          console.warn(`SUPABASE_SERVICE_ROLE_KEY não configurada — fazendo cleanup manual no banco para userId=${userId}`)
+          await db.delete(profiles).where(eq(profiles.id, userId))
         }
       } catch (deleteErr) {
-        console.error("Erro ao deletar usuário do Auth após falha:", deleteErr)
-        // Continuar mesmo se a deleção falhar - o importante é reportar o erro original
+        console.error(`Falha no cleanup para userId=${userId}:`, deleteErr)
       }
     }
 
     return { error: `Erro ao configurar sua conta. Detalhe: ${(err as Error).message}` }
   }
 
-  // Signup já criou o salão na transação acima, redireciona para o dashboard
+  // Signup já criou o salão na transação acima
+  // Redireciona para página de expiração que terá os botões de checkout Stripe
   const salonResult = await getOwnerSalonId()
   if (!isSalonOwnerError(salonResult)) {
-    redirect(`/${salonResult.salonId}/dashboard`)
+    redirect(`/${salonResult.salonId}/expired`)
   }
 
   // Fallback: se por algum motivo o salão não foi encontrado, vai para onboarding

@@ -52,41 +52,41 @@ export const FEATURES: Feature[] = [
 export const PLANS: Plan[] = [
   {
     name: "Solo",
-    price: "R$ 1,00",
+    price: "R$ 299",
     highlight: true,
-    description: "XXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    description: "Ideal para profissionais autonomos que querem automatizar o atendimento.",
     features: [
-      "X",
-      "X",
-      "X",
-      "X",
-      "X"
+      "1 Salao",
+      "1 Agente IA",
+      "Atendimento WhatsApp automatizado",
+      "Agendamento inteligente",
+      "Suporte por email"
     ],
     buttonText: "Escolher Solo"
   },
   {
     name: "Pro",
-    price: "R$ 2,00",
-    description: "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
+    price: "R$ 999",
+    description: "Para negocios em crescimento que precisam de mais capacidade e integracao.",
     features: [
-      "Y",
-      "Y",
-      "Y",
-      "Y",
-      "Y"
+      "Ate 3 Saloes",
+      "3 Agentes IA",
+      "Integracoes avancadas",
+      "Relatorios e metricas",
+      "Suporte prioritario"
     ],
     buttonText: "Escolher Pro"
   },
   {
     name: "Enterprise",
     price: "Sob Consulta",
-    description: "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ" ,
+    description: "Solucao personalizada para redes e grandes operacoes.",
     features: [
-      "Z",
-      "Z",
-      "Z",
-      "Z",
-      "Z"
+      "Saloes ilimitados",
+      "Agentes ilimitados",
+      "API dedicada",
+      "Gerente de conta exclusivo",
+      "SLA garantido"
     ],
     buttonText: "Fale conosco"
   }

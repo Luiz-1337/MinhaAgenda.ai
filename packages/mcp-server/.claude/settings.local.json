@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc:*)",
-      "Bash(grep -rl \"slate-[0-9]\\\\|indigo-[0-9]\" E:/minhaagendaai_v2/apps/web/app/[salonId] E:/minhaagendaai_v2/apps/web/components --include=*.tsx)"
+      "Bash(grep -rl \"slate-[0-9]\\\\|indigo-[0-9]\" E:/minhaagendaai_v2/apps/web/app/[salonId] E:/minhaagendaai_v2/apps/web/components --include=*.tsx)",
+      "mcp__bfab6ab9-924d-4fb9-a69e-ffd3aee2064f__create_product",
+      "mcp__bfab6ab9-924d-4fb9-a69e-ffd3aee2064f__create_price",
+      "Read(//e/minhaagendaai_v2/apps/web/**)",
+      "Bash(pnpm add:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(node -e \":*)"
     ]
   }
 }

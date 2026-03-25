@@ -15,7 +15,7 @@ import {
   getSessionErrorReason,
 } from "../lib/services/evolution-message.service";
 import { restartInstance } from "../lib/services/evolution-instance.service";
-import { db, chats, domainServices, eq } from "@repo/db";
+import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
 import { WhatsAppError, RateLimitError, getUserFriendlyMessage } from "../lib/errors";
 import { withTimeout } from "../lib/utils/async.utils";
 import { WhatsAppMetrics } from "../lib/metrics";
@@ -54,6 +54,32 @@ async function triggerSessionRecovery(
     );
   }
   // Keep lock until TTL expires to avoid recovery loops.
+}
+
+/**
+ * Envia uma mensagem de aviso ao cliente quando a assinatura do salão está inativa.
+ * Usa um TTL no Redis para evitar spam: envia no máximo uma vez a cada 24h por chat.
+ */
+async function notifyClientSubscriptionBlocked(
+  sendTo: string,
+  salonId: string,
+  reason: 'canceled' | 'past_due',
+  jobLogger: ReturnType<typeof createContextLogger>
+): Promise<void> {
+  try {
+    const redis = getRedisClient();
+    const cooldownKey = `subscription:blocked:${salonId}:${sendTo}`;
+    const alreadyNotified = await redis.set(cooldownKey, '1', 'EX', 60 * 60 * 24, 'NX');
+    if (alreadyNotified === null) return; // Já notificado nas últimas 24h
+
+    const message = reason === 'canceled'
+      ? 'Olá! No momento nosso atendimento automatizado está temporariamente indisponível. Entre em contato diretamente conosco para agendar. Desculpe o transtorno!'
+      : 'Olá! Estamos com uma pendência no pagamento e o atendimento automatizado está pausado. Entre em contato conosco diretamente. Obrigado pela compreensão!';
+
+    await sendWhatsAppMessage(sendTo, message, salonId);
+  } catch (err) {
+    jobLogger.warn({ err }, "Failed to send subscription blocked notification to client");
+  }
 }
 
 async function processMessage(
@@ -124,7 +150,8 @@ async function processMessage(
 
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
     if (!lockId) {
-      jobLogger.warn("Could not acquire lock, proceeding without lock");
+      jobLogger.warn("Could not acquire lock, deferring to next attempt");
+      throw new Error(`Lock unavailable for chat ${chatId}`);
     }
 
     // Coalescing: verifica se uma mensagem mais recente chegou para o mesmo chat.
@@ -158,6 +185,39 @@ async function processMessage(
         messageId,
         duration: Date.now() - startTime,
       };
+    }
+
+    // Check subscription status before processing
+    const salonRecord = await db.query.salons.findFirst({
+      where: eq(salonsTable.id, salonId),
+      columns: { subscriptionStatus: true, updatedAt: true },
+    });
+
+    if (!salonRecord || salonRecord.subscriptionStatus === 'CANCELED') {
+      jobLogger.info({ salonId, status: salonRecord?.subscriptionStatus }, "Salon subscription inactive, skipping AI processing");
+      await notifyClientSubscriptionBlocked(sendTo, salonId, 'canceled', jobLogger);
+      return {
+        status: "manual_mode",
+        chatId,
+        messageId,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // PAST_DUE: 3 days grace period
+    if (salonRecord.subscriptionStatus === 'PAST_DUE') {
+      const gracePeriodMs = 3 * 24 * 60 * 60 * 1000; // 3 days
+      const updatedAt = salonRecord.updatedAt ? new Date(salonRecord.updatedAt).getTime() : 0;
+      if (Date.now() - updatedAt > gracePeriodMs) {
+        jobLogger.info({ salonId }, "Salon PAST_DUE grace period expired, skipping AI processing");
+        await notifyClientSubscriptionBlocked(sendTo, salonId, 'past_due', jobLogger);
+        return {
+          status: "manual_mode",
+          chatId,
+          messageId,
+          duration: Date.now() - startTime,
+        };
+      }
     }
 
     const { getSalonRemainingCredits } = await import("../lib/services/credits.service");
@@ -238,6 +298,12 @@ async function processMessage(
       model: response.model,
       requiresResponse,
     });
+
+    // Debita os tokens usados do saldo mensal do salão
+    if (response.usage.totalTokens > 0) {
+      const { debitSalonCredits } = await import("../lib/services/credits.service");
+      await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
+    }
 
     const duration = Date.now() - startTime;
 

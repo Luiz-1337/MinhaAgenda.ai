@@ -174,10 +174,10 @@ export default function RegisterPage() {
     }
 
     if (result.success && result.data) {
-      toast.success("Conta criada com sucesso!")
+      toast.success("Conta criada com sucesso! Redirecionando para pagamento...")
       reset()
-      // Redirecionar para o dashboard - o usuário já está autenticado pelo signUp
-      router.push(`/${result.data.salonId}/dashboard`)
+      // Redirecionar para a página de pagamento (expired tem os botões de checkout)
+      router.push(`/${result.data.salonId}/expired`)
     }
   }
 

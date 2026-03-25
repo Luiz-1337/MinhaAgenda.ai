@@ -83,7 +83,7 @@ export async function generateAIResponse(
     const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
-      getChatHistory(chatId, 6), // Reduzido de 10 para 6
+      getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 10),
       createMCPTools(salonId, clientPhone),
       customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined)
     ]);

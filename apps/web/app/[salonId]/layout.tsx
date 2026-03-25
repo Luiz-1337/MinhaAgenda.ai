@@ -49,6 +49,7 @@ export default async function SalonLayout({
     redirect(`/${salons[0].id}/dashboard`)
   }
 
+
   return (
     <SalonProvider initialSalons={salons}>
       <RouteGuard />

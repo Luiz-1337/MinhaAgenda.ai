@@ -25,4 +25,5 @@ export interface SalonListItem {
   whatsapp?: string | null
   planTier: PlanTier
   role: ProfessionalRole
+  subscriptionStatus: SubscriptionStatus
 }

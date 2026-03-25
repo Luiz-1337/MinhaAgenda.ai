@@ -22,6 +22,18 @@ export function RouteGuard() {
 
     if (!section) return // Root /salon-id usually redirects to dashboard
 
+    // Guard de assinatura: redireciona para /expired se não está pago
+    const allowedWhenExpired = ['expired', 'billing']
+    const status = activeSalon.subscriptionStatus
+    if (
+      status &&
+      ['CANCELED', 'PAST_DUE', 'TRIAL'].includes(status) &&
+      !allowedWhenExpired.includes(section)
+    ) {
+      router.replace(`/${activeSalon.id}/expired`)
+      return
+    }
+
     if (role === 'STAFF') {
       const forbiddenSections = ['dashboard', 'settings', 'team', 'services', 'billing', 'contacts', 'agents']
       if (forbiddenSections.includes(section)) {

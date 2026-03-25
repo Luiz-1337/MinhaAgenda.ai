@@ -181,7 +181,8 @@ export class CheckAvailabilityUseCase {
     // Converter para DTOs
     const slotDTOs: TimeSlotDTO[] = baseSlots.map((slot) => {
       // Se for hoje e o slot já passou, marca como indisponível
-      const isPast = isToday && slot.start <= now
+      // Usa nowBrazil (ajustado) para comparar no mesmo espaço de tempo que slot.start
+      const isPast = isToday && slot.start <= nowBrazil
       return {
         time: slot.formatStartTime(),
         available: !isPast && slot.available && slot.canFit(serviceDuration),

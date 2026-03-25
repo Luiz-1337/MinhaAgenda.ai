@@ -5,7 +5,7 @@ import { CreditCard, Zap, Star, Crown } from "lucide-react"
 const plans = [
     {
         name: "Solo",
-        price: "R$ 97/mês",
+        price: "R$ 299/mês",
         icon: Zap,
         color: "text-blue-500",
         bgColor: "bg-blue-500/10",
@@ -13,7 +13,7 @@ const plans = [
     },
     {
         name: "Pro",
-        price: "R$ 197/mês",
+        price: "R$ 999/mês",
         icon: Star,
         color: "text-indigo-500",
         bgColor: "bg-indigo-500/10",
