@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep -rl \"slate-[0-9]\\\\|indigo-[0-9]\" E:/minhaagendaai_v2/apps/web/app/[salonId] E:/minhaagendaai_v2/apps/web/components --include=*.tsx)"
     ]
   }
 }

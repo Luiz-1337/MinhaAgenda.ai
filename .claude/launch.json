@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js Web App",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "web", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "BullMQ Worker",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "web", "run", "worker:dev"],
+      "port": null
+    },
+    {
+      "name": "MCP Server (tsc watch)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@repo/mcp-server", "run", "dev"],
+      "port": null
+    }
+  ]
+}
