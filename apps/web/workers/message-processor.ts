@@ -3,7 +3,7 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { createRedisClientForBullMQ, acquireLock, releaseLock } from "../lib/redis";
+import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/redis";
 import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/logger";
 import { checkPhoneRateLimit } from "../lib/rate-limit";
@@ -125,6 +125,24 @@ async function processMessage(
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
     if (!lockId) {
       jobLogger.warn("Could not acquire lock, proceeding without lock");
+    }
+
+    // Coalescing: verifica se uma mensagem mais recente chegou para o mesmo chat.
+    // Se sim, este job é descartado silenciosamente — o job mais recente irá
+    // processar toda a conversa (incluindo esta mensagem, que já está no DB).
+    const redis = getRedisClient();
+    const latestMessageId = await redis.get(`chat:latest-job:${chatId}`);
+    if (latestMessageId && latestMessageId !== messageId) {
+      jobLogger.info(
+        { latestMessageId },
+        "Message coalesced — newer message will handle the response"
+      );
+      return {
+        status: "coalesced",
+        chatId,
+        messageId,
+        duration: Date.now() - startTime,
+      };
     }
 
     const chatRecord = await db.query.chats.findFirst({

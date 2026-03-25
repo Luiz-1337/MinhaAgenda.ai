@@ -50,7 +50,7 @@ export interface MessageJobData {
  * Resultado do processamento de mensagem
  */
 export interface MessageJobResult {
-  status: "success" | "manual_mode" | "media_handled" | "rate_limited" | "out_of_credits" | "error";
+  status: "success" | "manual_mode" | "media_handled" | "rate_limited" | "out_of_credits" | "error" | "coalesced";
   chatId: string;
   messageId: string;
   responseText?: string;
@@ -61,6 +61,14 @@ export interface MessageJobResult {
 
 // Nome da fila
 const QUEUE_NAME = "whatsapp-messages";
+
+// Janela de debounce: mensagens do mesmo chat enviadas dentro deste intervalo
+// serão coalescidas (apenas a mais recente gera resposta de IA).
+// Configurável via CHAT_DEBOUNCE_MS. Padrão: 1500ms.
+const CHAT_DEBOUNCE_MS = parseInt(process.env.CHAT_DEBOUNCE_MS ?? "1500", 10);
+
+// Prefixo da chave Redis que rastreia a mensagem mais recente por chat
+const CHAT_LATEST_JOB_KEY = (chatId: string) => `chat:latest-job:${chatId}`;
 
 // Singleton da fila
 let messageQueue: Queue<MessageJobData, MessageJobResult> | null = null;
@@ -137,16 +145,21 @@ export async function enqueueMessage(
   data: MessageJobData
 ): Promise<Job<MessageJobData, MessageJobResult>> {
   const queue = getMessageQueue();
+  const redis = getRedisClient();
 
   // Prioridade: texto (1) > mídia (2)
   // Menor número = maior prioridade
   const priority = data.hasMedia ? 2 : 1;
 
+  // Atualiza o sentinel de última mensagem do chat ANTES de enfileirar.
+  // O worker usa esse valor para decidir se deve gerar resposta de IA ou
+  // se uma mensagem mais recente já assumiu a responsabilidade (coalescing).
+  await redis.set(CHAT_LATEST_JOB_KEY(data.chatId), data.messageId, "EX", 300);
+
   const job = await queue.add("process-message", data, {
     jobId: data.messageId, // Garante unicidade (idempotência)
     priority,
-    // Dados para agrupamento (jobs do mesmo chat processados em ordem)
-    // Nota: BullMQ não tem groups nativamente, usamos isso para logging
+    delay: CHAT_DEBOUNCE_MS, // Aguarda antes de processar para permitir coalescing
   });
 
   logger.info(
@@ -156,6 +169,7 @@ export async function enqueueMessage(
       chatId: data.chatId,
       priority,
       hasMedia: data.hasMedia,
+      debounceMs: CHAT_DEBOUNCE_MS,
     },
     "Message enqueued"
   );
