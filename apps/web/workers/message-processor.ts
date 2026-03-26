@@ -150,8 +150,20 @@ async function processMessage(
 
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
     if (!lockId) {
-      jobLogger.warn("Could not acquire lock, deferring to next attempt");
-      throw new Error(`Lock unavailable for chat ${chatId}`);
+      // Outra instância está processando este chat (ou um processo anterior travou
+      // e ainda segura o lock até o TTL expirar). Marcar como deferred — não retry,
+      // pois os retries (2s/4s) chegam muito antes do lock expirar (120s) e
+      // gastariam todas as tentativas sem sucesso.
+      jobLogger.info(
+        { chatId, lockTtlMs: LOCK_TTL_MS },
+        "Chat lock unavailable — another worker is processing. Marking as deferred."
+      );
+      return {
+        status: "deferred",
+        chatId,
+        messageId,
+        duration: Date.now() - startTime,
+      };
     }
 
     // Coalescing: verifica se uma mensagem mais recente chegou para o mesmo chat.
