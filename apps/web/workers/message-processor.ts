@@ -6,7 +6,6 @@ import { Worker, Job, DelayedError } from "bullmq";
 import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/redis";
 import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/logger";
-import { checkPhoneRateLimit } from "../lib/rate-limit";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
 import { saveMessage } from "../lib/services/chat.service";
 import {
@@ -17,7 +16,7 @@ import {
 } from "../lib/services/evolution-message.service";
 import { restartInstance } from "../lib/services/evolution-instance.service";
 import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
-import { WhatsAppError, RateLimitError, getUserFriendlyMessage } from "../lib/errors";
+import { WhatsAppError, getUserFriendlyMessage } from "../lib/errors";
 import { withTimeout } from "../lib/utils/async.utils";
 import { WhatsAppMetrics } from "../lib/metrics";
 
@@ -127,27 +126,9 @@ async function processMessage(
   try {
     jobLogger.info("Processing message job");
 
-    try {
-      await checkPhoneRateLimit(clientPhone);
-    } catch (error) {
-      if (error instanceof RateLimitError) {
-        jobLogger.warn({ resetIn: error.resetIn }, "Rate limit exceeded, will retry");
-
-        await sendWhatsAppMessage(
-          sendTo,
-          "Voce esta enviando muitas mensagens. Por favor, aguarde um momento antes de enviar outra.",
-          salonId
-        );
-
-        return {
-          status: "rate_limited",
-          chatId,
-          messageId,
-          duration: Date.now() - startTime,
-        };
-      }
-      throw error;
-    }
+    // Rate limiting é feito no webhook (antes de enfileirar).
+    // Não verificar aqui novamente — causaria double-count no Redis e
+    // dispararia avisos desnecessários ao cliente.
 
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
     if (!lockId) {
