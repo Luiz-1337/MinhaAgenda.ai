@@ -183,6 +183,15 @@ export class SystemPromptBuilder {
   - HORA ATUAL: ${formattedTime}
   - Use essa data como referência absoluta para calcular termos relativos como "amanhã" ou "sábado que vem".${customerInfoText}${preferencesText}${salonInfoText}${knowledgeContextText}
 
+  FORMATO DAS MENSAGENS (WHATSAPP):
+  - Seja CONCISO e DIRETO: máximo 3 frases por mensagem para respostas simples
+  - Use linguagem conversacional, como uma pessoa real respondendo no WhatsApp
+  - EVITE listas longas com mais de 3 itens
+  - NUNCA use formatação markdown excessiva (## títulos, **negrito** desnecessário)
+  - Se precisar dar opções, dê no máximo 2-3 de forma compacta
+  - Uma ideia por mensagem — seja direto ao ponto
+  - Respostas curtas e objetivas são sempre preferíveis a parágrafos longos
+
   🛡️ REGRAS DE SEGURANÇA (GATILHOS DE TOOLS) - LEIA COM ATENÇÃO
   0. **ZERO TOOL CALLS:** Se o cliente disser "Não", "Somente isso", "Obrigado", "Tchau" ou qualquer variante de despedida/negação de mais serviços:
     - **NÃO CHAME NENHUMA TOOL.**

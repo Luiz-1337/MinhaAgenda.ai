@@ -164,7 +164,7 @@ export async function sendWhatsAppMessage(
   if (salon.evolutionConnectionStatus !== 'connected') {
     throw new WhatsAppMessageError(
       'WhatsApp not connected. Please scan QR code first.',
-      false
+      true // RETRYABLE: connection may recover within retry window
     );
   }
 

@@ -2,7 +2,7 @@
  * Async worker for WhatsApp message processing.
  */
 
-import { Worker, Job } from "bullmq";
+import { Worker, Job, DelayedError } from "bullmq";
 import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/redis";
 import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/logger";
@@ -13,6 +13,7 @@ import {
   sendWhatsAppMessage,
   isSessionError,
   getSessionErrorReason,
+  WhatsAppMessageError,
 } from "../lib/services/evolution-message.service";
 import { restartInstance } from "../lib/services/evolution-instance.service";
 import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
@@ -150,20 +151,17 @@ async function processMessage(
 
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
     if (!lockId) {
-      // Outra instância está processando este chat (ou um processo anterior travou
-      // e ainda segura o lock até o TTL expirar). Marcar como deferred — não retry,
-      // pois os retries (2s/4s) chegam muito antes do lock expirar (120s) e
-      // gastariam todas as tentativas sem sucesso.
+      // Outra instância está processando este chat. Reagendar o job para 60s depois
+      // usando moveToDelayed + DelayedError — não conta como tentativa falha.
+      // Após 60s o lock já foi liberado e o job reprocessa normalmente.
+      // O check de coalescing decidirá se deve gerar resposta ou pular.
+      const retryDelay = 60_000;
       jobLogger.info(
-        { chatId, lockTtlMs: LOCK_TTL_MS },
-        "Chat lock unavailable — another worker is processing. Marking as deferred."
+        { chatId, lockTtlMs: LOCK_TTL_MS, retryIn: retryDelay },
+        "Chat lock unavailable — rescheduling job for later."
       );
-      return {
-        status: "deferred",
-        chatId,
-        messageId,
-        duration: Date.now() - startTime,
-      };
+      await job.moveToDelayed(Date.now() + retryDelay, job.token!);
+      throw new DelayedError();
     }
 
     // Coalescing: verifica se uma mensagem mais recente chegou para o mesmo chat.
@@ -236,14 +234,8 @@ async function processMessage(
     const creditsResult = await getSalonRemainingCredits(salonId);
 
     if ('error' in creditsResult) {
-      jobLogger.error({ salonId, error: creditsResult.error }, "Failed to fetch remaining credits");
-      // Fallback: If we can't find credits, we still skip AI processing to be safe and avoid overcharging
-      return {
-        status: "manual_mode",
-        chatId,
-        messageId,
-        duration: Date.now() - startTime,
-      };
+      jobLogger.error({ salonId, error: creditsResult.error }, "Failed to fetch remaining credits, will retry");
+      throw new Error(`Credits check failed: ${creditsResult.error}`);
     }
 
     if (creditsResult.remaining <= 0) {
@@ -410,6 +402,28 @@ async function processMessage(
         duration,
         error: error instanceof Error ? error.message : "Unknown error",
       };
+    }
+
+    // WhatsAppMessageError (evolution-message.service.ts) não estende WhatsAppError —
+    // precisa de guard separado para evitar que erros non-retryable fiquem em loop.
+    if (error instanceof WhatsAppMessageError) {
+      if (!error.retryable) {
+        const errorMessage = "Desculpe, não consegui enviar sua resposta. Tente novamente em instantes.";
+        try {
+          await sendWhatsAppMessage(sendTo, errorMessage, salonId);
+          await saveMessage(chatId, "assistant", errorMessage);
+        } catch (sendError) {
+          jobLogger.error({ err: sendError }, "Failed to send WhatsAppMessageError fallback to client");
+        }
+        return {
+          status: "error",
+          chatId,
+          messageId,
+          duration,
+          error: error.message,
+        };
+      }
+      throw error; // retryable — BullMQ retentar com backoff
     }
 
     throw error;
