@@ -76,7 +76,7 @@ export class DrizzleProductRepository implements IProductRepository {
       isActive: data.isActive,
     })
 
-    this.listCache.clear()
+    this.listCache.invalidate(data.salonId)
   }
 
   async update(product: Product): Promise<void> {
@@ -92,6 +92,6 @@ export class DrizzleProductRepository implements IProductRepository {
       })
       .where(eq(products.id, data.id))
 
-    this.listCache.clear()
+    this.listCache.invalidate(data.salonId)
   }
 }

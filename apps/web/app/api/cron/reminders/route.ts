@@ -1,6 +1,8 @@
 import { logger, db } from '@repo/db'
 import { sendWhatsAppMessage } from '@/lib/services/evolution-message.service'
 import { dispatchDailyReminders } from '@/lib/services/reminders.service'
+import { requireCronAuth } from '@/lib/services/admin-auth.service'
+import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
 
@@ -9,7 +11,9 @@ const sendReminderMessage = async (to: string, body: string, salonId: string): P
     await sendWhatsAppMessage(to, body, salonId)
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = requireCronAuth(request.headers)
+    if (authError) return authError
     try {
         const result = await dispatchDailyReminders(sendReminderMessage)
 

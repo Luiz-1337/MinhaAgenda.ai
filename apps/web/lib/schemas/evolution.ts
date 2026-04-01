@@ -320,17 +320,51 @@ export function hasMedia(messageData: z.infer<typeof MessagesUpsertDataSchema>):
 }
 
 /**
+ * Validates that a media URL is from a trusted source (Evolution API or WhatsApp CDN).
+ * Rejects URLs pointing to internal networks or untrusted domains.
+ */
+function isAllowedMediaUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+
+    const hostname = parsed.hostname;
+    // Block internal/private network addresses
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('172.') ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal')
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Extract media URL from message
  */
 export function extractMediaUrl(messageData: z.infer<typeof MessagesUpsertDataSchema>): string | null {
   const msg = messageData.message;
 
-  if (msg.imageMessage?.url) return msg.imageMessage.url;
-  if (msg.audioMessage?.url) return msg.audioMessage.url;
-  if (msg.videoMessage?.url) return msg.videoMessage.url;
-  if (msg.documentMessage?.url) return msg.documentMessage.url;
+  const url =
+    msg.imageMessage?.url ??
+    msg.audioMessage?.url ??
+    msg.videoMessage?.url ??
+    msg.documentMessage?.url ??
+    null;
 
-  return null;
+  if (url && !isAllowedMediaUrl(url)) return null;
+
+  return url;
 }
 
 /**

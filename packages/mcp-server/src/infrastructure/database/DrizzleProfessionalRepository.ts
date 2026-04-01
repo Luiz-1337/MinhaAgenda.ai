@@ -199,8 +199,8 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
       )
     }
 
-    this.listCache.clear()
-    this.idCache.clear()
+    this.listCache.invalidate(data.salonId)
+    this.idCache.invalidate(data.id)
   }
 
   async update(professional: Professional): Promise<void> {
@@ -219,7 +219,7 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
       })
       .where(eq(professionals.id, data.id))
 
-    this.listCache.clear()
-    this.idCache.clear()
+    this.listCache.invalidate(data.salonId)
+    this.idCache.invalidate(data.id)
   }
 }

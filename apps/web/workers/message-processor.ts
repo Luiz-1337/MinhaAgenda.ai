@@ -181,7 +181,7 @@ async function processMessage(
     // Check subscription status before processing
     const salonRecord = await db.query.salons.findFirst({
       where: eq(salonsTable.id, salonId),
-      columns: { subscriptionStatus: true, updatedAt: true },
+      columns: { subscriptionStatus: true, subscriptionStatusChangedAt: true },
     });
 
     if (!salonRecord || salonRecord.subscriptionStatus === 'CANCELED') {
@@ -195,11 +195,11 @@ async function processMessage(
       };
     }
 
-    // PAST_DUE: 3 days grace period
+    // PAST_DUE: 3 days grace period from when status changed
     if (salonRecord.subscriptionStatus === 'PAST_DUE') {
       const gracePeriodMs = 3 * 24 * 60 * 60 * 1000; // 3 days
-      const updatedAt = salonRecord.updatedAt ? new Date(salonRecord.updatedAt).getTime() : 0;
-      if (Date.now() - updatedAt > gracePeriodMs) {
+      const changedAt = salonRecord.subscriptionStatusChangedAt ? new Date(salonRecord.subscriptionStatusChangedAt).getTime() : 0;
+      if (Date.now() - changedAt > gracePeriodMs) {
         jobLogger.info({ salonId }, "Salon PAST_DUE grace period expired, skipping AI processing");
         await notifyClientSubscriptionBlocked(sendTo, salonId, 'past_due', jobLogger);
         return {

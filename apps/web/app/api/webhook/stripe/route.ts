@@ -157,7 +157,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
   await db
     .update(salons)
-    .set({ subscriptionStatus: 'PAST_DUE', updatedAt: new Date() })
+    .set({ subscriptionStatus: 'PAST_DUE', subscriptionStatusChangedAt: new Date(), updatedAt: new Date() })
     .where(eq(salons.stripeSubscriptionId, subscriptionId))
 
   console.log(`[Stripe Webhook] Invoice payment failed: subscription=${subscriptionId}`)
@@ -188,7 +188,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     if (localStatus) {
       await tx
         .update(salons)
-        .set({ subscriptionStatus: localStatus, updatedAt: new Date() })
+        .set({ subscriptionStatus: localStatus, subscriptionStatusChangedAt: new Date(), updatedAt: new Date() })
         .where(eq(salons.id, salon.id))
     }
 

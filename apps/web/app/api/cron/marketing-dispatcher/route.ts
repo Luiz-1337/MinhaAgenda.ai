@@ -1,5 +1,7 @@
 import { db, domainServices, logger, recoveryFlows, recoverySteps, sql } from '@repo/db'
 import { sendWhatsAppMessage } from '@/lib/services/evolution-message.service'
+import { requireCronAuth } from '@/lib/services/admin-auth.service'
+import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
 
@@ -8,7 +10,9 @@ const sendMarketingMessage = async (to: string, body: string, salonId: string): 
   await sendWhatsAppMessage(to, body, salonId)
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = requireCronAuth(request.headers)
+  if (authError) return authError
   try {
     const limboRows = await db.execute(sql`
       select

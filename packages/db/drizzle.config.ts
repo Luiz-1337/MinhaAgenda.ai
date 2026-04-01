@@ -20,7 +20,7 @@ export default defineConfig({
     password: decodeURIComponent(u.password),
     database: u.pathname.replace(/^\//, ''),
     ssl: {
-      rejectUnauthorized: false,
+      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
     },
   },
   tablesFilter: ['!libsql_wasm_func_table']

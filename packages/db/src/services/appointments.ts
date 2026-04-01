@@ -1,4 +1,4 @@
-import { and, eq, gt, lt, ne } from "drizzle-orm"
+import { and, eq, gt, lt, ne, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import { db, appointments, availability, professionals, professionalServices, services } from "../index"
@@ -137,10 +137,14 @@ export async function createAppointmentService(input: {
     return { success: false, error: "Horário fora do expediente do profissional" }
   }
 
-  // TRANSAÇÃO: Verificação de conflito + inserção atômica
-  // Isso previne race conditions onde dois agendamentos poderiam ser criados no mesmo horário
+  // TRANSAÇÃO: Advisory lock + verificação de conflito + inserção atômica
+  // O advisory lock garante que apenas uma transação por vez pode criar/modificar
+  // agendamentos para o mesmo profissional, prevenindo race conditions
   try {
     const result = await db.transaction(async (tx) => {
+      // Advisory lock no profissional — previne criações concorrentes
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${professionalId}))`)
+
       // Verifica conflitos com agendamentos existentes (dentro da transação)
       const overlappingAppointment = await tx.query.appointments.findFirst({
         where: and(
@@ -345,7 +349,7 @@ export async function updateAppointmentService(input: {
     }
   }
 
-  // TRANSAÇÃO: Verificação de conflito + atualização atômica
+  // TRANSAÇÃO: Advisory lock + verificação de conflito + atualização atômica
   try {
     await db.transaction(async (tx) => {
       // Verifica conflitos se data ou profissional mudou
@@ -353,6 +357,9 @@ export async function updateAppointmentService(input: {
         finalProfessionalId !== existingAppointment.professionalId
 
       if (needsConflictCheck) {
+        // Advisory lock no profissional — previne modificações concorrentes
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${finalProfessionalId}))`)
+
         const overlappingAppointment = await tx.query.appointments.findFirst({
           where: and(
             eq(appointments.professionalId, finalProfessionalId),
