@@ -45,6 +45,7 @@
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "drizzle-orm": "^0.45.1",
+    "framer-motion": "^12.38.0",
     "google-auth-library": "^9.0.0",
     "googleapis": "^144.0.0",
     "ioredis": "^5.4.2",

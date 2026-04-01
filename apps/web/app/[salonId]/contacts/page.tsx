@@ -1,15 +1,23 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react"
+import dynamic from "next/dynamic"
 import { Search, Download, User, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { getSalonCustomers, deleteSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { useSalon } from "@/contexts/salon-context"
-import { CreateContactDialog } from "@/components/features/create-contact-dialog"
-import { EditContactDialog } from "@/components/features/edit-contact-dialog"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
+
+const CreateContactDialog = dynamic(
+  () => import("@/components/features/create-contact-dialog").then(m => ({ default: m.CreateContactDialog })),
+  { ssr: false }
+)
+const EditContactDialog = dynamic(
+  () => import("@/components/features/edit-contact-dialog").then(m => ({ default: m.EditContactDialog })),
+  { ssr: false }
+)
 
 function exportCustomersToCSV(customers: CustomerRow[]) {
   const headers = ["Nome", "Telefone", "E-mail", "Preferências"]
@@ -37,6 +45,7 @@ export default function ContactsPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState("")
+  const deferredQuery = useDeferredValue(query)
   const [page, setPage] = useState(1)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -66,7 +75,7 @@ export default function ContactsPage() {
   }, [activeSalon?.id])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = deferredQuery.trim().toLowerCase()
     const list = q
       ? customers.filter((c) =>
           c.name.toLowerCase().includes(q) ||
@@ -78,7 +87,7 @@ export default function ContactsPage() {
     const clampedPage = Math.min(page, totalPages)
     const start = (clampedPage - 1) * pageSize
     return { list: list.slice(start, start + pageSize), total: list.length, clampedPage, totalPages }
-  }, [customers, query, page])
+  }, [customers, deferredQuery, page])
 
   function handleExport() {
     if (customers.length === 0) {

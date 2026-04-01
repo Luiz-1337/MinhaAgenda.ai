@@ -68,7 +68,7 @@ export function createSalonTools(
 
     saveCustomerPreference: {
       description:
-        "Salva uma preferência do cliente no CRM do salão. Útil para armazenar informações extraídas da conversa (ex: alergias, preferências).",
+        "Salva uma preferência do cliente no CRM.",
       inputSchema: saveCustomerPreferenceSchema,
       execute: async (input) => {
         try {

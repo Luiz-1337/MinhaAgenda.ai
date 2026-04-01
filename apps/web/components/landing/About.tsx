@@ -1,43 +1,112 @@
+"use client"
+
 import React from 'react';
+import Image from 'next/image';
+import { motion } from 'framer-motion';
+
+const spring = { type: "spring" as const, stiffness: 100, damping: 20 };
+
+const stats = [
+  { value: '24/7', label: 'Atendimento ininterrupto' },
+  { value: '+30%', label: 'Faturamento médio' },
+  { value: '+500', label: 'Salões ativos' },
+  { value: '< 1s', label: 'Tempo de resposta' },
+];
 
 const About: React.FC = () => {
   return (
-    <section id="about" className="py-20 bg-indigo-600 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-        {/* Background patterns */}
-        <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-50"></div>
-        <div className="absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-50"></div>
+    <section
+      id="about"
+      className="relative py-24 bg-foreground dark:bg-muted overflow-hidden"
+    >
+      {/* Subtle glow behind content */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(ellipse 60% 50% at 80% 50%, hsl(221 70% 58% / 0.12) 0%, transparent 70%)',
+        }}
+      />
 
-        <div className="relative z-10 lg:flex lg:items-center gap-16">
-          <div className="lg:w-1/2 mb-10 lg:mb-0">
-            <h2 className="text-base text-indigo-200 font-semibold tracking-wide uppercase">Sobre a IA</h2>
-            <h3 className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-white sm:text-4xl">
-              Não é apenas um chatbot. <br />É o seu concierge digital.
-            </h3>
-            <p className="mt-4 text-lg text-indigo-100 leading-relaxed">
-              Desenvolvemos o <strong>minhaagenda.ai</strong> pensando na dor real dos profissionais da beleza: perder tempo gerenciando agenda ao invés de cuidar dos clientes.
-            </p>
-            <p className="mt-4 text-lg text-indigo-100 leading-relaxed">
-              Nossa IA aprende o estilo do seu salão, entende os tempos de cada procedimento e trata seu cliente com a cordialidade que ele merece, garantindo que nenhuma oportunidade de negócio seja perdida.
-            </p>
-            <div className="mt-8 grid grid-cols-2 gap-4">
-               <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/10">
-                 <p className="text-3xl font-bold text-white">24/7</p>
-                 <p className="text-indigo-200 text-sm">Atendimento ininterrupto</p>
-               </div>
-               <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/10">
-                 <p className="text-3xl font-bold text-white">+30%</p>
-                 <p className="text-indigo-200 text-sm">Aumento no faturamento</p>
-               </div>
+      <div className="relative z-10 max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 lg:gap-20 items-center">
+
+          {/* Left: text + stats */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={spring}
+            className="space-y-8"
+          >
+            <div className="space-y-5">
+              <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+                Sobre a IA
+              </p>
+              <h2 className="text-4xl md:text-5xl font-bold tracking-tighter leading-tight text-background dark:text-foreground">
+                Não é apenas um chatbot.{' '}
+                <em className="font-display not-italic italic font-light">
+                  É o seu concierge digital.
+                </em>
+              </h2>
+              <p className="text-background/70 dark:text-muted-foreground leading-relaxed max-w-lg">
+                Desenvolvemos o{' '}
+                <strong className="font-semibold text-background dark:text-foreground">
+                  minhaagenda.ai
+                </strong>{' '}
+                pensando na dor real dos profissionais da beleza: perder tempo gerenciando agenda ao
+                invés de cuidar dos clientes.
+              </p>
+              <p className="text-background/70 dark:text-muted-foreground leading-relaxed max-w-lg">
+                Nossa IA aprende o estilo do seu salão, entende os tempos de cada procedimento e
+                trata seu cliente com a cordialidade que ele merece — garantindo que nenhuma
+                oportunidade seja perdida.
+              </p>
             </div>
-          </div>
-          <div className="lg:w-1/2">
-            <img 
-              src="https://images.unsplash.com/photo-1560066984-138dadb4c035?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80" 
-              alt="Salão de beleza moderno" 
-              className="rounded-2xl shadow-2xl border-4 border-white/10 rotate-2 hover:rotate-0 transition-transform duration-500"
-            />
-          </div>
+
+            {/* Stats — 2×2 grid, contained within the column */}
+            <div className="grid grid-cols-2 gap-3">
+              {stats.map((stat, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ ...spring, delay: i * 0.06 }}
+                  className="rounded-xl border border-background/15 dark:border-border bg-background/8 dark:bg-card px-4 py-4"
+                >
+                  <p className="text-3xl font-bold tracking-tighter text-background dark:text-foreground">
+                    {stat.value}
+                  </p>
+                  <p className="text-xs text-background/60 dark:text-muted-foreground mt-1">
+                    {stat.label}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Right: image — no floating overlays or badges */}
+          <motion.div
+            initial={{ opacity: 0, x: 24 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ ...spring, delay: 0.12 }}
+          >
+            <div className="relative rounded-2xl overflow-hidden border border-background/10 dark:border-border shadow-2xl shadow-black/30 aspect-[4/5]">
+              <Image
+                src="https://images.unsplash.com/photo-1560066984-138dadb4c035?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                alt="Salão de beleza moderno"
+                fill
+                className="object-cover"
+                sizes="(max-width: 1024px) 100vw, 45vw"
+              />
+              {/* Gradient overlay from bottom for legibility, no heavy filter */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+            </div>
+          </motion.div>
+
         </div>
       </div>
     </section>
@@ -45,4 +114,3 @@ const About: React.FC = () => {
 };
 
 export default About;
-

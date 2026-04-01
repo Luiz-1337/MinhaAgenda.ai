@@ -216,6 +216,9 @@ export async function runOpenAIResponses(
       previous_response_id: previousResponseId,
       tools: responseTools as any,
       parallel_tool_calls: true,
+      temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.4"),
+      max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "800", 10),
+      top_p: parseFloat(process.env.AI_TOP_P ?? "0.9"),
     })
 
     if (response.usage) {
@@ -247,8 +250,18 @@ export async function runOpenAIResponses(
     const stepToolResults: ResponsesRunnerToolResult[] = []
     const functionOutputs: Array<{ type: "function_call_output"; call_id: string; output: string }> = []
 
+    // Fase 1: Parse e validacao sincrona de todos os tool calls
+    type PreparedCall = {
+      toolName: string
+      callId: string
+      toolDef: (typeof tools)[string]
+      validatedArgs: unknown
+    }
+    const preparedCalls: PreparedCall[] = []
+
     for (const functionCall of functionCalls) {
       const toolName = String(functionCall.name ?? "")
+      const callId = String(functionCall.call_id)
       const toolDef = tools[toolName]
 
       let parsedArgs: unknown
@@ -258,94 +271,55 @@ export async function runOpenAIResponses(
         const errorMessage =
           error instanceof Error ? error.message : "Invalid function arguments JSON"
 
-        stepToolCalls.push({
-          toolName,
-          invalid: true,
-          error: errorMessage,
-        })
-
-        const toolErrorResult = {
-          error: true,
-          message: `Invalid arguments for tool ${toolName}: ${errorMessage}`,
-        }
-
-        stepToolResults.push({
-          toolName,
-          isError: true,
-          result: toolErrorResult,
-          error: { message: toolErrorResult.message },
-        })
-
-        functionOutputs.push({
-          type: "function_call_output",
-          call_id: String(functionCall.call_id),
-          output: toOutputString(toolErrorResult),
-        })
-
+        stepToolCalls.push({ toolName, invalid: true, error: errorMessage })
+        const toolErrorResult = { error: true, message: `Invalid arguments for tool ${toolName}: ${errorMessage}` }
+        stepToolResults.push({ toolName, isError: true, result: toolErrorResult, error: { message: toolErrorResult.message } })
+        functionOutputs.push({ type: "function_call_output", call_id: callId, output: toOutputString(toolErrorResult) })
         continue
       }
 
-      stepToolCalls.push({
-        toolName,
-        input: parsedArgs,
-      })
+      stepToolCalls.push({ toolName, input: parsedArgs })
 
       if (!toolDef) {
-        const toolErrorResult = {
-          error: true,
-          message: `Tool not found: ${toolName}`,
-        }
-
-        stepToolResults.push({
-          toolName,
-          isError: true,
-          result: toolErrorResult,
-          error: { message: toolErrorResult.message },
-        })
-
-        functionOutputs.push({
-          type: "function_call_output",
-          call_id: String(functionCall.call_id),
-          output: toOutputString(toolErrorResult),
-        })
-
+        const toolErrorResult = { error: true, message: `Tool not found: ${toolName}` }
+        stepToolResults.push({ toolName, isError: true, result: toolErrorResult, error: { message: toolErrorResult.message } })
+        functionOutputs.push({ type: "function_call_output", call_id: callId, output: toOutputString(toolErrorResult) })
         continue
       }
 
       try {
         const validatedArgs = toolDef.inputSchema.parse(parsedArgs)
-        const result = await toolDef.execute(validatedArgs)
-
-        stepToolResults.push({
-          toolName,
-          result,
-          isError: false,
-        })
-
-        functionOutputs.push({
-          type: "function_call_output",
-          call_id: String(functionCall.call_id),
-          output: toOutputString(result),
-        })
+        preparedCalls.push({ toolName, callId, toolDef, validatedArgs })
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Tool execution failed"
-        const toolErrorResult = {
-          error: true,
-          message: errorMessage,
-        }
+        const errorMessage = error instanceof Error ? error.message : "Schema validation failed"
+        const toolErrorResult = { error: true, message: errorMessage }
+        stepToolResults.push({ toolName, isError: true, result: toolErrorResult, error: { message: errorMessage } })
+        functionOutputs.push({ type: "function_call_output", call_id: callId, output: toOutputString(toolErrorResult) })
+      }
+    }
 
-        stepToolResults.push({
-          toolName,
-          isError: true,
-          result: toolErrorResult,
-          error: { message: errorMessage },
-        })
+    // Fase 2: Executar todos os tool calls validos em PARALELO
+    const executionResults = await Promise.allSettled(
+      preparedCalls.map(async (call) => {
+        const result = await call.toolDef.execute(call.validatedArgs)
+        return { ...call, result }
+      })
+    )
 
-        functionOutputs.push({
-          type: "function_call_output",
-          call_id: String(functionCall.call_id),
-          output: toOutputString(toolErrorResult),
-        })
+    for (const settled of executionResults) {
+      if (settled.status === "fulfilled") {
+        const { toolName, callId, result } = settled.value
+        stepToolResults.push({ toolName, result, isError: false })
+        functionOutputs.push({ type: "function_call_output", call_id: callId, output: toOutputString(result) })
+      } else {
+        // Promise rejected - extract toolName from the error context
+        const errorMessage = settled.reason instanceof Error ? settled.reason.message : "Tool execution failed"
+        const toolErrorResult = { error: true, message: errorMessage }
+        // Find the corresponding prepared call by index
+        const idx = executionResults.indexOf(settled)
+        const call = preparedCalls[idx]
+        stepToolResults.push({ toolName: call.toolName, isError: true, result: toolErrorResult, error: { message: errorMessage } })
+        functionOutputs.push({ type: "function_call_output", call_id: call.callId, output: toOutputString(toolErrorResult) })
       }
     }
 

@@ -1,38 +1,76 @@
+"use client"
+
 import React from 'react';
+import { motion } from 'framer-motion';
 import { FEATURES } from './constants';
+
+const spring = { type: "spring" as const, stiffness: 100, damping: 20 };
 
 const Features: React.FC = () => {
   return (
-    <section id="services" className="py-20 bg-white dark:bg-slate-950 transition-colors duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-base text-indigo-600 dark:text-indigo-400 font-semibold tracking-wide uppercase">Serviços</h2>
-          <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-            Mais que uma agenda, um gerente completo
-          </p>
-          <p className="mt-4 max-w-2xl text-xl text-slate-500 dark:text-slate-400 mx-auto">
-            A tecnologia Gemini impulsiona nossa IA para entender o contexto do seu negócio e agir como seu melhor funcionário.
-          </p>
-        </div>
+    <section id="services" className="py-24 bg-muted/30 border-t border-border">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-50px' }}
+          transition={spring}
+          className="mb-14"
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-3">
+            Serviços
+          </p>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tighter text-foreground max-w-lg leading-tight">
+              Mais que uma agenda,{' '}
+              <em className="font-display not-italic italic font-light">um gerente completo</em>
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-xs lg:text-right">
+              IA generativa que entende o contexto do seu negócio e age como seu melhor funcionário.
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Feature list */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border">
           {FEATURES.map((feature, index) => {
             const Icon = feature.icon;
             return (
-              <div key={index} className="relative p-8 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-white/5 rounded-2xl hover:shadow-xl transition-all duration-300 group">
-                <div className="absolute top-8 right-8 text-slate-200 dark:text-white/5 group-hover:text-indigo-100 dark:group-hover:text-indigo-900/20 transition-colors">
-                  <Icon className="h-16 w-16" />
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-20px' }}
+                transition={{ ...spring, delay: index * 0.05 }}
+                className="group flex items-center gap-5 px-6 py-5 hover:bg-muted/40 transition-colors cursor-default"
+              >
+                {/* Index */}
+                <span className="w-8 text-xs font-mono text-muted-foreground/40 shrink-0 select-none tabular-nums">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+
+                {/* Icon */}
+                <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 dark:bg-primary/15 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <Icon className="w-5 h-5 text-primary" />
                 </div>
-                <div className="relative z-10">
-                  <div className="inline-flex items-center justify-center p-3 bg-indigo-600 dark:bg-indigo-500 rounded-xl shadow-lg shadow-indigo-600/20 mb-6 group-hover:scale-110 transition-transform duration-300">
-                    <Icon className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{feature.title}</h3>
-                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground tracking-tight">
+                    {feature.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">
                     {feature.description}
                   </p>
                 </div>
-              </div>
+
+                {/* Arrow */}
+                <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground">
+                  <ArrowRight />
+                </div>
+              </motion.div>
             );
           })}
         </div>
@@ -41,5 +79,13 @@ const Features: React.FC = () => {
   );
 };
 
-export default Features;
+// Inline arrow to avoid extra import
+function ArrowRight() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
+export default Features;

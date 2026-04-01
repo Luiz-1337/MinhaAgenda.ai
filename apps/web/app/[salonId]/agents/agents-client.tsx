@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState, useTransition, useEffect } from "react"
+import { useDeferredValue, useMemo, useState, useTransition, useEffect } from "react"
+import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText, Loader2, MessageCircle, CheckCircle, Clock, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
@@ -8,8 +9,14 @@ import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/age
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 
-import { QRCodeModal } from "@/components/whatsapp/qrcode-modal"
-import { VerificationModal } from "@/components/whatsapp/verification-modal"
+const QRCodeModal = dynamic(
+  () => import("@/components/whatsapp/qrcode-modal").then(m => ({ default: m.QRCodeModal })),
+  { ssr: false }
+)
+const VerificationModal = dynamic(
+  () => import("@/components/whatsapp/verification-modal").then(m => ({ default: m.VerificationModal })),
+  { ssr: false }
+)
 
 type WhatsAppNumber = {
   phoneNumber: string
@@ -37,6 +44,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   const [agents, setAgents] = useState<AgentRow[]>(initialAgents)
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
+  const deferredSearchTerm = useDeferredValue(searchTerm)
   const [openMenuAgentId, setOpenMenuAgentId] = useState<string | null>(null)
 
   // WhatsApp state
@@ -203,11 +211,11 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       const matchesFilter =
         filter === "all" ? true : filter === "active" ? agent.isActive : !agent.isActive
 
-      const matchesSearch = agent.name.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesSearch = agent.name.toLowerCase().includes(deferredSearchTerm.toLowerCase())
 
       return matchesFilter && matchesSearch
     })
-  }, [agents, filter, searchTerm])
+  }, [agents, filter, deferredSearchTerm])
 
   function handleCreateAgent() {
     router.push(`/${salonId}/agents/new`)

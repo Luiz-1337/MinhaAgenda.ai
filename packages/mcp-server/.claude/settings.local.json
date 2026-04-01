@@ -8,7 +8,11 @@
       "Read(//e/minhaagendaai_v2/apps/web/**)",
       "Bash(pnpm add:*)",
       "Bash(npx drizzle-kit:*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(pushd \"E:\\\\minhaagendaai_v2\\\\apps\\\\web\")",
+      "Bash(ls -d E:/minhaagendaai_v2/apps/web/app/[salonId]/*/)",
+      "Bash(pnpm exec:*)",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }

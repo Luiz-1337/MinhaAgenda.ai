@@ -1,9 +1,9 @@
 import { Result, ok, fail } from "../../../shared/types"
-import { formatDate, getDayOfWeek, formatTime, toBrazilDate, toBrazilTime } from "../../../shared/utils/date.utils"
+import { formatDate, getDayOfWeek, toBrazilDate, toBrazilTime } from "../../../shared/utils/date.utils"
 import { SLOT_DURATION } from "../../../shared/constants"
 import { DomainError } from "../../../domain/errors"
 import { TimeSlot } from "../../../domain/entities"
-import { DateRange } from "../../../domain/value-objects"
+
 import {
   IAppointmentRepository,
   IAvailabilityRepository,
@@ -28,21 +28,12 @@ export class CheckAvailabilityUseCase {
   ): Promise<Result<AvailabilityDTO, DomainError>> {
     const date = new Date(input.date)
 
-    console.log("[AVAILABILITY] Input recebido:", {
-      date: input.date,
-      parsedDate: date.toISOString(),
-      professionalId: input.professionalId,
-      serviceId: input.serviceId,
-      serviceDuration: input.serviceDuration,
-    })
-
     // Determinar duração do serviço
     let serviceDuration = input.serviceDuration ?? SLOT_DURATION
     if (input.serviceId) {
       const service = await this.serviceRepo.findById(input.serviceId)
       if (service) {
         serviceDuration = service.durationMinutes
-        console.log("[AVAILABILITY] Duração do serviço:", serviceDuration, "min")
       }
     }
 
@@ -55,7 +46,6 @@ export class CheckAvailabilityUseCase {
         date,
         serviceDuration
       )
-      console.log("[AVAILABILITY] Slots gerados para profissional:", baseSlots.length)
     }
 
     // Se não tem slots do profissional ou não especificou profissional, usa horário do salão
@@ -64,7 +54,6 @@ export class CheckAvailabilityUseCase {
       if (salon) {
         const dayOfWeek = getDayOfWeek(date)
         const workHours = salon.getWorkingHoursForDay(dayOfWeek)
-        console.log("[AVAILABILITY] Dia da semana (Brasília):", dayOfWeek, "| Horário do salão:", workHours)
 
         if (workHours) {
           baseSlots = this.generateSlotsFromWorkHours(
@@ -74,9 +63,6 @@ export class CheckAvailabilityUseCase {
             serviceDuration,
             input.professionalId
           )
-          console.log("[AVAILABILITY] Slots gerados do salão:", baseSlots.length)
-        } else {
-          console.log("[AVAILABILITY] Salão fechado neste dia da semana")
         }
       }
     }
@@ -84,7 +70,6 @@ export class CheckAvailabilityUseCase {
     // Buscar agendamentos existentes para marcar como ocupados
     if (input.professionalId) {
       const appointments = await this.appointmentRepo.findByProfessionalAndDate(input.professionalId, date)
-      console.log("[AVAILABILITY] Agendamentos existentes:", appointments.length)
 
       // Marcar slots ocupados por agendamentos
       for (const appointment of appointments) {
@@ -100,69 +85,67 @@ export class CheckAvailabilityUseCase {
       }
     }
 
-    // Buscar FreeBusy do Google Calendar (se configurado)
-    if (this.calendarService && input.professionalId) {
-      try {
-        const isConfigured = await this.calendarService.isConfigured(input.salonId)
-        console.log("[AVAILABILITY] Google Calendar configurado:", isConfigured)
+    // Buscar FreeBusy do Google Calendar e Trinks em PARALELO (se configurados)
+    if (input.professionalId) {
+      const { startOfDay, endOfDay } = await import("../../../shared/utils/date.utils")
+      const dayStart = startOfDay(date)
+      const dayEnd = endOfDay(date)
 
-        if (isConfigured) {
-          const { startOfDay, endOfDay } = await import("../../../shared/utils/date.utils")
-          const dayStart = startOfDay(date)
-          const dayEnd = endOfDay(date)
+      const externalFetches: Promise<void>[] = []
 
-          // Usar o professionalId como calendarId (a implementação interna resolve)
-          const busyPeriods = await this.calendarService.getFreeBusy(
-            input.professionalId,
-            dayStart,
-            dayEnd
-          )
-
-          console.log("[AVAILABILITY] Períodos ocupados no Google Calendar:", busyPeriods.length)
-
-          // Marcar slots que conflitam com períodos ocupados
-          for (const busy of busyPeriods) {
-            for (const slot of baseSlots) {
-              if (slot.dateRange.overlaps(busy)) {
-                slot.markUnavailable()
+      if (this.calendarService) {
+        externalFetches.push(
+          (async () => {
+            try {
+              const isConfigured = await this.calendarService!.isConfigured(input.salonId)
+              if (isConfigured) {
+                const busyPeriods = await this.calendarService!.getFreeBusy(
+                  input.professionalId!,
+                  dayStart,
+                  dayEnd
+                )
+                for (const busy of busyPeriods) {
+                  for (const slot of baseSlots) {
+                    if (slot.dateRange.overlaps(busy)) {
+                      slot.markUnavailable()
+                    }
+                  }
+                }
               }
+            } catch (error) {
+              console.warn("[AVAILABILITY] Erro ao buscar Google Calendar FreeBusy:", error)
             }
-          }
-        }
-      } catch (error) {
-        console.warn("[AVAILABILITY] Erro ao buscar Google Calendar FreeBusy:", error)
-        // Não falha - apenas ignora o calendário
+          })()
+        )
       }
-    }
 
-    // Buscar slots ocupados do Trinks (se configurado)
-    if (this.externalScheduler && input.professionalId) {
-      try {
-        const isConfigured = await this.externalScheduler.isConfigured(input.salonId)
-        if (isConfigured) {
-          const { startOfDay, endOfDay } = await import("../../../shared/utils/date.utils")
-          const dayStart = startOfDay(date)
-          const dayEnd = endOfDay(date)
-
-          const busySlots = await this.externalScheduler.getBusySlots(
-            input.professionalId,
-            dayStart,
-            dayEnd
-          )
-
-          console.log("[AVAILABILITY] Slots ocupados no Trinks:", busySlots.length)
-
-          for (const busy of busySlots) {
-            for (const slot of baseSlots) {
-              if (slot.overlaps(busy)) {
-                slot.markUnavailable()
+      if (this.externalScheduler) {
+        externalFetches.push(
+          (async () => {
+            try {
+              const isConfigured = await this.externalScheduler!.isConfigured(input.salonId)
+              if (isConfigured) {
+                const busySlots = await this.externalScheduler!.getBusySlots(
+                  input.professionalId!,
+                  dayStart,
+                  dayEnd
+                )
+                for (const busy of busySlots) {
+                  for (const slot of baseSlots) {
+                    if (slot.overlaps(busy)) {
+                      slot.markUnavailable()
+                    }
+                  }
+                }
               }
+            } catch (error) {
+              console.warn("[AVAILABILITY] Erro ao buscar Trinks:", error)
             }
-          }
-        }
-      } catch (error) {
-        console.warn("[AVAILABILITY] Erro ao buscar Trinks:", error)
+          })()
+        )
       }
+
+      await Promise.all(externalFetches)
     }
 
     // Filtrar slots que já passaram (se for hoje)
@@ -173,10 +156,6 @@ export class CheckAvailabilityUseCase {
       dateBrazil.getFullYear() === nowBrazil.getFullYear() &&
       dateBrazil.getMonth() === nowBrazil.getMonth() &&
       dateBrazil.getDate() === nowBrazil.getDate()
-
-    if (isToday) {
-      console.log("[AVAILABILITY] É hoje - filtrando slots passados (agora UTC:", now.toISOString(), ")")
-    }
 
     // Converter para DTOs
     const slotDTOs: TimeSlotDTO[] = baseSlots.map((slot) => {
@@ -195,8 +174,6 @@ export class CheckAvailabilityUseCase {
       totalAvailable === 0
         ? "Não há horários disponíveis nesta data"
         : `${totalAvailable} horário(s) disponível(is)`
-
-    console.log("[AVAILABILITY] Resultado final:", { totalSlots: slotDTOs.length, totalAvailable })
 
     return ok({
       date: formatDate(date),

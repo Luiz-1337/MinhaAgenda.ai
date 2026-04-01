@@ -21,7 +21,7 @@ import {
 import type { ResponsesRunnerInputMessage } from "./openai-responses-runner.service";
 import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
-import { findRelevantContext } from "./rag-context.service";
+import { findRelevantContext, generateQueryEmbedding } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments, eq, and } from "@repo/db";
@@ -79,13 +79,16 @@ export async function generateAIResponse(
   const startTime = Date.now();
 
   try {
-    // 1. PARALELO: Buscar dados independentes simultaneamente
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk] = await Promise.all([
+    // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
+    const embeddingPromise = generateQueryEmbedding(userMessage);
+
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, speculativeEmbedding] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 10),
       createMCPTools(salonId, clientPhone),
-      customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined)
+      customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined),
+      embeddingPromise.catch(() => null),
     ]);
 
     if (!agentInfo) {
@@ -108,11 +111,11 @@ export async function generateAIResponse(
 
     contextLogger.debug({ model: modelName, agentName: agentInfo.name, toolsCount: Object.keys(mcpTools).length }, "Context loaded in parallel");
 
-    // 2. RAG: Só busca se agente tiver knowledge base configurada
+    // 2. RAG: Usa embedding especulativo (já pronto) se agente tiver knowledge base
     let knowledgeContext: string | undefined;
     if (agentInfo.id && agentInfo.hasKnowledgeBase) {
       if (AI_DEBUG) console.log("\n🔍 RAG: Searching for knowledge context...");
-      knowledgeContext = await fetchKnowledgeContext(agentInfo.id, userMessage, contextLogger);
+      knowledgeContext = await fetchKnowledgeContext(agentInfo.id, userMessage, contextLogger, speculativeEmbedding);
 
       if (AI_DEBUG) {
         if (knowledgeContext) {
@@ -297,7 +300,8 @@ export async function generateAIResponse(
 async function fetchKnowledgeContext(
   agentId: string,
   userMessage: string,
-  contextLogger: Logger
+  contextLogger: Logger,
+  precomputedEmbedding?: number[] | null
 ): Promise<string | undefined> {
   try {
     // Configurações via env
@@ -317,7 +321,8 @@ async function fetchKnowledgeContext(
       agentId,
       userMessage,
       maxResults,
-      similarityThreshold
+      similarityThreshold,
+      precomputedEmbedding
     );
 
     if ("error" in contextResult) {

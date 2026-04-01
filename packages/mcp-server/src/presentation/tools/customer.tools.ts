@@ -24,7 +24,7 @@ export function createCustomerTools(
   return {
     identifyCustomer: {
       description:
-        "Identifica um cliente pelo telefone. Se não encontrar e um nome for fornecido, cria um novo cliente. Retorna { id, name, found, created }.",
+        "Identifica ou cria um cliente pelo telefone.",
       inputSchema: identifyCustomerSchema,
       execute: async (input) => {
         try {
@@ -51,7 +51,7 @@ export function createCustomerTools(
 
     createCustomer: {
       description:
-        "Cria um novo cliente no sistema explicitamente. Se o cliente já existir, retorna os dados do cliente existente.",
+        "Cria um novo cliente no sistema.",
       inputSchema: createCustomerSchema,
       execute: async (input) => {
         try {
@@ -78,7 +78,7 @@ export function createCustomerTools(
 
     updateCustomerName: {
       description:
-        "Atualiza o nome de um cliente no sistema. Use quando o cliente fornecer seu nome ou para corrigir o nome cadastrado. IMPORTANTE: Se o nome atual for apenas um telefone formatado, pergunte o nome e use esta tool.",
+        "Atualiza o nome de um cliente no sistema.",
       inputSchema: updateCustomerNameSchema,
       execute: async (input) => {
         try {

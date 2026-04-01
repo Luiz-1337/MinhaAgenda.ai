@@ -1,94 +1,197 @@
 "use client"
 
 import React from 'react';
-import { ArrowRight, Star } from 'lucide-react';
+import { ArrowRight, Zap } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const spring = { type: "spring" as const, stiffness: 100, damping: 20 };
 
 const Hero: React.FC = () => {
-  const handleCtaClick = () => {
-    const element = document.getElementById('plans');
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
-    <div className="relative pt-32 pb-16 sm:pt-40 sm:pb-24 overflow-hidden">
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center">
-        
-        <div className="w-full md:w-1/2 text-left z-10">
-          <div className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-semibold tracking-wide uppercase mb-6 border border-indigo-100 dark:border-indigo-500/20">
-            <Star className="w-3 h-3 mr-1 fill-current" />
-            A IA #1 para Beauty Business
-          </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight mb-6">
-            Seu salão <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">agendando sozinho</span> enquanto você trabalha.
-          </h1>
-          <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 mb-8 max-w-lg leading-relaxed">
-            O <strong>minhaagenda.ai</strong> é o agente inteligente que responde clientes, agenda horários e vende produtos 24 horas por dia no WhatsApp e Instagram.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button 
-              onClick={handleCtaClick}
-              className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-full text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 md:text-lg shadow-lg shadow-indigo-600/30 transition-all transform hover:-translate-y-1"
-            >
-              Começar Agora
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </button>
-            <button className="inline-flex items-center justify-center px-8 py-3 border border-slate-200 dark:border-white/5 text-base font-medium rounded-full text-slate-700 dark:text-slate-200 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 md:text-lg transition-all">
-              Ver Demonstração
-            </button>
-          </div>
-          
-          <div className="mt-10 flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
-            <div className="flex -space-x-2">
-              <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-900 bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-xs font-bold">1</div>
-              <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-900 bg-purple-100 dark:bg-purple-900 flex items-center justify-center text-purple-600 dark:text-purple-400 text-xs font-bold">2</div>
-              <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-900 bg-pink-100 dark:bg-pink-900 flex items-center justify-center text-pink-600 dark:text-pink-400 text-xs font-bold">3</div>
-            </div>
-            <p>Usado por +500 salões no Brasil</p>
-          </div>
-        </div>
+    <section className="relative min-h-[100dvh] flex items-center overflow-hidden bg-background">
 
-        <div className="w-full md:w-1/2 mt-12 md:mt-0 relative">
-           {/* Decorative blob */}
-          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-purple-200 dark:bg-purple-900/30 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-30 animate-blob"></div>
-          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 bg-indigo-200 dark:bg-indigo-900/30 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-          
-          <div className="relative rounded-2xl shadow-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-white/5 overflow-hidden transform rotate-1 hover:rotate-0 transition-transform duration-500">
-             {/* Simulated Chat Interface Image or Component */}
-             <div className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-white/5 px-4 py-3 flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-400"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-                <div className="w-3 h-3 rounded-full bg-green-400"></div>
-                <div className="ml-4 text-xs text-slate-500 dark:text-slate-400 font-mono bg-white dark:bg-slate-900 px-2 py-1 rounded">minhaagenda.ai - chat ativo</div>
-             </div>
-             <div className="p-6 space-y-4 bg-white dark:bg-slate-900">
+      {/* Depth: soft radial glows — light and dark mode */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(ellipse 70% 60% at 20% 50%, hsl(221 70% 48% / 0.08) 0%, transparent 70%), ' +
+            'radial-gradient(ellipse 50% 50% at 85% 20%, hsl(25 75% 52% / 0.06) 0%, transparent 60%)',
+        }}
+      />
+
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-8 pt-28 pb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-[55fr_45fr] gap-14 lg:gap-20 items-center">
+
+          {/* ─── Left column: copy ─── */}
+          <div className="space-y-8">
+
+            {/* Badge */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...spring, delay: 0 }}
+            >
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border bg-card text-xs font-medium text-muted-foreground">
+                <Zap className="w-3 h-3 text-primary" />
+                IA #1 para Beauty Business no Brasil
+              </span>
+            </motion.div>
+
+            {/* Headline */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...spring, delay: 0.08 }}
+              className="space-y-3"
+            >
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tighter leading-[0.92] text-foreground">
+                Seu salão{' '}
+                <em className="font-display not-italic italic font-light text-primary">
+                  agendando sozinho
+                </em>
+                {' '}enquanto você trabalha.
+              </h1>
+              <p className="text-base md:text-lg text-muted-foreground leading-relaxed max-w-md">
+                O <strong className="font-semibold text-foreground">minhaagenda.ai</strong>{' '}
+                responde clientes, agenda horários e vende produtos 24h por dia — WhatsApp e Instagram.
+              </p>
+            </motion.div>
+
+            {/* CTAs */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...spring, delay: 0.16 }}
+              className="flex flex-wrap gap-3"
+            >
+              <button
+                onClick={() => scrollTo('plans')}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+              >
+                Começar agora
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => scrollTo('about')}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors"
+              >
+                Ver como funciona
+              </button>
+            </motion.div>
+
+            {/* Social proof */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ ...spring, delay: 0.24 }}
+              className="flex items-center gap-3 text-sm text-muted-foreground"
+            >
+              <div className="flex -space-x-1.5">
+                {['A', 'B', 'C'].map((l, i) => (
+                  <div
+                    key={i}
+                    className="w-7 h-7 rounded-full border-2 border-background bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground"
+                  >
+                    {l}
+                  </div>
+                ))}
+              </div>
+              <span>Usado por +500 salões no Brasil</span>
+            </motion.div>
+          </div>
+
+          {/* ─── Right column: mockup ─── */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...spring, delay: 0.2 }}
+            className="flex flex-col gap-3"
+          >
+            {/* Chat card */}
+            <div className="rounded-2xl border border-border bg-card shadow-xl shadow-black/[0.08] dark:shadow-black/40 overflow-hidden">
+
+              {/* Window chrome */}
+              <div className="flex items-center gap-1.5 px-4 py-3 border-b border-border bg-muted/40">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                <span className="ml-3 text-[11px] text-muted-foreground font-mono">
+                  minhaagenda.ai — chat ativo
+                </span>
+              </div>
+
+              {/* Messages */}
+              <div className="p-5 space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-xs font-bold">AI</div>
-                  <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 dark:text-slate-200 max-w-[80%]">
-                    Olá, Mariana! Vi que já faz 30 dias do seu último corte. Que tal agendar uma hidratação para essa quinta às 14h? 💇‍♀️
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
+                    AI
+                  </div>
+                  <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
+                    Olá, Mariana! Faz 30 dias do seu último corte. Que tal uma hidratação quinta às 14h?
                   </div>
                 </div>
+
                 <div className="flex items-start gap-3 flex-row-reverse">
-                  <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400 text-xs font-bold">M</div>
-                  <div className="bg-indigo-600 p-3 rounded-2xl rounded-tr-none text-sm text-white max-w-[80%]">
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-accent text-[10px] font-bold">
+                    M
+                  </div>
+                  <div className="bg-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-primary-foreground max-w-[80%] leading-relaxed">
                     Nossa, eu estava pensando nisso agora! Pode marcar sim.
                   </div>
                 </div>
+
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-xs font-bold">AI</div>
-                  <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 dark:text-slate-200 max-w-[80%]">
-                    Perfeito! Agendado para Quinta, 14h. Também separei aquele óleo reparador que você gosta. Deixo reservado? ✨
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
+                    AI
+                  </div>
+                  <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
+                    Perfeito! Quinta, 14h confirmado. Também separei o óleo reparador que você gosta. Deixo reservado?
                   </div>
                 </div>
-             </div>
-          </div>
-        </div>
 
+                {/* Input area */}
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="flex-1 h-9 rounded-xl border border-border bg-background px-3 flex items-center">
+                    <span className="text-xs text-muted-foreground/50">Responder...</span>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+                    <ArrowRight className="w-3.5 h-3.5 text-primary-foreground" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats row — BELOW the card, not overlapping */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: '+12', label: 'Agendamentos hoje', trend: '+23%' },
+                { value: '98%', label: 'Satisfação' },
+                { value: '24/7', label: 'Online sempre' },
+              ].map((stat, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-border bg-card px-3 py-3 text-center"
+                >
+                  <p className="text-lg font-bold tracking-tight text-foreground">{stat.value}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{stat.label}</p>
+                  {stat.trend && (
+                    <p className="text-[10px] text-green-500 font-medium mt-0.5">{stat.trend}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+        </div>
       </div>
-    </div>
+    </section>
   );
 };
 
 export default Hero;
-

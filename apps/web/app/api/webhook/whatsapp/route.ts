@@ -274,18 +274,35 @@ async function handleMessageUpsert(
   const salonId = salon.id;
   reqLogger = reqLogger.child({ salonId });
 
-  // 4. BUSCAR AGENTE ATIVO DO SALÃO (com timeout)
-  const agent = await withTimeout(
-    db.query.agents.findFirst({
-      where: and(
-        eq(agents.salonId, salonId),
-        eq(agents.isActive, true)
-      ),
-      columns: { id: true },
-    }),
-    DB_TIMEOUT,
-    'findActiveAgent'
-  );
+  // 4. PARALELO: Buscar agente, customer, chat e isNewCustomer simultaneamente
+  const [agent, customer, chat, isNewCustomer] = await Promise.all([
+    withTimeout(
+      db.query.agents.findFirst({
+        where: and(
+          eq(agents.salonId, salonId),
+          eq(agents.isActive, true)
+        ),
+        columns: { id: true },
+      }),
+      DB_TIMEOUT,
+      'findActiveAgent'
+    ),
+    withTimeout(
+      findOrCreateCustomer(clientPhone, salonId, messageData.pushName),
+      DB_TIMEOUT,
+      'findOrCreateCustomer'
+    ),
+    withTimeout(
+      findOrCreateChat(clientPhone, salonId),
+      DB_TIMEOUT,
+      'findOrCreateChat'
+    ),
+    withTimeout(
+      checkIfNewCustomer(salonId, clientPhone),
+      DB_TIMEOUT,
+      'checkIfNewCustomer'
+    ),
+  ]);
 
   if (!agent) {
     reqLogger.error({ salonId }, 'No active agent for salon');
@@ -293,37 +310,16 @@ async function handleMessageUpsert(
   }
 
   const agentId = agent.id;
-  reqLogger = reqLogger.child({ agentId });
-
-  // 5. CRIAR/BUSCAR CUSTOMER E CHAT (com timeouts)
-  const customer = await withTimeout(
-    findOrCreateCustomer(clientPhone, salonId, messageData.pushName),
-    DB_TIMEOUT,
-    'findOrCreateCustomer'
-  );
-
-  const chat = await withTimeout(
-    findOrCreateChat(clientPhone, salonId),
-    DB_TIMEOUT,
-    'findOrCreateChat'
-  );
-
   reqLogger = reqLogger.child({
+    agentId,
     chatId: chat.id,
     customerId: customer.id,
   });
 
-  // 6. EXTRAIR CONTEÚDO DA MENSAGEM
+  // 5. EXTRAIR CONTEÚDO DA MENSAGEM
   const messageContent = extractMessageContent(messageData);
   const mediaType = detectMediaType(messageData);
   const mediaUrl = extractMediaUrl(messageData);
-
-  // 7. VERIFICAR SE É CLIENTE NOVO (com timeout)
-  const isNewCustomer = await withTimeout(
-    checkIfNewCustomer(salonId, clientPhone),
-    DB_TIMEOUT,
-    'checkIfNewCustomer'
-  );
 
   // 8. SALVAR MENSAGEM RAW NO BANCO (com timeout)
   await withTimeout(

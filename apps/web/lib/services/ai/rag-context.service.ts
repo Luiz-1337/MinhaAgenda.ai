@@ -18,48 +18,40 @@ export type FindRelevantContextResult =
   | { success: true; data: RAGContextItem[] }
   | { error: string }
 
+const AI_DEBUG = process.env.AI_DEBUG === "true"
+
 /**
- * Busca contexto relevante para uma query usando similaridade de embeddings
- * @param agentId ID do agente
- * @param query Texto da consulta
- * @param limit Número máximo de resultados (padrão: 3)
- * @param similarityThreshold Threshold de similaridade 0-1 (padrão: 0.7)
+ * Gera embedding para uma query (passo caro - chamada OpenAI API).
+ * Pode ser iniciado especulativamente antes de saber se RAG é necessário.
  */
-export async function findRelevantContext(
-  agentId: string,
-  query: string,
-  limit = 3,
-  similarityThreshold = 0.7
-): Promise<FindRelevantContextResult> {
+export async function generateQueryEmbedding(query: string): Promise<number[] | null> {
   try {
-    if (!agentId || !query?.trim()) {
-      return { error: "agentId e query são obrigatórios" }
-    }
+    if (!query?.trim()) return null
 
-    console.log("🧠 Generating embedding for query...")
-
-    // Gera o embedding da query
     const openai = getOpenAIClient()
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: query.trim(),
     })
-    const queryEmbedding = embeddingResponse.data[0]?.embedding
+    return embeddingResponse.data[0]?.embedding ?? null
+  } catch (error) {
+    if (AI_DEBUG) console.error("[RAG] Erro ao gerar embedding:", error)
+    return null
+  }
+}
 
-    if (!queryEmbedding) {
-      return { error: "Falha ao gerar embedding da query" }
-    }
+/**
+ * Busca documentos similares usando um embedding pré-gerado.
+ */
+export async function searchWithEmbedding(
+  agentId: string,
+  embedding: number[],
+  limit = 3,
+  similarityThreshold = 0.7
+): Promise<FindRelevantContextResult> {
+  try {
+    const embeddingArrayString = `[${embedding.join(",")}]`
 
-    console.log("✅ Embedding generated:", queryEmbedding.length, "dimensions")
-
-    // Formato PostgreSQL array para o tipo vector
-    const embeddingArrayString = `[${queryEmbedding.join(",")}]`
-
-    console.log("🔎 Searching in database with pgvector...")
-
-    // Busca por similaridade usando pgvector
-    // <=> = distância cosseno (menor = mais similar)
-    // Similaridade = 1 - distância
     const results = await postgresClient`
       SELECT content, metadata, 1 - (embedding <=> ${embeddingArrayString}::vector) as similarity
       FROM agent_knowledge_base
@@ -73,12 +65,6 @@ export async function findRelevantContext(
       similarity: number
     }>
 
-    console.log(`📊 pgvector query returned ${results.length} result(s)`)
-
-    if (results.length === 0) {
-      console.log("💡 Tip: Try lowering the similarity threshold (current:", similarityThreshold, ")")
-    }
-
     const formattedResults: RAGContextItem[] = results.map((row) => ({
       content: row.content,
       similarity: row.similarity,
@@ -87,25 +73,42 @@ export async function findRelevantContext(
 
     return { success: true, data: formattedResults }
   } catch (error) {
-    console.error("Erro ao buscar contexto relevante:", error)
+    if (AI_DEBUG && error instanceof Error) {
+      console.error("[RAG] Erro na busca pgvector:", error.message)
+    }
+    return {
+      error: error instanceof Error ? error.message : "Falha ao buscar contexto relevante.",
+    }
+  }
+}
 
-    // Log detalhado para facilitar debug de problemas com pgvector
-    if (error instanceof Error) {
-      console.error("Erro detalhado RAG:", {
-        message: error.message,
-        stack: error.stack,
-        agentId,
-        queryLength: query.length,
-      })
-
-      // Se for erro de tipo vector, sugere solução
-      if (error.message.includes("type") && error.message.includes("vector")) {
-        console.error(
-          "ERRO CRÍTICO: Extensão pgvector não instalada! Execute: CREATE EXTENSION IF NOT EXISTS vector;"
-        )
-      }
+/**
+ * Busca contexto relevante para uma query usando similaridade de embeddings.
+ * Aceita um embedding pré-gerado (especulativo) ou gera um novo.
+ */
+export async function findRelevantContext(
+  agentId: string,
+  query: string,
+  limit = 3,
+  similarityThreshold = 0.7,
+  precomputedEmbedding?: number[] | null
+): Promise<FindRelevantContextResult> {
+  try {
+    if (!agentId || !query?.trim()) {
+      return { error: "agentId e query são obrigatórios" }
     }
 
+    const embedding = precomputedEmbedding ?? await generateQueryEmbedding(query)
+
+    if (!embedding) {
+      return { error: "Falha ao gerar embedding da query" }
+    }
+
+    return searchWithEmbedding(agentId, embedding, limit, similarityThreshold)
+  } catch (error) {
+    if (AI_DEBUG && error instanceof Error) {
+      console.error("[RAG] Erro detalhado:", { message: error.message, agentId })
+    }
     return {
       error: error instanceof Error ? error.message : "Falha ao buscar contexto relevante.",
     }

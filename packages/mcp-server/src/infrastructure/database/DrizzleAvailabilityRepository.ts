@@ -7,12 +7,20 @@ import {
 import { TimeSlot } from "../../domain/entities"
 import { SLOT_DURATION } from "../../shared/constants"
 import { getDayOfWeek, toBrazilDate, toBrazilTime } from "../../shared/utils/date.utils"
+import { InMemoryCache } from "../cache"
+
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutos
 
 /**
  * Implementação do repositório de disponibilidade usando Drizzle ORM
  */
 export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
+  private rulesCache = new InMemoryCache<AvailabilityRule[]>(CACHE_TTL)
+
   async findByProfessional(professionalId: string): Promise<AvailabilityRule[]> {
+    const cached = this.rulesCache.get(professionalId)
+    if (cached !== undefined) return cached
+
     const rows = await db.query.availability.findMany({
       where: eq(availability.professionalId, professionalId),
       orderBy: (availability, { asc }) => [
@@ -21,7 +29,7 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
       ],
     })
 
-    return rows.map((row) => ({
+    const rules = rows.map((row) => ({
       id: row.id,
       professionalId: row.professionalId,
       dayOfWeek: row.dayOfWeek,
@@ -29,12 +37,19 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
       endTime: row.endTime,
       isBreak: row.isBreak,
     }))
+
+    this.rulesCache.set(professionalId, rules)
+    return rules
   }
 
   async findByProfessionalAndDay(
     professionalId: string,
     dayOfWeek: number
   ): Promise<AvailabilityRule[]> {
+    const cacheKey = `${professionalId}:${dayOfWeek}`
+    const cached = this.rulesCache.get(cacheKey)
+    if (cached !== undefined) return cached
+
     const rows = await db.query.availability.findMany({
       where: and(
         eq(availability.professionalId, professionalId),
@@ -43,7 +58,7 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
       orderBy: (availability, { asc }) => [asc(availability.startTime)],
     })
 
-    return rows.map((row) => ({
+    const rules = rows.map((row) => ({
       id: row.id,
       professionalId: row.professionalId,
       dayOfWeek: row.dayOfWeek,
@@ -51,6 +66,9 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
       endTime: row.endTime,
       isBreak: row.isBreak,
     }))
+
+    this.rulesCache.set(cacheKey, rules)
+    return rules
   }
 
   async findOverrides(
@@ -187,10 +205,13 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
           isBreak: rule.isBreak,
         },
       })
+
+    this.rulesCache.clear()
   }
 
   async deleteRule(id: string): Promise<void> {
     await db.delete(availability).where(eq(availability.id, id))
+    this.rulesCache.clear()
   }
 
   async saveOverride(override: ScheduleOverride): Promise<void> {

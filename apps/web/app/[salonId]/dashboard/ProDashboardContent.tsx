@@ -1,11 +1,17 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import dynamic from "next/dynamic"
 import { CheckCircle2, MessageCircle, Clock, Sparkles } from "lucide-react"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { AgentList } from "@/components/dashboard/agent-list"
-import { ChartSection } from "@/components/dashboard/chart-section"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { DashboardStats } from "@/app/actions/dashboard"
+
+const ChartSection = dynamic(
+  () => import("@/components/dashboard/chart-section").then(m => ({ default: m.ChartSection })),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full rounded-lg" /> }
+)
 
 interface ProDashboardContentProps {
   stats: DashboardStats

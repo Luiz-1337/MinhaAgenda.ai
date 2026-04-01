@@ -1,65 +1,110 @@
+"use client"
+
 import React from 'react';
 import { Check } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { PLANS } from './constants';
 import Link from 'next/link';
 
+const spring = { type: "spring" as const, stiffness: 100, damping: 20 };
+
 const Pricing: React.FC = () => {
   return (
-    <section id="plans" className="py-20 bg-slate-50 dark:bg-slate-900/20 transition-colors duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-base text-indigo-600 dark:text-indigo-400 font-semibold tracking-wide uppercase">Planos</h2>
-          <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-            Investimento que se paga no primeiro dia
-          </p>
-          <p className="mt-4 max-w-2xl text-xl text-slate-500 dark:text-slate-400 mx-auto">
-            Escolha o plano ideal para o tamanho do seu sonho. Sem fidelidade, cancele quando quiser.
-          </p>
-        </div>
+    <section id="plans" className="py-24 bg-background border-t border-border/50">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto items-start">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={spring}
+          className="mb-14"
+        >
+          <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-3">Planos</p>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tighter text-foreground max-w-md leading-tight">
+              Investimento que se paga{' '}
+              <span className="font-display italic font-light">no primeiro dia</span>
+            </h2>
+            <p className="text-muted-foreground text-sm max-w-xs lg:text-right leading-relaxed">
+              Sem fidelidade. Cancele quando quiser.
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto items-start">
           {PLANS.map((plan, index) => (
-            <div 
-              key={index} 
-              className={`relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl transition-colors duration-300 ${plan.highlight ? 'ring-4 ring-indigo-600 dark:ring-indigo-500 shadow-2xl md:scale-105 z-10 order-first md:order-none' : 'border border-slate-200 dark:border-white/5 shadow-lg' } p-6 sm:p-8`}
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{ ...spring, delay: index * 0.08 }}
+              className={`relative flex flex-col rounded-2xl p-6 ${
+                plan.highlight
+                  ? 'bg-primary text-primary-foreground ring-1 ring-primary/20 shadow-xl md:scale-[1.03] z-10'
+                  : 'bg-card border border-border shadow-sm'
+              }`}
             >
               {plan.highlight && (
-                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-indigo-600 dark:bg-indigo-500 text-white px-4 py-1 rounded-full text-sm font-bold uppercase tracking-wide shadow-md">
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-accent text-accent-foreground px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-sm">
                   Mais Popular
                 </div>
               )}
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{plan.name}</h3>
-                <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm h-10">{plan.description}</p>
+
+              <div className="mb-5">
+                <h3 className={`text-lg font-bold tracking-tight ${plan.highlight ? 'text-primary-foreground' : 'text-foreground'}`}>
+                  {plan.name}
+                </h3>
+                <p className={`text-xs mt-1 leading-relaxed ${plan.highlight ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                  {plan.description}
+                </p>
               </div>
+
               <div className="mb-6">
-                <span className="text-4xl font-extrabold text-slate-900 dark:text-white">{plan.price}</span>
-                {plan.price !== "Sob Consulta" && <span className="text-slate-500 dark:text-slate-400 font-medium">/mês</span>}
+                <div className="flex items-baseline gap-1">
+                  <span className={`text-5xl font-bold tracking-tighter ${plan.highlight ? 'text-primary-foreground' : 'text-foreground'}`}>
+                    {plan.price}
+                  </span>
+                  {plan.price !== 'Sob Consulta' && (
+                    <span className={`text-sm font-medium ${plan.highlight ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      /mês
+                    </span>
+                  )}
+                </div>
               </div>
-              <ul className="mb-8 space-y-4 flex-1">
+
+              <ul className="space-y-3 flex-1 mb-6">
                 {plan.features.map((feature, fIndex) => (
-                  <li key={fIndex} className="flex items-start">
-                    <Check className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-0.5" />
-                    <span className="text-slate-600 dark:text-slate-300 text-sm">{feature}</span>
+                  <li key={fIndex} className="flex items-start gap-2.5">
+                    <Check className={`h-4 w-4 shrink-0 mt-0.5 ${plan.highlight ? 'text-primary-foreground/80' : 'text-primary'}`} />
+                    <span className={`text-sm leading-snug ${plan.highlight ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
+                      {feature}
+                    </span>
                   </li>
                 ))}
               </ul>
+
               <Link href={`/register?plan=${plan.name}`}>
-              <button className={`w-full py-3 px-6 rounded-xl font-bold transition-colors ${
-                plan.highlight 
-                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 shadow-lg shadow-indigo-600/30' 
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10'
-              }`}>
-                {plan.buttonText}
-              </button>
+                <button
+                  className={`w-full py-2.5 px-5 rounded-xl text-sm font-semibold transition-colors ${
+                    plan.highlight
+                      ? 'bg-primary-foreground text-primary hover:bg-primary-foreground/90'
+                      : 'bg-muted text-foreground hover:bg-muted/80 border border-border'
+                  }`}
+                >
+                  {plan.buttonText}
+                </button>
               </Link>
-            </div>
+            </motion.div>
           ))}
         </div>
+
       </div>
     </section>
   );
 };
 
 export default Pricing;
-

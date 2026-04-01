@@ -24,7 +24,7 @@ export function createAvailabilityTools(
   return {
     checkAvailability: {
       description:
-        "Verifica horários disponíveis para agendamento. PRÉ-REQUISITO: Obter professionalId via getProfessionals se quiser filtrar por profissional.",
+        "Verifica horários disponíveis para agendamento em uma data.",
       inputSchema: checkAvailabilitySchema,
       execute: async (input) => {
         try {

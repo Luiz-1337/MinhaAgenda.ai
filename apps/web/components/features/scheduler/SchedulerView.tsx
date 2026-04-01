@@ -1,11 +1,16 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import dynamic from "next/dynamic"
 import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus } from "lucide-react"
 import { DailyScheduler } from "./DailyScheduler"
 import { WeeklyScheduler } from "./WeeklyScheduler"
 import { MonthlyScheduler } from "./MonthlyScheduler"
-import { CreateAppointmentDialog } from "./CreateAppointmentDialog"
+
+const CreateAppointmentDialog = dynamic(
+  () => import("./CreateAppointmentDialog").then(m => ({ default: m.CreateAppointmentDialog })),
+  { ssr: false }
+)
 import { getAppointments, getSchedulerHours, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"

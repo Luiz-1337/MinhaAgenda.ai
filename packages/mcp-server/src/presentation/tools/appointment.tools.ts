@@ -28,7 +28,7 @@ export function createAppointmentTools(
   return {
     addAppointment: {
       description:
-        "Cria um novo agendamento para o cliente. PRÉ-REQUISITOS: Cliente identificado, professionalId e serviceId obtidos via getProfessionals e getServices.",
+        "Cria um novo agendamento para o cliente.",
       inputSchema: createAppointmentSchema,
       execute: async (input) => {
         try {
@@ -73,7 +73,7 @@ export function createAppointmentTools(
 
     updateAppointment: {
       description:
-        "Atualiza um agendamento existente (reagendamento). PRÉ-REQUISITO: Obter appointmentId via getMyFutureAppointments.",
+        "Atualiza um agendamento existente (reagendamento).",
       inputSchema: updateAppointmentSchema,
       execute: async (input) => {
         try {
@@ -102,7 +102,7 @@ export function createAppointmentTools(
 
     removeAppointment: {
       description:
-        "Cancela um agendamento existente. PRÉ-REQUISITO: Obter appointmentId via getMyFutureAppointments.",
+        "Cancela um agendamento existente.",
       inputSchema: deleteAppointmentSchema,
       execute: async (input) => {
         try {

@@ -38,20 +38,19 @@ export class CreateAppointmentUseCase {
   async execute(
     input: CreateAppointmentDTO
   ): Promise<Result<AppointmentDTO, DomainError>> {
-    // 1. Validar que o cliente existe
-    const customer = await this.customerRepo.findById(input.customerId)
+    // 1. Validar que cliente, profissional e serviço existem (em paralelo)
+    const [customer, professional, service] = await Promise.all([
+      this.customerRepo.findById(input.customerId),
+      this.professionalRepo.findById(input.professionalId),
+      this.serviceRepo.findById(input.serviceId),
+    ])
+
     if (!customer) {
       return fail(new CustomerNotFoundError(input.customerId))
     }
-
-    // 2. Validar que o profissional existe
-    const professional = await this.professionalRepo.findById(input.professionalId)
     if (!professional) {
       return fail(new AppointmentCreationError("Profissional não encontrado"))
     }
-
-    // 3. Validar que o serviço existe
-    const service = await this.serviceRepo.findById(input.serviceId)
     if (!service) {
       return fail(new AppointmentCreationError("Serviço não encontrado"))
     }

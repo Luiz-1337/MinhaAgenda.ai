@@ -98,8 +98,8 @@ export class DrizzleServiceRepository implements IServiceRepository {
       isActive: data.isActive,
     })
 
+    this.idCache.invalidate(data.id)
     this.listCache.clear()
-    this.idCache.clear()
   }
 
   async update(service: Service): Promise<void> {
@@ -119,7 +119,7 @@ export class DrizzleServiceRepository implements IServiceRepository {
       })
       .where(eq(services.id, data.id))
 
+    this.idCache.invalidate(data.id)
     this.listCache.clear()
-    this.idCache.clear()
   }
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useActionState, useState, useEffect, useTransition } from 'react';
+import Image from 'next/image';
 import { Bot, ArrowRight, Sun, Moon, Mail, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
@@ -74,10 +75,12 @@ export default function ForgotPasswordPage() {
       <div className="w-2/3 h-full relative hidden md:block">
         <div className="absolute inset-0 bg-slate-900/40 z-10"></div>
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-slate-50 dark:to-slate-950 z-20"></div>
-        <img 
-          src="https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=2574&auto=format&fit=crop" 
-          alt="Luxury Salon" 
-          className="w-full h-full object-cover"
+        <Image
+          src="https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=2574&auto=format&fit=crop"
+          alt="Luxury Salon"
+          fill
+          className="object-cover"
+          priority
         />
         
         {/* Float Content on Image */}

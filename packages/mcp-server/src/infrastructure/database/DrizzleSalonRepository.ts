@@ -138,7 +138,7 @@ export class DrizzleSalonRepository implements ISalonRepository {
       subscriptionStatus,
     })
 
-    this.salonCache.clear()
+    this.salonCache.invalidate(data.id)
     this.integrationCache.clear()
   }
 
@@ -161,7 +161,7 @@ export class DrizzleSalonRepository implements ISalonRepository {
       })
       .where(eq(salons.id, data.id))
 
-    this.salonCache.clear()
-    this.integrationCache.clear()
+    this.salonCache.invalidate(data.id)
+    this.integrationCache.invalidate(data.id)
   }
 }
