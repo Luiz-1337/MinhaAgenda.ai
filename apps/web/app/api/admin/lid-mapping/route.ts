@@ -5,8 +5,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { setManualLidMapping, removeLidMapping, resolveLidToPhone } from '@/lib/redis';
-import { logger } from '@/lib/logger';
+import { setManualLidMapping, removeLidMapping, resolveLidToPhone } from '@/lib/infra/redis';
+import { logger } from '@/lib/infra/logger';
 import { requireAdminAuth } from '@/lib/services/admin-auth.service';
 
 export async function POST(request: NextRequest) {

@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getMessageQueue, getQueueStats } from '@/lib/queues/message-queue';
-import { logger } from '@/lib/logger';
+import { logger } from '@/lib/infra/logger';
 import { requireAdminAuth } from '@/lib/services/admin-auth.service';
 
 export async function GET(request: NextRequest) {

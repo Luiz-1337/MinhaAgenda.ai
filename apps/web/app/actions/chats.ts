@@ -2,7 +2,7 @@
 
 import { db, chats, messages, profiles, and, desc, eq, inArray } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
-import { sendWhatsAppMessage } from "@/lib/services/evolution-message.service"
+import { sendWhatsAppMessage } from "@/lib/services/evolution/evolution-message.service"
 import { saveMessage } from "@/lib/services/chat.service"
 
 export interface ChatConversation {

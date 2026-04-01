@@ -3,9 +3,9 @@
  */
 
 import { Worker, Job, DelayedError } from "bullmq";
-import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/redis";
+import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/infra/redis";
 import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
-import { logger, createContextLogger, getReplicaId } from "../lib/logger";
+import { logger, createContextLogger, getReplicaId } from "../lib/infra/logger";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
 import { saveMessage } from "../lib/services/chat.service";
 import {
@@ -13,12 +13,12 @@ import {
   isSessionError,
   getSessionErrorReason,
   WhatsAppMessageError,
-} from "../lib/services/evolution-message.service";
-import { restartInstance } from "../lib/services/evolution-instance.service";
+} from "../lib/services/evolution/evolution-message.service";
+import { restartInstance } from "../lib/services/evolution/evolution-instance.service";
 import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
 import { WhatsAppError, getUserFriendlyMessage } from "../lib/errors";
 import { withTimeout } from "../lib/utils/async.utils";
-import { WhatsAppMetrics } from "../lib/metrics";
+import { WhatsAppMetrics } from "../lib/infra/metrics";
 
 const QUEUE_NAME = "whatsapp-messages";
 const LOCK_TTL_MS = 120000;

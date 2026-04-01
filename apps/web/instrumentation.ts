@@ -16,7 +16,7 @@ export async function register() {
 
         // Import dinâmico para evitar problemas com Edge Runtime
         const { createMessageWorker } = await import("./workers/message-processor");
-        const { logger } = await import("./lib/logger");
+        const { logger } = await import("./lib/infra/logger");
 
         // Evita criar múltiplos workers durante hot reload
         const globalAny = global as any;

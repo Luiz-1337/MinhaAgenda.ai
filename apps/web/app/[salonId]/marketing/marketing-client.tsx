@@ -600,7 +600,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                     {isSending ? "Enviando..." : "Enviar agora"}
                   </button>
                   <p className="text-[10px] text-center text-slate-400 mt-4 font-medium italic">
-                    Ao clicar em enviar, as mensagens serão disparadas via Twilio para {leadsCount.toLocaleString("pt-BR")} contatos.
+                    Ao clicar em enviar, as mensagens serão disparadas para {leadsCount.toLocaleString("pt-BR")} contatos.
                   </p>
                   {(sendError || sendSuccess) && (
                     <div className="mt-4 space-y-2">

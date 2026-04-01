@@ -6,9 +6,9 @@ import {
   getOrCreateInstance,
   connectInstance,
   restartInstance,
-} from '@/lib/services/evolution-instance.service';
-import { checkRateLimit } from '@/lib/redis';
-import { logger } from '@/lib/logger';
+} from '@/lib/services/evolution/evolution-instance.service';
+import { checkRateLimit } from '@/lib/infra/redis';
+import { logger } from '@/lib/infra/logger';
 
 /**
  * POST /api/agents/[agentId]/whatsapp/connect

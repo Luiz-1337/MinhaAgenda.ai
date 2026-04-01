@@ -1,4 +1,4 @@
-import ServiceList from "./ServiceList"
+import ServiceList from "./service-list"
 
 export default async function ServicesPage({
   params,

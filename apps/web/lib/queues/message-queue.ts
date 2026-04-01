@@ -9,15 +9,15 @@
  */
 
 import { Queue, QueueEvents, Job } from "bullmq";
-import { getRedisClient } from "../redis";
-import { logger } from "../logger";
+import { getRedisClient } from "../infra/redis";
+import { logger } from "../infra/logger";
 
 /**
  * Dados do job de processamento de mensagem
  */
 export interface MessageJobData {
   // Identificadores
-  messageId: string; // MessageSid do Twilio
+  messageId: string;
   chatId: string;
   salonId: string;
   agentId: string; // ID do agente que receberá a mensagem

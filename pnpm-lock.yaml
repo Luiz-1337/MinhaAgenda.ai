@@ -330,8 +330,6 @@ importers:
 
   packages/typescript-config: {}
 
-  packages/ui: {}
-
 packages:
 
   '@ai-sdk/gateway@2.0.18':

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
-import { disconnectInstance } from '@/lib/services/evolution-instance.service';
-import { checkRateLimit } from '@/lib/redis';
-import { logger } from '@/lib/logger';
+import { disconnectInstance } from '@/lib/services/evolution/evolution-instance.service';
+import { checkRateLimit } from '@/lib/infra/redis';
+import { logger } from '@/lib/infra/logger';
 
 /**
  * DELETE /api/salons/[salonId]/whatsapp/disconnect

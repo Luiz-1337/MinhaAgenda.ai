@@ -18,16 +18,16 @@ import {
   extractMediaUrl,
   mapConnectionState,
 } from '@/lib/schemas/evolution';
-import { logger, createContextLogger, hashPhone, createRequestContext, getDuration, getReplicaId } from '@/lib/logger';
-import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/redis';
+import { logger, createContextLogger, hashPhone, createRequestContext, getDuration, getReplicaId } from '@/lib/infra/logger';
+import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/infra/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
 import { checkIfNewCustomer } from '@/lib/services/ai/generate-response.service';
-import { checkPhoneRateLimit } from '@/lib/rate-limit';
+import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
-import { WebhookMetrics } from '@/lib/metrics';
+import { WebhookMetrics } from '@/lib/infra/metrics';
 import { RateLimitError, wrapError } from '@/lib/errors';
-import { getConnectedPhoneNumber } from '@/lib/services/evolution-instance.service';
+import { getConnectedPhoneNumber } from '@/lib/services/evolution/evolution-instance.service';
 import { db, salons, chats, chatStatusEnum, messages, agents, eq, and, desc, sql } from '@repo/db';
 
 // Timeout - webhook deve apenas validar e enfileirar
@@ -482,7 +482,7 @@ async function handleQRCodeUpdate(
 
   try {
     // Importa getRedisClient dinamicamente para evitar circular dependency
-    const { getRedisClient } = await import('@/lib/redis');
+    const { getRedisClient } = await import('@/lib/infra/redis');
     const redisClient = getRedisClient();
 
     // Armazena QR code no cache por 5 minutos (com timeout)

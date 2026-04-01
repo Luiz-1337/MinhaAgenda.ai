@@ -64,25 +64,21 @@ export interface MetaEmbeddedSignupProps {
   onSuccess: (data: { wabaId: string; phoneNumberId: string; phoneNumber?: string }) => void
   onError?: (error: string) => void
   disabled?: boolean
-  /** Se true, usa featureType: 'only_waba_sharing' para números Twilio existentes */
-  twilioNumber?: boolean
 }
 
 /**
  * Componente para Meta Embedded Signup
  * Permite usuários conectarem ou criarem WABAs diretamente na aplicação
- * 
+ *
  * Requisitos:
  * - META_APP_ID no .env
  * - META_CONFIG_ID no .env
- * - TWILIO_PARTNER_SOLUTION_ID no .env (opcional, para integração Twilio)
  */
 export function MetaEmbeddedSignup({
   salonId,
   onSuccess,
   onError,
   disabled = false,
-  twilioNumber = false,
 }: MetaEmbeddedSignupProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [sdkLoaded, setSdkLoaded] = useState(false)
@@ -91,7 +87,6 @@ export function MetaEmbeddedSignup({
   // IDs de configuração do Meta
   const appId = process.env.NEXT_PUBLIC_META_APP_ID
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID
-  const solutionId = process.env.NEXT_PUBLIC_TWILIO_PARTNER_SOLUTION_ID
 
   // Carrega o Facebook SDK
   useEffect(() => {
@@ -206,15 +201,6 @@ export function MetaEmbeddedSignup({
       },
     }
 
-    // Adiciona Solution ID da Twilio se disponível
-    if (solutionId) {
-      loginOptions.extras.setup.solutionID = solutionId
-    }
-
-    // Para números Twilio existentes, pula telas de entrada/verificação de número
-    if (twilioNumber) {
-      loginOptions.extras.featureType = "only_waba_sharing"
-    }
 
     window.FB.login((response: FacebookLoginResponse) => {
       if (response.status !== "connected") {
@@ -225,7 +211,7 @@ export function MetaEmbeddedSignup({
       }
       // O resultado principal vem via postMessage
     }, loginOptions)
-  }, [sdkLoaded, configId, solutionId, twilioNumber])
+  }, [sdkLoaded, configId])
 
   // Se não tem configuração, mostra erro
   if (!appId || !configId) {

@@ -10,11 +10,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getRedisClient } from "@/lib/redis";
+import { getRedisClient } from "@/lib/infra/redis";
 import { getQueueStats } from "@/lib/queues/message-queue";
-import { getMetricsSummary } from "@/lib/metrics";
-import { getAllCircuitBreakersStatus } from "@/lib/circuit-breaker";
-import { logger } from "@/lib/logger";
+import { getMetricsSummary } from "@/lib/infra/metrics";
+import { getAllCircuitBreakersStatus } from "@/lib/infra/circuit-breaker";
+import { logger } from "@/lib/infra/logger";
 import { db, sql } from "@repo/db";
 
 export const dynamic = "force-dynamic";

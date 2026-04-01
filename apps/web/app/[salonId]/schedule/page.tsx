@@ -1,4 +1,4 @@
-import { SchedulerView } from "@/components/features/scheduler/SchedulerView"
+import { SchedulerView } from "@/components/scheduler/scheduler-view"
 
 export default async function SchedulePage({
   params,

@@ -27,7 +27,6 @@ interface WhatsAppTemplate {
   header?: string | null
   footer?: string | null
   buttons?: string | null
-  twilioContentSid?: string | null
   status: "draft" | "pending" | "approved" | "rejected"
   rejectionReason?: string | null
   submittedAt?: string | null

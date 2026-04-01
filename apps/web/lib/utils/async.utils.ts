@@ -7,7 +7,7 @@
  * - sleep: aguarda um tempo determinado
  */
 
-import { logger } from "../logger";
+import { logger } from "../infra/logger";
 
 /**
  * Erro de timeout

@@ -4,7 +4,7 @@
 
 import { db, chats, messages, salons, profiles, customers, and, desc, eq, gte, sql, BRAZIL_TIMEZONE } from "@repo/db"
 import type { ChatMessage } from "../types/chat"
-import { logger } from "../logger"
+import { logger } from "../infra/logger"
 
 /**
  * Encontra ou cria um customer na tabela customers

@@ -1,5 +1,5 @@
 import { getDashboardStats, initializeDashboardData } from "@/app/actions/dashboard"
-import DashboardContent from "./DashboardContent"
+import DashboardContent from "./dashboard-content"
 
 export default async function DashboardHomePage({
   params,

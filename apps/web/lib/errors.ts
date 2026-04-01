@@ -158,7 +158,7 @@ export class AIGenerationError extends WhatsAppError {
 }
 
 /**
- * Erro na API do WhatsApp/Twilio
+ * Erro na API do WhatsApp
  */
 export class WhatsAppAPIError extends WhatsAppError {
   constructor(message: string, cause?: Error) {

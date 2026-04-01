@@ -1,5 +1,5 @@
 import { db, domainServices, logger, recoveryFlows, recoverySteps, sql } from '@repo/db'
-import { sendWhatsAppMessage } from '@/lib/services/evolution-message.service'
+import { sendWhatsAppMessage } from '@/lib/services/evolution/evolution-message.service'
 import { requireCronAuth } from '@/lib/services/admin-auth.service'
 import { NextRequest } from 'next/server'
 

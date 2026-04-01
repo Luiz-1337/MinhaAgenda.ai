@@ -11,11 +11,11 @@ import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 
 const CreateContactDialog = dynamic(
-  () => import("@/components/features/create-contact-dialog").then(m => ({ default: m.CreateContactDialog })),
+  () => import("@/components/contacts/create-contact-dialog").then(m => ({ default: m.CreateContactDialog })),
   { ssr: false }
 )
 const EditContactDialog = dynamic(
-  () => import("@/components/features/edit-contact-dialog").then(m => ({ default: m.EditContactDialog })),
+  () => import("@/components/contacts/edit-contact-dialog").then(m => ({ default: m.EditContactDialog })),
   { ssr: false }
 )
 

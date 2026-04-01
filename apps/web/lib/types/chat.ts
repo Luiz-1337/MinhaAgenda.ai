@@ -13,9 +13,3 @@ export interface WhatsAppWebhookPayload {
   To: string
 }
 
-export interface TwilioConfig {
-  accountSid: string
-  authToken: string
-  phoneNumber: string
-}
-

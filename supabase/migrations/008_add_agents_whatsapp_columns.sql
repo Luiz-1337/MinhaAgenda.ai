@@ -10,6 +10,6 @@ ADD COLUMN IF NOT EXISTS whatsapp_verified_at TIMESTAMPTZ;
 
 -- Comentários para documentação
 COMMENT ON COLUMN agents.whatsapp_status IS 'Status da verificação: pending_verification, verifying, verified, failed';
-COMMENT ON COLUMN agents.twilio_sender_id IS 'ID do sender configurado no Twilio';
+COMMENT ON COLUMN agents.twilio_sender_id IS 'ID do sender configurado no Twilio [DEPRECATED: Twilio integration has been deprecated]';
 COMMENT ON COLUMN agents.whatsapp_connected_at IS 'Data/hora quando o WhatsApp foi conectado';
 COMMENT ON COLUMN agents.whatsapp_verified_at IS 'Data/hora quando o WhatsApp foi verificado';

@@ -22,7 +22,7 @@ import type { ResponsesRunnerInputMessage } from "./openai-responses-runner.serv
 import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
 import { findRelevantContext, generateQueryEmbedding } from "./rag-context.service";
-import { logger, createContextLogger, Logger } from "../../logger";
+import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";

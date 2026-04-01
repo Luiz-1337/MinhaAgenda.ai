@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, sql } from '@repo/db';
-import { logger } from '@/lib/logger';
+import { logger } from '@/lib/infra/logger';
 import { requireAdminAuth } from '@/lib/services/admin-auth.service';
 
 export async function GET(request: NextRequest) {

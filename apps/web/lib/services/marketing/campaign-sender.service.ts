@@ -2,7 +2,7 @@
  * Serviço para envio de campanhas de broadcast
  */
 
-import { sendWhatsAppMessage, normalizePhoneNumber, formatPhoneToE164 } from "@/lib/services/evolution-message.service"
+import { sendWhatsAppMessage, normalizePhoneNumber, formatPhoneToE164 } from "@/lib/services/evolution/evolution-message.service"
 import { MarketingRepository } from "./marketing.repository"
 import { SegmentationService } from "./segmentation.service"
 import { VariableReplacerService } from "./variable-replacer.service"
@@ -126,7 +126,7 @@ export class CampaignSenderService {
           errors.push(`${lead.name} (${lead.phone}): ${errorMessage}`)
         }
 
-        // Pequeno delay para não sobrecarregar API do Twilio (rate limiting)
+        // Pequeno delay para não sobrecarregar API (rate limiting)
         await new Promise((resolve) => setTimeout(resolve, 100))
       } catch (error) {
         failedCount++

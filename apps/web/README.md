@@ -1,6 +1,6 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## WhatsApp (Twilio) + AI tools (Opção A)
+## WhatsApp (Evolution API) + AI tools
 
 O webhook principal fica em `app/api/webhook/whatsapp/route.ts`.
 

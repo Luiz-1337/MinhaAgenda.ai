@@ -28,11 +28,10 @@
     "mcp:debug": "dotenv -e ./.env -- tsx scripts/mcp-client.ts",
     "mcp:debug:vercel": "dotenv -e ./.env -v MCP_CLIENT_TOOL_SOURCE=vercel -- tsx scripts/mcp-client.ts",
     "mcp:debug:mcp": "dotenv -e ./.env -v MCP_CLIENT_TOOL_SOURCE=mcp -- tsx scripts/mcp-client.ts",
-    "mcp:chat": "dotenv -e ./.env -- tsx scripts/mcp-chat.ts",
     "diagnose:google": "dotenv -e ./.env -- tsx scripts/diagnose-google-integration.ts",
+    "diagnose:evolution": "dotenv -e ./.env -- tsx scripts/diagnose-evolution-api.ts",
     "check:integration": "dotenv -e ./.env -- tsx scripts/check-google-integration.ts",
-    "worker:start": "ts-node apps/web/workers/message-processor.ts"
-
+    "worker:start": "dotenv -e ./.env -- tsx apps/web/workers/message-processor.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.26.0",

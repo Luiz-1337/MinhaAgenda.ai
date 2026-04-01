@@ -15,26 +15,6 @@ build/
 out/
 .turbo/
 
-# Expo
-.expo/
-expo-packager-cache/
-web-build/
-expo-env.d.ts
-
-# React Native / Expo Native
-android/
-ios/
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
 # Testing
 coverage/
 
@@ -66,11 +46,8 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
-Tutoriais/
 
-#IA
+# Project specific
+Tutoriais/
 .agent/
 *.MD
-
-.gitignore
-

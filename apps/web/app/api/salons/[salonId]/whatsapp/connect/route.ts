@@ -7,9 +7,9 @@ import {
   connectInstance,
   restartInstance,
   setInstanceWebhook,
-} from '@/lib/services/evolution-instance.service';
-import { checkRateLimit } from '@/lib/redis';
-import { logger } from '@/lib/logger';
+} from '@/lib/services/evolution/evolution-instance.service';
+import { checkRateLimit } from '@/lib/infra/redis';
+import { logger } from '@/lib/infra/logger';
 
 /**
  * POST /api/salons/[salonId]/whatsapp/connect
@@ -96,7 +96,7 @@ export async function POST(
 
     // Force reconnect: disconnect first, then restart to get fresh QR
     if (forceReconnect && instance.status === 'connected') {
-      const { disconnectInstance } = await import('@/lib/services/evolution-instance.service');
+      const { disconnectInstance } = await import('@/lib/services/evolution/evolution-instance.service');
       logger.info({ instanceName: instance.instanceName, salonId }, 'Force reconnect: disconnecting first');
       try {
         await disconnectInstance(instance.instanceName);

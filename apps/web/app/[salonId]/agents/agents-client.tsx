@@ -28,7 +28,6 @@ type WhatsAppStatus = {
   numbers: WhatsAppNumber[]
   pendingVerification?: {
     phoneNumber: string
-    twilioSenderId: string
   }
 }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe, PRICE_TO_TIER, CREDIT_PACK_BY_PRICE } from '@/lib/stripe'
 import { db, profiles, salons, payments, eq, sql } from '@repo/db'
-import { getRedisClient } from '@/lib/redis'
+import { getRedisClient } from '@/lib/infra/redis'
 import type Stripe from 'stripe'
 
 const PROCESSED_EVENT_TTL = 60 * 60 * 24 // 24 horas em segundos
