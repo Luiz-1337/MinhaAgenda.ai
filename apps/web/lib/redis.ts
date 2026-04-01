@@ -21,7 +21,10 @@ export function getRedisClient(): Redis {
     return redis;
   }
 
-  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new Error("REDIS_URL environment variable is required");
+  }
 
   redis = new Redis(redisUrl, {
     maxRetriesPerRequest: 3,
@@ -56,7 +59,10 @@ export function getRedisClient(): Redis {
  * BullMQ requer maxRetriesPerRequest: null para operações blocking
  */
 export function createRedisClientForBullMQ(): Redis {
-  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new Error("REDIS_URL environment variable is required");
+  }
 
   const client = new Redis(redisUrl, {
     maxRetriesPerRequest: null, // Requerido pelo BullMQ

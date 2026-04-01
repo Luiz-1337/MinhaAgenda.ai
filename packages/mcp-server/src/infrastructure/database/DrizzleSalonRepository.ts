@@ -138,8 +138,7 @@ export class DrizzleSalonRepository implements ISalonRepository {
       subscriptionStatus,
     })
 
-    this.salonCache.clear()
-    this.integrationCache.clear()
+    this.salonCache.invalidate(data.id)
   }
 
   async update(salon: Salon): Promise<void> {
@@ -161,7 +160,6 @@ export class DrizzleSalonRepository implements ISalonRepository {
       })
       .where(eq(salons.id, data.id))
 
-    this.salonCache.clear()
-    this.integrationCache.clear()
+    this.salonCache.invalidate(data.id)
   }
 }

@@ -7,8 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setManualLidMapping, removeLidMapping, resolveLidToPhone } from '@/lib/redis';
 import { logger } from '@/lib/logger';
+import { requireAdminAuth } from '@/lib/services/admin-auth.service';
 
 export async function POST(request: NextRequest) {
+    const authError = requireAdminAuth(request.headers);
+    if (authError) return authError;
+
     try {
         const body = await request.json();
         const { lid, phone, instanceName } = body;
@@ -38,6 +42,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+    const authError = requireAdminAuth(request.headers);
+    if (authError) return authError;
+
     try {
         const { searchParams } = new URL(request.url);
         const lid = searchParams.get('lid');
@@ -68,6 +75,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+    const authError = requireAdminAuth(request.headers);
+    if (authError) return authError;
+
     try {
         const body = await request.json();
         const { lid, instanceName } = body;
