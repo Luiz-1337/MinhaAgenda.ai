@@ -1,0 +1,426 @@
+"use client"
+
+import { useState, useEffect, useMemo } from "react"
+import dynamic from "next/dynamic"
+import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus } from "lucide-react"
+import { DailyScheduler } from "./daily-scheduler"
+import { WeeklyScheduler } from "./weekly-scheduler"
+import { MonthlyScheduler } from "./monthly-scheduler"
+
+const CreateAppointmentDialog = dynamic(
+  () => import("./create-appointment-dialog").then(m => ({ default: m.CreateAppointmentDialog })),
+  { ssr: false }
+)
+import { getAppointments, getSchedulerHours, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
+import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
+import { ptBR } from "date-fns/locale/pt-BR"
+import {
+  startOfDayBrazil,
+  endOfDayBrazil,
+  startOfWeekBrazil,
+  endOfWeekBrazil,
+  startOfMonthBrazil,
+  endOfMonthBrazil
+} from "@/lib/utils/timezone.utils"
+import { useSalonAuth } from "@/contexts/salon-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+interface SchedulerViewProps {
+  salonId: string
+  initialDate?: Date | string
+}
+
+type ViewType = "daily" | "weekly" | "monthly"
+
+interface Professional {
+  id: string
+  name: string
+  avatar?: string | null
+}
+
+export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
+  const { isSolo } = useSalonAuth()
+  const [viewType, setViewType] = useState<ViewType>("weekly")
+  const [currentDate, setCurrentDate] = useState<Date>(() => {
+    if (initialDate) {
+      return typeof initialDate === 'string' ? new Date(initialDate) : initialDate
+    }
+    return new Date()
+  })
+  
+  // Estado unificado de dados
+  const [appointments, setAppointments] = useState<AppointmentDTO[]>([])
+  const [professionals, setProfessionals] = useState<ProfessionalInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Estado de UI
+  const [selectedProId, setSelectedProId] = useState<string | null>(null)
+  const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [schedulerHours, setSchedulerHours] = useState({ startHour: 8, endHour: 22 })
+
+  // Carrega horários do calendário (baseado na disponibilidade do salão/profissional)
+  useEffect(() => {
+    if (!salonId) return
+    getSchedulerHours(salonId, selectedProId).then((res) => {
+      if (!("error" in res)) {
+        setSchedulerHours(res)
+      }
+    })
+  }, [salonId, selectedProId])
+
+  // Carrega dados unificados (Agendamentos + Profissionais)
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true)
+      setError(null)
+      
+      let start: Date
+      let end: Date
+
+      // Calcula range baseado na view
+      switch (viewType) {
+        case 'daily':
+          start = startOfDayBrazil(currentDate)
+          end = endOfDayBrazil(currentDate)
+          break
+        case 'weekly':
+          start = startOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+          end = endOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+          break
+        case 'monthly':
+          start = startOfMonthBrazil(currentDate)
+          end = endOfMonthBrazil(currentDate)
+          break
+      }
+
+      try {
+        const result = await getAppointments(salonId, start, end)
+        
+        if ('error' in result) {
+          setError(result.error)
+          setAppointments([])
+          setProfessionals([])
+        } else {
+          setAppointments(result.appointments)
+          setProfessionals(result.professionals)
+        }
+      } catch (err) {
+        console.error('Erro ao buscar dados:', err)
+        setError('Falha ao carregar agendamentos')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [salonId, currentDate, viewType])
+
+  // Seleciona o primeiro profissional automaticamente se nenhum estiver selecionado
+  useEffect(() => {
+    if (professionals.length > 0 && !selectedProId) {
+       // Filtra apenas ativos para seleção automática, embora a query já deva retornar ativos ou a UI filtre
+       const activePros = professionals.filter(p => p.isActive)
+       if (activePros.length > 0) {
+         setSelectedProId(activePros[0].id) // Seleciona o primeiro específico por padrão? Ou 'all'? 
+         // O código original selecionava o primeiro.
+         // Mas o dropdown original tinha opção "Todos". Vamos manter consistência com o original.
+         // Se o design original tinha "Todos", vamos ver.
+         // Código original:
+         // setProfessionals([{ id: 'all', name: 'Todos os Profissionais' }, ...active])
+         // setSelectedPro(allProfessionals[0]) // que era 'all'
+         
+         // Se eu quiser suportar "Todos", precisaria ajustar a lógica de filtragem nos subcomponentes ou filtrar aqui.
+         // Os subcomponentes originais recebiam `selectedProfessionalId` e filtravam por ele.
+         // Se eu passar 'all', eles precisam saber lidar. 
+         // Mas olhando o código dos subcomponentes que acabei de escrever:
+         // `appointmentsByProfessional.get(selectedProfessionalId)` -> Isso implica que eles esperam um ID específico.
+         // Para suportar "Todos", eu teria que alterar os subcomponentes ou lidar com isso aqui.
+         // O código original dos subcomponentes (Daily/Weekly) também tinha lógica:
+         // const selectedProfessionalAppointments = ... appointmentsByProfessional.get(selectedProfessionalId)
+         // Parece que eles NÃO suportavam ver todos ao mesmo tempo na visualização detalhada (Daily/Weekly), 
+         // pois filtravam por ID único.
+         // Vamos manter o comportamento de selecionar um específico por enquanto para garantir que funcione como antes na visualização,
+         // ou implementar a visualização de "Todos" se for desejado. 
+         // O código original do SchedulerView tinha a opção 'all' no dropdown, mas não vi como isso era passado para os subcomponentes.
+         // Ah, o SchedulerView original NÃO passava selectedPro para os subcomponentes! 
+         // Os subcomponentes tinham seu PRÓPRIO estado `selectedProfessionalId` e lógica de seleção interna!
+         // Então a seleção no `SchedulerView` (cabeçalho) era desconectada da seleção dentro do `DailyScheduler`?
+         // Espera, olhando o código original do `SchedulerView`:
+         // Ele tinha um dropdown de profissionais no Header.
+         // Mas ele passava APENAS `salonId` e `initialDate` para `DailyScheduler`.
+         // E `DailyScheduler` tinha seu PRÓPRIO fetch e seu PRÓPRIO estado `selectedProfessionalId`.
+         // Isso significa que o dropdown no Header do `SchedulerView` NÃO controlava os subcomponentes?
+         // Isso parece um bug ou inconsistência da versão anterior, ou eu perdi algo.
+         // O dropdown no SchedulerView original parecia ser apenas visual ou incompleto.
+         
+         // NA MINHA REFATORAÇÃO:
+         // Eu tornei o `SchedulerView` o "dono" da verdade.
+         // Eu vou passar `selectedProfessionalId` para os subcomponentes.
+         // Assim o dropdown do Header vai controlar a view.
+         setSelectedProId(activePros[0].id)
+       }
+    }
+  }, [professionals, selectedProId])
+
+  // Helpers para UI
+  const selectedPro = useMemo(() => {
+    if (!selectedProId) return null
+    return professionals.find(p => p.id === selectedProId) || null
+  }, [professionals, selectedProId])
+
+  // Formatação para Dropdown
+  const dropdownProfessionals = useMemo(() => {
+    return professionals.filter(p => p.isActive).map(p => ({
+      id: p.id,
+      name: p.name,
+      avatar: p.name.split(' ').map(n => n[0]).slice(0, 2).join('')
+    }))
+  }, [professionals])
+
+  const navigateDate = (direction: 'prev' | 'next') => {
+    setCurrentDate(prev => {
+      switch (viewType) {
+        case 'daily':
+          return direction === 'prev' ? subDays(prev, 1) : addDays(prev, 1)
+        case 'weekly':
+          return direction === 'prev' ? subWeeks(prev, 1) : addWeeks(prev, 1)
+        case 'monthly':
+          return direction === 'prev' ? subMonths(prev, 1) : addMonths(prev, 1)
+        default:
+          return prev
+      }
+    })
+  }
+
+  const goToToday = () => {
+    setCurrentDate(new Date())
+  }
+
+  // Função para recarregar dados após criar agendamento
+  const handleAppointmentCreated = async () => {
+    setLoading(true)
+    setError(null)
+    
+    let start: Date
+    let end: Date
+
+    // Calcula range baseado na view
+    switch (viewType) {
+      case 'daily':
+        start = startOfDayBrazil(currentDate)
+        end = endOfDayBrazil(currentDate)
+        break
+      case 'weekly':
+        start = startOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+        end = endOfWeekBrazil(currentDate, { weekStartsOn: 0 })
+        break
+      case 'monthly':
+        start = startOfMonthBrazil(currentDate)
+        end = endOfMonthBrazil(currentDate)
+        break
+    }
+
+    try {
+      const result = await getAppointments(salonId, start, end)
+      
+      if ('error' in result) {
+        setError(result.error)
+        setAppointments([])
+        setProfessionals([])
+      } else {
+        setAppointments(result.appointments)
+        setProfessionals(result.professionals)
+      }
+    } catch (err) {
+      console.error('Erro ao buscar dados:', err)
+      setError('Falha ao carregar agendamentos')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getDateLabel = () => {
+    switch (viewType) {
+      case 'daily':
+        return format(currentDate, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
+      case 'weekly':
+        const weekStart = startOfWeek(currentDate, { locale: ptBR })
+        const weekEnd = endOfWeek(currentDate, { locale: ptBR })
+        return `${format(weekStart, "d 'de' MMM", { locale: ptBR })} - ${format(weekEnd, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`
+      case 'monthly':
+        return format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })
+      default:
+        return format(currentDate, "MMMM 'de' yyyy", { locale: ptBR })
+    }
+  }
+
+  const renderHeader = () => (
+    <div className="flex flex-col gap-3 mb-4 lg:mb-6">
+      {/* Row 1: Date Navigation + New Appointment */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+        <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg p-1 flex-1 sm:flex-initial">
+          <button 
+            onClick={() => navigateDate('prev')}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-md text-slate-500 dark:text-slate-400 transition-colors"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="flex-1 sm:flex-initial px-2 sm:px-4 font-semibold text-slate-700 dark:text-slate-200 sm:min-w-[180px] lg:min-w-[200px] text-center text-xs sm:text-sm truncate">
+            {getDateLabel()}
+          </div>
+          <button 
+            onClick={() => navigateDate('next')}
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-md text-slate-500 dark:text-slate-400 transition-colors"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={goToToday}
+            className="flex-1 sm:flex-initial px-3 py-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 rounded-lg text-xs sm:text-sm font-medium border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+          >
+            Hoje
+          </button>
+          <button 
+            onClick={() => setIsCreateDialogOpen(true)}
+            className="flex-1 sm:flex-initial px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs sm:text-sm font-medium shadow-sm shadow-indigo-500/20 flex items-center justify-center gap-2 transition-colors"
+          >
+            <Plus size={16} />
+            <span className="hidden sm:inline">Novo Agendamento</span>
+            <span className="sm:hidden">Novo</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Row 2: Professional Dropdown + View Switcher */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+        {/* Professional Dropdown */}
+        {!loading && selectedPro && dropdownProfessionals.length > 1 && !isSolo && (
+          <DropdownMenu open={isProDropdownOpen} onOpenChange={setIsProDropdownOpen}>
+            <DropdownMenuTrigger asChild>
+              <button 
+                className="w-full sm:w-auto flex items-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-200 hover:border-indigo-500/50 transition-colors sm:min-w-[180px] justify-between flex-1 sm:flex-initial"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                    {selectedPro.name.split(' ').map(n => n[0]).slice(0, 2).join('') || <Users size={12} />}
+                  </div>
+                  <span className="truncate">{selectedPro.name}</span>
+                </div>
+                <ChevronDown size={14} className={`text-slate-400 transition-transform flex-shrink-0 ${isProDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={8} className="min-w-[200px] bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 rounded-xl p-1">
+              {dropdownProfessionals.map(pro => (
+                <DropdownMenuItem
+                  key={pro.id}
+                  onClick={() => { setSelectedProId(pro.id); setIsProDropdownOpen(false); }}
+                  className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer rounded-lg"
+                >
+                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">
+                    {pro.avatar || <Users size={12} />}
+                  </div>
+                  {pro.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {isSolo && selectedPro && (
+          <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg text-[10px] sm:text-xs text-indigo-700 dark:text-indigo-300 flex-1 sm:flex-initial">
+            <span className="hidden sm:inline">No plano SOLO, os agendamentos são automaticamente vinculados a você.</span>
+            <span className="sm:hidden">Plano SOLO: vinculado a você</span>
+          </div>
+        )}
+
+        {/* View Switcher */}
+        <div className="flex bg-slate-100 dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-white/5 self-stretch sm:self-auto">
+          {[
+            { id: 'daily' as ViewType, label: 'Diário', shortLabel: 'Dia', icon: Calendar },
+            { id: 'weekly' as ViewType, label: 'Semanal', shortLabel: 'Sem', icon: CalendarRange },
+            { id: 'monthly' as ViewType, label: 'Mensal', shortLabel: 'Mês', icon: CalendarDays }
+          ].map((v) => {
+            const Icon = v.icon
+            return (
+              <button
+                key={v.id}
+                onClick={() => setViewType(v.id)}
+                className={`flex-1 sm:flex-initial px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
+                  viewType === v.id 
+                  ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm dark:shadow-lg dark:shadow-indigo-500/20' 
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <Icon size={14} />
+                <span className="hidden sm:inline">{v.label}</span>
+                <span className="sm:hidden">{v.shortLabel}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="h-full flex flex-col">
+      {renderHeader()}
+      <div className="flex-1 min-h-0">
+        {viewType === "daily" && (
+          <DailyScheduler 
+            salonId={salonId} 
+            currentDate={currentDate} 
+            appointments={appointments}
+            professionals={professionals}
+            loading={loading}
+            error={error}
+            selectedProfessionalId={selectedProId}
+            startHour={schedulerHours.startHour}
+            endHour={schedulerHours.endHour}
+          />
+        )}
+        {viewType === "weekly" && (
+          <WeeklyScheduler 
+            salonId={salonId} 
+            currentDate={currentDate} 
+            appointments={appointments}
+            professionals={professionals}
+            loading={loading}
+            error={error}
+            selectedProfessionalId={selectedProId}
+            startHour={schedulerHours.startHour}
+            endHour={schedulerHours.endHour}
+          />
+        )}
+        {viewType === "monthly" && (
+          <MonthlyScheduler 
+            salonId={salonId} 
+            currentDate={currentDate} 
+            appointments={appointments}
+            professionals={professionals}
+            loading={loading}
+            error={error}
+            selectedProfessionalId={selectedProId}
+          />
+        )}
+      </div>
+      
+      {/* Create Appointment Dialog */}
+      <CreateAppointmentDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        salonId={salonId}
+        professionals={professionals}
+        onSuccess={handleAppointmentCreated}
+      />
+    </div>
+  )
+}

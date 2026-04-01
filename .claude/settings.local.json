@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf lib/ai)",
+      "Bash(rm -f lib/tracing.ts lib/services/encryption.service.ts lib/services/media-storage.service.ts)",
+      "Bash(mkdir -p lib/services/evolution)",
+      "Bash(mv lib/services/evolution-api.service.ts lib/services/evolution/)",
+      "Bash(mv lib/services/evolution-instance.service.ts lib/services/evolution/)",
+      "Bash(mv lib/services/evolution-message.service.ts lib/services/evolution/)",
+      "Bash(while read:*)",
+      "Bash(do sed:*)",
+      "Bash(done)",
+      "Bash(mkdir -p lib/infra)",
+      "Bash(mv lib/redis.ts lib/infra/)",
+      "Bash(mv lib/circuit-breaker.ts lib/infra/)",
+      "Bash(mv lib/rate-limit.ts lib/infra/)",
+      "Bash(mv lib/logger.ts lib/infra/)",
+      "Bash(mv \"app/[salonId]/dashboard/DashboardContent.tsx\" \"app/[salonId]/dashboard/dashboard-content.tsx\")",
+      "Bash(mv \"app/[salonId]/dashboard/ProDashboardContent.tsx\" \"app/[salonId]/dashboard/pro-dashboard-content.tsx\")",
+      "Bash(mv \"app/[salonId]/dashboard/SoloDashboardContent.tsx\" \"app/[salonId]/dashboard/solo-dashboard-content.tsx\")",
+      "Bash(mv \"app/[salonId]/products/ProductList.tsx\" \"app/[salonId]/products/product-list.tsx\")",
+      "Bash(mv \"app/[salonId]/services/ServiceList.tsx\" \"app/[salonId]/services/service-list.tsx\")",
+      "Bash(mv components/landing/About.tsx components/landing/about.tsx)",
+      "Bash(mv components/landing/Features.tsx components/landing/features.tsx)",
+      "Bash(mv components/landing/Footer.tsx components/landing/footer.tsx)",
+      "Bash(mv components/landing/Hero.tsx components/landing/hero.tsx)",
+      "Bash(mv components/landing/Navbar.tsx components/landing/navbar.tsx)",
+      "Bash(mv components/features/scheduler/CreateAppointmentDialog.tsx components/features/scheduler/create-appointment-dialog.tsx)",
+      "Bash(mv components/features/scheduler/DailyScheduler.tsx components/features/scheduler/daily-scheduler.tsx)",
+      "Bash(mv components/features/scheduler/MonthlyScheduler.tsx components/features/scheduler/monthly-scheduler.tsx)",
+      "Bash(mv components/features/scheduler/SchedulerView.tsx components/features/scheduler/scheduler-view.tsx)",
+      "Bash(mv components/features/scheduler/WeeklyScheduler.tsx components/features/scheduler/weekly-scheduler.tsx)",
+      "Bash(mkdir -p components/contacts)",
+      "Bash(mkdir -p components/scheduler)",
+      "Bash(mv components/features/create-contact-dialog.tsx components/contacts/)",
+      "Bash(mv components/features/delete-contact-dialog.tsx components/contacts/)",
+      "Bash(mv components/features/edit-contact-dialog.tsx components/contacts/)",
+      "Bash(rm -rf .next)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
