@@ -43,17 +43,21 @@ export interface CreditPack {
   highlight?: boolean
 }
 
+const STRIPE_CREDIT_BASIC = process.env.STRIPE_CREDIT_BASIC!
+const STRIPE_CREDIT_PRO = process.env.STRIPE_CREDIT_PRO!
+const STRIPE_CREDIT_PREMIUM = process.env.STRIPE_CREDIT_PREMIUM!
+
 export const CREDIT_PACKS: CreditPack[] = [
   {
     id: 'basic',
-    priceId: 'price_1TEgaECknWqIQpwvIbH7jX2G',
+    priceId: STRIPE_CREDIT_BASIC,
     label: 'Básico',
     credits: 500_000,
     price: 49,
   },
   {
     id: 'pro',
-    priceId: 'price_1TEgaFCknWqIQpwvpCKZFbpB',
+    priceId: STRIPE_CREDIT_PRO,
     label: 'Profissional',
     credits: 1_000_000,
     price: 89,
@@ -61,7 +65,7 @@ export const CREDIT_PACKS: CreditPack[] = [
   },
   {
     id: 'premium',
-    priceId: 'price_1TEgaGCknWqIQpwvDEF577ox',
+    priceId: STRIPE_CREDIT_PREMIUM,
     label: 'Premium',
     credits: 2_000_000,
     price: 149,

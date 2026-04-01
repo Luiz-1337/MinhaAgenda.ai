@@ -10,6 +10,10 @@
 export async function register() {
     // Só executa no servidor Node.js (não no Edge Runtime)
     if (process.env.NEXT_RUNTIME === "nodejs") {
+        // Valida env vars antes de qualquer inicialização
+        const { validateEnv } = await import("./lib/env");
+        validateEnv();
+
         // Import dinâmico para evitar problemas com Edge Runtime
         const { createMessageWorker } = await import("./workers/message-processor");
         const { logger } = await import("./lib/logger");

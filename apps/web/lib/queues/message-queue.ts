@@ -151,16 +151,17 @@ export async function enqueueMessage(
   // Menor número = maior prioridade
   const priority = data.hasMedia ? 2 : 1;
 
-  // Atualiza o sentinel de última mensagem do chat ANTES de enfileirar.
-  // O worker usa esse valor para decidir se deve gerar resposta de IA ou
-  // se uma mensagem mais recente já assumiu a responsabilidade (coalescing).
-  await redis.set(CHAT_LATEST_JOB_KEY(data.chatId), data.messageId, "EX", 300);
-
   const job = await queue.add("process-message", data, {
     jobId: data.messageId, // Garante unicidade (idempotência)
     priority,
     delay: CHAT_DEBOUNCE_MS, // Aguarda antes de processar para permitir coalescing
   });
+
+  // Atualiza o sentinel de última mensagem do chat DEPOIS de enfileirar.
+  // O worker usa esse valor para decidir se deve gerar resposta de IA ou
+  // se uma mensagem mais recente já assumiu a responsabilidade (coalescing).
+  // Feito após queue.add para evitar sentinel setado sem job correspondente.
+  await redis.set(CHAT_LATEST_JOB_KEY(data.chatId), data.messageId, "EX", 300);
 
   logger.info(
     {

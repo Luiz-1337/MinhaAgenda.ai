@@ -121,6 +121,7 @@ export const salons = pgTable(
     phone: text('phone'),
     description: text('description'),
     subscriptionStatus: subscriptionStatusEnum('subscription_status').default('TRIAL').notNull(),
+    subscriptionStatusChangedAt: timestamp('subscription_status_changed_at').defaultNow(),
     stripeSubscriptionId: text('stripe_subscription_id').unique(),
     extraCredits: bigint('extra_credits', { mode: 'number' }).default(0).notNull(),
     settings: jsonb('settings'),

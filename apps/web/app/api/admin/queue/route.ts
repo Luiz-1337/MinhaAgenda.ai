@@ -8,8 +8,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMessageQueue, getQueueStats } from '@/lib/queues/message-queue';
 import { logger } from '@/lib/logger';
+import { requireAdminAuth } from '@/lib/services/admin-auth.service';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const authError = requireAdminAuth(request.headers);
+    if (authError) return authError;
     try {
         const stats = await getQueueStats();
         const queue = getMessageQueue();
@@ -44,7 +47,9 @@ export async function GET() {
     }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+    const authError = requireAdminAuth(request.headers);
+    if (authError) return authError;
     try {
         const queue = getMessageQueue();
 

@@ -6,8 +6,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, sql } from '@repo/db';
 import { logger } from '@/lib/logger';
+import { requireAdminAuth } from '@/lib/services/admin-auth.service';
 
 export async function GET(request: NextRequest) {
+    const authError = requireAdminAuth(request.headers);
+    if (authError) return authError;
+
     try {
         const { searchParams } = new URL(request.url);
         const chatId = searchParams.get('chatId');
