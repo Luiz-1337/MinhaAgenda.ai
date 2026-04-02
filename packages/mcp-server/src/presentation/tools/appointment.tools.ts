@@ -28,7 +28,7 @@ export function createAppointmentTools(
   return {
     addAppointment: {
       description:
-        "Cria um novo agendamento para o cliente.",
+        "Cria um novo agendamento. REQUER professionalId e serviceId (obtidos via getServices e getProfessionals/checkAvailability) e date em formato ISO 8601. SEMPRE chame checkAvailability ANTES para confirmar disponibilidade.",
       inputSchema: createAppointmentSchema,
       execute: async (input) => {
         try {
@@ -73,7 +73,7 @@ export function createAppointmentTools(
 
     updateAppointment: {
       description:
-        "Atualiza um agendamento existente (reagendamento).",
+        "Reagenda um agendamento existente. REQUER appointmentId (obtido via getMyFutureAppointments). Chame checkAvailability ANTES para confirmar o novo horário.",
       inputSchema: updateAppointmentSchema,
       execute: async (input) => {
         try {
@@ -102,7 +102,7 @@ export function createAppointmentTools(
 
     removeAppointment: {
       description:
-        "Cancela um agendamento existente.",
+        "Cancela um agendamento. REQUER appointmentId (obtido via getMyFutureAppointments). Chame getMyFutureAppointments ANTES para obter o ID correto.",
       inputSchema: deleteAppointmentSchema,
       execute: async (input) => {
         try {
@@ -129,7 +129,7 @@ export function createAppointmentTools(
 
     getMyFutureAppointments: {
       description:
-        "Lista agendamentos futuros do cliente atual. Use esta tool SEMPRE antes de cancelar ou reagendar para obter os IDs.",
+        "Lista agendamentos futuros do cliente. OBRIGATÓRIO chamar ANTES de updateAppointment ou removeAppointment. Retorna IDs internos necessários para reagendar/cancelar. Não precisa de parâmetros.",
       inputSchema: getMyFutureAppointmentsSchema,
       execute: async (input) => {
         try {

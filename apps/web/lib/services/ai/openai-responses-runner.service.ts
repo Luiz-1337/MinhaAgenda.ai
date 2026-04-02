@@ -215,9 +215,9 @@ export async function runOpenAIResponses(
       input: currentInput as any,
       previous_response_id: previousResponseId,
       tools: responseTools as any,
-      parallel_tool_calls: true,
+      parallel_tool_calls: false,
       temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.4"),
-      max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "800", 10),
+      max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "1200", 10),
       top_p: parseFloat(process.env.AI_TOP_P ?? "0.9"),
     })
 

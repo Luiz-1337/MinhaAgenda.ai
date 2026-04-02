@@ -33,7 +33,7 @@ export function createCatalogTools(
   return {
     getServices: {
       description:
-        "Busca lista de serviços disponíveis no salão com preços e durações.",
+        "Lista todos os serviços do salão com nomes, preços e durações. Chame ANTES de informar preços ao cliente. Retorna serviceId necessário para checkAvailability e addAppointment. Não precisa de parâmetros.",
       inputSchema: getServicesSchema,
       execute: async (input) => {
         try {
@@ -93,7 +93,7 @@ export function createCatalogTools(
 
     getProfessionals: {
       description:
-        "Retorna lista de profissionais (barbeiros) do salão para mapear nomes a IDs.",
+        "Lista profissionais do salão e seus serviços. Retorna professionalId necessário para checkAvailability e addAppointment. Use quando o cliente perguntar sobre profissionais ou para obter o ID de um profissional específico.",
       inputSchema: getProfessionalsSchema,
       execute: async (input) => {
         try {

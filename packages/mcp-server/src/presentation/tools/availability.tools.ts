@@ -24,7 +24,7 @@ export function createAvailabilityTools(
   return {
     checkAvailability: {
       description:
-        "Verifica horários disponíveis para agendamento em uma data.",
+        "Verifica horários disponíveis em uma data específica. REQUER date em formato ISO 8601 (ex: 2025-03-15T00:00:00-03:00). serviceId e professionalId são opcionais mas melhores resultados quando incluídos. NUNCA chame sem o cliente ter informado uma data.",
       inputSchema: checkAvailabilitySchema,
       execute: async (input) => {
         try {
@@ -53,7 +53,7 @@ export function createAvailabilityTools(
 
     getAvailableSlots: {
       description:
-        "Retorna apenas os horários disponíveis (filtrados) para agendamento.",
+        "Retorna apenas horários disponíveis (já filtrados, sem indisponíveis). Use checkAvailability como alternativa principal. Mesmos parâmetros que checkAvailability.",
       inputSchema: checkAvailabilitySchema,
       execute: async (input) => {
         try {

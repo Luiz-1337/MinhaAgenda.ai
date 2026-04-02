@@ -51,7 +51,6 @@ export function createSalonTools(
           }
 
           return {
-            id: result.data.id,
             name: result.data.name,
             address: result.data.address,
             phone: result.data.phone,

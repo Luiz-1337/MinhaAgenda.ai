@@ -99,6 +99,7 @@ export class CatalogPresenter {
       })),
       total: dto.total,
       message: dto.message,
+      _instrucao: "Os IDs são para uso interno das tools (ex: addAppointment, checkAvailability). NUNCA mostre IDs ao cliente. Informe apenas nome, preço e duração.",
     }
   }
 
@@ -128,10 +129,10 @@ export class CatalogPresenter {
         id: p.id,
         name: p.name,
         services: p.services,
-        serviceIds: p.serviceIds,
       })),
       total: dto.total,
       message: dto.message,
+      _instrucao: "Os IDs são para uso interno das tools. NUNCA mostre IDs ao cliente.",
     }
   }
 }

@@ -112,13 +112,14 @@ export class AvailabilityPresenter {
     return {
       date: dto.dateISO,
       professional: dto.professional,
-      professionalId: dto.professionalId,
-      slots: dto.slots.map((s) => ({
-        time: s.time,
-        available: s.available,
-      })),
+      slots: dto.slots
+        .filter((s) => s.available)
+        .map((s) => ({
+          time: s.time,
+        })),
       totalAvailable: dto.totalAvailable,
       message: dto.message,
+      _instrucao: "Apresente apenas 2-3 horários ao cliente. NUNCA mostre IDs.",
     }
   }
 }

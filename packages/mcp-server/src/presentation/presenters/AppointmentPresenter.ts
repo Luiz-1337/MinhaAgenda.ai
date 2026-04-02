@@ -86,7 +86,8 @@ export class AppointmentPresenter {
    */
   static listToJSON(dto: AppointmentListDTO): Record<string, unknown> {
     return {
-      appointments: dto.appointments.map((apt) => ({
+      appointments: dto.appointments.map((apt, index) => ({
+        number: index + 1,
         id: apt.id,
         service: apt.serviceName,
         professional: apt.professionalName,
@@ -96,6 +97,7 @@ export class AppointmentPresenter {
       })),
       total: dto.total,
       message: dto.message,
+      _instrucao: "Mostre agendamentos ao cliente usando o campo 'number' (1, 2, 3...). NUNCA mostre o campo 'id' ao cliente. Use o 'id' internamente para updateAppointment ou removeAppointment.",
     }
   }
 }
