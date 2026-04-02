@@ -42,14 +42,7 @@ export function RouteGuard() {
       }
     }
 
-    if (role === 'MANAGER' && !isSolo) {
-      // Manager não-SOLO não vê faturamento (apenas SOLO tem acesso completo)
-      const forbiddenSections = ['billing']
-      if (forbiddenSections.includes(section)) {
-        toast.error("Acesso negado para seu nível de permissão.")
-        router.replace(`/${activeSalon.id}/dashboard`)
-      }
-    }
+    // Billing acessível para qualquer MANAGER (SOLO, PRO, ENTERPRISE)
 
   }, [pathname, role, isSolo, activeSalon, isLoading, router])
 

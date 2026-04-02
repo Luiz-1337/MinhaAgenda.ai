@@ -41,7 +41,18 @@
       "Bash(npx tsc:*)",
       "mcp__Claude_Preview__preview_start",
       "Bash(python3 -c:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(powershell -Command \"Get-Process git -ErrorAction SilentlyContinue | Select-Object Id, CommandLine\")",
+      "Bash(powershell -Command \"Remove-Item ''.git/index.lock'' -Force\")",
+      "Bash(powershell -Command \"Remove-Item ''E:\\\\minhaagendaai_v2\\\\.git\\\\index.lock'' -Force\")",
+      "Bash(find /e/minhaagendaai_v2/apps -type f -name *sidebar* -o -name *navigation* -o -name *nav*)",
+      "Bash(powershell -Command \"Get-Process | Where-Object { $_.Path -like ''*git*'' -or $_.Name -like ''*git*'' } | Select-Object Id, Name, Path\")",
+      "Bash(powershell -Command \"Stop-Process -Id 17840 -Force; Stop-Process -Id 18204 -Force\")",
+      "Bash(rm -f \"E:/minhaagendaai_v2/.git/index.lock\")",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, Name, Path\")",
+      "Bash(powershell -Command \"Get-Process | Where-Object { $_.Path -like ''*git*'' -or $_.Name -match ''bash|git'' } | Select-Object Id, Name, Path\")",
+      "Bash(powershell -Command \"Stop-Process -Id 13416,17368 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -Command \"Get-Process | Where-Object { $_.Name -match ''bash|git'' } | Select-Object Id, Name, Path\")"
     ]
   }
 }

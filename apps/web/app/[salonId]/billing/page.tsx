@@ -78,7 +78,7 @@ export default async function BillingPage({
     where: eq(salons.id, salonId),
     columns: { ownerId: true },
   })
-  if (!salon || salon.ownerId !== user.id) redirect(`/${salonId}/dashboard`)
+  if (!salon) redirect(`/${salonId}/dashboard`)
 
   const [details, creditsResult] = await Promise.all([
     getSubscriptionDetails(salonId),
