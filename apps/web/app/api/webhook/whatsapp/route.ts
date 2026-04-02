@@ -268,28 +268,45 @@ async function handleMessageUpsert(
     throw error;
   }
 
-  // 3. BUSCAR SALÃO PELA INSTÂNCIA (com timeout)
-  const salon = await withTimeout(
-    db.query.salons.findFirst({
-      where: eq(salons.evolutionInstanceName, instanceName),
-      columns: { id: true },
+  // 3. BUSCAR AGENTE/SALÃO PELA INSTÂNCIA (dual-path: agent-first, salon-fallback)
+  // PRO/Enterprise: instâncias nomeadas agent-{agentId} -> busca direto no agents
+  // SOLO: instâncias nomeadas salon-{salonId} -> busca no salons, depois agente ativo
+  let salonId: string;
+  let agentId: string;
+
+  const agentByInstance = await withTimeout(
+    db.query.agents.findFirst({
+      where: eq(agents.evolutionInstanceName, instanceName),
+      columns: { id: true, salonId: true },
     }),
     DB_TIMEOUT,
-    'findSalonByInstance'
+    'findAgentByInstance'
   );
 
-  if (!salon) {
-    reqLogger.error({ instanceName }, 'Salon not found for instance');
-    WebhookMetrics.error('salon_not_found');
-    return NextResponse.json({ status: 'ok' }, { status: 200 });
-  }
+  if (agentByInstance) {
+    // Agent-level instance (PRO/Enterprise)
+    salonId = agentByInstance.salonId;
+    agentId = agentByInstance.id;
+  } else {
+    // Salon-level instance fallback (SOLO)
+    const salon = await withTimeout(
+      db.query.salons.findFirst({
+        where: eq(salons.evolutionInstanceName, instanceName),
+        columns: { id: true },
+      }),
+      DB_TIMEOUT,
+      'findSalonByInstance'
+    );
 
-  const salonId = salon.id;
-  reqLogger = reqLogger.child({ salonId });
+    if (!salon) {
+      reqLogger.error({ instanceName }, 'No salon or agent found for instance');
+      WebhookMetrics.error('salon_not_found');
+      return NextResponse.json({ status: 'ok' }, { status: 200 });
+    }
 
-  // 4. PARALELO: Buscar agente, customer, chat e isNewCustomer simultaneamente
-  const [agent, customer, chat, isNewCustomer] = await Promise.all([
-    withTimeout(
+    salonId = salon.id;
+
+    const activeAgent = await withTimeout(
       db.query.agents.findFirst({
         where: and(
           eq(agents.salonId, salonId),
@@ -299,14 +316,27 @@ async function handleMessageUpsert(
       }),
       DB_TIMEOUT,
       'findActiveAgent'
-    ),
+    );
+
+    if (!activeAgent) {
+      reqLogger.error({ salonId }, 'No active agent for salon');
+      return NextResponse.json({ status: 'ok' }, { status: 200 });
+    }
+
+    agentId = activeAgent.id;
+  }
+
+  reqLogger = reqLogger.child({ salonId, agentId });
+
+  // 4. PARALELO: Buscar customer, chat e isNewCustomer simultaneamente
+  const [customer, chat, isNewCustomer] = await Promise.all([
     withTimeout(
       findOrCreateCustomer(clientPhone, salonId, messageData.pushName),
       DB_TIMEOUT,
       'findOrCreateCustomer'
     ),
     withTimeout(
-      findOrCreateChat(clientPhone, salonId),
+      findOrCreateChat(clientPhone, salonId, agentId),
       DB_TIMEOUT,
       'findOrCreateChat'
     ),
@@ -317,14 +347,7 @@ async function handleMessageUpsert(
     ),
   ]);
 
-  if (!agent) {
-    reqLogger.error({ salonId }, 'No active agent for salon');
-    return NextResponse.json({ status: 'ok' }, { status: 200 });
-  }
-
-  const agentId = agent.id;
   reqLogger = reqLogger.child({
-    agentId,
     chatId: chat.id,
     customerId: customer.id,
   });
@@ -419,57 +442,99 @@ async function handleConnectionUpdate(
       WebhookMetrics.connectionAnomaly(status, { instanceName, ...(statusReason ? { statusReason } : {}) });
     }
 
-    // Atualiza status de conexão do salão (com timeout)
-    await withTimeout(
-      db
-        .update(salons)
-        .set({
-          evolutionConnectionStatus: status,
-          ...(status === 'connected' ? { evolutionConnectedAt: new Date() } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(salons.evolutionInstanceName, instanceName)),
+    // Dual-path: check if this is an agent-level instance first
+    const agentByInstance = await withTimeout(
+      db.query.agents.findFirst({
+        where: eq(agents.evolutionInstanceName, instanceName),
+        columns: { id: true, salonId: true },
+      }),
       DB_TIMEOUT,
-      'updateSalonConnectionStatus'
+      'findAgentByInstance'
     );
 
-    // Se conectado, busca número da Evolution e atualiza agents
-    if (status === 'connected') {
-      const salon = await withTimeout(
-        db.query.salons.findFirst({
-          where: eq(salons.evolutionInstanceName, instanceName),
-          columns: { id: true },
-        }),
+    if (agentByInstance) {
+      // Agent-level instance (PRO/Enterprise) - update only this agent
+      const agentUpdatePayload: Record<string, unknown> = {
+        evolutionConnectionStatus: status,
+        updatedAt: new Date(),
+      };
+
+      if (status === 'connected') {
+        agentUpdatePayload.evolutionConnectedAt = new Date();
+        agentUpdatePayload.whatsappStatus = 'verified';
+        agentUpdatePayload.whatsappVerifiedAt = new Date();
+        agentUpdatePayload.whatsappConnectedAt = new Date();
+
+        try {
+          const phoneNumber = await getConnectedPhoneNumber(instanceName);
+          if (phoneNumber) {
+            agentUpdatePayload.whatsappNumber = phoneNumber;
+          }
+        } catch (err) {
+          reqLogger.warn({ err }, 'Could not fetch connected phone number for agent');
+        }
+      }
+
+      await withTimeout(
+        db
+          .update(agents)
+          .set(agentUpdatePayload as any)
+          .where(eq(agents.id, agentByInstance.id)),
         DB_TIMEOUT,
-        'findSalonByInstance'
+        'updateAgentConnectionStatus'
+      );
+    } else {
+      // Salon-level instance fallback (SOLO) - update salon + all agents
+      await withTimeout(
+        db
+          .update(salons)
+          .set({
+            evolutionConnectionStatus: status,
+            ...(status === 'connected' ? { evolutionConnectedAt: new Date() } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(salons.evolutionInstanceName, instanceName)),
+        DB_TIMEOUT,
+        'updateSalonConnectionStatus'
       );
 
-      if (salon) {
-        let phoneNumber: string | null = null;
-        try {
-          phoneNumber = await getConnectedPhoneNumber(instanceName);
-        } catch (err) {
-          reqLogger.warn({ err }, 'Could not fetch connected phone number');
-        }
-
-        const updatePayload: Record<string, unknown> = {
-          whatsappStatus: 'verified',
-          whatsappVerifiedAt: new Date(),
-          whatsappConnectedAt: new Date(),
-          updatedAt: new Date(),
-        };
-        if (phoneNumber) {
-          updatePayload.whatsappNumber = phoneNumber;
-        }
-
-        await withTimeout(
-          db
-            .update(agents)
-            .set(updatePayload as any)
-            .where(eq(agents.salonId, salon.id)),
+      if (status === 'connected') {
+        const salon = await withTimeout(
+          db.query.salons.findFirst({
+            where: eq(salons.evolutionInstanceName, instanceName),
+            columns: { id: true },
+          }),
           DB_TIMEOUT,
-          'updateAgentsStatus'
+          'findSalonByInstance'
         );
+
+        if (salon) {
+          let phoneNumber: string | null = null;
+          try {
+            phoneNumber = await getConnectedPhoneNumber(instanceName);
+          } catch (err) {
+            reqLogger.warn({ err }, 'Could not fetch connected phone number');
+          }
+
+          const updatePayload: Record<string, unknown> = {
+            whatsappStatus: 'verified',
+            whatsappVerifiedAt: new Date(),
+            whatsappConnectedAt: new Date(),
+            updatedAt: new Date(),
+          };
+          if (phoneNumber) {
+            updatePayload.whatsappNumber = phoneNumber;
+          }
+
+          await withTimeout(
+            db
+              .update(agents)
+              .set(updatePayload as any)
+              .where(eq(agents.salonId, salon.id)),
+            DB_TIMEOUT,
+            'updateAgentsStatus'
+          );
+        }
       }
     }
 

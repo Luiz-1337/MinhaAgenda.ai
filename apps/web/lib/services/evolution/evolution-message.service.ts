@@ -10,6 +10,7 @@
 
 import { db, salons, agents, and, eq } from '@repo/db';
 import { getEvolutionClient, evolutionCircuitBreaker, EvolutionAPIError } from './evolution-api.service';
+import { resolveEvolutionInstance } from './evolution-instance.service';
 import { CircuitOpenError } from '../../infra/circuit-breaker';
 import { logger, hashPhone } from '../../infra/logger';
 
@@ -33,6 +34,7 @@ export interface SendMessageOptions {
   mediaType?: MediaType;
   fileName?: string;
   caption?: string;
+  agentId?: string;
 }
 
 /**
@@ -140,33 +142,17 @@ export async function sendWhatsAppMessage(
 ): Promise<{ messageId: string }> {
   const startTime = Date.now();
 
-  // Get salon's Evolution instance
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: {
-      id: true,
-      evolutionInstanceName: true,
-      evolutionConnectionStatus: true,
-    },
-  });
+  // Resolve Evolution instance (agent-level for PRO/Enterprise, salon-level for SOLO)
+  const instance = await resolveEvolutionInstance(salonId, options?.agentId);
 
-  if (!salon) {
-    throw new WhatsAppMessageError('Salon not found', false);
-  }
-
-  if (!salon.evolutionInstanceName) {
-    throw new WhatsAppMessageError(
-      'Evolution instance not configured for this salon',
-      false
-    );
-  }
-
-  if (salon.evolutionConnectionStatus !== 'connected') {
+  if (instance.connectionStatus !== 'connected') {
     throw new WhatsAppMessageError(
       'WhatsApp not connected. Please scan QR code first.',
       true // RETRYABLE: connection may recover within retry window
     );
   }
+
+  const evolutionInstanceName = instance.instanceName;
 
   // Normalize phone number (Evolution expects E.164 without "whatsapp:")
   const toNumber = normalizePhoneNumber(to);
@@ -179,7 +165,7 @@ export async function sendWhatsAppMessage(
       // Send text message
       if (!options?.mediaUrl) {
         return client.post<SendMessageResponse>(
-          `/message/sendText/${salon.evolutionInstanceName}`,
+          `/message/sendText/${evolutionInstanceName}`,
           {
             number: toNumber,
             text: body,
@@ -189,7 +175,7 @@ export async function sendWhatsAppMessage(
 
       // Send media message
       return client.post<SendMessageResponse>(
-        `/message/sendMedia/${salon.evolutionInstanceName}`,
+        `/message/sendMedia/${evolutionInstanceName}`,
         {
           number: toNumber,
           mediatype: options.mediaType || 'image',

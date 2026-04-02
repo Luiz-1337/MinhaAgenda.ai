@@ -21,6 +21,7 @@ export const stripe: Stripe = new Proxy({} as Stripe, {
 const STRIPE_PRICE_SOLO = process.env.STRIPE_PRICE_SOLO!
 const STRIPE_PRICE_PRO = process.env.STRIPE_PRICE_PRO!
 const STRIPE_PRICE_ENTERPRISE = process.env.STRIPE_PRICE_ENTERPRISE ?? ''
+export const STRIPE_PRICE_EXTRA_AGENT = process.env.STRIPE_PRICE_EXTRA_AGENT ?? ''
 
 export const TIER_TO_PRICE: Record<string, string> = {
   SOLO: STRIPE_PRICE_SOLO,

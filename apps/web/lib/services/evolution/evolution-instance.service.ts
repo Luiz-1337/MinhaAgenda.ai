@@ -12,7 +12,7 @@
  * - Closed: Connection terminated
  */
 
-import { db, salons, eq } from '@repo/db';
+import { db, salons, agents, eq } from '@repo/db';
 import QRCode from 'qrcode';
 import { getEvolutionClient, EvolutionAPIError } from './evolution-api.service';
 import { logger } from '../../infra/logger';
@@ -314,6 +314,169 @@ export async function getOrCreateInstance(
   } finally {
     await releaseLock(`instance-create:${salonId}`, lockId);
   }
+}
+
+/**
+ * Get or create Evolution API instance for a specific agent (PRO/Enterprise).
+ * Each agent gets its own instance named `agent-{agentId}`.
+ */
+export async function getOrCreateAgentInstance(
+  agentId: string
+): Promise<InstanceCreationResult> {
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, agentId),
+    columns: {
+      id: true,
+      salonId: true,
+      name: true,
+      evolutionInstanceName: true,
+      evolutionInstanceToken: true,
+    },
+  });
+
+  if (!agent) {
+    throw new Error('Agent not found');
+  }
+
+  // If instance already exists, ensure webhook is set and return it
+  if (agent.evolutionInstanceName) {
+    try {
+      const status = await getInstanceStatus(agent.evolutionInstanceName);
+      try {
+        await setInstanceWebhook(agent.evolutionInstanceName);
+      } catch (webhookErr) {
+        logger.error({ err: webhookErr, instanceName: agent.evolutionInstanceName }, 'Webhook setup failed for existing agent instance');
+      }
+      return {
+        instanceName: agent.evolutionInstanceName,
+        status,
+      };
+    } catch (error) {
+      if (error instanceof EvolutionAPIError && error.statusCode === 404) {
+        logger.info(
+          { instanceName: agent.evolutionInstanceName, agentId },
+          'Agent instance not found in Evolution API (404), will recreate'
+        );
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // Lock distribuído para evitar criação duplicada
+  const lockId = await acquireLock(`instance-create:agent:${agentId}`, INSTANCE_LOCK_TTL_MS);
+  if (!lockId) {
+    await sleep(2000);
+    const refreshed = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      columns: { evolutionInstanceName: true },
+    });
+    if (refreshed?.evolutionInstanceName) {
+      const status = await getInstanceStatus(refreshed.evolutionInstanceName);
+      return { instanceName: refreshed.evolutionInstanceName, status };
+    }
+    throw new Error('Could not acquire lock to create agent Evolution instance');
+  }
+
+  try {
+    // Re-check dentro do lock
+    const agentRecheck = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      columns: { evolutionInstanceName: true },
+    });
+    if (agentRecheck?.evolutionInstanceName) {
+      const status = await getInstanceStatus(agentRecheck.evolutionInstanceName);
+      return { instanceName: agentRecheck.evolutionInstanceName, status };
+    }
+
+    const instanceName = `agent-${agentId}`;
+    const client = getEvolutionClient();
+    logger.info({ agentId, agentName: agent.name }, 'Creating Evolution API instance for agent');
+
+    const response = await client.post<CreateInstanceResponse>(
+      '/instance/create',
+      {
+        instanceName,
+        qrcode: true,
+        integration: 'WHATSAPP-BAILEYS',
+      }
+    );
+
+    await db
+      .update(agents)
+      .set({
+        evolutionInstanceName: instanceName,
+        evolutionConnectionStatus: 'disconnected',
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, agentId));
+
+    try {
+      await setInstanceWebhook(instanceName);
+    } catch (webhookErr) {
+      logger.error({ err: webhookErr, instanceName }, 'Webhook setup failed after agent instance creation');
+    }
+
+    logger.info(
+      { agentId, instanceName, hasQRCode: !!response.qrcode },
+      'Evolution API agent instance created'
+    );
+
+    return {
+      instanceName,
+      status: 'disconnected',
+      qrcode: response.qrcode?.base64,
+    };
+  } catch (error) {
+    logger.error({ err: error, agentId }, 'Failed to create Evolution API agent instance');
+    throw error;
+  } finally {
+    await releaseLock(`instance-create:agent:${agentId}`, lockId);
+  }
+}
+
+/**
+ * Resolve which Evolution instance to use for sending messages.
+ * Agent-level instance takes priority (PRO/Enterprise), falls back to salon-level (SOLO).
+ */
+export async function resolveEvolutionInstance(
+  salonId: string,
+  agentId?: string | null
+): Promise<{ instanceName: string; connectionStatus: string | null }> {
+  // Try agent-level instance first
+  if (agentId) {
+    const agent = await db.query.agents.findFirst({
+      where: eq(agents.id, agentId),
+      columns: {
+        evolutionInstanceName: true,
+        evolutionConnectionStatus: true,
+      },
+    });
+    if (agent?.evolutionInstanceName) {
+      return {
+        instanceName: agent.evolutionInstanceName,
+        connectionStatus: agent.evolutionConnectionStatus,
+      };
+    }
+  }
+
+  // Fallback to salon-level instance
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: {
+      evolutionInstanceName: true,
+      evolutionConnectionStatus: true,
+    },
+  });
+
+  if (!salon?.evolutionInstanceName) {
+    throw new Error(`No Evolution instance found for salon ${salonId}`);
+  }
+
+  return {
+    instanceName: salon.evolutionInstanceName,
+    connectionStatus: salon.evolutionConnectionStatus,
+  };
 }
 
 const CONNECT_RETRY_ATTEMPTS = 3;

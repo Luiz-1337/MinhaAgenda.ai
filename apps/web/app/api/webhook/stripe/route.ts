@@ -192,8 +192,11 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
         .where(eq(salons.id, salon.id))
     }
 
-    // Sincroniza tier se o preço mudou
-    const priceId = subscription.items.data[0]?.price?.id
+    // Sincroniza tier se o preço mudou (ignora item de extra-agents)
+    const basePlanItem = subscription.items.data.find(
+      (item) => PRICE_TO_TIER[item.price.id] !== undefined
+    )
+    const priceId = basePlanItem?.price?.id
     if (priceId) {
       const newTier = PRICE_TO_TIER[priceId] as 'SOLO' | 'PRO' | 'ENTERPRISE' | undefined
       if (newTier) {

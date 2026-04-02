@@ -34,13 +34,14 @@ export async function DELETE(
       );
     }
 
-    // Get agent
+    // Get agent (include Evolution fields)
     const agent = await db.query.agents.findFirst({
       where: eq(agents.id, agentId),
       columns: {
         id: true,
         salonId: true,
         whatsappNumber: true,
+        evolutionInstanceName: true,
       },
     });
 
@@ -73,42 +74,38 @@ export async function DELETE(
       // Redis failed: proceed without rate limit
     }
 
-    // Get salon to find Evolution instance
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.id, agent.salonId),
-      columns: {
-        evolutionInstanceName: true,
-      },
-    });
+    // Determine which instance to disconnect: agent-level or salon-level
+    const instanceName = agent.evolutionInstanceName || await (async () => {
+      const salon = await db.query.salons.findFirst({
+        where: eq(salons.id, agent.salonId),
+        columns: { evolutionInstanceName: true },
+      });
+      return salon?.evolutionInstanceName;
+    })();
 
     // Disconnect Evolution instance if exists
-    if (salon?.evolutionInstanceName) {
+    if (instanceName) {
       try {
         logger.info(
-          { instanceName: salon.evolutionInstanceName, agentId },
+          { instanceName, agentId },
           'Disconnecting Evolution API instance'
         );
 
-        await disconnectInstance(salon.evolutionInstanceName);
+        await disconnectInstance(instanceName);
 
         logger.info(
-          { instanceName: salon.evolutionInstanceName, agentId },
+          { instanceName, agentId },
           'Evolution API instance disconnected successfully'
         );
       } catch (error) {
         logger.error(
-          {
-            err: error,
-            instanceName: salon.evolutionInstanceName,
-            agentId,
-          },
+          { err: error, instanceName, agentId },
           'Failed to disconnect Evolution instance (continuing anyway)'
         );
-        // Continue even if disconnect fails - we'll clear the database anyway
       }
     }
 
-    // Clear agent WhatsApp fields
+    // Clear agent WhatsApp and Evolution fields
     await db
       .update(agents)
       .set({
@@ -116,6 +113,7 @@ export async function DELETE(
         whatsappStatus: 'failed',
         whatsappConnectedAt: null,
         whatsappVerifiedAt: null,
+        evolutionConnectionStatus: 'disconnected',
         updatedAt: new Date(),
       })
       .where(eq(agents.id, agentId));

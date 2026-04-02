@@ -137,7 +137,8 @@ export async function findOrCreateCustomer(
  */
 export async function findOrCreateChat(
   clientPhone: string,
-  salonId: string
+  salonId: string,
+  agentId?: string | null
 ): Promise<{ id: string }> {
   // Busca chat existente
   let chat = await db.query.chats.findFirst({
@@ -147,6 +148,11 @@ export async function findOrCreateChat(
       eq(chats.status, "active")
     ),
   })
+
+  // Se chat existente e agentId fornecido, atualiza vinculo do agente
+  if (chat && agentId && (chat as any).agentId !== agentId) {
+    await db.update(chats).set({ agentId, updatedAt: new Date() }).where(eq(chats.id, chat.id))
+  }
 
   // Cria novo chat se não existir
   if (!chat) {
@@ -158,6 +164,7 @@ export async function findOrCreateChat(
           salonId,
           clientPhone,
           status: "active",
+          ...(agentId ? { agentId } : {}),
         })
         .onConflictDoNothing({
           target: [chats.salonId, chats.clientPhone]

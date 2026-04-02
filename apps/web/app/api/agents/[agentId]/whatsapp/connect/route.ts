@@ -4,11 +4,14 @@ import { db, agents, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
 import {
   getOrCreateInstance,
+  getOrCreateAgentInstance,
   connectInstance,
   restartInstance,
 } from '@/lib/services/evolution/evolution-instance.service';
 import { checkRateLimit } from '@/lib/infra/redis';
 import { logger } from '@/lib/infra/logger';
+import { db as dbFull, salons, profiles, eq as eqFull } from '@repo/db';
+import type { PlanTier } from '@/lib/types/salon';
 
 /**
  * POST /api/agents/[agentId]/whatsapp/connect
@@ -75,13 +78,30 @@ export async function POST(
       // Redis failed: proceed without rate limit
     }
 
-    // Get or create Evolution instance for salon
+    // Determine plan tier to decide instance type
+    const salon = await dbFull.query.salons.findFirst({
+      where: eqFull(salons.id, agent.salonId),
+      columns: { ownerId: true },
+    });
+
+    let planTier: PlanTier = 'SOLO';
+    if (salon) {
+      const ownerProfile = await dbFull.query.profiles.findFirst({
+        where: eqFull(profiles.id, salon.ownerId),
+        columns: { tier: true },
+      });
+      planTier = (ownerProfile?.tier as PlanTier) || 'SOLO';
+    }
+
+    // PRO/Enterprise: per-agent instance; SOLO: salon-level instance
     logger.info(
-      { salonId: agent.salonId, agentId },
+      { salonId: agent.salonId, agentId, planTier },
       'Creating Evolution API instance'
     );
 
-    const instance = await getOrCreateInstance(agent.salonId);
+    const instance = planTier === 'SOLO'
+      ? await getOrCreateInstance(agent.salonId)
+      : await getOrCreateAgentInstance(agentId);
 
     // If already connected, return success
     if (instance.status === 'connected') {

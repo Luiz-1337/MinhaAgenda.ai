@@ -27,8 +27,7 @@ export async function GET(
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
-    // Get agent
-    // Get agent
+    // Get agent (include Evolution fields)
     const [agent] = await db
       .select({
         id: agents.id,
@@ -37,6 +36,8 @@ export async function GET(
         whatsappStatus: agents.whatsappStatus,
         whatsappConnectedAt: agents.whatsappConnectedAt,
         whatsappVerifiedAt: agents.whatsappVerifiedAt,
+        evolutionInstanceName: agents.evolutionInstanceName,
+        evolutionConnectionStatus: agents.evolutionConnectionStatus,
       })
       .from(agents)
       .where(eq(agents.id, agentId));
@@ -51,17 +52,17 @@ export async function GET(
       return NextResponse.json({ error: 'Acesso negado a este salão' }, { status: 403 });
     }
 
-    // Get salon to check Evolution instance
-    const salon = await db.query.salons.findFirst({
-      where: eq(salons.id, agent.salonId),
-      columns: {
-        evolutionInstanceName: true,
-        evolutionConnectionStatus: true,
-      },
-    });
+    // Resolve instance: agent-level (PRO/Enterprise) or salon-level (SOLO)
+    const instanceName = agent.evolutionInstanceName || await (async () => {
+      const salon = await db.query.salons.findFirst({
+        where: eq(salons.id, agent.salonId),
+        columns: { evolutionInstanceName: true },
+      });
+      return salon?.evolutionInstanceName;
+    })();
 
     // If no Evolution instance configured, return empty array
-    if (!salon?.evolutionInstanceName) {
+    if (!instanceName) {
       return NextResponse.json({ numbers: [] });
     }
 
@@ -69,40 +70,28 @@ export async function GET(
     let currentStatus: 'verified' | 'pending_verification' | 'verifying' | 'failed' = 'pending_verification';
 
     try {
-      const evolutionStatus = await getInstanceStatus(salon.evolutionInstanceName);
+      const evolutionStatus = await getInstanceStatus(instanceName);
       currentStatus = mapEvolutionStatusToAgentStatus(evolutionStatus);
 
       logger.debug(
-        {
-          agentId,
-          instanceName: salon.evolutionInstanceName,
-          evolutionStatus,
-          mappedStatus: currentStatus,
-        },
+        { agentId, instanceName, evolutionStatus, mappedStatus: currentStatus },
         'Retrieved WhatsApp status from Evolution API'
       );
     } catch (error) {
       logger.error(
-        {
-          err: error,
-          agentId,
-          instanceName: salon.evolutionInstanceName,
-        },
+        { err: error, agentId, instanceName },
         'Failed to get Evolution API status, using database status'
       );
-
-      // Fallback to database status
       currentStatus = mapDatabaseStatus(agent.whatsappStatus);
     }
 
     // Se Evolution conectada mas sem número no agente, tenta buscar da Evolution API
     let phoneNumber = agent.whatsappNumber;
-    if (currentStatus === 'verified' && salon.evolutionInstanceName && !phoneNumber) {
+    if (currentStatus === 'verified' && instanceName && !phoneNumber) {
       try {
-        const fetched = await getConnectedPhoneNumber(salon.evolutionInstanceName);
+        const fetched = await getConnectedPhoneNumber(instanceName);
         if (fetched) {
           phoneNumber = fetched;
-          // Persiste o número no agente para próximas consultas
           await db
             .update(agents)
             .set({

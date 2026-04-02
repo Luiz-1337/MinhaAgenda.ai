@@ -70,7 +70,8 @@ export const PLANS: Plan[] = [
     description: "Para negocios em crescimento que precisam de mais capacidade e integracao.",
     features: [
       "Ate 3 Saloes",
-      "3 Agentes IA",
+      "3 Agentes IA com WhatsApp dedicado",
+      "Cada agente com numero proprio",
       "Integracoes avancadas",
       "Relatorios e metricas",
       "Suporte prioritario"
@@ -83,7 +84,9 @@ export const PLANS: Plan[] = [
     description: "Solucao personalizada para redes e grandes operacoes.",
     features: [
       "Saloes ilimitados",
-      "Agentes ilimitados",
+      "3 Agentes IA inclusos",
+      "Agentes adicionais por R$ 150/mes cada",
+      "Cada agente com WhatsApp dedicado",
       "API dedicada",
       "Gerente de conta exclusivo",
       "SLA garantido"

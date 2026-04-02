@@ -4,8 +4,11 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 import { agentSchema, createAgentSchema, updateAgentSchema, type AgentSchema } from "@/lib/schemas"
-import { db, agents, eq, and, ne } from "@repo/db"
+import { db, agents, salons, profiles, eq, and, ne } from "@repo/db"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { canAddAgent, getAgentLimit } from "@/lib/utils/permissions"
+import { syncExtraAgentBilling } from "@/lib/services/agent-billing.service"
+import type { PlanTier } from "@/lib/types/salon"
 
 export type AgentRow = {
   id: string
@@ -150,6 +153,35 @@ export async function createAgent(
       return { error: "Acesso negado a este salão" }
     }
 
+    // Verificar limite de agentes por plano
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { ownerId: true },
+    })
+
+    if (!salon) {
+      return { error: "Salão não encontrado" }
+    }
+
+    const ownerProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, salon.ownerId),
+      columns: { tier: true },
+    })
+
+    const planTier = (ownerProfile?.tier as PlanTier) || 'SOLO'
+
+    const existingAgents = await db.query.agents.findMany({
+      where: eq(agents.salonId, salonId),
+      columns: { id: true },
+    })
+
+    if (!canAddAgent(planTier, existingAgents.length)) {
+      const limit = getAgentLimit(planTier)
+      return {
+        error: `Limite de agentes atingido para o plano ${planTier}. Máximo: ${limit} agente${limit > 1 ? 's' : ''}.`,
+      }
+    }
+
     // Se o agente será ativado, desativa todos os outros agentes do salão
     if (parsed.data.isActive) {
       await db
@@ -158,7 +190,7 @@ export async function createAgent(
         .where(and(eq(agents.salonId, salonId), eq(agents.isActive, true)))
     }
 
-    // Cria o novo agente (whatsappNumber é gerenciado no nível do salão)
+    // Cria o novo agente
     const [newAgent] = await db
       .insert(agents)
       .values({
@@ -170,6 +202,15 @@ export async function createAgent(
         isActive: parsed.data.isActive,
       })
       .returning({ id: agents.id })
+
+    // Sync billing para Enterprise (agentes extras acima de 3)
+    if (planTier === 'ENTERPRISE') {
+      try {
+        await syncExtraAgentBilling(salonId)
+      } catch (err) {
+        console.error("Erro ao sincronizar billing de agentes extras:", err)
+      }
+    }
 
     revalidatePath(`/${salonId}/agents`)
     return { success: true, data: { id: newAgent.id } }
@@ -298,6 +339,13 @@ export async function deleteAgent(salonId: string, agentId: string): Promise<Act
     }
 
     await db.delete(agents).where(eq(agents.id, agentId))
+
+    // Sync billing para Enterprise (agentes extras acima de 3)
+    try {
+      await syncExtraAgentBilling(salonId)
+    } catch (err) {
+      console.error("Erro ao sincronizar billing de agentes extras após remoção:", err)
+    }
 
     revalidatePath(`/${salonId}/agents`)
     return { success: true }

@@ -33,7 +33,8 @@ const PLAN_INFO: Record<string, { name: string; price: string; features: string[
     price: "R$ 999",
     features: [
       "Ate 3 Saloes",
-      "3 Agentes IA",
+      "3 Agentes IA com WhatsApp dedicado",
+      "Cada agente com numero proprio",
       "Integracoes avancadas",
       "Suporte prioritario",
       "Relatorios avancados",
@@ -44,7 +45,9 @@ const PLAN_INFO: Record<string, { name: string; price: string; features: string[
     price: "Sob Consulta",
     features: [
       "Saloes ilimitados",
-      "Agentes ilimitados",
+      "3 Agentes IA inclusos",
+      "Agentes adicionais por R$ 150/mes cada",
+      "Cada agente com WhatsApp dedicado",
       "API dedicada",
       "Gerente de conta",
     ],

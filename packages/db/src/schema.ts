@@ -336,6 +336,7 @@ export const chats = pgTable(
     isManual: boolean('is_manual').default(false).notNull(),
     firstUserMessageAt: timestamp('first_user_message_at'),
     firstAgentResponseAt: timestamp('first_agent_response_at'),
+    agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'set null' }),
     lastBotMessageRequiresResponse: boolean('last_bot_message_requires_response')
       .default(false)
       .notNull(),
@@ -343,7 +344,8 @@ export const chats = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    index('chats_salon_status_idx').on(table.salonId, table.status)
+    index('chats_salon_status_idx').on(table.salonId, table.status),
+    index('chats_agent_idx').on(table.agentId)
   ]
 )
 
@@ -540,12 +542,18 @@ export const agents = pgTable(
     whatsappStatus: text('whatsapp_status'), // pending_verification, verifying, verified, failed
     whatsappConnectedAt: timestamp('whatsapp_connected_at'), // Quando foi conectado
     whatsappVerifiedAt: timestamp('whatsapp_verified_at'), // Quando foi verificado
+    // Evolution API fields (per-agent for PRO/Enterprise)
+    evolutionInstanceName: text('evolution_instance_name'),
+    evolutionInstanceToken: text('evolution_instance_token'),
+    evolutionConnectionStatus: text('evolution_connection_status'), // 'connected' | 'disconnected' | 'connecting'
+    evolutionConnectedAt: timestamp('evolution_connected_at'),
     isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    index('agents_salon_idx').on(table.salonId)
+    index('agents_salon_idx').on(table.salonId),
+    index('agents_evolution_instance_idx').on(table.evolutionInstanceName)
   ]
 )
 
@@ -626,7 +634,7 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
   campaigns: many(campaigns),
   recoveryFlows: many(recoveryFlows),
   integration: one(salonIntegrations, { fields: [salons.id], references: [salonIntegrations.salonId] }),
-  agent: one(agents, { fields: [salons.id], references: [agents.salonId] }),
+  agents: many(agents),
   systemPromptTemplates: many(systemPromptTemplates)
 }))
 
@@ -676,6 +684,7 @@ export const professionalServicesRelations = relations(professionalServices, ({ 
 
 export const chatsRelations = relations(chats, ({ one, many }) => ({
   salon: one(salons, { fields: [chats.salonId], references: [salons.id] }),
+  agent: one(agents, { fields: [chats.agentId], references: [agents.id] }),
   messages: many(messages)
 }))
 
@@ -691,6 +700,7 @@ export const customersRelations = relations(customers, ({ one }) => ({
 
 export const agentsRelations = relations(agents, ({ one, many }) => ({
   salon: one(salons, { fields: [agents.salonId], references: [salons.id] }),
+  chats: many(chats),
   embeddings: many(embeddings),
   knowledgeBase: many(agentKnowledgeBase)
 }))
