@@ -36,7 +36,8 @@
       "Bash(mv components/features/delete-contact-dialog.tsx components/contacts/)",
       "Bash(mv components/features/edit-contact-dialog.tsx components/contacts/)",
       "Bash(rm -rf .next)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

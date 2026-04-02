@@ -21,7 +21,7 @@ export default defineConfig({
         "node_modules/**",
       ],
     },
-    setupFiles: [],
+    setupFiles: ["__tests__/setup/vitest.setup.ts"],
     testTimeout: 10000,
   },
   resolve: {

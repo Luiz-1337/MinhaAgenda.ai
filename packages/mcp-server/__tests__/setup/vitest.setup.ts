@@ -36,6 +36,10 @@ vi.mock("@repo/db", () => {
     db: {
       query: {},
     },
+    domainServices: {
+      createAppointmentService: vi.fn(),
+      updateAppointmentService: vi.fn(),
+    },
   }
 })
 

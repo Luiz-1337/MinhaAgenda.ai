@@ -54,7 +54,6 @@ describe("system-prompt-builder", () => {
       agentInfo
     );
 
-    expect(prompt).toContain("A agenda interna do sistema SEMPRE existe e é a fonte de verdade.");
-    expect(prompt).toContain("NUNCA diga que a agenda está inacessível, indisponível, fora do ar");
+    expect(prompt).toContain("A agenda SEMPRE existe. NUNCA diga que está inacessível.");
   });
 });

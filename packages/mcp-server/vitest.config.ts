@@ -9,9 +9,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json", "html"],
       include: [
-        "src/presentation/tools/**/*.ts",
-        "src/presentation/mcp-server.ts",
-        "src/index.ts",
+        "src/**/*.ts",
       ],
       exclude: [
         "**/*.d.ts",
