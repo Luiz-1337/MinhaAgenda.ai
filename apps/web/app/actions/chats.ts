@@ -1,6 +1,6 @@
 "use server"
 
-import { db, chats, messages, profiles, and, desc, eq, inArray } from "@repo/db"
+import { db, chats, messages, customers, and, desc, eq, inArray } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { sendWhatsAppMessage } from "@/lib/services/evolution/evolution-message.service"
 import { saveMessage } from "@/lib/services/chat.service"
@@ -116,24 +116,25 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
       }
     }
 
-    // Busca perfis dos clientes pelos telefones
-    const phoneNumbers = salonChats.map((chat) => chat.clientPhone)
-    const profileByPhone = new Map<string, { id: string; fullName: string | null; phone: string | null }>()
+    // Busca nomes dos clientes WhatsApp pela tabela customers
+    const phoneNumbers = salonChats.map((chat) => chat.clientPhone.replace(/\D/g, ""))
+    const customerByPhone = new Map<string, { id: string; name: string; phone: string }>()
 
     if (phoneNumbers.length > 0) {
-      // Busca todos os perfis e filtra pelos telefones
-      const allProfiles = await db.query.profiles.findMany({
+      const salonCustomers = await db.query.customers.findMany({
+        where: and(
+          eq(customers.salonId, salonId),
+          inArray(customers.phone, phoneNumbers)
+        ),
         columns: {
           id: true,
-          fullName: true,
+          name: true,
           phone: true,
         },
       })
 
-      for (const profile of allProfiles) {
-        if (profile.phone && phoneNumbers.includes(profile.phone)) {
-          profileByPhone.set(profile.phone, profile)
-        }
+      for (const customer of salonCustomers) {
+        customerByPhone.set(customer.phone, customer)
       }
     }
 
@@ -141,19 +142,19 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
     const conversations: ChatConversation[] = salonChats
       .filter((chat) => lastMessageByChat.has(chat.id)) // Só mostra chats com mensagens
       .map((chat) => {
-        const profile = profileByPhone.get(chat.clientPhone)
+        const normalizedPhone = chat.clientPhone.replace(/\D/g, "")
+        const customer = customerByPhone.get(normalizedPhone)
         const lastMessage = lastMessageByChat.get(chat.id)!
 
         // Formata telefone para exibição
-        const phone = chat.clientPhone.replace(/\D/g, "")
-        const formattedPhone = phone.length === 11
-          ? `(${phone.slice(0, 2)}) ${phone.slice(2, 7)}-${phone.slice(7)}`
+        const formattedPhone = normalizedPhone.length === 11
+          ? `(${normalizedPhone.slice(0, 2)}) ${normalizedPhone.slice(2, 7)}-${normalizedPhone.slice(7)}`
           : chat.clientPhone
 
         return {
           id: chat.id,
           customer: {
-            name: profile?.fullName || formattedPhone,
+            name: customer?.name || formattedPhone,
             phone: formattedPhone,
           },
           lastMessageAt: formatPreviewTime(lastMessage.createdAt),
@@ -335,16 +336,19 @@ export async function getNoShowRiskForChat(chatId: string): Promise<{ isHighRisk
 
     if (!chat || !chat.clientPhone) return { isHighRisk: false };
 
-    // Busca cliente
-    const profile = await db.query.profiles.findFirst({
-      where: eq(profiles.phone, chat.clientPhone),
+    // Busca cliente na tabela customers (não profiles)
+    const customer = await db.query.customers.findFirst({
+      where: and(
+        eq(customers.salonId, chat.salonId),
+        eq(customers.phone, chat.clientPhone.replace(/\D/g, ""))
+      ),
       columns: { id: true }
     })
 
-    if (!profile) return { isHighRisk: false };
+    if (!customer) return { isHighRisk: false };
 
     const { evaluateNoShowRisk } = await import("@repo/db/src/services/no-show-predictor.service");
-    const risk = await evaluateNoShowRisk(profile.id, chat.salonId);
+    const risk = await evaluateNoShowRisk(customer.id, chat.salonId);
 
     return { isHighRisk: risk.isHighRisk };
   } catch (err) {

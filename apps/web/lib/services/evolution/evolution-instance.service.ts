@@ -16,6 +16,7 @@ import { db, salons, eq } from '@repo/db';
 import QRCode from 'qrcode';
 import { getEvolutionClient, EvolutionAPIError } from './evolution-api.service';
 import { logger } from '../../infra/logger';
+import { acquireLock, releaseLock } from '../../infra/redis';
 
 /**
  * Instance status type
@@ -106,40 +107,64 @@ function getWebhookBaseUrl(): string {
   }
 }
 
+const WEBHOOK_RETRY_ATTEMPTS = 3;
+const WEBHOOK_RETRY_DELAY_MS = 1000;
+
 /**
- * Configura o webhook da instância na Evolution API para receber connection.update e mensagens
+ * Configura o webhook da instância na Evolution API para receber connection.update e mensagens.
+ * Faz até 3 tentativas com backoff para garantir que o webhook seja configurado.
  */
 export async function setInstanceWebhook(instanceName: string): Promise<void> {
   const baseUrl = getWebhookBaseUrl();
   if (!baseUrl) return;
 
   const webhookUrl = `${baseUrl}/api/webhook/whatsapp`;
-  logger.info({ webhookUrl, envValue: process.env.NEXT_PUBLIC_APP_URL }, '[v2] Setting webhook URL');
   const client = getEvolutionClient();
 
-  try {
-    // Evolution API v2.1.1 requires nested "webhook" object
-    await client.post(`/webhook/set/${instanceName}`, {
-      webhook: {
-        enabled: true,
-        url: webhookUrl,
-        webhookByEvents: false,
-        webhookBase64: true,
-        events: [...WEBHOOK_EVENTS],
-      },
-    });
-    logger.info({ instanceName, webhookUrl }, 'Evolution API webhook configured');
-  } catch (error) {
-    logger.error(
-      { err: error, instanceName, webhookUrl },
-      'Failed to set Evolution API webhook'
-    );
-    throw error;
+  // Token secreto para validar payloads recebidos (se configurado)
+  const webhookToken = process.env.EVOLUTION_WEBHOOK_TOKEN || undefined;
+
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= WEBHOOK_RETRY_ATTEMPTS; attempt++) {
+    try {
+      // Evolution API v2.1.1 requires nested "webhook" object
+      await client.post(`/webhook/set/${instanceName}`, {
+        webhook: {
+          enabled: true,
+          url: webhookUrl,
+          webhookByEvents: false,
+          webhookBase64: true,
+          events: [...WEBHOOK_EVENTS],
+          ...(webhookToken ? { headers: { 'x-webhook-secret': webhookToken } } : {}),
+        },
+      });
+      logger.info({ instanceName, webhookUrl, attempt }, 'Evolution API webhook configured');
+      return; // Sucesso - sai da função
+    } catch (error) {
+      lastError = error;
+      logger.warn(
+        { err: error, instanceName, webhookUrl, attempt, maxAttempts: WEBHOOK_RETRY_ATTEMPTS },
+        'Failed to set Evolution API webhook, retrying'
+      );
+      if (attempt < WEBHOOK_RETRY_ATTEMPTS) {
+        await sleep(WEBHOOK_RETRY_DELAY_MS * attempt); // Backoff linear
+      }
+    }
   }
+
+  logger.error(
+    { err: lastError, instanceName, webhookUrl },
+    'Failed to set Evolution API webhook after all retries'
+  );
+  throw lastError;
 }
 
+const INSTANCE_LOCK_TTL_MS = 15000; // 15s lock para criação de instância
+
 /**
- * Get or create Evolution API instance for a salon
+ * Get or create Evolution API instance for a salon.
+ * Protegido com lock distribuído para evitar criação duplicada.
  */
 export async function getOrCreateInstance(
   salonId: string
@@ -163,9 +188,12 @@ export async function getOrCreateInstance(
   if (salon.evolutionInstanceName) {
     try {
       const status = await getInstanceStatus(salon.evolutionInstanceName);
-      setInstanceWebhook(salon.evolutionInstanceName).catch((err) => {
-        logger.warn({ err, instanceName: salon.evolutionInstanceName }, 'Webhook set failed (continuing)');
-      });
+      try {
+        await setInstanceWebhook(salon.evolutionInstanceName);
+      } catch (webhookErr) {
+        logger.error({ err: webhookErr, instanceName: salon.evolutionInstanceName }, 'Webhook setup failed for existing instance');
+        // Não bloqueia retorno - instância existe, webhook pode ser corrigido depois
+      }
       return {
         instanceName: salon.evolutionInstanceName,
         status,
@@ -184,46 +212,65 @@ export async function getOrCreateInstance(
     }
   }
 
-  // Create new instance
-  // Check for environment variable override regarding instance name
-  const instanceName = process.env.EVOLUTION_INSTANCE_NAME || `salon-${salonId}`;
-
-  // If using global instance name, check if it already exists to avoid creation error
-  if (process.env.EVOLUTION_INSTANCE_NAME) {
-    try {
-      const status = await getInstanceStatus(instanceName);
-      // Update DB to link to this global instance
-      await db
-        .update(salons)
-        .set({
-          evolutionInstanceName: instanceName,
-          updatedAt: new Date(),
-        })
-        .where(eq(salons.id, salonId));
-
-      // Ensure webhook is set
-      setInstanceWebhook(instanceName).catch((err) => {
-        logger.warn({ err, instanceName }, 'Webhook set for global instance failed (continuing)');
-      });
-
-      return {
-        instanceName,
-        status,
-      };
-    } catch (error) {
-      // If 404, proceed to creation
-      if (!(error instanceof EvolutionAPIError && error.statusCode === 404)) {
-        throw error;
-      }
+  // Lock distribuído para evitar criação duplicada de instância
+  const lockId = await acquireLock(`instance-create:${salonId}`, INSTANCE_LOCK_TTL_MS);
+  if (!lockId) {
+    // Outra request está criando a instância - re-check DB após breve espera
+    await sleep(2000);
+    const refreshedSalon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { evolutionInstanceName: true },
+    });
+    if (refreshedSalon?.evolutionInstanceName) {
+      const status = await getInstanceStatus(refreshedSalon.evolutionInstanceName);
+      return { instanceName: refreshedSalon.evolutionInstanceName, status };
     }
+    throw new Error('Could not acquire lock to create Evolution instance and no instance found');
   }
 
-  const client = getEvolutionClient();
-
-  // Log instance creation
-  logger.info({ salonId, salonName: salon.name }, 'Creating Evolution API instance');
-
   try {
+    // Re-check DB dentro do lock (double-check locking)
+    const salonRecheck = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { evolutionInstanceName: true },
+    });
+    if (salonRecheck?.evolutionInstanceName) {
+      const status = await getInstanceStatus(salonRecheck.evolutionInstanceName);
+      return { instanceName: salonRecheck.evolutionInstanceName, status };
+    }
+
+    // Create new instance
+    const instanceName = process.env.EVOLUTION_INSTANCE_NAME || `salon-${salonId}`;
+
+    // If using global instance name, check if it already exists
+    if (process.env.EVOLUTION_INSTANCE_NAME) {
+      try {
+        const status = await getInstanceStatus(instanceName);
+        await db
+          .update(salons)
+          .set({
+            evolutionInstanceName: instanceName,
+            updatedAt: new Date(),
+          })
+          .where(eq(salons.id, salonId));
+
+        try {
+          await setInstanceWebhook(instanceName);
+        } catch (webhookErr) {
+          logger.error({ err: webhookErr, instanceName }, 'Webhook setup failed for global instance');
+        }
+
+        return { instanceName, status };
+      } catch (error) {
+        if (!(error instanceof EvolutionAPIError && error.statusCode === 404)) {
+          throw error;
+        }
+      }
+    }
+
+    const client = getEvolutionClient();
+    logger.info({ salonId, salonName: salon.name }, 'Creating Evolution API instance');
+
     const response = await client.post<CreateInstanceResponse>(
       '/instance/create',
       {
@@ -233,7 +280,6 @@ export async function getOrCreateInstance(
       }
     );
 
-    // Save instance name to database
     await db
       .update(salons)
       .set({
@@ -243,17 +289,17 @@ export async function getOrCreateInstance(
       })
       .where(eq(salons.id, salonId));
 
-    // Configura webhook para receber connection.update quando o usuário escanear o QR
-    setInstanceWebhook(instanceName).catch((err) => {
-      logger.warn({ err, instanceName }, 'Webhook set after create failed (continuing)');
-    });
+    try {
+      await setInstanceWebhook(instanceName);
+    } catch (webhookErr) {
+      logger.error({ err: webhookErr, instanceName }, 'Webhook setup failed after instance creation');
+    }
 
     logger.info(
       { salonId, instanceName, hasQRCode: !!response.qrcode },
       'Evolution API instance created'
     );
 
-    // Return instance data with QR code from creation response
     return {
       instanceName,
       status: 'disconnected',
@@ -261,14 +307,12 @@ export async function getOrCreateInstance(
     };
   } catch (error) {
     logger.error(
-      {
-        err: error,
-        salonId,
-        instanceName,
-      },
+      { err: error, salonId },
       'Failed to create Evolution API instance'
     );
     throw error;
+  } finally {
+    await releaseLock(`instance-create:${salonId}`, lockId);
   }
 }
 

@@ -33,9 +33,12 @@ import { db, salons, chats, chatStatusEnum, messages, agents, eq, and, desc, sql
 // Timeout - webhook deve apenas validar e enfileirar
 export const maxDuration = 10;
 
-// Timeouts para operações (em ms)
-const DB_TIMEOUT = 5000; // 5 segundos
+// Timeouts para operações (em ms) - mantém margem dentro do maxDuration de 10s
+const DB_TIMEOUT = 3000; // 3 segundos (reduzido de 5s para dar margem)
 const REDIS_TIMEOUT = 2000; // 2 segundos
+
+// Token secreto para validar payloads (opcional mas recomendado)
+const WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_TOKEN || '';
 
 function ensureJid(value: string): string {
   return value.includes('@') ? value : `${value}@s.whatsapp.net`;
@@ -52,6 +55,16 @@ export async function POST(req: NextRequest) {
   WebhookMetrics.received();
 
   try {
+    // 0. VERIFICAR TOKEN DE AUTENTICAÇÃO (se configurado)
+    if (WEBHOOK_SECRET) {
+      const receivedToken = req.headers.get('x-webhook-secret') || req.headers.get('authorization');
+      if (receivedToken !== WEBHOOK_SECRET && receivedToken !== `Bearer ${WEBHOOK_SECRET}`) {
+        reqLogger.warn({ hasToken: !!receivedToken }, 'Webhook authentication failed');
+        WebhookMetrics.error('auth_failed');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+
     // 1. PARSEAR JSON BODY (Evolution API usa JSON; pode ser objeto ou array em batch)
     let body: unknown;
     try {
@@ -321,7 +334,16 @@ async function handleMessageUpsert(
   const mediaType = detectMediaType(messageData);
   const mediaUrl = extractMediaUrl(messageData);
 
-  // 8. SALVAR MENSAGEM RAW NO BANCO (com timeout)
+  // 8. MARCAR COMO PROCESSADO ANTES de enfileirar (idempotência atômica)
+  // Se o markMessageProcessed ou enqueue falhar depois, a mensagem não será reprocessada
+  // evitando duplicação. É preferível perder uma mensagem rara a processar em dobro.
+  await withTimeout(
+    markMessageProcessed(messageId),
+    REDIS_TIMEOUT,
+    'markMessageProcessed'
+  );
+
+  // 9. SALVAR MENSAGEM RAW NO BANCO (com timeout)
   await withTimeout(
     saveMessage(chat.id, 'user', messageContent),
     DB_TIMEOUT,
@@ -329,7 +351,7 @@ async function handleMessageUpsert(
   );
   reqLogger.debug('Message saved to database');
 
-  // 9. ENFILEIRAR PROCESSAMENTO (com timeout)
+  // 10. ENFILEIRAR PROCESSAMENTO (com timeout)
   await withTimeout(
     enqueueMessage({
       messageId,
@@ -354,13 +376,6 @@ async function handleMessageUpsert(
     }),
     REDIS_TIMEOUT,
     'enqueueMessage'
-  );
-
-  // 10. MARCAR COMO PROCESSADO (idempotência, com timeout)
-  await withTimeout(
-    markMessageProcessed(messageId),
-    REDIS_TIMEOUT,
-    'markMessageProcessed'
   );
 
   const duration = getDuration(ctx);

@@ -113,6 +113,46 @@ export default function ChatClient({ salonId }: { salonId: string }) {
     }
   }, [salonId])
 
+  // Polling para atualizar lista de conversas (novas conversas, previews)
+  useEffect(() => {
+    if (!salonId || isLoading) return
+
+    let isMounted = true
+    let intervalId: NodeJS.Timeout | null = null
+
+    async function refreshConversations() {
+      if (!isMounted) return
+      try {
+        const result = await getChatConversations(salonId)
+        if (!isMounted) return
+        if (!("error" in result)) {
+          setConversations(result)
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    }
+
+    function startPolling() {
+      if (intervalId) clearInterval(intervalId)
+      const interval = document.hidden ? 60000 : 15000
+      intervalId = setInterval(refreshConversations, interval)
+    }
+
+    function handleVisibilityChange() {
+      startPolling()
+      if (!document.hidden) refreshConversations()
+    }
+
+    startPolling()
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      isMounted = false
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [salonId, isLoading])
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase()
@@ -186,14 +226,14 @@ export default function ChatClient({ salonId }: { salonId: string }) {
     }
   }, [activeId])
 
-  // Polling adaptativo para modo manual - pausa quando tab está oculta
+  // Polling adaptativo para novas mensagens - pausa quando tab está oculta
   useEffect(() => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current)
       pollingIntervalRef.current = null
     }
 
-    if (!isManualMode || !activeId) {
+    if (!activeId) {
       return
     }
 
@@ -250,7 +290,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         pollingIntervalRef.current = null
       }
     }
-  }, [isManualMode, activeId])
+  }, [activeId])
 
   // Busca o risco de No-Show quando o chat ativo muda
   useEffect(() => {
