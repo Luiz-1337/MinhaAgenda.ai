@@ -216,9 +216,12 @@ export async function runOpenAIResponses(
       previous_response_id: previousResponseId,
       tools: responseTools as any,
       parallel_tool_calls: false,
-      temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.4"),
       max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "1200", 10),
-      top_p: parseFloat(process.env.AI_TOP_P ?? "0.9"),
+      // temperature/top_p not supported by reasoning models (o-series, gpt-5)
+      ...(/^(gpt-4|gpt-3)/.test(model) ? {
+        temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.4"),
+        top_p: parseFloat(process.env.AI_TOP_P ?? "0.9"),
+      } : {}),
     })
 
     if (response.usage) {
