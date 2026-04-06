@@ -106,7 +106,7 @@ export function createCatalogTools(
           if (salon && salon.isSoloPlan()) {
             return JSON.stringify({
               error: true,
-              message: "Este recurso não está disponível para o plano SOLO (apenas 1 profissional). Utilize o único profissional que tenha conhecimento",
+              message: "Plano SOLO: este salão tem apenas 1 profissional. O professionalId já está disponível no contexto do sistema. Não é necessário listar profissionais.",
               code: "PLAN_RESTRICTION"
             })
           }

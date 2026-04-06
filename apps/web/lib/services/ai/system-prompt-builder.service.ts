@@ -151,7 +151,8 @@ export class SystemPromptBuilder {
     customerId?: string,
     isNewCustomer?: boolean,
     existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
-    noShowRisk?: { isHighRisk: boolean; cancellationRatio: number }
+    noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
+    soloProfessional?: { id: string; name: string } | null
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
@@ -171,11 +172,32 @@ export class SystemPromptBuilder {
       ? `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${toleranceMinutes} minutos`
       : ""
 
+    const soloProfessionalText = soloProfessional
+      ? `\n\nPROFISSIONAL ÚNICO DO SALÃO:
+- Nome: ${soloProfessional.name}
+- ID interno: ${soloProfessional.id}
+- REGRA: Este salão tem apenas 1 profissional. NUNCA pergunte qual profissional o cliente prefere. Use automaticamente "${soloProfessional.name}" (ID: ${soloProfessional.id}) em TODAS as chamadas que precisam de professionalId (checkAvailability, addAppointment). NÃO chame getProfessionals.`
+      : ""
+
+    const bookingFlow = soloProfessional
+      ? `FLUXO DE AGENDAMENTO (siga na ordem):
+1. Saudação → Cumprimente pelo nome (se disponível). Pergunte como pode ajudar.
+2. Cliente pergunta serviços/preços → Chame getServices. Apresente nome e preço de forma natural. Pergunte qual deseja.
+3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?"
+4. Cliente informou data → Chame checkAvailability (inclua serviceId e professionalId: ${soloProfessional.id}). Ofereça 2-3 horários disponíveis.
+5. Cliente escolheu horário → Chame addAppointment com professionalId (${soloProfessional.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
+      : `FLUXO DE AGENDAMENTO (siga na ordem):
+1. Saudação → Cumprimente pelo nome (se disponível). Pergunte como pode ajudar.
+2. Cliente pergunta serviços/preços → Chame getServices. Apresente nome e preço de forma natural. Pergunte qual deseja.
+3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?"
+4. Cliente informou data → Chame checkAvailability (inclua serviceId obtido no passo 2). Ofereça 2-3 horários disponíveis.
+5. Cliente escolheu horário → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
+
     return `Você é ${agentInfo?.name}, assistente virtual de agendamentos via WhatsApp.
 Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmados.
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
-Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${preferencesText}${salonInfoText}${knowledgeContextText}
+Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
 REGRAS DE TOOLS (OBRIGATÓRIO):
 - NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool antes de informar qualquer dado.
@@ -187,12 +209,7 @@ REGRAS DE TOOLS (OBRIGATÓRIO):
 - Se uma tool retornar erro, NÃO tente a mesma tool novamente. Peça ao cliente para reformular ou tente outra abordagem.
 - Ao receber resultados de tools, extraia apenas nome, preço, horário e data. Ignore campos técnicos.
 
-FLUXO DE AGENDAMENTO (siga na ordem):
-1. Saudação → Cumprimente pelo nome (se disponível). Pergunte como pode ajudar.
-2. Cliente pergunta serviços/preços → Chame getServices. Apresente nome e preço de forma natural. Pergunte qual deseja.
-3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?"
-4. Cliente informou data → Chame checkAvailability (inclua serviceId obtido no passo 2). Ofereça 2-3 horários disponíveis.
-5. Cliente escolheu horário → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.
+${bookingFlow}
 
 FLUXO DE REAGENDAMENTO:
 1. Cliente quer reagendar → Chame getMyFutureAppointments.
@@ -227,7 +244,8 @@ export async function createSalonAssistantPrompt(
   customerId?: string,
   isNewCustomer?: boolean,
   agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
-  noShowRisk?: { isHighRisk: boolean; cancellationRatio: number }
+  noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
+  soloProfessional?: { id: string; name: string } | null
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -237,6 +255,7 @@ export async function createSalonAssistantPrompt(
     customerId,
     isNewCustomer,
     agentInfo,
-    noShowRisk
+    noShowRisk,
+    soloProfessional
   )
 }

@@ -24,7 +24,7 @@ import { getChatHistory } from "../chat.service";
 import { findRelevantContext, generateQueryEmbedding } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
-import { db, customers, profiles, appointments, eq, and } from "@repo/db";
+import { db, customers, profiles, appointments, professionals, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 
 // Debug verboso controlado por env var (desligado em produção)
@@ -82,12 +82,13 @@ export async function generateAIResponse(
     // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
     const embeddingPromise = generateQueryEmbedding(userMessage);
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, speculativeEmbedding] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 10),
       createMCPTools(salonId, clientPhone),
       customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined),
+      fetchSoloProfessionalInfo(salonId),
       embeddingPromise.catch(() => null),
     ]);
 
@@ -161,7 +162,8 @@ export async function generateAIResponse(
       customerId,
       isNewCustomer,
       agentInfo, // Passa agentInfo para evitar query duplicada
-      noShowRisk // Flag de Risco de Falta
+      noShowRisk, // Flag de Risco de Falta
+      soloProfessional // Profissional único (null se 2+)
     );
 
     if (AI_DEBUG) {
@@ -401,6 +403,28 @@ async function fetchCustomerPreferences(
   }
 
   return undefined;
+}
+
+/**
+ * Busca info do profissional único quando o salão tem apenas 1 profissional ativo.
+ * Retorna null se o salão tem 0 ou 2+ profissionais (comportamento multi-profissional).
+ */
+async function fetchSoloProfessionalInfo(
+  salonId: string
+): Promise<{ id: string; name: string } | null> {
+  const activeProfessionals = await db.query.professionals.findMany({
+    where: and(
+      eq(professionals.salonId, salonId),
+      eq(professionals.isActive, true)
+    ),
+    columns: { id: true, name: true },
+    limit: 2,
+  });
+
+  if (activeProfessionals.length === 1) {
+    return activeProfessionals[0];
+  }
+  return null;
 }
 
 /**
