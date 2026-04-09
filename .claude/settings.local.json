@@ -58,7 +58,11 @@
       "Bash(pnpm add:*)",
       "Bash(pnpm --filter web run dev)",
       "Bash(netstat -ano)",
-      "Bash(findstr \":3000\")"
+      "Bash(findstr \":3000\")",
+      "Bash(PGPASSWORD=\"MAgendaAi2026SecureKey\" psql \"postgresql://postgres.egrfxtrkcasiuypkxilr:MAgendaAi2026SecureKey@aws-0-us-west-2.pooler.supabase.com:6543/postgres\" -c \"SELECT id, name, extra_credits FROM salons WHERE id = '8b68b7d8-c0d0-4af1-b43b-8462479ca9c1';\")",
+      "Bash(find /e/minhaagendaai_v2/apps/web/app/[salonId]/salon-settings -type f)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -n \"activeTab\\\\|TabType\\\\|navItems\" /e/minhaagendaai_v2/apps/web/app/[salonId]/settings/page.tsx)"
     ]
   }
 }

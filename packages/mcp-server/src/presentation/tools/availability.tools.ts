@@ -3,7 +3,6 @@ import { isOk } from "../../shared/types"
 import { ensureIsoWithTimezone } from "../../shared/utils/date.utils"
 import {
   CheckAvailabilityUseCase,
-  GetAvailableSlotsUseCase,
 } from "../../application/use-cases/availability"
 import { GetProfessionalAvailabilityRulesUseCase } from "../../application/use-cases/salon"
 import {
@@ -30,35 +29,6 @@ export function createAvailabilityTools(
         try {
           const useCase = container.resolve<CheckAvailabilityUseCase>(
             TOKENS.CheckAvailabilityUseCase
-          )
-
-          const result = await useCase.execute({
-            salonId,
-            date: ensureIsoWithTimezone(input.date),
-            professionalId: input.professionalId,
-            serviceId: input.serviceId,
-            serviceDuration: input.serviceDuration,
-          })
-
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return AvailabilityPresenter.toJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
-      },
-    },
-
-    getAvailableSlots: {
-      description:
-        "Retorna apenas horários disponíveis (já filtrados, sem indisponíveis). Use checkAvailability como alternativa principal. Mesmos parâmetros que checkAvailability.",
-      inputSchema: checkAvailabilitySchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<GetAvailableSlotsUseCase>(
-            TOKENS.GetAvailableSlotsUseCase
           )
 
           const result = await useCase.execute({

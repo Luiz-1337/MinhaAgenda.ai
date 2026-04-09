@@ -70,8 +70,13 @@ async function updateSyncStatus(
  *
  * @param appointmentId - The appointment ID
  * @param salonId - The salon ID
+ * @param skipExternalSync - If true, skip sync (used when change came from Google Calendar)
  */
-export function fireAndForgetCreate(appointmentId: string, salonId: string): void {
+export function fireAndForgetCreate(appointmentId: string, salonId: string, skipExternalSync?: boolean): void {
+    if (skipExternalSync) {
+        logger.debug('Skipping external sync (change from Google)', { appointmentId, salonId })
+        return
+    }
     // Execute sync without awaiting - true fire-and-forget
     syncAppointmentCreate(appointmentId, salonId).catch((error) => {
         logger.error('Fire-and-forget create sync failed', { appointmentId, salonId, error })
@@ -81,7 +86,11 @@ export function fireAndForgetCreate(appointmentId: string, salonId: string): voi
 /**
  * Sync appointment update to external calendars (fire-and-forget)
  */
-export function fireAndForgetUpdate(appointmentId: string, salonId: string): void {
+export function fireAndForgetUpdate(appointmentId: string, salonId: string, skipExternalSync?: boolean): void {
+    if (skipExternalSync) {
+        logger.debug('Skipping external sync (change from Google)', { appointmentId, salonId })
+        return
+    }
     syncAppointmentUpdate(appointmentId, salonId).catch((error) => {
         logger.error('Fire-and-forget update sync failed', { appointmentId, salonId, error })
     })
@@ -91,7 +100,11 @@ export function fireAndForgetUpdate(appointmentId: string, salonId: string): voi
  * Sync appointment deletion to external calendars (fire-and-forget)
  * Note: For delete, we may want to wait for sync before deleting from DB
  */
-export function fireAndForgetDelete(appointmentId: string, salonId: string): void {
+export function fireAndForgetDelete(appointmentId: string, salonId: string, skipExternalSync?: boolean): void {
+    if (skipExternalSync) {
+        logger.debug('Skipping external sync (change from Google)', { appointmentId, salonId })
+        return
+    }
     syncAppointmentDelete(appointmentId, salonId).catch((error) => {
         logger.error('Fire-and-forget delete sync failed', { appointmentId, salonId, error })
     })

@@ -44,6 +44,7 @@ export const professionalRoleEnum = pgEnum('professional_role', ['OWNER', 'MANAG
 export const paymentStatusEnum = pgEnum('payment_status', ['PENDING', 'APPROVED', 'FAILED', 'REFUNDED'])
 export const paymentMethodEnum = pgEnum('payment_method', ['PIX', 'CARD', 'BOLETO'])
 export const syncStatusEnum = pgEnum('sync_status', ['pending', 'synced', 'failed'])
+export const syncSourceEnum = pgEnum('sync_source', ['app', 'google'])
 
 // ============================================================================
 // TABLES - User/Auth
@@ -261,6 +262,7 @@ export const appointments = pgTable(
     googleEventId: text('google_event_id'),
     trinksEventId: text('trinks_event_id'),
     syncStatus: syncStatusEnum('sync_status').default('pending').notNull(),
+    syncSource: syncSourceEnum('sync_source'),
     notes: text('notes'),
     reminderSentAt: timestamp('reminder_sent_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -314,12 +316,36 @@ export const salonIntegrations = pgTable(
     expiresAt: bigint('expires_at', { mode: 'number' }),
     email: text('email'),
     isActive: boolean('is_active').default(true).notNull(),
+    initialSyncDone: boolean('initial_sync_done').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
     index('salon_integrations_salon_idx').on(table.salonId),
     uniqueIndex('salon_integrations_salon_provider_unique').on(table.salonId, table.provider)
+  ]
+)
+
+// ============================================================================
+// TABLES - Google Calendar Sync
+// ============================================================================
+export const googleCalendarSyncChannels = pgTable(
+  'google_calendar_sync_channels',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    calendarId: text('calendar_id').notNull(),
+    channelId: text('channel_id').unique().notNull(),
+    resourceId: text('resource_id').notNull(),
+    expiration: timestamp('expiration').notNull(),
+    syncToken: text('sync_token'),
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('gcal_sync_salon_idx').on(table.salonId),
+    index('gcal_sync_expiration_idx').on(table.expiration)
   ]
 )
 
@@ -640,6 +666,11 @@ export const salonsRelations = relations(salons, ({ one, many }) => ({
 
 export const salonIntegrationsRelations = relations(salonIntegrations, ({ one }) => ({
   salon: one(salons, { fields: [salonIntegrations.salonId], references: [salons.id] })
+}))
+
+export const googleCalendarSyncChannelsRelations = relations(googleCalendarSyncChannels, ({ one }) => ({
+  salon: one(salons, { fields: [googleCalendarSyncChannels.salonId], references: [salons.id] }),
+  professional: one(professionals, { fields: [googleCalendarSyncChannels.professionalId], references: [professionals.id] })
 }))
 
 export const servicesRelations = relations(services, ({ one, many }) => ({

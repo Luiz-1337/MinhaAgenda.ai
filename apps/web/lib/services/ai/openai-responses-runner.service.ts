@@ -100,10 +100,20 @@ function normalizeMessageRole(role: string): "system" | "developer" | "user" | "
   return "assistant"
 }
 
+function isMultimodalContent(content: unknown): content is Array<{ type: string }> {
+  return (
+    Array.isArray(content) &&
+    content.length > 0 &&
+    content.every((c) => c && typeof c === "object" && "type" in c)
+  )
+}
+
 function toResponseInput(messages: ResponsesRunnerInputMessage[]) {
   return messages.map((message) => ({
     role: normalizeMessageRole(message.role),
-    content: extractTextFromContent(message.content),
+    content: isMultimodalContent(message.content)
+      ? message.content
+      : extractTextFromContent(message.content),
   }))
 }
 
@@ -216,10 +226,10 @@ export async function runOpenAIResponses(
       previous_response_id: previousResponseId,
       tools: responseTools as any,
       parallel_tool_calls: false,
-      max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "1200", 10),
-      // temperature/top_p not supported by reasoning models (o-series, gpt-5)
+      max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "4096", 10),
+      // temperature/top_p not supported by reasoning models (o-series) nor gpt-5
       ...(/^(gpt-4|gpt-3)/.test(model) ? {
-        temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.4"),
+        temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.2"),
         top_p: parseFloat(process.env.AI_TOP_P ?? "0.9"),
       } : {}),
     })

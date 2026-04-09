@@ -3,6 +3,7 @@ import { google } from 'googleapis'
 import { getRawOAuth2Client } from '@/lib/google'
 import { createClient } from '@/lib/supabase/server'
 import { db, salonIntegrations, salons, eq } from '@repo/db'
+import { setupWatchChannelsForSalon } from '@repo/db/services/google-calendar-sync'
 
 /**
  * Obtém a URL base da aplicação
@@ -313,6 +314,13 @@ export async function GET(req: NextRequest) {
         savedEmail: verifyIntegration.email,
       })
     }
+
+    // Setup watch channels for bidirectional sync (fire-and-forget)
+    setupWatchChannelsForSalon(salonId).then((count) => {
+      console.log('📡 Watch channels criados:', { salonId, count })
+    }).catch((error) => {
+      console.error('❌ Erro ao criar watch channels:', error)
+    })
 
     // Redireciona para dashboard com sucesso
     console.log('🎉 Redirecionando para dashboard com sucesso')

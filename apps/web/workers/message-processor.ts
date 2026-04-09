@@ -7,6 +7,7 @@ import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } 
 import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/infra/logger";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
+import { processMedia } from "../lib/services/ai/media-processor.service";
 import { saveMessage } from "../lib/services/chat.service";
 import {
   sendWhatsAppMessage,
@@ -244,6 +245,146 @@ async function processMessage(
         );
       }
 
+      // Imagens: enviadas ao modelo com vision (ex: comprovantes de pagamento)
+      if (mediaType === "image") {
+        const media = await processMedia({
+          mediaType: "image",
+          mediaUrl: permanentMediaUrl || "",
+          instanceName,
+          messageKey: { remoteJid, fromMe: false, id: messageId },
+        });
+
+        const caption = body && body !== "[IMAGE]" ? body : "";
+        const imageContext = caption
+          ? caption
+          : "O cliente enviou esta imagem. Analise o conteúdo e responda adequadamente.";
+
+        jobLogger.info({ mediaType, hasCaption: !!caption }, "Image forwarded to AI with vision");
+
+        const response = await withTimeout(
+          generateAIResponse({
+            chatId,
+            salonId,
+            clientPhone,
+            userMessage: imageContext,
+            customerId,
+            customerName,
+            isNewCustomer,
+            media,
+          }),
+          AI_TIMEOUT_MS,
+          "generateAIResponse"
+        );
+
+        await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+
+        const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
+        await saveMessage(chatId, "assistant", response.text, {
+          requiresResponse: requiresResponse !== false,
+          inputTokens: response.usage?.inputTokens,
+          outputTokens: response.usage?.outputTokens,
+          totalTokens: response.usage?.totalTokens,
+          model: response.model,
+          toolSummary: response.toolSummary,
+        });
+
+        if (response.usage?.totalTokens && response.usage.totalTokens > 0) {
+          const { debitSalonCredits } = await import("../lib/services/credits.service");
+          await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
+        }
+
+        jobLogger.info(
+          { mediaType, tokensUsed: response.usage?.totalTokens, processingMs: media.metadata.processingTimeMs },
+          "Image message handled via AI vision"
+        );
+
+        return {
+          status: "success",
+          chatId,
+          messageId,
+          responseText: response.text,
+          duration: Date.now() - startTime,
+        };
+      }
+
+      // Áudio: transcrição via Whisper + resposta da IA
+      if (mediaType === "audio") {
+        const media = await processMedia({
+          mediaType: "audio",
+          mediaUrl: permanentMediaUrl || "",
+          instanceName,
+          messageKey: { remoteJid, fromMe: false, id: messageId },
+        });
+
+        if (!media.transcribedText) {
+          const fallback = "Desculpe, não consegui processar seu áudio. Poderia enviar como texto?";
+          await sendWhatsAppMessage(sendTo, fallback, salonId, { agentId });
+          await saveMessage(chatId, "assistant", fallback);
+
+          jobLogger.warn({ mediaType, processingMs: media.metadata.processingTimeMs }, "Audio transcription failed");
+
+          return {
+            status: "media_handled",
+            chatId,
+            messageId,
+            responseText: fallback,
+            duration: Date.now() - startTime,
+          };
+        }
+
+        jobLogger.info(
+          { mediaType, transcriptionLength: media.transcribedText.length, processingMs: media.metadata.processingTimeMs },
+          "Audio transcribed successfully"
+        );
+
+        const audioContext = `[Mensagem de voz do cliente]: "${media.transcribedText}"`;
+
+        const response = await withTimeout(
+          generateAIResponse({
+            chatId,
+            salonId,
+            clientPhone,
+            userMessage: audioContext,
+            customerId,
+            customerName,
+            isNewCustomer,
+          }),
+          AI_TIMEOUT_MS,
+          "generateAIResponse"
+        );
+
+        await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+
+        const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
+        await saveMessage(chatId, "assistant", response.text, {
+          requiresResponse: requiresResponse !== false,
+          inputTokens: response.usage?.inputTokens,
+          outputTokens: response.usage?.outputTokens,
+          totalTokens: response.usage?.totalTokens,
+          model: response.model,
+          toolSummary: response.toolSummary,
+        });
+
+        if (response.usage?.totalTokens && response.usage.totalTokens > 0) {
+          const { debitSalonCredits } = await import("../lib/services/credits.service");
+          await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
+        }
+
+        jobLogger.info(
+          { mediaType, tokensUsed: response.usage?.totalTokens, processingMs: media.metadata.processingTimeMs },
+          "Audio message handled via transcription + AI"
+        );
+
+        return {
+          status: "success",
+          chatId,
+          messageId,
+          responseText: response.text,
+          duration: Date.now() - startTime,
+        };
+      }
+
+      // Vídeo/Documento: resposta genérica
       const mediaResponse = await handleMediaMessage(mediaType, permanentMediaUrl);
 
       await sendWhatsAppMessage(sendTo, mediaResponse, salonId, { agentId });
@@ -284,6 +425,7 @@ async function processMessage(
       totalTokens: response.usage.totalTokens,
       model: response.model,
       requiresResponse,
+      toolSummary: response.toolSummary,
     });
 
     // Debita os tokens usados do saldo mensal do salão
@@ -432,13 +574,11 @@ async function handleMediaMessage(
     document: "documento",
   };
 
-  const label = mediaType ? mediaLabels[mediaType] || "midia" : "midia";
-
   if (permanentUrl) {
     logger.debug({ mediaType, hasUrl: true }, "Media stored for future processing");
   }
 
-  return `Ola! No momento, aceitamos apenas mensagens de texto. Recebi sua ${label}, mas nao consigo processa-la. Por favor, envie sua mensagem digitada. Obrigado!`;
+  return "Olá! No momento, aceitamos apenas mensagens de texto. Recebi um formato diferente e não consigo processá-lo. Por favor, envie sua mensagem digitada. Obrigado!";
 }
 
 export function createMessageWorker(): Worker<MessageJobData, MessageJobResult> {

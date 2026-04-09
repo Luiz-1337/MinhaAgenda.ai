@@ -121,7 +121,7 @@ export class GoogleCalendarService {
    * Obtém um cliente OAuth2 autenticado para o salão
    * Faz refresh do token automaticamente se necessário
    */
-  private async getAuthClient(salonId: string): Promise<{
+  async getAuthClient(salonId: string): Promise<{
     client: OAuth2Client
     email: string | null
   } | null> {
@@ -878,9 +878,7 @@ export function getRawOAuth2Client(): OAuth2Client {
  * Alias para compatibilidade
  */
 export const getOAuth2Client = async (salonId: string) => {
-  const service = GoogleCalendarService.getInstance()
-  // @ts-expect-error - accessing private method for compatibility
-  return service.getAuthClient(salonId)
+  return GoogleCalendarService.getInstance().getAuthClient(salonId)
 }
 
 export const getSalonGoogleClient = getOAuth2Client

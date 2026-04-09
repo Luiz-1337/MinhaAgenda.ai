@@ -1,11 +1,12 @@
 import { and, eq, gt, lt, ne, sql } from "drizzle-orm"
 import { z } from "zod"
 
-import { db, appointments, availability, professionals, professionalServices, services } from "../index"
+import { db, appointments, availability, professionals, professionalServices, services, customers } from "../index"
 import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
 import { processVacantSlot } from "./slot-filler.service"
+import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } from "../domain/constants"
 
 /**
  * Tipo de resultado padronizado para operações de serviço.
@@ -45,6 +46,7 @@ export async function createAppointmentService(input: {
   serviceId: string
   date: string | Date
   notes?: string
+  skipExternalSync?: boolean
 }): Promise<ActionResult<{ appointmentId: string }>> {
   const schema = z.object({
     salonId: z.string().uuid(),
@@ -168,6 +170,7 @@ export async function createAppointmentService(input: {
         date: startUtc,
         endTime: endUtc,
         status: 'pending',
+        syncSource: input.skipExternalSync ? 'google' : 'app',
         notes: parse.data.notes
       }).returning({ id: appointments.id })
 
@@ -175,7 +178,7 @@ export async function createAppointmentService(input: {
     })
 
     // Fire-and-forget: Sync to external calendars (Google Calendar, Trinks)
-    fireAndForgetCreate(result.appointmentId, salonId)
+    fireAndForgetCreate(result.appointmentId, salonId, input.skipExternalSync)
 
     return { success: true, data: result }
   } catch (error) {
@@ -217,6 +220,7 @@ export async function updateAppointmentService(input: {
   serviceId?: string
   date?: string | Date
   notes?: string
+  skipExternalSync?: boolean
 }): Promise<ActionResult<{ appointmentId: string }>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
@@ -384,13 +388,14 @@ export async function updateAppointmentService(input: {
           date: startUtc,
           endTime: endUtc,
           notes: finalNotes,
+          syncSource: input.skipExternalSync ? 'google' : 'app',
           updatedAt: new Date(),
         })
         .where(eq(appointments.id, parse.data.appointmentId))
     })
 
     // Fire-and-forget: Sync updates to external calendars
-    fireAndForgetUpdate(parse.data.appointmentId, existingAppointment.salonId)
+    fireAndForgetUpdate(parse.data.appointmentId, existingAppointment.salonId, input.skipExternalSync)
 
     return { success: true, data: { appointmentId: parse.data.appointmentId } }
   } catch (error) {
@@ -417,6 +422,7 @@ export async function updateAppointmentService(input: {
  */
 export async function deleteAppointmentService(input: {
   appointmentId: string
+  skipExternalSync?: boolean
 }): Promise<ActionResult<void>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
@@ -438,7 +444,7 @@ export async function deleteAppointmentService(input: {
   }
 
   // Fire-and-forget: Sync deletion to external calendars BEFORE deleting from DB
-  fireAndForgetDelete(parse.data.appointmentId, existingAppointment.salonId)
+  fireAndForgetDelete(parse.data.appointmentId, existingAppointment.salonId, input.skipExternalSync)
 
   // Deleta o agendamento
   await db.delete(appointments).where(eq(appointments.id, parse.data.appointmentId))
@@ -452,4 +458,88 @@ export async function deleteAppointmentService(input: {
   }).catch(console.error)
 
   return { success: true, data: undefined }
+}
+
+/**
+ * Cria um "bloqueio de horário" a partir de um evento do Google Calendar.
+ *
+ * Diferente do createAppointmentService, este NÃO valida disponibilidade
+ * nem executa sync de volta para o Google Calendar (evita loop).
+ * Cria automaticamente servico/cliente placeholder se necessário.
+ */
+export async function createBlockedTimeService(input: {
+  salonId: string
+  professionalId: string
+  startTime: Date
+  endTime: Date
+  googleEventId: string
+  summary?: string | null
+}): Promise<ActionResult<{ appointmentId: string }>> {
+  const { salonId, professionalId, startTime, endTime, googleEventId, summary } = input
+
+  // Buscar ou criar serviço placeholder "Bloqueio de Horário"
+  let blockedService = await db.query.services.findFirst({
+    where: and(
+      eq(services.salonId, salonId),
+      eq(services.name, GOOGLE_BLOCKED_TIME_SERVICE_NAME)
+    ),
+    columns: { id: true },
+  })
+
+  if (!blockedService) {
+    const durationMinutes = Math.max(1, Math.round((endTime.getTime() - startTime.getTime()) / (60 * 1000)))
+    const [created] = await db.insert(services).values({
+      salonId,
+      name: GOOGLE_BLOCKED_TIME_SERVICE_NAME,
+      duration: durationMinutes,
+      price: '0',
+      isActive: true,
+    }).returning({ id: services.id })
+    blockedService = created
+  }
+
+  // Buscar ou criar cliente placeholder "Google Calendar"
+  let placeholderCustomer = await db.query.customers.findFirst({
+    where: and(
+      eq(customers.salonId, salonId),
+      eq(customers.phone, GOOGLE_CALENDAR_PLACEHOLDER_PHONE)
+    ),
+    columns: { id: true },
+  })
+
+  if (!placeholderCustomer) {
+    const [created] = await db.insert(customers).values({
+      salonId,
+      name: 'Google Calendar',
+      phone: GOOGLE_CALENDAR_PLACEHOLDER_PHONE,
+    }).returning({ id: customers.id })
+    placeholderCustomer = created
+  }
+
+  // Verificar se já existe appointment com este googleEventId
+  const existing = await db.query.appointments.findFirst({
+    where: eq(appointments.googleEventId, googleEventId),
+    columns: { id: true },
+  })
+
+  if (existing) {
+    return { success: true, data: { appointmentId: existing.id } }
+  }
+
+  // Criar o bloqueio (sem validação de disponibilidade, sem sync externo)
+  const [newAppointment] = await db.insert(appointments).values({
+    salonId,
+    professionalId,
+    clientId: placeholderCustomer.id,
+    serviceId: blockedService.id,
+    date: startTime,
+    endTime,
+    status: 'confirmed',
+    syncSource: 'google',
+    syncStatus: 'synced',
+    googleEventId,
+    notes: summary ? `Evento do Google Calendar: ${summary}` : 'Evento do Google Calendar',
+  }).returning({ id: appointments.id })
+
+  return { success: true, data: { appointmentId: newAppointment.id } }
 }

@@ -1,6 +1,7 @@
 export * from "./appointments"
 export * from "./availability"
 export * from "./google-calendar"
+export * from "./google-calendar-sync"
 export * from "./integration-sync"
 export * from "./message-analyzer.service"
 export * from "./limbo-detection.service"

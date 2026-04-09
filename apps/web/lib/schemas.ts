@@ -28,12 +28,21 @@ const workHoursSchema = z.preprocess(
   ).optional()
 );
 
+// Schema para configuração de pagamento antecipado
+const advancePaymentSchema = z.object({
+  enabled: z.boolean().optional(),
+  amount: z.number().min(0).optional(),
+  pix_key: z.string().optional().or(z.literal("")),
+  pix_name: z.string().optional().or(z.literal("")),
+}).optional()
+
 // Schema para configurações do salão
 const salonSettingsSchema = z.object({
   accepts_card: z.boolean().optional(),
   parking: z.boolean().optional(),
   late_tolerance_minutes: z.number().min(0).optional(),
   cancellation_policy: z.string().optional(),
+  advance_payment: advancePaymentSchema,
 }).optional()
 
 export const createSalonSchema = z.object({

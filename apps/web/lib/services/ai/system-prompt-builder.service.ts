@@ -172,6 +172,14 @@ export class SystemPromptBuilder {
       ? `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${toleranceMinutes} minutos`
       : ""
 
+    // Configuração de pagamento antecipado
+    const advancePayment = salonSettings.advance_payment as {
+      enabled?: boolean
+      amount?: number
+      pix_key?: string
+      pix_name?: string
+    } | undefined
+
     const soloProfessionalText = soloProfessional
       ? `\n\nPROFISSIONAL ÚNICO DO SALÃO:
 - Nome: ${soloProfessional.name}
@@ -179,19 +187,39 @@ export class SystemPromptBuilder {
 - REGRA: Este salão tem apenas 1 profissional. NUNCA pergunte qual profissional o cliente prefere. Use automaticamente "${soloProfessional.name}" (ID: ${soloProfessional.id}) em TODAS as chamadas que precisam de professionalId (checkAvailability, addAppointment). NÃO chame getProfessionals.`
       : ""
 
+    const hasAdvancePayment = advancePayment?.enabled && advancePayment.amount && advancePayment.pix_key
+
+    const paymentStepSolo = hasAdvancePayment
+      ? `5. Cliente escolheu horário → Apresente a taxa de confirmação:
+   "Para garantir seu horário, trabalhamos com uma taxa de confirmação de R$ ${advancePayment.amount!.toFixed(2)}. Esse valor é totalmente abatido no dia do seu atendimento."
+   Informe a chave Pix: ${advancePayment.pix_key}${advancePayment.pix_name ? ` (${advancePayment.pix_name})` : ""}.
+   Peça o comprovante de pagamento.
+   REGRA OBRIGATÓRIA: NUNCA chame addAppointment antes de o cliente enviar o comprovante de pagamento.
+6. Cliente enviou comprovante → Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
+      : `5. Cliente escolheu horário → Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
+
+    const paymentStepMulti = hasAdvancePayment
+      ? `5. Cliente escolheu horário → Apresente a taxa de confirmação:
+   "Para garantir seu horário, trabalhamos com uma taxa de confirmação de R$ ${advancePayment.amount!.toFixed(2)}. Esse valor é totalmente abatido no dia do seu atendimento."
+   Informe a chave Pix: ${advancePayment.pix_key}${advancePayment.pix_name ? ` (${advancePayment.pix_name})` : ""}.
+   Peça o comprovante de pagamento.
+   REGRA OBRIGATÓRIA: NUNCA chame addAppointment antes de o cliente enviar o comprovante de pagamento.
+6. Cliente enviou comprovante → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
+      : `5. Cliente escolheu horário → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
+
     const bookingFlow = soloProfessional
       ? `FLUXO DE AGENDAMENTO (siga na ordem):
 1. Saudação → Cumprimente pelo nome (se disponível). Pergunte como pode ajudar.
 2. Cliente pergunta serviços/preços → Chame getServices. Apresente nome e preço de forma natural. Pergunte qual deseja.
 3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?"
 4. Cliente informou data → Chame checkAvailability (inclua serviceId e professionalId: ${soloProfessional.id}). Ofereça 2-3 horários disponíveis.
-5. Cliente escolheu horário → Chame addAppointment com professionalId (${soloProfessional.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
+${paymentStepSolo}`
       : `FLUXO DE AGENDAMENTO (siga na ordem):
 1. Saudação → Cumprimente pelo nome (se disponível). Pergunte como pode ajudar.
 2. Cliente pergunta serviços/preços → Chame getServices. Apresente nome e preço de forma natural. Pergunte qual deseja.
 3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?"
 4. Cliente informou data → Chame checkAvailability (inclua serviceId obtido no passo 2). Ofereça 2-3 horários disponíveis.
-5. Cliente escolheu horário → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
+${paymentStepMulti}`
 
     return `Você é ${agentInfo?.name}, assistente virtual de agendamentos via WhatsApp.
 Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmados.
@@ -208,6 +236,24 @@ REGRAS DE TOOLS (OBRIGATÓRIO):
 - NUNCA chame updateAppointment ou removeAppointment sem antes listar com getMyFutureAppointments.
 - Se uma tool retornar erro, NÃO tente a mesma tool novamente. Peça ao cliente para reformular ou tente outra abordagem.
 - Ao receber resultados de tools, extraia apenas nome, preço, horário e data. Ignore campos técnicos.
+
+MEMÓRIA DE CONTEXTO (CRÍTICO):
+Mensagens anteriores podem conter blocos ---TOOL_CONTEXT--- com dados de tools já chamadas.
+- LEIA esses blocos antes de agir. Eles contêm IDs, preços e horários já consultados.
+- NÃO repita tool calls cujos dados já estão no contexto. Se getServices já retornou a lista, USE os dados.
+- NÃO pergunte informações que o cliente já forneceu em mensagens anteriores.
+- Continue o fluxo de onde parou. Se o cliente já escolheu serviço e profissional, vá direto para data/horário.
+- Referencie dados já obtidos naturalmente (ex: "Você quer o Corte com João, certo? Para qual dia?").
+
+EXEMPLO DE CONVERSA CORRETA:
+Cliente: "Oi, quero agendar"
+Assistente: "Olá! Posso ajudar com seu agendamento. Qual serviço você gostaria?" [SEM tool call]
+Cliente: "Corte"
+Assistente: [Chama getServices] "Temos o Corte por R$50 (30 min). Deseja agendar? Para qual dia?"
+Cliente: "Sexta"
+Assistente: [Chama checkAvailability com serviceId do contexto] "Sexta temos horários às 09:00, 10:00 e 14:00. Qual prefere?"
+Cliente: "10h"
+Assistente: [Chama addAppointment] "Pronto! Seu Corte está agendado para sexta às 10:00. Até lá!"
 
 ${bookingFlow}
 

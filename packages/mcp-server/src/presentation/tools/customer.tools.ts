@@ -2,12 +2,10 @@ import { Container, TOKENS } from "../../container"
 import { isOk } from "../../shared/types"
 import {
   IdentifyCustomerUseCase,
-  CreateCustomerUseCase,
   UpdateCustomerUseCase,
 } from "../../application/use-cases/customer"
 import {
   identifyCustomerSchema,
-  createCustomerSchema,
   updateCustomerNameSchema,
 } from "../schemas"
 import { CustomerPresenter, ErrorPresenter } from "../presenters"
@@ -24,7 +22,7 @@ export function createCustomerTools(
   return {
     identifyCustomer: {
       description:
-        "Identifica ou cria um cliente pelo telefone.",
+        "Identifica cliente existente pelo telefone. Se não encontrar, cria automaticamente. Use SEMPRE que precisar do customerId. Não precisa de parâmetros se o cliente já está conversando via WhatsApp.",
       inputSchema: identifyCustomerSchema,
       execute: async (input) => {
         try {
@@ -43,33 +41,6 @@ export function createCustomerTools(
           }
 
           return CustomerPresenter.identificationToJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
-      },
-    },
-
-    createCustomer: {
-      description:
-        "Cria um novo cliente no sistema.",
-      inputSchema: createCustomerSchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<CreateCustomerUseCase>(
-            TOKENS.CreateCustomerUseCase
-          )
-
-          const result = await useCase.execute({
-            salonId,
-            phone: input.phone || clientPhone,
-            name: input.name,
-          })
-
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return CustomerPresenter.toJSON(result.data)
         } catch (error) {
           return ErrorPresenter.toJSON(error as Error)
         }

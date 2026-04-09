@@ -7,7 +7,7 @@ import { updateSalon } from "@/app/actions/salon"
 import { updateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { Store, MapPin, Phone, MessageCircle, Clock, AlertCircle, CreditCard, Car } from "lucide-react"
+import { Store, MapPin, Phone, MessageCircle, Clock, AlertCircle, CreditCard, Car, QrCode, DollarSign } from "lucide-react"
 import type { SalonDetails } from "@/app/actions/salon"
 
 export interface SalonEditFormRef {
@@ -49,11 +49,18 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
       whatsapp: salon.whatsapp || "",
       description: salon.description || "",
       workHours: salon.workHours || {},
-      settings: salon.settings || {
+      settings: {
         accepts_card: false,
         parking: false,
         late_tolerance_minutes: 10,
         cancellation_policy: "",
+        advance_payment: {
+          enabled: false,
+          amount: undefined,
+          pix_key: "",
+          pix_name: "",
+        },
+        ...(salon.settings || {}),
       },
     },
     mode: "onChange",
@@ -68,11 +75,18 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
       whatsapp: salon.whatsapp || "",
       description: salon.description || "",
       workHours: salon.workHours || {},
-      settings: salon.settings || {
+      settings: {
         accepts_card: false,
         parking: false,
         late_tolerance_minutes: 10,
         cancellation_policy: "",
+        advance_payment: {
+          enabled: false,
+          amount: undefined,
+          pix_key: "",
+          pix_name: "",
+        },
+        ...(salon.settings || {}),
       },
     })
   }, [salon.id, salonId, form])
@@ -308,6 +322,89 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Card 4: Pagamento Antecipado */}
+            <div className="bg-card border border-border rounded-md p-4">
+              <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                <QrCode size={14} className="text-accent" /> Pagamento Antecipado (Pix)
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Quando ativado, o agente de IA solicitará uma taxa de confirmação via Pix antes de confirmar o agendamento.
+              </p>
+
+              {/* Toggle ativar */}
+              <div className="p-2.5 rounded-lg border border-border flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <DollarSign size={12} className="text-muted-foreground" />
+                  <span className="text-xs font-medium">Exigir taxa de confirmação</span>
+                </div>
+                <div
+                  className={`w-8 h-4 rounded-full relative cursor-pointer transition-colors ${
+                    form.watch("settings.advance_payment.enabled")
+                      ? "bg-emerald-600"
+                      : "bg-muted"
+                  }`}
+                  onClick={() =>
+                    form.setValue(
+                      "settings.advance_payment.enabled",
+                      !form.watch("settings.advance_payment.enabled")
+                    )
+                  }
+                >
+                  <div
+                    className={`absolute top-0.5 w-3 h-3 bg-background rounded-full transition-transform ${
+                      form.watch("settings.advance_payment.enabled") ? "right-0.5" : "left-0.5"
+                    }`}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Campos condicionais */}
+              {form.watch("settings.advance_payment.enabled") && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Valor da taxa (R$)
+                    </label>
+                    <div className="relative w-40">
+                      <DollarSign size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        {...form.register("settings.advance_payment.amount", { valueAsNumber: true })}
+                        placeholder="50.00"
+                        className="w-full h-9 bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Chave Pix
+                    </label>
+                    <input
+                      type="text"
+                      {...form.register("settings.advance_payment.pix_key")}
+                      placeholder="CPF, CNPJ, e-mail ou chave aleatória"
+                      className="w-full h-9 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Nome do beneficiário
+                    </label>
+                    <input
+                      type="text"
+                      {...form.register("settings.advance_payment.pix_name")}
+                      placeholder="Nome que aparece no Pix"
+                      className="w-full h-9 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

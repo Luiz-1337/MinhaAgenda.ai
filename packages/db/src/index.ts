@@ -121,3 +121,13 @@ export {
   syncAppointmentDelete,
   type SyncResult
 } from './services/integration-sync'
+
+// Google Calendar Sync Service - Bidirectional sync
+export {
+  setupWatchChannel,
+  setupWatchChannelsForSalon,
+  teardownWatchChannels,
+  renewExpiringChannels,
+  performIncrementalSync,
+  pollAllChannels,
+} from './services/google-calendar-sync'

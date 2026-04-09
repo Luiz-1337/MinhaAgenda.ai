@@ -18,7 +18,7 @@ import {
   enforceAgendaAvailabilityPolicy,
   resolveFriendlyAvailabilityErrorMessage,
 } from "./availability-message-policy";
-import type { ResponsesRunnerInputMessage } from "./openai-responses-runner.service";
+import type { ResponsesRunnerInputMessage, ResponsesRunnerStep } from "./openai-responses-runner.service";
 import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
 import { findRelevantContext, generateQueryEmbedding } from "./rag-context.service";
@@ -26,6 +26,7 @@ import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments, professionals, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
+import type { ProcessedMedia } from "./media-processor.service";
 
 // Debug verboso controlado por env var (desligado em produção)
 const AI_DEBUG = process.env.AI_DEBUG === 'true';
@@ -49,6 +50,7 @@ export interface GenerateResponseParams {
   customerId?: string;
   customerName?: string;
   isNewCustomer?: boolean;
+  media?: ProcessedMedia;
 }
 
 /**
@@ -56,6 +58,7 @@ export interface GenerateResponseParams {
  */
 export interface GenerateResponseResult {
   text: string;
+  toolSummary: string;
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -85,7 +88,7 @@ export async function generateAIResponse(
     const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
-      getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 10),
+      getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
       createMCPTools(salonId, clientPhone),
       customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined),
       fetchSoloProfessionalInfo(salonId),
@@ -137,9 +140,20 @@ export async function generateAIResponse(
       content: msg.content,
     }));
 
+    // Monta content da mensagem do usuário (multimodal se houver imagem)
+    let userContent: unknown;
+    if (params.media?.type === "image" && params.media.imageUrl) {
+      userContent = [
+        { type: "input_text", text: userMessage },
+        { type: "input_image", image_url: params.media.imageUrl },
+      ];
+    } else {
+      userContent = userMessage;
+    }
+
     conversationMessages.push({
       role: "user",
-      content: userMessage,
+      content: userContent,
     });
 
     if (AI_DEBUG) {
@@ -233,7 +247,11 @@ export async function generateAIResponse(
     // 9. Verificar e tratar erros de tools
     const toolErrorMessage = handleToolErrors(steps, contextLogger);
     const hasToolErrors = !!toolErrorMessage;
-    const finalText = sanitizeAssistantText(toolErrorMessage || text);
+    const rawText = toolErrorMessage || text;
+    // Gerar resumo de tool calls para persistir no histórico
+    const toolSummary = buildToolSummary(steps);
+    // Limpar tool context e dados sensíveis do texto enviado ao WhatsApp
+    const finalText = sanitizeAssistantText(stripToolContext(rawText));
 
     // 10. Validar resposta final
     if (!finalText || !finalText.trim()) {
@@ -269,6 +287,7 @@ export async function generateAIResponse(
 
     return {
       text: finalText,
+      toolSummary,
       usage: {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0,
@@ -528,6 +547,131 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
   });
 
   return errors;
+}
+
+// Delimitadores de tool context embutido no histórico
+const TOOL_CONTEXT_START = "---TOOL_CONTEXT---";
+const TOOL_CONTEXT_END = "---END_TOOL_CONTEXT---";
+const TOOL_CONTEXT_REGEX = new RegExp(
+  `\\n*${TOOL_CONTEXT_START}[\\s\\S]*?${TOOL_CONTEXT_END}\\n*`,
+  "g"
+);
+
+/**
+ * Constrói resumo compacto das tool calls executadas nesta rodada.
+ * Esse resumo é persistido junto à mensagem assistant no DB para que
+ * nas próximas mensagens o AI tenha contexto do que já buscou/fez.
+ */
+function buildToolSummary(steps: ResponsesRunnerStep[]): string {
+  const summaryLines: string[] = [];
+
+  for (const step of steps) {
+    if (!step.toolCalls || step.toolCalls.length === 0) continue;
+
+    for (let i = 0; i < step.toolCalls.length; i++) {
+      const call = step.toolCalls[i];
+      const result = step.toolResults[i];
+      if (!call || call.invalid) continue;
+
+      const toolName = call.toolName;
+      const args = call.input ? JSON.stringify(call.input) : "{}";
+
+      let resultSummary: string;
+      if (result?.isError || result?.error) {
+        resultSummary = "ERRO: " + (typeof result.error === "string" ? result.error : (result.error as any)?.message || "erro desconhecido");
+      } else {
+        resultSummary = summarizeToolResult(toolName, result?.result);
+      }
+
+      summaryLines.push(`[${toolName}](${args}) -> ${resultSummary}`);
+    }
+  }
+
+  return summaryLines.length > 0
+    ? `\n\n${TOOL_CONTEXT_START}\n${summaryLines.join("\n")}\n${TOOL_CONTEXT_END}`
+    : "";
+}
+
+/**
+ * Cria resumo compacto do resultado de uma tool (max ~300 chars por tool).
+ */
+function summarizeToolResult(toolName: string, result: unknown): string {
+  if (result == null) return "(vazio)";
+
+  try {
+    const data = typeof result === "string" ? JSON.parse(result) : result;
+
+    if (data.error === true) {
+      return `ERRO: ${data.message || data.details || "erro"}`;
+    }
+
+    // Serviços: lista compacta
+    if (toolName === "getServices" && Array.isArray(data.services)) {
+      return data.services
+        .slice(0, 10)
+        .map((s: any) => `${s.name}(id:${s.serviceId},R$${s.price},${s.duration}min)`)
+        .join(", ");
+    }
+
+    // Profissionais: lista compacta
+    if (toolName === "getProfessionals" && Array.isArray(data.professionals)) {
+      return data.professionals
+        .slice(0, 10)
+        .map((p: any) => `${p.name}(id:${p.professionalId})`)
+        .join(", ");
+    }
+
+    // Disponibilidade: horários
+    if ((toolName === "checkAvailability" || toolName === "getAvailableSlots") && data.slots) {
+      const available = Array.isArray(data.slots)
+        ? data.slots.filter((s: any) => s.available !== false).map((s: any) => s.time || s).join(",")
+        : JSON.stringify(data.slots).substring(0, 200);
+      return `horarios: ${available}`;
+    }
+
+    // Agendamentos futuros
+    if (toolName === "getMyFutureAppointments" && Array.isArray(data.appointments)) {
+      return data.appointments
+        .slice(0, 5)
+        .map((a: any) => `${a.service}(id:${a.appointmentId},${a.date},${a.professional})`)
+        .join(", ");
+    }
+
+    // Appointment criado/atualizado
+    if (toolName === "addAppointment" || toolName === "updateAppointment") {
+      return `OK: ${data.message || JSON.stringify(data).substring(0, 150)}`;
+    }
+
+    // Cancelamento
+    if (toolName === "removeAppointment") {
+      return `cancelado: ${data.message || "OK"}`;
+    }
+
+    // Salon info
+    if (toolName === "getSalonInfo") {
+      return `${data.name || ""}, ${data.address || ""}`.substring(0, 150);
+    }
+
+    // Customer identification
+    if (toolName === "identifyCustomer") {
+      return `${data.name || ""}(id:${data.customerId || ""})`;
+    }
+
+    // Fallback genérico
+    const json = JSON.stringify(data);
+    return json.length > 250 ? json.substring(0, 250) + "..." : json;
+  } catch {
+    const str = String(result);
+    return str.length > 250 ? str.substring(0, 250) + "..." : str;
+  }
+}
+
+/**
+ * Remove tool context markers do texto enviado ao cliente via WhatsApp.
+ * O tool context fica no DB para historico, mas nao vai para o cliente.
+ */
+function stripToolContext(text: string): string {
+  return text.replace(TOOL_CONTEXT_REGEX, "").trim();
 }
 
 /**

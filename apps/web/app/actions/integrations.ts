@@ -13,6 +13,7 @@ import {
   getTrinksServices,
   getTrinksProducts,
 } from "@repo/db"
+import { setupWatchChannelsForSalon, teardownWatchChannels } from "@repo/db/services/google-calendar-sync"
 
 const updateSalonIntegrationSchema = z.object({
   salonId: z.string().uuid(),
@@ -68,6 +69,19 @@ export async function updateSalonIntegration(
         updatedAt: new Date(),
       })
       .where(eq(salonIntegrations.id, integration.id))
+
+    // Manage watch channels based on isActive toggle
+    if (isActive) {
+      // Re-enable: setup watch channels for bidirectional sync
+      setupWatchChannelsForSalon(salonId).catch((error) => {
+        console.error('Failed to setup watch channels on enable:', error)
+      })
+    } else {
+      // Disable: teardown watch channels
+      teardownWatchChannels(salonId).catch((error) => {
+        console.error('Failed to teardown watch channels on disable:', error)
+      })
+    }
 
     revalidatePath(`/${salonId}/dashboard`)
     revalidatePath(`/${salonId}/settings`)

@@ -24,7 +24,8 @@
     "migrate:manual:009": "node scripts/migrate_009.mjs",
     "migrate:signup-function": "node scripts/migrate_003_signup_function.mjs",
     "check:rag": "node scripts/check-rag-setup.mjs",
-    "reset": "node scripts/reset.mjs"
+    "reset": "node scripts/reset.mjs",
+    "copy:salon": "node scripts/copy-salon-config.mjs"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

@@ -267,6 +267,39 @@ export async function sendWhatsAppMessage(
 }
 
 /**
+ * Obtém mídia de uma mensagem do WhatsApp em base64 via Evolution API.
+ * Endpoint: POST /chat/getBase64FromMediaMessage/{instanceName}
+ *
+ * A Evolution API descriptografa a mídia do WhatsApp e retorna em base64.
+ */
+export async function getBase64FromMediaMessage(
+  instanceName: string,
+  messageKey: { remoteJid: string; fromMe: boolean; id: string }
+): Promise<{ base64: string; mimetype: string } | null> {
+  try {
+    const client = getEvolutionClient();
+    const response = await client.post<{ base64?: string; mimetype?: string }>(
+      `/chat/getBase64FromMediaMessage/${instanceName}`,
+      { message: { key: messageKey } }
+    );
+
+    if (!response.base64) {
+      logger.warn({ instanceName, messageId: messageKey.id }, "Evolution API retornou sem base64");
+      return null;
+    }
+
+    return {
+      base64: response.base64,
+      mimetype: response.mimetype || "application/octet-stream",
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ error: errorMessage, instanceName, messageId: messageKey.id }, "Erro ao obter mídia via Evolution API");
+    return null;
+  }
+}
+
+/**
  * Normalize phone number (remove whatsapp: prefix)
  */
 export function normalizePhoneNumber(phone: string): string {

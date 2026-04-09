@@ -242,12 +242,18 @@ export async function saveMessage(
     totalTokens?: number
     model?: string
     requiresResponse?: boolean
+    toolSummary?: string
   }
 ): Promise<void> {
+  // Append tool summary ao content para que o histórico tenha contexto de tools
+  const finalContent = options?.toolSummary
+    ? content + options.toolSummary
+    : content;
+
   await db.insert(messages).values({
     chatId,
     role,
-    content,
+    content: finalContent,
     requiresResponse: options?.requiresResponse ?? false,
     inputTokens: options?.inputTokens ?? null,
     outputTokens: options?.outputTokens ?? null,
@@ -280,18 +286,23 @@ export async function saveMessage(
 
 /**
  * Obtém o histórico de mensagens de um chat
- * 
+ *
  * REGRA DE CONTEXTO POR DIA:
  * - Retorna apenas mensagens do mesmo dia (timezone Brasil/São Paulo)
  * - Se não houver mensagens de hoje, retorna array vazio (contexto limpo)
  * - Isso faz com que a primeira mensagem de um novo dia seja tratada como
  *   um novo início de conversa, sem arrastar contexto de dias anteriores
+ *
+ * SMART HISTORY:
+ * - Sempre inclui as 2 primeiras mensagens do dia (estabelecem contexto inicial)
+ * - Preenche o restante com as mensagens mais recentes
+ * - Garante que o AI sabe como a conversa começou e tem o contexto mais recente
  */
-export async function getChatHistory(chatId: string, limit = 10): Promise<ChatMessage[]> {
+export async function getChatHistory(chatId: string, limit = 30): Promise<ChatMessage[]> {
   // Calcula o início do dia atual no timezone do Brasil (America/Sao_Paulo)
   const startOfTodayBrazil = sql`(now() AT TIME ZONE ${BRAZIL_TIMEZONE})::date::timestamp AT TIME ZONE ${BRAZIL_TIMEZONE}`
 
-  // Busca apenas mensagens de HOJE, respeitando o limite
+  // Busca as mensagens mais recentes de HOJE
   const latestMessages = await db.query.messages.findMany({
     where: and(
       eq(messages.chatId, chatId),
@@ -301,8 +312,35 @@ export async function getChatHistory(chatId: string, limit = 10): Promise<ChatMe
     limit,
   })
 
-  // Reverte para ficar do mais antigo -> mais novo dentro do recorte
-  return latestMessages.reverse().map((msg) => ({
+  if (latestMessages.length <= 4) {
+    // Poucas mensagens: retorna tudo em ordem cronológica
+    return latestMessages.reverse().map((msg) => ({
+      role: msg.role as "user" | "assistant" | "system",
+      content: msg.content || "",
+    }))
+  }
+
+  // Smart history: garantir que as 2 primeiras mensagens do dia estão incluídas
+  // latestMessages está em ordem DESC (mais nova primeiro)
+  const allChronological = [...latestMessages].reverse() // ASC: mais antiga primeiro
+  const firstTwo = allChronological.slice(0, 2)
+  const recentMessages = allChronological.slice(-(limit - 2))
+
+  // Mesclar sem duplicar (primeiras 2 + recentes)
+  const seen = new Set<string>()
+  const merged: typeof allChronological = []
+
+  for (const msg of firstTwo) {
+    seen.add(msg.id)
+    merged.push(msg)
+  }
+  for (const msg of recentMessages) {
+    if (!seen.has(msg.id)) {
+      merged.push(msg)
+    }
+  }
+
+  return merged.map((msg) => ({
     role: msg.role as "user" | "assistant" | "system",
     content: msg.content || "",
   }))
