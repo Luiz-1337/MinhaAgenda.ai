@@ -67,15 +67,15 @@ export function AgentActionMenu({
                 setIsOpen(false)
                 onOpenChange?.(false)
               }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-info/5 transition-all group/menuitem"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-sm bg-info/10 text-info group-hover:bg-info group-hover:text-foreground transition-all">
+                <div className="p-1.5 rounded-sm bg-info/10 text-info group-hover/menuitem:bg-info group-hover/menuitem:text-info-foreground transition-colors">
                   <Pencil size={12} />
                 </div>
                 <span>Editar detalhes</span>
               </div>
-              <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ChevronRight size={12} className="opacity-0 group-hover/menuitem:opacity-100 transition-opacity" />
             </button>
 
             <button
@@ -84,15 +84,15 @@ export function AgentActionMenu({
                 setIsOpen(false)
                 onOpenChange?.(false)
               }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-success/5 transition-all group/menuitem"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-sm bg-success/10 text-success group-hover:bg-success group-hover:text-foreground transition-all">
+                <div className="p-1.5 rounded-sm bg-success/10 text-success group-hover/menuitem:bg-success group-hover/menuitem:text-success-foreground transition-colors">
                   <Copy size={12} />
                 </div>
                 <span>Duplicar agente</span>
               </div>
-              <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ChevronRight size={12} className="opacity-0 group-hover/menuitem:opacity-100 transition-opacity" />
             </button>
 
             <button
@@ -101,15 +101,15 @@ export function AgentActionMenu({
                 setIsOpen(false)
                 onOpenChange?.(false)
               }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-warning/5 transition-all group/menuitem"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-sm bg-warning/10 text-warning group-hover:bg-warning group-hover:text-foreground transition-all">
+                <div className="p-1.5 rounded-sm bg-warning/10 text-warning group-hover/menuitem:bg-warning group-hover/menuitem:text-warning-foreground transition-colors">
                   <Power size={12} />
                 </div>
                 <span>{isActive ? "Desativar agente" : "Ativar agente"}</span>
               </div>
-              <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ChevronRight size={12} className="opacity-0 group-hover/menuitem:opacity-100 transition-opacity" />
             </button>
 
             <button
@@ -118,15 +118,15 @@ export function AgentActionMenu({
                 setIsOpen(false)
                 onOpenChange?.(false)
               }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/5 transition-all group/menuitem"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-sm bg-destructive/10 text-destructive group-hover:bg-destructive group-hover:text-foreground transition-all">
+                <div className="p-1.5 rounded-sm bg-destructive/10 text-destructive group-hover/menuitem:bg-destructive group-hover/menuitem:text-destructive-foreground transition-colors">
                   <Trash2 size={12} />
                 </div>
                 <span>Remover item</span>
               </div>
-              <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ChevronRight size={12} className="opacity-0 group-hover/menuitem:opacity-100 transition-opacity" />
             </button>
           </div>
         </>

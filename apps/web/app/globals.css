@@ -46,6 +46,10 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-chat-bot: var(--chat-bot);
+  --color-chat-bot-foreground: var(--chat-bot-foreground);
+  --color-chat-user: var(--chat-user);
+  --color-chat-user-foreground: var(--chat-user-foreground);
   --font-sans: var(--font-lexend-deca);
   --font-mono: var(--font-geist-mono);
   --radius-sm: 4px;
@@ -99,6 +103,10 @@
   --sidebar-accent-foreground: 213 66% 40%;
   --sidebar-border: 0 0% 85%;
   --sidebar-ring: 213 66% 46%;
+  --chat-bot: #D9FDD3;
+  --chat-bot-foreground: #111B21;
+  --chat-user: #BDBCBB;
+  --chat-user-foreground: #111B21;
 }
 
 /* Dark mode */
@@ -145,6 +153,10 @@
   --sidebar-accent-foreground: 0 0% 94%;
   --sidebar-border: 0 0% 100% / 0.06;
   --sidebar-ring: 0 0% 100% / 0.15;
+  --chat-bot: #144D37;
+  --chat-bot-foreground: #E9EDEF;
+  --chat-user: #242626;
+  --chat-user-foreground: #E9EDEF;
 }
 
 @layer base {

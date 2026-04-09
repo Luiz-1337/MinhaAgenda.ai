@@ -89,7 +89,7 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
         <div className="lg:col-span-7 flex flex-col gap-4 h-full overflow-y-auto custom-scrollbar">
           {/* Card principal: Créditos - Layout Horizontal */}
           <div className="bg-card border border-border rounded-md p-5 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-accent/5 rounded-full -mr-16 -mt-16" />
+            <div className="absolute top-0 right-0 w-48 h-48 bg-accent/3 rounded-full -mr-24 -mt-24" />
             <div className="relative z-10">
               {/* Header com título e botão */}
               <div className="flex items-center justify-between mb-4">

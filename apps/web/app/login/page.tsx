@@ -2,7 +2,7 @@
 
 import React, { useActionState, useState, useEffect, useTransition } from 'react';
 import Image from 'next/image';
-import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { login } from '../actions/auth';
@@ -35,6 +35,7 @@ export default function LoginPage() {
   const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isDark, setIsDark] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const searchParams = useSearchParams()
   const passwordResetSuccess = searchParams.get('passwordReset') === 'success'
 
@@ -160,18 +161,25 @@ export default function LoginPage() {
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Lock size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
                 </div>
-                <input 
-                  type="password" 
-                  className={`w-full pl-10 pr-4 py-3 bg-card border rounded-md text-foreground focus:outline-none focus:ring-2 transition-all ${
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className={`w-full pl-10 pr-10 py-3 bg-card border rounded-md text-foreground focus:outline-none focus:ring-2 transition-all ${
                     state?.error
                       ? 'border-rose-600 dark:border-rose-400 focus:ring-rose-600/20 focus:border-rose-600'
                       : 'border-border focus:ring-ring focus:border-ring'
                   }`}
                   placeholder="••••••••"
-                  id="password" 
+                  id="password"
                   name="password"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
             <SubmitButton isLoading={isPending} />

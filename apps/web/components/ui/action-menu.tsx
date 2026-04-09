@@ -45,28 +45,28 @@ export function ActionMenu({ onEdit, onDelete }: ActionMenuProps) {
 
             <button
               onClick={() => { onEdit(); setIsOpen(false); }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-info/5 transition-all group/menuitem"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-sm bg-info/10 text-info group-hover:bg-info group-hover:text-info-foreground transition-all">
+                <div className="p-1.5 rounded-sm bg-info/10 text-info group-hover/menuitem:bg-info group-hover/menuitem:text-info-foreground transition-colors">
                   <Pencil size={12} />
                 </div>
                 <span>Editar detalhes</span>
               </div>
-              <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ChevronRight size={12} className="opacity-0 group-hover/menuitem:opacity-100 transition-opacity" />
             </button>
 
             <button
               onClick={() => { onDelete(); setIsOpen(false); }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/5 transition-all group/menuitem"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-sm bg-destructive/10 text-destructive group-hover:bg-destructive group-hover:text-destructive-foreground transition-all">
+                <div className="p-1.5 rounded-sm bg-destructive/10 text-destructive group-hover/menuitem:bg-destructive group-hover/menuitem:text-destructive-foreground transition-colors">
                   <Trash2 size={12} />
                 </div>
                 <span>Remover item</span>
               </div>
-              <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ChevronRight size={12} className="opacity-0 group-hover/menuitem:opacity-100 transition-opacity" />
             </button>
           </div>
         </>

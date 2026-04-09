@@ -113,7 +113,7 @@ export function UserNav() {
         <DropdownMenuContent align="end" className="bg-popover border-border">
           <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild className="cursor-pointer">
+          <DropdownMenuItem asChild className="cursor-pointer focus:bg-sidebar-accent focus:text-sidebar-accent-foreground">
             <Link href={`/${activeSalon?.id}/settings`}>
               <Settings className="size-4 mr-2" />
               Configurações
@@ -121,7 +121,7 @@ export function UserNav() {
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleLogout}
-            className="text-destructive focus:text-destructive cursor-pointer"
+            className="text-destructive focus:text-destructive focus:bg-sidebar-accent cursor-pointer"
           >
             <LogOut className="size-4 mr-2" />
             Sair

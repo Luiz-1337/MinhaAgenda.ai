@@ -14,6 +14,7 @@ interface MonthlySchedulerProps {
   loading: boolean
   error: string | null
   selectedProfessionalId: string | null
+  onDayClick?: (date: Date) => void
 }
 
 function getStatusColor(status: DailyAppointment["status"]): { bg: string; border: string; text: string } {
@@ -32,13 +33,14 @@ function getStatusColor(status: DailyAppointment["status"]): { bg: string; borde
 }
 
 export function MonthlyScheduler({ 
-  salonId, 
-  currentDate, 
-  appointments, 
-  professionals, 
-  loading, 
+  salonId,
+  currentDate,
+  appointments,
+  professionals,
+  loading,
   error,
-  selectedProfessionalId
+  selectedProfessionalId,
+  onDayClick
 }: MonthlySchedulerProps) {
 
   const monthStart = useMemo(() => startOfMonthBrazil(currentDate), [currentDate])
@@ -129,10 +131,11 @@ export function MonthlyScheduler({
               const hasEvent = dayAppointments.length > 0
               
               return (
-                <div 
-                  key={day.toISOString()} 
+                <div
+                  key={day.toISOString()}
+                  onClick={() => isCurrentMonth && onDayClick?.(day)}
                   className={`
-                    border rounded-xl p-4 relative flex flex-col justify-between transition-all
+                    border rounded-md p-4 relative flex flex-col justify-between transition-all
                     ${isCurrentMonth
                       ? 'border-border bg-muted/50 hover:border-accent/50 cursor-pointer'
                       : 'border-transparent opacity-30'}

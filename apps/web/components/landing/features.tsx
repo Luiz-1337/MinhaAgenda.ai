@@ -19,7 +19,7 @@ const Features: React.FC = () => {
           transition={spring}
           className="mb-14"
         >
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary mb-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-3">
             Serviços
           </p>
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
@@ -52,8 +52,8 @@ const Features: React.FC = () => {
                 </span>
 
                 {/* Icon */}
-                <div className="shrink-0 w-10 h-10 rounded-md bg-primary/10 dark:bg-primary/15 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <Icon className="w-5 h-5 text-primary" />
+                <div className="shrink-0 w-10 h-10 rounded-md bg-accent/10 dark:bg-accent/15 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                  <Icon className="w-5 h-5 text-accent" />
                 </div>
 
                 {/* Content */}

@@ -11,7 +11,7 @@ const Footer: React.FC = () => {
           {/* Brand */}
           <div className="space-y-4">
             <p className="text-base font-bold tracking-tight text-foreground">
-              minhaagenda<span className="text-primary">.ai</span>
+              minhaagenda<span className="text-accent">.ai</span>
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
               Revolucionando a gestão de salões de beleza com inteligência artificial generativa.

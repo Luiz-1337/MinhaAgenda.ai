@@ -1,13 +1,49 @@
 "use client"
 
 import React, { useState } from 'react';
-import { Bot, ArrowRight, Mail, User, MessageSquare, Building2, CheckCircle2 } from 'lucide-react';
+import { Bot, ArrowRight, Mail, User, MessageSquare, Building2, CheckCircle2, Phone, Users, Loader2, CheckCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { sendContactEmail } from '../actions/contact';
 
 export default function ContactPage() {
   const searchParams = useSearchParams()
   const reason = searchParams.get('reason')
   const isEnterprise = reason === 'enterprise_plan'
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState("")
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setError("")
+
+    const form = e.currentTarget
+    const formData = {
+      name: (form.elements.namedItem("name") as HTMLInputElement).value,
+      company: (form.elements.namedItem("company") as HTMLInputElement).value,
+      email: (form.elements.namedItem("email") as HTMLInputElement).value,
+      phone: (form.elements.namedItem("phone") as HTMLInputElement).value,
+      hairdressers: (form.elements.namedItem("hairdressers") as HTMLInputElement).value,
+      message: (form.elements.namedItem("message") as HTMLTextAreaElement).value,
+    }
+
+    try {
+      const result = await sendContactEmail(formData)
+      if ("error" in result) {
+        setError(result.error)
+      } else {
+        setSuccess(true)
+      }
+    } catch {
+      setError("Erro inesperado. Tente novamente.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const inputClass = "w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all text-foreground placeholder:text-muted-foreground"
 
   return (
     <div className="min-h-screen bg-background">
@@ -30,14 +66,14 @@ export default function ContactPage() {
 
       <div className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          
+
           <div className="text-center mb-16">
             <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
               {isEnterprise ? 'Fale com nosso time de Vendas' : 'Entre em contato'}
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              {isEnterprise 
-                ? 'Para grandes redes e franquias, oferecemos soluções personalizadas. Preencha o formulário e entraremos em contato em até 24 horas.' 
+              {isEnterprise
+                ? 'Para grandes redes e franquias, oferecemos soluções personalizadas. Preencha o formulário e entraremos em contato em até 24 horas.'
                 : 'Tem alguma dúvida ou sugestão? Estamos aqui para ajudar.'}
             </p>
           </div>
@@ -80,68 +116,139 @@ export default function ContactPage() {
 
             {/* Form */}
             <div className="md:col-span-2 bg-card rounded-lg p-8 border border-border">
-              <form className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
+              {success ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center mb-6">
+                    <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-2">Mensagem enviada!</h3>
+                  <p className="text-muted-foreground max-w-sm">
+                    Recebemos sua mensagem e entraremos em contato em breve. Obrigado pelo interesse!
+                  </p>
+                  <button
+                    onClick={() => setSuccess(false)}
+                    className="mt-6 px-6 py-2.5 rounded-md text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors"
+                  >
+                    Enviar outra mensagem
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label htmlFor="name" className="text-sm font-medium text-foreground">Nome *</label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                        <input
+                          type="text"
+                          id="name"
+                          name="name"
+                          required
+                          className={inputClass}
+                          placeholder="Seu nome"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="company" className="text-sm font-medium text-foreground">Empresa / Salão</label>
+                      <div className="relative">
+                        <Building2 className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                        <input
+                          type="text"
+                          id="company"
+                          name="company"
+                          className={inputClass}
+                          placeholder="Nome do Salão/Rede"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label htmlFor="email" className="text-sm font-medium text-foreground">E-mail *</label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                        <input
+                          type="email"
+                          id="email"
+                          name="email"
+                          required
+                          className={inputClass}
+                          placeholder="voce@empresa.com"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="phone" className="text-sm font-medium text-foreground">Telefone</label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                        <input
+                          type="tel"
+                          id="phone"
+                          name="phone"
+                          className={inputClass}
+                          placeholder="(11) 99999-9999"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <label htmlFor="name" className="text-sm font-medium text-foreground">Nome</label>
+                    <label htmlFor="hairdressers" className="text-sm font-medium text-foreground">Quantos profissionais no salão?</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                      <input 
-                        type="text" 
-                        id="name"
-                        className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all"
-                        placeholder="Seu nome"
+                      <Users className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <input
+                        type="number"
+                        id="hairdressers"
+                        name="hairdressers"
+                        min="1"
+                        className={inputClass}
+                        placeholder="Ex: 5"
                       />
                     </div>
                   </div>
+
                   <div className="space-y-2">
-                    <label htmlFor="company" className="text-sm font-medium text-foreground">Empresa</label>
+                    <label htmlFor="message" className="text-sm font-medium text-foreground">Mensagem *</label>
                     <div className="relative">
-                      <Building2 className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                      <input 
-                        type="text" 
-                        id="company"
-                        className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all"
-                        placeholder="Nome do Salão/Rede"
-                      />
+                      <MessageSquare className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                      <textarea
+                        id="message"
+                        name="message"
+                        rows={4}
+                        required
+                        className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all resize-none text-foreground placeholder:text-muted-foreground"
+                        placeholder="Conte-nos sobre sua necessidade..."
+                      ></textarea>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium text-foreground">E-mail Corporativo</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                    <input 
-                      type="email" 
-                      id="email"
-                      className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all"
-                      placeholder="voce@empresa.com"
-                    />
-                  </div>
-                </div>
+                  {error && (
+                    <div className="p-3 bg-rose-50 dark:bg-rose-950 border border-rose-700/20 dark:border-rose-300/20 rounded-md">
+                      <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
+                    </div>
+                  )}
 
-                <div className="space-y-2">
-                  <label htmlFor="message" className="text-sm font-medium text-foreground">Mensagem</label>
-                  <div className="relative">
-                    <MessageSquare className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                    <textarea 
-                      id="message"
-                      rows={4}
-                      className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all resize-none"
-                      placeholder="Conte-nos sobre sua necessidade..."
-                    ></textarea>
-                  </div>
-                </div>
-
-                <button 
-                  type="submit"
-                  className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-3 px-6 rounded-md transition-all flex items-center justify-center gap-2"
-                >
-                  Enviar Mensagem
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-3 px-6 rounded-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        Enviar Mensagem
+                        <ArrowRight className="w-5 h-5" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>
@@ -149,7 +256,3 @@ export default function ContactPage() {
     </div>
   );
 }
-
-
-
-

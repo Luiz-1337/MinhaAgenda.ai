@@ -52,7 +52,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     }
     return new Date()
   })
-  
+
   // Estado unificado de dados
   const [appointments, setAppointments] = useState<AppointmentDTO[]>([])
   const [professionals, setProfessionals] = useState<ProfessionalInfo[]>([])
@@ -80,7 +80,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     async function fetchData() {
       setLoading(true)
       setError(null)
-      
+
       let start: Date
       let end: Date
 
@@ -102,7 +102,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
 
       try {
         const result = await getAppointments(salonId, start, end)
-        
+
         if ('error' in result) {
           setError(result.error)
           setAppointments([])
@@ -128,28 +128,28 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
        // Filtra apenas ativos para seleção automática, embora a query já deva retornar ativos ou a UI filtre
        const activePros = professionals.filter(p => p.isActive)
        if (activePros.length > 0) {
-         setSelectedProId(activePros[0].id) // Seleciona o primeiro específico por padrão? Ou 'all'? 
+         setSelectedProId(activePros[0].id) // Seleciona o primeiro específico por padrão? Ou 'all'?
          // O código original selecionava o primeiro.
          // Mas o dropdown original tinha opção "Todos". Vamos manter consistência com o original.
          // Se o design original tinha "Todos", vamos ver.
          // Código original:
          // setProfessionals([{ id: 'all', name: 'Todos os Profissionais' }, ...active])
          // setSelectedPro(allProfessionals[0]) // que era 'all'
-         
+
          // Se eu quiser suportar "Todos", precisaria ajustar a lógica de filtragem nos subcomponentes ou filtrar aqui.
          // Os subcomponentes originais recebiam `selectedProfessionalId` e filtravam por ele.
-         // Se eu passar 'all', eles precisam saber lidar. 
+         // Se eu passar 'all', eles precisam saber lidar.
          // Mas olhando o código dos subcomponentes que acabei de escrever:
          // `appointmentsByProfessional.get(selectedProfessionalId)` -> Isso implica que eles esperam um ID específico.
          // Para suportar "Todos", eu teria que alterar os subcomponentes ou lidar com isso aqui.
          // O código original dos subcomponentes (Daily/Weekly) também tinha lógica:
          // const selectedProfessionalAppointments = ... appointmentsByProfessional.get(selectedProfessionalId)
-         // Parece que eles NÃO suportavam ver todos ao mesmo tempo na visualização detalhada (Daily/Weekly), 
+         // Parece que eles NÃO suportavam ver todos ao mesmo tempo na visualização detalhada (Daily/Weekly),
          // pois filtravam por ID único.
          // Vamos manter o comportamento de selecionar um específico por enquanto para garantir que funcione como antes na visualização,
-         // ou implementar a visualização de "Todos" se for desejado. 
+         // ou implementar a visualização de "Todos" se for desejado.
          // O código original do SchedulerView tinha a opção 'all' no dropdown, mas não vi como isso era passado para os subcomponentes.
-         // Ah, o SchedulerView original NÃO passava selectedPro para os subcomponentes! 
+         // Ah, o SchedulerView original NÃO passava selectedPro para os subcomponentes!
          // Os subcomponentes tinham seu PRÓPRIO estado `selectedProfessionalId` e lógica de seleção interna!
          // Então a seleção no `SchedulerView` (cabeçalho) era desconectada da seleção dentro do `DailyScheduler`?
          // Espera, olhando o código original do `SchedulerView`:
@@ -159,7 +159,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
          // Isso significa que o dropdown no Header do `SchedulerView` NÃO controlava os subcomponentes?
          // Isso parece um bug ou inconsistência da versão anterior, ou eu perdi algo.
          // O dropdown no SchedulerView original parecia ser apenas visual ou incompleto.
-         
+
          // NA MINHA REFATORAÇÃO:
          // Eu tornei o `SchedulerView` o "dono" da verdade.
          // Eu vou passar `selectedProfessionalId` para os subcomponentes.
@@ -207,7 +207,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   const handleAppointmentCreated = async () => {
     setLoading(true)
     setError(null)
-    
+
     let start: Date
     let end: Date
 
@@ -229,7 +229,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
 
     try {
       const result = await getAppointments(salonId, start, end)
-      
+
       if ('error' in result) {
         setError(result.error)
         setAppointments([])
@@ -266,7 +266,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       {/* Row 1: Date Navigation + New Appointment */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
         <div className="flex items-center bg-card border border-border rounded-lg p-1 flex-1 sm:flex-initial">
-          <button 
+          <button
             onClick={() => navigateDate('prev')}
             className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors"
           >
@@ -275,7 +275,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           <div className="flex-1 sm:flex-initial px-2 sm:px-4 font-semibold text-foreground sm:min-w-[180px] lg:min-w-[200px] text-center text-xs sm:text-sm truncate">
             {getDateLabel()}
           </div>
-          <button 
+          <button
             onClick={() => navigateDate('next')}
             className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors"
           >
@@ -283,13 +283,13 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           </button>
         </div>
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={goToToday}
             className="flex-1 sm:flex-initial px-3 py-2 bg-accent/10 text-accent rounded-lg text-xs sm:text-sm font-medium border border-accent/20 hover:bg-accent/20 transition-colors"
           >
             Hoje
           </button>
-          <button 
+          <button
             onClick={() => setIsCreateDialogOpen(true)}
             className="flex-1 sm:flex-initial px-3 py-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg text-xs sm:text-sm font-medium  flex items-center justify-center gap-2 transition-colors"
           >
@@ -306,7 +306,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
         {!loading && selectedPro && dropdownProfessionals.length > 1 && !isSolo && (
           <DropdownMenu open={isProDropdownOpen} onOpenChange={setIsProDropdownOpen}>
             <DropdownMenuTrigger asChild>
-              <button 
+              <button
                 className="w-full sm:w-auto flex items-center gap-2 px-3 sm:px-4 py-2 bg-card border border-border rounded-lg text-xs sm:text-sm text-foreground hover:border-accent/50 transition-colors sm:min-w-[180px] justify-between flex-1 sm:flex-initial"
               >
                 <div className="flex items-center gap-2">
@@ -334,12 +334,6 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {isSolo && selectedPro && (
-          <div className="px-3 py-2 bg-accent/10 border border-accent/20 rounded-lg text-[10px] sm:text-xs text-accent flex-1 sm:flex-initial">
-            <span className="hidden sm:inline">No plano SOLO, os agendamentos são automaticamente vinculados a você.</span>
-            <span className="sm:hidden">Plano SOLO: vinculado a você</span>
-          </div>
-        )}
 
         {/* View Switcher */}
         <div className="flex bg-muted rounded-md p-1 border border-border self-stretch sm:self-auto">
@@ -354,8 +348,8 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
                 key={v.id}
                 onClick={() => setViewType(v.id)}
                 className={`flex-1 sm:flex-initial px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
-                  viewType === v.id 
-                  ? 'bg-card text-accent' 
+                  viewType === v.id
+                  ? 'bg-card text-accent'
                   : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -375,9 +369,9 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       {renderHeader()}
       <div className="flex-1 min-h-0">
         {viewType === "daily" && (
-          <DailyScheduler 
-            salonId={salonId} 
-            currentDate={currentDate} 
+          <DailyScheduler
+            salonId={salonId}
+            currentDate={currentDate}
             appointments={appointments}
             professionals={professionals}
             loading={loading}
@@ -388,9 +382,9 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           />
         )}
         {viewType === "weekly" && (
-          <WeeklyScheduler 
-            salonId={salonId} 
-            currentDate={currentDate} 
+          <WeeklyScheduler
+            salonId={salonId}
+            currentDate={currentDate}
             appointments={appointments}
             professionals={professionals}
             loading={loading}
@@ -401,18 +395,22 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           />
         )}
         {viewType === "monthly" && (
-          <MonthlyScheduler 
-            salonId={salonId} 
-            currentDate={currentDate} 
+          <MonthlyScheduler
+            salonId={salonId}
+            currentDate={currentDate}
             appointments={appointments}
             professionals={professionals}
             loading={loading}
             error={error}
             selectedProfessionalId={selectedProId}
+            onDayClick={(date) => {
+              setCurrentDate(date)
+              setViewType("daily")
+            }}
           />
         )}
       </div>
-      
+
       {/* Create Appointment Dialog */}
       <CreateAppointmentDialog
         open={isCreateDialogOpen}

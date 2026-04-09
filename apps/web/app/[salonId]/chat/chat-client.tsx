@@ -607,13 +607,13 @@ export default function ChatClient({ salonId }: { salonId: string }) {
                       {/* Message Bubble */}
                       <div
                         className={`p-3 md:p-4 relative ${isClient
-                          ? "bg-primary text-primary-foreground rounded-lg rounded-tl-none"
-                          : "bg-card text-foreground rounded-lg rounded-tr-none border border-border"
+                          ? "bg-chat-user text-chat-user-foreground rounded-lg rounded-tl-none"
+                          : "bg-chat-bot text-chat-bot-foreground rounded-lg rounded-tr-none"
                           }`}
                       >
                         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
                         <span
-                          className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-primary-foreground/60" : "text-muted-foreground"
+                          className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-chat-user-foreground/60" : "text-chat-bot-foreground/60"
                             }`}
                         >
                           {msg.time}

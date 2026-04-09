@@ -37,7 +37,7 @@ const Navbar: React.FC = () => {
   };
 
   return (
-    <nav className={`fixed w-full z-10 transition-all duration-300 ${scrolled ? 'bg-background border-b border-border/60 shadow-sm' : 'bg-transparent'}`}>
+    <nav className={`fixed w-full z-50 transition-all duration-300 ${scrolled ? 'bg-background border-b border-border/60 shadow-sm' : 'bg-transparent'}`}>
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
@@ -47,7 +47,7 @@ const Navbar: React.FC = () => {
             className="flex items-center gap-1.5 group"
           >
             <span className="text-lg font-bold tracking-tight text-foreground group-hover:text-foreground/80 transition-colors">
-              minhaagenda<span className="text-primary">.ai</span>
+              minhaagenda<span className="text-accent">.ai</span>
             </span>
           </button>
 
@@ -79,7 +79,7 @@ const Navbar: React.FC = () => {
 
             <Link
               href="/login"
-              className="ml-3 px-5 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+              className="ml-3 px-5 py-2 rounded-md text-sm font-semibold bg-accent text-accent-foreground hover:bg-accent/90 transition-colors"
             >
               Entrar
             </Link>
@@ -125,7 +125,7 @@ const Navbar: React.FC = () => {
             <div className="pt-2">
               <Link
                 href="/login"
-                className="block w-full text-center px-4 py-2.5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="block w-full text-center px-4 py-2.5 rounded-md text-sm font-semibold bg-accent text-accent-foreground hover:bg-accent/90 transition-colors"
               >
                 Entrar no Sistema
               </Link>

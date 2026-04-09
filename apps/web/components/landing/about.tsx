@@ -41,7 +41,7 @@ const About: React.FC = () => {
             className="space-y-8"
           >
             <div className="space-y-5">
-              <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+              <p className="text-xs font-semibold uppercase tracking-widest text-accent">
                 Sobre a IA
               </p>
               <h2 className="text-4xl md:text-5xl font-bold tracking-tighter leading-tight text-background dark:text-foreground">

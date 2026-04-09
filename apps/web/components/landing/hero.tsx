@@ -38,7 +38,7 @@ const Hero: React.FC = () => {
               transition={{ ...spring, delay: 0 }}
             >
               <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border bg-card text-xs font-medium text-muted-foreground">
-                <Zap className="w-3 h-3 text-primary" />
+                <Zap className="w-3 h-3 text-accent" />
                 IA #1 para Beauty Business no Brasil
               </span>
             </motion.div>
@@ -52,7 +52,7 @@ const Hero: React.FC = () => {
             >
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tighter leading-[0.92] text-foreground">
                 Seu salão{' '}
-                <em className="font-display not-italic italic font-light text-primary">
+                <em className="font-display not-italic italic font-light text-accent">
                   agendando sozinho
                 </em>
                 {' '}enquanto você trabalha.
@@ -72,7 +72,7 @@ const Hero: React.FC = () => {
             >
               <button
                 onClick={() => scrollTo('plans')}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-semibold bg-accent text-accent-foreground hover:bg-accent/90 transition-colors"
               >
                 Começar agora
                 <ArrowRight className="h-4 w-4" />
@@ -129,7 +129,7 @@ const Hero: React.FC = () => {
               {/* Messages */}
               <div className="p-5 space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="shrink-0 w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center text-accent text-[10px] font-bold">
                     AI
                   </div>
                   <div className="bg-muted rounded-md rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
@@ -141,13 +141,13 @@ const Hero: React.FC = () => {
                   <div className="shrink-0 w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-accent text-[10px] font-bold">
                     M
                   </div>
-                  <div className="bg-primary rounded-md rounded-tr-sm px-4 py-2.5 text-sm text-primary-foreground max-w-[80%] leading-relaxed">
+                  <div className="bg-accent rounded-md rounded-tr-sm px-4 py-2.5 text-sm text-accent-foreground max-w-[80%] leading-relaxed">
                     Nossa, eu estava pensando nisso agora! Pode marcar sim.
                   </div>
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="shrink-0 w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center text-accent text-[10px] font-bold">
                     AI
                   </div>
                   <div className="bg-muted rounded-md rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
@@ -160,8 +160,8 @@ const Hero: React.FC = () => {
                   <div className="flex-1 h-9 rounded-md border border-border bg-background px-3 flex items-center">
                     <span className="text-xs text-muted-foreground/50">Responder...</span>
                   </div>
-                  <div className="w-9 h-9 rounded-md bg-primary flex items-center justify-center">
-                    <ArrowRight className="w-3.5 h-3.5 text-primary-foreground" />
+                  <div className="w-9 h-9 rounded-md bg-accent flex items-center justify-center">
+                    <ArrowRight className="w-3.5 h-3.5 text-accent-foreground" />
                   </div>
                 </div>
               </div>
