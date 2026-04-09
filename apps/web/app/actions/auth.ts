@@ -24,7 +24,13 @@ export async function login(prevState: ActionState, formData: FormData): Promise
   }
 
   // Verifica se o usuário tem um salão
-  const salonResult = await getOwnerSalonId()
+  let salonResult: Awaited<ReturnType<typeof getOwnerSalonId>>
+  try {
+    salonResult = await getOwnerSalonId()
+  } catch (err) {
+    console.error("Erro ao buscar salão após login:", err)
+    return { error: "Erro temporário de conexão. Tente novamente." }
+  }
 
   // Se não tiver salão, redireciona para onboarding
   if (isSalonOwnerError(salonResult)) {

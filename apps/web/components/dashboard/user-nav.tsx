@@ -10,42 +10,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { CreditsBadge } from "@/components/dashboard/credits-badge"
-import { LogOut, Search, Bell, Sun, Moon, Settings } from "lucide-react"
+import { LogOut, Bell, Sun, Moon, Settings } from "lucide-react"
 import Link from "next/link"
 import { useTheme } from "next-themes"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 
-export function UserNav() {
+export function UserNav({ userName }: { userName: string }) {
   const { theme, setTheme, resolvedTheme } = useTheme()
   const { activeSalon } = useSalon()
   const { isManager } = useSalonAuth()
   const [mounted, setMounted] = useState(false)
   const [isDark, setIsDark] = useState(false)
-  const [userName, setUserName] = useState<string>("")
 
   useEffect(() => {
     setMounted(true)
     setIsDark(resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
   }, [theme, resolvedTheme])
-
-  useEffect(() => {
-    async function fetchUser() {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user?.user_metadata?.full_name) {
-        setUserName(user.user_metadata.full_name)
-      } else if (user?.email) {
-        setUserName(user.email.split("@")[0])
-      }
-    }
-    fetchUser()
-  }, [])
 
   async function handleLogout() {
     const supabase = createBrowserClient(
@@ -106,7 +87,7 @@ export function UserNav() {
               {userName ? userName.charAt(0).toUpperCase() : "U"}
             </div>
             <span className="text-sm font-light text-sidebar-foreground/90 max-w-[100px] truncate hidden sm:inline">
-              {userName || "Usuario"}
+              {userName || "Usuário"}
             </span>
           </button>
         </DropdownMenuTrigger>

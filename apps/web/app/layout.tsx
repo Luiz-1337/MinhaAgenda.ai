@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { LoadingProvider } from "@/contexts/loading-context";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { QueryProvider } from "@/app/providers";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
@@ -46,11 +47,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <LoadingProvider>
-            {children}
-            <LoadingOverlay />
-            <Toaster richColors />
-          </LoadingProvider>
+          <QueryProvider>
+            <LoadingProvider>
+              {children}
+              <LoadingOverlay />
+              <Toaster richColors />
+            </LoadingProvider>
+          </QueryProvider>
         </ThemeProvider>
         <SpeedInsights />
       </body>

@@ -7,7 +7,6 @@ import { UserNav } from "@/components/dashboard/user-nav"
 import { SalonSelector } from "@/components/dashboard/salon-selector"
 import { RouteGuard } from "@/components/auth/route-guard"
 import { Bot } from 'lucide-react'
-import { db, profiles, eq } from "@repo/db"
 
 export default async function SalonLayout({
   children,
@@ -17,38 +16,33 @@ export default async function SalonLayout({
   params: Promise<{ salonId: string }>
 }) {
   const { salonId } = await params
-  const supabase = await createClient()
+
+  // Paraleliza auth + busca de salões (antes era sequencial)
+  const [supabaseClient, salons] = await Promise.all([
+    createClient(),
+    getUserSalons(),
+  ])
 
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await supabaseClient.auth.getUser()
 
   if (!user) {
     redirect("/login")
   }
 
-  // Busca os salões do usuário
-  const salons = await getUserSalons()
-
   if (salons.length === 0) {
-    // Verifica se o usuário tem plano SOLO antes de redirecionar
-    const userProfile = await db.query.profiles.findFirst({
-      where: eq(profiles.id, user.id),
-      columns: { tier: true },
-    })
-
-    // Se for SOLO e não tiver salão, permite criar o primeiro (via onboarding)
-    // Se não for SOLO, redireciona para onboarding normalmente
     redirect("/onboarding")
   }
 
   // Verifica se o salonId é válido
   const salonExists = salons.some((s) => s.id === salonId)
   if (!salonExists && salons.length > 0) {
-    // Redireciona para o primeiro salão se o ID não for válido
     redirect(`/${salons[0].id}/dashboard`)
   }
 
+  // Extrai nome do usuário no server para evitar fetch redundante no client
+  const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || ""
 
   return (
     <SalonProvider initialSalons={salons}>
@@ -84,7 +78,7 @@ export default async function SalonLayout({
             </div>
 
             <div className="flex items-center gap-4">
-              <UserNav />
+              <UserNav userName={userName} />
             </div>
           </header>
 

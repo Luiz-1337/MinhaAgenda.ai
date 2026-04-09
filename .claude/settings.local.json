@@ -54,7 +54,11 @@
       "Bash(powershell -Command \"Stop-Process -Id 13416,17368 -Force -ErrorAction SilentlyContinue\")",
       "Bash(powershell -Command \"Get-Process | Where-Object { $_.Name -match ''bash|git'' } | Select-Object Id, Name, Path\")",
       "Bash(node --env-file=.env.local -e ':*)",
-      "Bash(node --env-file=.env -e ':*)"
+      "Bash(node --env-file=.env -e ':*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm --filter web run dev)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000\")"
     ]
   }
 }

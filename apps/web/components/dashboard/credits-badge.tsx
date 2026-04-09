@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { useSalon } from "@/contexts/salon-context"
 import { getRemainingCredits } from "@/app/actions/credits"
 import { formatCreditsInK, formatCreditsForDisplay } from "@/lib/utils"
@@ -8,47 +8,22 @@ import { Coins } from "lucide-react"
 
 export function CreditsBadge() {
   const { activeSalon } = useSalon()
-  const [credits, setCredits] = useState<number | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
 
-  const fetchCredits = async () => {
-    if (!activeSalon?.id) {
-      setIsLoading(false)
-      return
-    }
+  const { data: credits, isLoading } = useQuery({
+    queryKey: ["credits", activeSalon?.id],
+    queryFn: async () => {
+      const result = await getRemainingCredits(activeSalon!.id)
+      if ("error" in result) return null
+      return result.remaining
+    },
+    enabled: !!activeSalon?.id,
+    refetchInterval: 60_000, // 60s em vez de 30s
+    staleTime: 30_000,
+  })
 
-    try {
-      const result = await getRemainingCredits(activeSalon.id)
-      if ("error" in result) {
-        console.error("Erro ao buscar créditos:", result.error)
-        setCredits(null)
-      } else {
-        setCredits(result.remaining)
-      }
-    } catch (error) {
-      console.error("Erro ao buscar créditos:", error)
-      setCredits(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  if (!activeSalon) return null
 
-  useEffect(() => {
-    fetchCredits()
-
-    // Atualiza a cada 30 segundos
-    const interval = setInterval(fetchCredits, 30000)
-
-    return () => clearInterval(interval)
-  }, [activeSalon?.id])
-
-  // Não renderiza se não houver salão ativo
-  if (!activeSalon) {
-    return null
-  }
-
-  // Não renderiza se estiver carregando e não houver créditos ainda
-  if (isLoading && credits === null) {
+  if (isLoading && credits === undefined) {
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted text-muted-foreground animate-pulse">
         <Coins size={16} />
@@ -57,10 +32,7 @@ export function CreditsBadge() {
     )
   }
 
-  // Não renderiza se não houver créditos (erro ou dados inválidos)
-  if (credits === null) {
-    return null
-  }
+  if (credits === null || credits === undefined) return null
 
   const formattedCredits = formatCreditsInK(credits)
   const fullCredits = formatCreditsForDisplay(credits) + " créditos"

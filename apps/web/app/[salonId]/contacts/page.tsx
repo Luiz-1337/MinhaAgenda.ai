@@ -1,9 +1,10 @@
 "use client"
 
-import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react"
+import { useDeferredValue, useMemo, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
 import { Search, Download, User, Plus } from "lucide-react"
 import { toast } from "sonner"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { getSalonCustomers, deleteSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { useSalon } from "@/contexts/salon-context"
@@ -42,8 +43,7 @@ function exportCustomersToCSV(customers: CustomerRow[]) {
 
 export default function ContactsPage() {
   const { activeSalon } = useSalon()
-  const [customers, setCustomers] = useState<CustomerRow[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const deferredQuery = useDeferredValue(query)
   const [page, setPage] = useState(1)
@@ -55,24 +55,18 @@ export default function ContactsPage() {
   const pageSize = 20
   const [, startTransition] = useTransition()
 
-  useEffect(() => {
-    if (!activeSalon) {
-      setIsLoading(false)
-      return
-    }
-
-    setIsLoading(true)
-    startTransition(async () => {
-      const result = await getSalonCustomers(activeSalon.id)
+  const { data: customers = [], isLoading } = useQuery({
+    queryKey: ["customers", activeSalon?.id],
+    queryFn: async () => {
+      const result = await getSalonCustomers(activeSalon!.id)
       if ("error" in result) {
         toast.error(result.error)
-        setCustomers([])
-      } else {
-        setCustomers(result.data || [])
+        return []
       }
-      setIsLoading(false)
-    })
-  }, [activeSalon?.id])
+      return result.data || []
+    },
+    enabled: !!activeSalon?.id,
+  })
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase()
@@ -123,8 +117,10 @@ export default function ContactsPage() {
       }
 
       toast.success("Contato removido com sucesso!")
-      // Remove o contato da lista
-      setCustomers((prev) => prev.filter((c) => c.id !== customerToDelete.id))
+      // Atualiza cache otimisticamente
+      queryClient.setQueryData<CustomerRow[]>(["customers", activeSalon.id], (old) =>
+        old ? old.filter((c) => c.id !== customerToDelete.id) : []
+      )
       setCustomerToDelete(null)
       setIsDeleteDialogOpen(false)
     })
@@ -156,31 +152,15 @@ export default function ContactsPage() {
   }
 
   function handleCreateSuccess(newCustomer: CustomerRow) {
-    // Adiciona o novo contato à lista
-    setCustomers((prev) => [newCustomer, ...prev])
-  }
-
-  function handleEditSuccess(updatedCustomer: CustomerRow) {
-    // Atualiza o contato na lista
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c))
+    queryClient.setQueryData<CustomerRow[]>(["customers", activeSalon?.id], (old) =>
+      old ? [newCustomer, ...old] : [newCustomer]
     )
   }
 
-  function refreshCustomers() {
-    if (!activeSalon) return
-    
-    setIsLoading(true)
-    startTransition(async () => {
-      const result = await getSalonCustomers(activeSalon.id)
-      if ("error" in result) {
-        toast.error(result.error)
-        setCustomers([])
-      } else {
-        setCustomers(result.data || [])
-      }
-      setIsLoading(false)
-    })
+  function handleEditSuccess(updatedCustomer: CustomerRow) {
+    queryClient.setQueryData<CustomerRow[]>(["customers", activeSalon?.id], (old) =>
+      old ? old.map((c) => (c.id === updatedCustomer.id ? updatedCustomer : c)) : []
+    )
   }
 
   return (

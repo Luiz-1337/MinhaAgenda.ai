@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useMemo } from "react"
+import { useQuery } from "@tanstack/react-query"
 import Link from "next/link"
 import { Zap, BrainCircuit, Sparkles } from "lucide-react"
 import { getRemainingCredits } from "@/app/actions/credits"
@@ -14,30 +15,16 @@ interface SoloDashboardContentProps {
 }
 
 export default function SoloDashboardContent({ stats, salonId }: SoloDashboardContentProps) {
-  const [credits, setCredits] = useState<{
-    remaining: number
-    total: number
-    used: number
-  } | null>(null)
-
-  useEffect(() => {
-    let mounted = true
-    getRemainingCredits(salonId).then((r) => {
-      if (!mounted) return
-      if ("error" in r) setCredits(null)
-      else setCredits({ remaining: r.remaining, total: r.total, used: r.used })
-    })
-    const t = setInterval(() => {
-      getRemainingCredits(salonId).then((r) => {
-        if (!mounted) return
-        if (!("error" in r)) setCredits({ remaining: r.remaining, total: r.total, used: r.used })
-      })
-    }, 60000)
-    return () => {
-      mounted = false
-      clearInterval(t)
-    }
-  }, [salonId])
+  const { data: credits } = useQuery({
+    queryKey: ["credits-detail", salonId],
+    queryFn: async () => {
+      const r = await getRemainingCredits(salonId)
+      if ("error" in r) return null
+      return { remaining: r.remaining, total: r.total, used: r.used }
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
 
   const percentUsed = credits && credits.total > 0 ? Math.min(100, (credits.used / credits.total) * 100) : 0
   const last7 = useMemo(() => (stats.creditsByDay || []).slice(-7), [stats.creditsByDay])

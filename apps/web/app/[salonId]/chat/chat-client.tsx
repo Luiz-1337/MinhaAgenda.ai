@@ -1,6 +1,7 @@
 "use client"
 
 import { useDeferredValue, useMemo, useState, useRef, useEffect } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft } from "lucide-react"
@@ -47,16 +48,14 @@ function getStatusBadge(status: ConversationStatus) {
 }
 
 export default function ChatClient({ salonId }: { salonId: string }) {
-
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<"all" | "waiting">("all")
   const [query, setQuery] = useState("")
   const deferredQuery = useDeferredValue(query)
-  const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [showConversationList, setShowConversationList] = useState(true) // Mobile toggle
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageText, setMessageText] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isTogglingManual, setIsTogglingManual] = useState(false)
@@ -67,92 +66,32 @@ export default function ChatClient({ salonId }: { salonId: string }) {
   const lastMessageCountRef = useRef<number>(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // Busca conversas com cache e polling automático via React Query
+  const { data: conversations = [], isLoading } = useQuery({
+    queryKey: ["conversations", salonId],
+    queryFn: async () => {
+      const result = await getChatConversations(salonId)
+      if ("error" in result) {
+        toast.error(result.error)
+        return []
+      }
+      return result
+    },
+    enabled: !!salonId,
+    refetchInterval: 30_000, // 30s polling
+    refetchIntervalInBackground: false, // Não refetch quando tab oculta
+  })
+
+  // Define activeId quando conversas carregam pela primeira vez
+  useEffect(() => {
+    if (!activeId && conversations.length > 0) {
+      setActiveId(conversations[0].id)
+    }
+  }, [conversations, activeId])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
-
-  // Busca conversas quando o componente carrega ou salonId muda
-  useEffect(() => {
-    if (!salonId) return
-
-    let isMounted = true
-
-    async function loadConversations() {
-      setIsLoading(true)
-      try {
-        const result = await getChatConversations(salonId)
-        if (!isMounted) return
-        if ("error" in result) {
-          toast.error(result.error)
-          setConversations([])
-        } else {
-          setConversations(result)
-          // Só define activeId se não houver um ativo e houver conversas
-          setActiveId((currentActiveId) => {
-            if (!currentActiveId && result.length > 0) {
-              return result[0].id
-            }
-            return currentActiveId
-          })
-        }
-      } catch (error) {
-        if (!isMounted) return
-        console.error("Erro ao carregar conversas:", error)
-        toast.error("Erro ao carregar conversas")
-      } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    loadConversations()
-
-    return () => {
-      isMounted = false
-    }
-  }, [salonId])
-
-  // Polling para atualizar lista de conversas (novas conversas, previews)
-  useEffect(() => {
-    if (!salonId || isLoading) return
-
-    let isMounted = true
-    let intervalId: NodeJS.Timeout | null = null
-
-    async function refreshConversations() {
-      if (!isMounted) return
-      try {
-        const result = await getChatConversations(salonId)
-        if (!isMounted) return
-        if (!("error" in result)) {
-          setConversations(result)
-        }
-      } catch {
-        // Silently ignore polling errors
-      }
-    }
-
-    function startPolling() {
-      if (intervalId) clearInterval(intervalId)
-      const interval = document.hidden ? 60000 : 15000
-      intervalId = setInterval(refreshConversations, interval)
-    }
-
-    function handleVisibilityChange() {
-      startPolling()
-      if (!document.hidden) refreshConversations()
-    }
-
-    startPolling()
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-
-    return () => {
-      isMounted = false
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      if (intervalId) clearInterval(intervalId)
-    }
-  }, [salonId, isLoading])
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase()
@@ -262,8 +201,8 @@ export default function ChatClient({ salonId }: { salonId: string }) {
 
     function startPolling() {
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
-      // 3s quando tab visível, 30s quando oculta
-      const interval = document.hidden ? 30000 : 3000
+      // 5s quando tab visível, 30s quando oculta
+      const interval = document.hidden ? 30000 : 5000
       pollingIntervalRef.current = setInterval(() => {
         if (isMounted && activeId && !isLoadingRef.current) {
           checkForNewMessages()
@@ -322,11 +261,8 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         toast.error(result.error)
       } else {
         toast.success(isManualMode ? "Modo automático ativado" : "Modo manual ativado")
-        // Atualiza a lista de conversas para refletir a mudança
-        const updatedConversations = await getChatConversations(salonId)
-        if (!("error" in updatedConversations)) {
-          setConversations(updatedConversations)
-        }
+        // Invalida cache para refletir a mudança
+        queryClient.invalidateQueries({ queryKey: ["conversations", salonId] })
       }
     } catch (error) {
       console.error("Erro ao alternar modo manual:", error)
