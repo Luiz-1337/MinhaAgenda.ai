@@ -10,7 +10,7 @@ const TeamClient = dynamic(() => import("./team-client"), {
         <Skeleton className="h-10 w-40" />
       </div>
       <Card className="p-0 overflow-hidden">
-        <div className="divide-y divide-slate-200 dark:divide-white/10">
+        <div className="divide-y divide-border">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4 px-6 py-4">
               <Skeleton className="h-10 w-10 rounded-full" />

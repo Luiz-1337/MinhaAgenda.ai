@@ -29,25 +29,24 @@ export default async function AdminLayout({
     }
 
     return (
-        <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-200 overflow-hidden font-sans selection:bg-indigo-500/30 transition-colors duration-300">
+        <div className="flex h-screen w-screen bg-background text-muted-foreground overflow-hidden font-sans selection:bg-accent/30 transition-colors duration-300">
             {/* Sidebar Desktop */}
             <AdminSidebar />
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-screen relative overflow-hidden md:ml-0">
-                {/* Ambient Background Effects */}
-                <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-red-100/50 dark:from-red-900/10 to-transparent pointer-events-none z-0"></div>
-                <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-red-500/5 dark:bg-red-600/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
+                {/* Ambient Background */}
+                <div className="absolute top-0 left-0 w-full h-[500px] bg-destructive/5 pointer-events-none z-0"></div>
 
                 {/* Header */}
-                <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-white/5 relative z-10 backdrop-blur-sm transition-colors duration-300">
+                <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-border relative z-10 bg-background transition-colors duration-300">
                     <div className="flex items-center gap-4">
                         <AdminMobileSidebar />
-                        <h1 className="text-lg font-semibold text-slate-800 dark:text-white">Painel Administrativo</h1>
+                        <h1 className="text-lg font-semibold text-foreground">Painel Administrativo</h1>
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                        <span className="text-sm text-muted-foreground">
                             {profile?.full_name || user.email}
                         </span>
                         <ThemeToggle />

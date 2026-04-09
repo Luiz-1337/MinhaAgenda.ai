@@ -53,10 +53,10 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+        <h3 className="text-xl font-bold text-foreground mb-2">
           Escolha seu plano
         </h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">
+        <p className="text-muted-foreground text-sm">
           Selecione o plano ideal para o seu negócio. Sem fidelidade, cancele quando quiser.
         </p>
       </div>
@@ -70,48 +70,48 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
           return (
             <div
               key={index}
-              className={`relative flex flex-col bg-white dark:bg-slate-900 rounded-2xl transition-all duration-300 cursor-pointer hover:scale-105 ${
+              className={`relative flex flex-col bg-card rounded-md transition-all duration-300 cursor-pointer ${
                 isSelected
-                  ? 'ring-4 ring-indigo-600 dark:ring-indigo-500 shadow-2xl scale-105 z-10'
+                  ? 'ring-4 ring-accent z-10'
                   : plan.highlight
-                  ? 'border-2 border-indigo-200 dark:border-indigo-800 shadow-lg'
-                  : 'border border-slate-200 dark:border-white/5 shadow-lg hover:shadow-xl'
+                  ? 'border-2 border-accent/40'
+                  : 'border border-border'
               } p-6`}
               onClick={() => !isEnterprise && handlePlanSelect(plan.name)}
             >
               {plan.highlight && (
-                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-indigo-600 dark:bg-indigo-500 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wide shadow-md">
+                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-accent text-accent-foreground px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
                   Mais Popular
                 </div>
               )}
               {isSelected && (
                 <div className="absolute top-4 right-4">
-                  <div className="w-6 h-6 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center">
-                    <Check className="w-4 h-4 text-white" />
+                  <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center">
+                    <Check className="w-4 h-4 text-accent-foreground" />
                   </div>
                 </div>
               )}
               <div className="mb-4">
-                <h4 className="text-xl font-bold text-slate-900 dark:text-white">
+                <h4 className="text-xl font-bold text-foreground">
                   {plan.name}
                 </h4>
-                <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm h-10">
+                <p className="text-muted-foreground mt-2 text-sm h-10">
                   {plan.description}
                 </p>
               </div>
               <div className="mb-4">
-                <span className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                <span className="text-3xl font-extrabold text-foreground">
                   {plan.price}
                 </span>
                 {plan.price !== 'Sob Consulta' && (
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">/mês</span>
+                  <span className="text-muted-foreground font-medium">/mês</span>
                 )}
               </div>
               <ul className="mb-6 space-y-3 flex-1">
                 {plan.features.map((feature, fIndex) => (
                   <li key={fIndex} className="flex items-start">
-                    <Check className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-0.5" />
-                    <span className="text-slate-600 dark:text-slate-300 text-sm">
+                    <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mr-3 flex-shrink-0 mt-0.5" />
+                    <span className="text-muted-foreground text-sm">
                       {feature}
                     </span>
                   </li>
@@ -119,10 +119,10 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
               </ul>
               {!isEnterprise && (
                 <button
-                  className={`w-full py-3 px-6 rounded-xl font-bold transition-colors ${
+                  className={`w-full py-3 px-6 rounded-md font-bold transition-colors ${
                     isSelected || plan.highlight
-                      ? 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10'
+                      ? 'bg-accent text-accent-foreground hover:bg-accent/90'
+                      : 'bg-muted text-foreground hover:bg-muted/80'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -134,7 +134,7 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
               )}
               {isEnterprise && (
                 <button
-                  className="w-full py-3 px-6 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                  className="w-full py-3 px-6 rounded-md font-bold bg-muted text-foreground hover:bg-muted/80"
                   onClick={(e) => {
                     e.stopPropagation()
                     handlePlanSelect(plan.name)
@@ -152,7 +152,7 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
         <button
           type="button"
           onClick={onBack}
-          className="flex-1 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3.5 px-4 rounded-xl transition-all duration-200"
+          className="flex-1 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200"
         >
           <ArrowLeft size={18} />
           Voltar
@@ -160,7 +160,7 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
         <button
           onClick={handleNext}
           disabled={!selectedPlan}
-          className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span>Continuar</span>
           <ArrowRight size={18} />

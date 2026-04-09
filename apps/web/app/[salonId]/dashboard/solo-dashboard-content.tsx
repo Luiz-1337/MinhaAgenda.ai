@@ -69,15 +69,15 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
       <div className="flex justify-between items-end flex-shrink-0">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Olá, {stats.userName}!</h1>
-            <Sparkles size={20} className="text-amber-500" />
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">Olá, {stats.userName}!</h1>
+            <Sparkles size={20} className="text-amber-600 dark:text-amber-400" />
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Sua operação em um só lugar. Dados em tempo real.</p>
+          <p className="text-muted-foreground text-sm">Sua operação em um só lugar. Dados em tempo real.</p>
         </div>
         <div className="text-right">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
-          <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Status</p>
+          <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-full">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
             <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Ativo</span>
           </div>
         </div>
@@ -88,20 +88,20 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
         {/* Coluna Esquerda - Créditos e KPIs */}
         <div className="lg:col-span-7 flex flex-col gap-4 h-full overflow-y-auto custom-scrollbar">
           {/* Card principal: Créditos - Layout Horizontal */}
-          <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-2xl p-5 relative overflow-hidden shadow-sm">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
+          <div className="bg-card border border-border rounded-md p-5 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-accent/5 rounded-full -mr-16 -mt-16" />
             <div className="relative z-10">
               {/* Header com título e botão */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-indigo-500/10 rounded-lg">
-                    <Zap size={16} className="text-indigo-500" />
+                  <div className="p-1.5 bg-accent/10 rounded-lg">
+                    <Zap size={16} className="text-accent" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-white">Consumo de Inteligência</h3>
+                  <h3 className="text-sm font-bold text-foreground">Consumo de Inteligência</h3>
                 </div>
                 <Link
                   href={`/${salonId}/billing`}
-                  className="text-xs font-semibold text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  className="text-xs font-semibold text-accent hover:text-accent/80 transition-colors"
                 >
                   Recarregar
                 </Link>
@@ -115,39 +115,39 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
                     <div className="sm:col-span-2 space-y-3">
                       <div className="flex items-baseline gap-4">
                         <div>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-0.5">Disponível</p>
-                          <p className="text-2xl font-bold text-emerald-500">{formatCreditsForDisplay(credits.remaining)}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Disponível</p>
+                          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatCreditsForDisplay(credits.remaining)}</p>
                         </div>
-                        <div className="h-8 w-px bg-slate-200 dark:bg-white/10" />
+                        <div className="h-8 w-px bg-border" />
                         <div>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-0.5">Utilizado</p>
-                          <p className="text-2xl font-bold text-indigo-500">{formatCreditsForDisplay(credits.used)}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Utilizado</p>
+                          <p className="text-2xl font-bold text-accent">{formatCreditsForDisplay(credits.used)}</p>
                         </div>
                       </div>
                       {/* Barra de progresso */}
                       <div className="space-y-1.5">
-                        <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 rounded-full transition-all duration-500"
+                            className="h-full bg-primary rounded-full transition-all duration-500"
                             style={{ width: `${percentUsed}%` }}
                           />
                         </div>
-                        <div className="flex justify-between text-[10px] font-medium text-slate-400">
+                        <div className="flex justify-between text-[10px] font-medium text-muted-foreground">
                           <span>0%</span>
-                          <span className="font-bold text-slate-600 dark:text-slate-300">{percentUsed.toFixed(0)}% do ciclo</span>
+                          <span className="font-bold text-foreground">{percentUsed.toFixed(0)}% do ciclo</span>
                           <span>100%</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Coluna 3: Previsão */}
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 flex flex-col items-center justify-center text-center">
-                      <BrainCircuit size={20} className="text-indigo-500 mb-1.5" />
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-0.5">Previsão</p>
+                    <div className="bg-muted rounded-md p-3 flex flex-col items-center justify-center text-center">
+                      <BrainCircuit size={20} className="text-accent mb-1.5" />
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Previsão</p>
                       {daysLeft != null ? (
-                        <p className="text-xl font-bold text-slate-800 dark:text-white">{daysLeft} <span className="text-xs font-medium text-slate-400">dias</span></p>
+                        <p className="text-xl font-bold text-foreground">{daysLeft} <span className="text-xs font-medium text-muted-foreground">dias</span></p>
                       ) : (
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-muted-foreground">
                           {avgDaily === 0 ? "∞" : credits.remaining <= 0 ? "0" : "..."}
                         </p>
                       )}
@@ -155,14 +155,14 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
                   </div>
 
                   {/* Textos descritivos */}
-                  <div className="pt-3 border-t border-slate-100 dark:border-white/5 space-y-1">
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      Você utilizou <span className="text-indigo-500 font-semibold">{formatCreditsForDisplay(credits.used)}</span> até agora.
-                      {" "}Ainda tem <span className="text-emerald-500 font-semibold">{formatCreditsForDisplay(credits.remaining)}</span> para gastar.
+                  <div className="pt-3 border-t border-border space-y-1">
+                    <p className="text-sm text-foreground">
+                      Você utilizou <span className="text-accent font-semibold">{formatCreditsForDisplay(credits.used)}</span> até agora.
+                      {" "}Ainda tem <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatCreditsForDisplay(credits.remaining)}</span> para gastar.
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-muted-foreground">
                       {daysLeft != null && (
-                        <>Com base no seu ritmo, seus créditos devem durar mais <span className="font-semibold text-slate-700 dark:text-slate-200">{daysLeft} dias</span>.</>
+                        <>Com base no seu ritmo, seus créditos devem durar mais <span className="font-semibold text-foreground">{daysLeft} dias</span>.</>
                       )}
                       {daysLeft === null && avgDaily === 0 && "Sem consumo recente. No ritmo atual, seus créditos não se esgotam."}
                       {daysLeft === null && avgDaily > 0 && credits.remaining <= 0 && "Créditos esgotados. Recarregue para continuar."}
@@ -172,8 +172,8 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-6">
-                  <div className="animate-pulse flex items-center gap-2 text-slate-400">
-                    <div className="w-4 h-4 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
+                  <div className="animate-pulse flex items-center gap-2 text-muted-foreground">
+                    <div className="w-4 h-4 border-2 border-muted-foreground border-t-primary rounded-full animate-spin" />
                     <span className="text-sm">Carregando créditos...</span>
                   </div>
                 </div>
@@ -183,29 +183,29 @@ export default function SoloDashboardContent({ stats, salonId }: SoloDashboardCo
 
           {/* KPIs Compactos */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-1">Agendamentos</p>
-              <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.completedAppointments}</p>
+            <div className="bg-card border border-border rounded-md p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Agendamentos</p>
+              <p className="text-xl font-bold text-foreground">{stats.completedAppointments}</p>
             </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-1">Tempo resposta</p>
-              <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.averageResponseTime}</p>
+            <div className="bg-card border border-border rounded-md p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Tempo resposta</p>
+              <p className="text-xl font-bold text-foreground">{stats.averageResponseTime}</p>
             </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-1">Conversas ativas</p>
-              <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.activeChats}</p>
+            <div className="bg-card border border-border rounded-md p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Conversas ativas</p>
+              <p className="text-xl font-bold text-foreground">{stats.activeChats}</p>
             </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-1">Taxa resposta</p>
-              <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.responseRate}%</p>
+            <div className="bg-card border border-border rounded-md p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Taxa resposta</p>
+              <p className="text-xl font-bold text-foreground">{stats.responseRate}%</p>
             </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-1">Fila média</p>
-              <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.queueAverageTime}</p>
+            <div className="bg-card border border-border rounded-md p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Fila média</p>
+              <p className="text-xl font-bold text-foreground">{stats.queueAverageTime}</p>
             </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4">
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold mb-1">Agentes</p>
-              <p className="text-xl font-bold text-slate-800 dark:text-white">{stats.topAgents.length}</p>
+            <div className="bg-card border border-border rounded-md p-4">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Agentes</p>
+              <p className="text-xl font-bold text-foreground">{stats.topAgents.length}</p>
             </div>
           </div>
         </div>

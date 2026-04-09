@@ -96,24 +96,24 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Informações Pessoais</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Preencha seus dados pessoais.</p>
+        <h3 className="text-xl font-bold text-foreground mb-2">Informações Pessoais</h3>
+        <p className="text-muted-foreground text-sm">Preencha seus dados pessoais.</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label htmlFor="firstName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Nome <span className="text-indigo-500">*</span>
+            <label htmlFor="firstName" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Nome <span className="text-accent">*</span>
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <User size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
               </div>
               <input
                 id="firstName"
                 type="text"
-                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
                 placeholder="Seu nome"
                 {...register("firstName")}
               />
@@ -124,17 +124,17 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="lastName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Sobrenome <span className="text-indigo-500">*</span>
+            <label htmlFor="lastName" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Sobrenome <span className="text-accent">*</span>
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <User size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
               </div>
               <input
                 id="lastName"
                 type="text"
-                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
                 placeholder="Seu sobrenome"
                 {...register("lastName")}
               />
@@ -146,17 +146,17 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="phone" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Telefone <span className="text-indigo-500">*</span>
+          <label htmlFor="phone" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Telefone <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Phone size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <Phone size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="phone"
               type="tel"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder="(00) 00000-0000"
               {...register("phone")}
             />
@@ -166,25 +166,25 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           )}
         </div>
 
-        <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+        <div className="pt-4 border-t border-border">
+          <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
             <Building size={16} />
             Endereço para Cobrança
           </h4>
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="billingAddress" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Endereço <span className="text-indigo-500">*</span>
+          <label htmlFor="billingAddress" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Endereço <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <MapPin size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <MapPin size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="billingAddress"
               type="text"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder="Rua, número, bairro"
               {...register("billingAddress")}
             />
@@ -196,13 +196,13 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5">
-            <label htmlFor="billingPostalCode" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              CEP <span className="text-indigo-500">*</span>
+            <label htmlFor="billingPostalCode" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              CEP <span className="text-accent">*</span>
             </label>
             <input
               id="billingPostalCode"
               type="text"
-              className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full px-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder="00000-000"
               {...register("billingPostalCode")}
             />
@@ -212,13 +212,13 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="billingCity" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Cidade <span className="text-indigo-500">*</span>
+            <label htmlFor="billingCity" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Cidade <span className="text-accent">*</span>
             </label>
             <input
               id="billingCity"
               type="text"
-              className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full px-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder="Cidade"
               {...register("billingCity")}
             />
@@ -228,14 +228,14 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="billingState" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              UF <span className="text-indigo-500">*</span>
+            <label htmlFor="billingState" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              UF <span className="text-accent">*</span>
             </label>
             <input
               id="billingState"
               type="text"
               maxLength={2}
-              className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm uppercase"
+              className="w-full px-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all uppercase"
               placeholder="SP"
               {...register("billingState", {
                 onChange: (e) => {
@@ -250,13 +250,13 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="billingAddressComplement" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <label htmlFor="billingAddressComplement" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Complemento
           </label>
           <input
             id="billingAddressComplement"
             type="text"
-            className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+            className="w-full px-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
             placeholder="Apartamento, bloco, etc. (opcional)"
             {...register("billingAddressComplement")}
           />
@@ -265,22 +265,22 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           )}
         </div>
 
-        <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+        <div className="pt-4 border-t border-border">
+          <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
             <FileText size={16} />
             Dados Legais
           </h4>
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="documentType" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Tipo de Documento <span className="text-indigo-500">*</span>
+          <label htmlFor="documentType" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Tipo de Documento <span className="text-accent">*</span>
           </label>
           <Select
             value={documentType}
             onValueChange={(value) => setValue("documentType", value as "CPF" | "CNPJ", { shouldValidate: true })}
           >
-            <SelectTrigger className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+            <SelectTrigger className="w-full bg-card border border-border rounded-md">
               <SelectValue placeholder="Selecione o tipo" />
             </SelectTrigger>
             <SelectContent>
@@ -294,17 +294,17 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="document" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            {documentType === "CPF" ? "CPF" : "CNPJ"} <span className="text-indigo-500">*</span>
+          <label htmlFor="document" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {documentType === "CPF" ? "CPF" : "CNPJ"} <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FileText size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <FileText size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="document"
               type="text"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder={documentType === "CPF" ? "000.000.000-00" : "00.000.000/0000-00"}
               {...register("document", {
                 onChange: (e) => {
@@ -323,7 +323,7 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           <button
             type="button"
             onClick={onBack}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3.5 px-4 rounded-xl transition-all duration-200"
+            className="flex-1 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200"
           >
             <ArrowLeft size={18} />
             Voltar
@@ -331,7 +331,7 @@ export function StepAccount({ onNext, onBack }: StepAccountProps) {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>{isSubmitting ? "Processando..." : "Continuar"}</span>
             {!isSubmitting && <ArrowRight size={18} />}

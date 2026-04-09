@@ -164,14 +164,14 @@ export default function SettingsPage() {
       {/* Header Compacto */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 flex-shrink-0">
         <div>
-          <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Configurações</h2>
-          <p className="text-xs text-slate-500">Personalize seu ambiente de IA.</p>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">Configurações</h2>
+          <p className="text-xs text-muted-foreground">Personalize seu ambiente de IA.</p>
         </div>
         {activeTab === "profile" && (
           <button
             onClick={() => profileFormRef.current?.submit()}
             disabled={isPending}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save size={16} />
             <span className="hidden sm:inline">{isPending ? "Salvando..." : "Salvar Alterações"}</span>
@@ -188,24 +188,24 @@ export default function SettingsPage() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex-shrink-0 md:flex-shrink flex items-center md:items-start gap-2 md:gap-4 px-3 md:px-4 py-2.5 md:py-4 rounded-xl md:rounded-2xl transition-all text-left group whitespace-nowrap ${
+              className={`flex-shrink-0 md:flex-shrink flex items-center md:items-start gap-2 md:gap-4 px-3 md:px-4 py-2.5 md:py-4 rounded-md md:rounded-md transition-all text-left group whitespace-nowrap ${
                 activeTab === item.id
-                  ? "bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-sm"
-                  : "hover:bg-slate-100 dark:hover:bg-white/5 opacity-60 hover:opacity-100"
+                  ? "bg-card border border-border"
+                  : "hover:bg-muted opacity-60 hover:opacity-100"
               }`}
             >
-              <div className={`p-1.5 md:p-2 md:mt-1 rounded-lg md:rounded-xl transition-colors ${
-                activeTab === item.id ? "bg-indigo-600 text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500 group-hover:bg-indigo-500/10 group-hover:text-indigo-500"
+              <div className={`p-1.5 md:p-2 md:mt-1 rounded-lg md:rounded-md transition-colors ${
+                activeTab === item.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground group-hover:bg-accent/10 group-hover:text-accent"
               }`}>
                 {item.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <p className={`text-xs md:text-sm font-bold ${activeTab === item.id ? "text-slate-800 dark:text-white" : "text-slate-600 dark:text-slate-400"}`}>
+                <p className={`text-xs md:text-sm font-bold ${activeTab === item.id ? "text-foreground" : "text-muted-foreground"}`}>
                   {item.label}
                 </p>
-                <p className="text-[10px] text-slate-400 truncate hidden md:block">{item.description}</p>
+                <p className="text-[10px] text-muted-foreground truncate hidden md:block">{item.description}</p>
               </div>
-              {activeTab === item.id && <ChevronRight size={14} className="mt-0.5 md:mt-1.5 text-indigo-500 hidden md:block" />}
+              {activeTab === item.id && <ChevronRight size={14} className="mt-0.5 md:mt-1.5 text-accent hidden md:block" />}
             </button>
           ))}
         </nav>
@@ -219,19 +219,19 @@ export default function SettingsPage() {
             {salonId && (
               <Link
                 href={`/${salonId}/salon-settings`}
-                className="block bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group"
+                className="block bg-card border border-border rounded-md p-6 hover:border-accent/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-500 group-hover:bg-indigo-500/20 transition-colors">
+                    <div className="p-3 rounded-md bg-accent/10 text-accent group-hover:bg-accent/20 transition-colors">
                       <Store size={20} />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-800 dark:text-white">Configurações do Salão</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">Gerencie dados do estabelecimento e regras</p>
+                      <h3 className="text-sm font-bold text-foreground">Configurações do Salão</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">Gerencie dados do estabelecimento e regras</p>
                     </div>
                   </div>
-                  <ArrowRight size={18} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                  <ArrowRight size={18} className="text-muted-foreground group-hover:text-accent transition-colors" />
                 </div>
               </Link>
             )}
@@ -275,7 +275,7 @@ export default function SettingsPage() {
                 onPendingChange={setIsPending}
               />
             ) : (
-              <div className="py-8 text-center text-slate-400">Erro ao carregar dados do perfil.</div>
+              <div className="py-8 text-center text-muted-foreground">Erro ao carregar dados do perfil.</div>
             )}
           </div>
         )}
@@ -284,7 +284,7 @@ export default function SettingsPage() {
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Google Calendar Integration */}
             {isLoadingProfile ? (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+              <div className="bg-card border border-border rounded-md p-6">
                 <div className="space-y-4">
                   <Skeleton className="h-6 w-32" />
                   <Skeleton className="h-4 w-64" />
@@ -296,14 +296,14 @@ export default function SettingsPage() {
             ) : null}
 
             {/* Integração Trinks */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+            <div className="bg-card border border-border rounded-md p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-white">Integração Trinks</h3>
-                  <p className="text-xs text-slate-500 mt-1">Sincronize agendamentos e dados com a plataforma Trinks</p>
+                  <h3 className="text-sm font-bold text-foreground">Integração Trinks</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Sincronize agendamentos e dados com a plataforma Trinks</p>
                 </div>
                 {trinksIntegrationStatus?.isActive && (
-                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                     Ativa
                   </span>
                 )}
@@ -311,13 +311,13 @@ export default function SettingsPage() {
 
               {isLoadingTrinks ? (
                 <div className="space-y-4">
-                  <div className="h-10 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-xl" />
-                  <div className="h-10 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-xl" />
+                  <div className="h-10 bg-muted animate-pulse rounded-md" />
+                  <div className="h-10 bg-muted animate-pulse rounded-md" />
                 </div>
               ) : (
                 <form onSubmit={handleSaveTrinksToken} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Token da API Trinks
                     </label>
                     <input
@@ -325,15 +325,15 @@ export default function SettingsPage() {
                       placeholder="Cole aqui o token da API Trinks"
                       value={trinksToken}
                       onChange={(e) => setTrinksToken(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono"
+                      className="w-full bg-card border border-border rounded-md px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all font-mono"
                     />
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-muted-foreground">
                       Obtenha o token em:{" "}
                       <a
                         href="https://www.trinks.com/MinhaArea/MeuCadastro"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-indigo-500 hover:text-indigo-600 underline"
+                        className="text-accent hover:text-accent/80 underline"
                       >
                         Minha Área Trinks
                       </a>
@@ -344,7 +344,7 @@ export default function SettingsPage() {
                     <button
                       type="submit"
                       disabled={isPendingTrinks || !trinksToken.trim()}
-                      className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-5 py-2.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isPendingTrinks ? "Salvando..." : trinksIntegrationStatus?.hasToken ? "Atualizar Token" : "Salvar Token"}
                     </button>
@@ -354,7 +354,7 @@ export default function SettingsPage() {
                         type="button"
                         onClick={handleDeleteTrinksIntegration}
                         disabled={isPendingTrinks}
-                        className="px-5 py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-5 py-2.5 bg-destructive text-destructive-foreground rounded-md text-xs font-bold hover:bg-destructive/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Remover Integração
                       </button>
@@ -362,14 +362,14 @@ export default function SettingsPage() {
                   </div>
 
                   {trinksIntegrationStatus?.isActive && (
-                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-white/5">
-                      <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-4">Sincronizar Dados</h4>
+                    <div className="mt-6 pt-6 border-t border-border">
+                      <h4 className="text-xs font-bold text-foreground mb-4">Sincronizar Dados</h4>
                       <div className="flex flex-wrap gap-3">
                         <button
                           type="button"
                           onClick={() => handleSyncTrinksData("professionals")}
                           disabled={isPendingTrinks}
-                          className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 bg-muted text-foreground rounded-lg text-xs font-medium hover:bg-muted/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Sincronizar Profissionais
                         </button>
@@ -377,7 +377,7 @@ export default function SettingsPage() {
                           type="button"
                           onClick={() => handleSyncTrinksData("services")}
                           disabled={isPendingTrinks}
-                          className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 bg-muted text-foreground rounded-lg text-xs font-medium hover:bg-muted/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Sincronizar Serviços
                         </button>
@@ -385,7 +385,7 @@ export default function SettingsPage() {
                           type="button"
                           onClick={() => handleSyncTrinksData("products")}
                           disabled={isPendingTrinks}
-                          className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-4 py-2 bg-muted text-foreground rounded-lg text-xs font-medium hover:bg-muted/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Sincronizar Produtos
                         </button>

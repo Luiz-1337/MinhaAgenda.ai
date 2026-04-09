@@ -163,12 +163,12 @@ export default function TeamClient() {
       {/* Header */}
       <div className="flex justify-between items-center flex-shrink-0">
         <div className="flex items-center gap-2">
-          <User size={24} className="text-slate-400" />
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Equipe</h2>
+          <User size={24} className="text-muted-foreground" />
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Equipe</h2>
         </div>
 
         {isSolo ? (
-          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2 text-muted-foreground bg-muted px-4 py-2 rounded-lg text-sm font-medium border border-border">
             <AlertCircle size={16} />
             <span className="hidden sm:inline">Plano SOLO: Apenas você tem acesso. Faça upgrade para adicionar equipe.</span>
             <span className="sm:hidden">Plano SOLO</span>
@@ -176,13 +176,13 @@ export default function TeamClient() {
         ) : canCreate ? (
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-semibold transition-colors shadow-md"
           >
             <Plus size={16} />
             Convidar membro
           </button>
         ) : (
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 dark:border-amber-500/20">
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-4 py-2 rounded-lg text-sm font-medium border border-amber-200 dark:border-amber-800">
             <AlertCircle size={16} />
             <span>Limite do plano {planTier} atingido</span>
           </div>
@@ -191,25 +191,25 @@ export default function TeamClient() {
 
       {/* Professional Modal */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="!max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 p-0" showCloseButton={false}>
+        <DialogContent className="!max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-card border-border p-0" showCloseButton={false}>
           <DialogTitle className="sr-only">{editing ? "Editar Profissional" : "Novo Profissional"}</DialogTitle>
           {/* Header */}
-          <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+          <div className="p-6 border-b border-border flex justify-between items-center bg-muted/50">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg shadow-indigo-500/20">
+              <div className="p-2 bg-primary rounded-lg text-primary-foreground shadow-md">
                 <User size={18} />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
+                <h2 className="text-lg font-bold text-foreground tracking-tight">
                   {editing ? "Editar Profissional" : "Novo Profissional"}
                 </h2>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Configuração de membro</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Configuração de membro</p>
               </div>
             </div>
             <button
               onClick={() => setOpen(false)}
               disabled={form.formState.isSubmitting}
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <X size={20} />
             </button>
@@ -219,59 +219,59 @@ export default function TeamClient() {
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 overflow-y-auto">
             <div className="p-5 space-y-5">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Nome Completo <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Nome Completo <span className="text-red-600 dark:text-red-400">*</span>
                 </label>
                 <input
                   type="text"
                   placeholder="Ex: Ana Souza"
                   {...form.register("name")}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  className="w-full bg-card border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
                 />
                 {form.formState.errors.name && (
-                  <p className="text-xs text-red-500 mt-1">{form.formState.errors.name.message}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.name.message}</p>
                 )}
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  E-mail <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  E-mail <span className="text-red-600 dark:text-red-400">*</span>
                 </label>
                 <input
                   type="email"
                   placeholder="ana@empresa.com"
                   {...form.register("email")}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  className="w-full bg-card border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   Se este e-mail já estiver cadastrado no sistema, o usuário será vinculado automaticamente.
                 </p>
                 {form.formState.errors.email && (
-                  <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.email.message}</p>
                 )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Telefone</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Telefone</label>
                   <input
                     type="text"
                     placeholder="(11) 9XXXX-XXXX"
                     {...form.register("phone")}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    className="w-full bg-card border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
                   />
                 </div>
 
                 {/* Seletor de Role apenas para Manager */}
                 {isManager && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Permissão</label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Permissão</label>
                     <Controller
                       name="role"
                       control={form.control}
                       render={({ field }) => (
                         <Select onValueChange={field.onChange} value={field.value || "STAFF"}>
-                          <SelectTrigger className="bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10">
+                          <SelectTrigger className="bg-card border-border">
                             <SelectValue placeholder="Selecione..." />
                           </SelectTrigger>
                           <SelectContent>
@@ -290,7 +290,7 @@ export default function TeamClient() {
                   name="isActive"
                   control={form.control}
                   render={({ field }) => (
-                    <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 cursor-pointer">
+                    <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer">
                       <Switch checked={field.value} onCheckedChange={field.onChange} />
                       <span>Profissional Ativo</span>
                     </Label>
@@ -300,19 +300,19 @@ export default function TeamClient() {
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3 bg-slate-50/30 dark:bg-white/[0.01]">
+            <div className="p-6 border-t border-border flex justify-end gap-3 bg-muted/30">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={form.formState.isSubmitting}
-                className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={form.formState.isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save size={18} />
                 {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Profissional" : "Criar Profissional"}
@@ -323,14 +323,14 @@ export default function TeamClient() {
       </Dialog>
 
       {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-2 rounded-xl border border-slate-200 dark:border-white/5">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-card p-2 rounded-md border border-border">
         <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
           <button
             onClick={() => setFilter("all")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               filter === "all"
-                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Todos
@@ -339,8 +339,8 @@ export default function TeamClient() {
             onClick={() => setFilter("active")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               filter === "active"
-                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Ativos
@@ -349,8 +349,8 @@ export default function TeamClient() {
             onClick={() => setFilter("inactive")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               filter === "inactive"
-                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Inativos
@@ -358,21 +358,21 @@ export default function TeamClient() {
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+          <Search size={16} className="absolute left-3 top-2.5 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar por nome ou e-mail..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
+            className="w-full bg-muted border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground focus:outline-none focus:border-ring/50 transition-all placeholder:text-muted-foreground"
           />
         </div>
       </div>
 
       {/* Table Container */}
-      <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
+      <div className="flex-1 overflow-hidden bg-card rounded-md border border-border flex flex-col">
         {/* Table Header - Hidden on mobile */}
-        <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+        <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-border bg-muted/50 text-xs font-bold text-muted-foreground uppercase tracking-wider">
           <div className="col-span-2 pl-2">Nome</div>
           <div className="col-span-1">Role</div>
           <div className="col-span-3">E-mail</div>
@@ -387,17 +387,17 @@ export default function TeamClient() {
             <div className="p-6 space-y-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-20 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                  <div className="h-4 flex-1 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
                 </div>
               ))}
             </div>
           ) : filteredTeam.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
               <User size={32} className="mb-3 opacity-50" />
               <p>Nenhum membro encontrado.</p>
             </div>
@@ -405,38 +405,38 @@ export default function TeamClient() {
             filteredTeam.map((member, index) => (
               <div
                 key={member.id}
-                className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-start md:items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
-                  index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
+                className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-start md:items-center border-b border-border text-sm transition-colors hover:bg-muted ${
+                  index % 2 === 0 ? "bg-transparent" : "bg-muted/30"
                 }`}
               >
-                <div className="md:col-span-2 md:pl-2 font-semibold text-slate-700 dark:text-slate-200 truncate flex items-center gap-2 w-full md:w-auto">
+                <div className="md:col-span-2 md:pl-2 font-semibold text-foreground truncate flex items-center gap-2 w-full md:w-auto">
                   {member.name}
                 </div>
 
                 <div className="md:col-span-1 text-xs">
-                  <span className="text-xs text-slate-400 md:hidden font-medium">Role: </span>
-                  {member.role === 'MANAGER' && <span className="text-indigo-600 dark:text-indigo-400 font-medium">Manager</span>}
-                  {(!member.role || member.role === 'STAFF') && <span className="text-slate-500">Staff</span>}
+                  <span className="text-xs text-muted-foreground md:hidden font-medium">Role: </span>
+                  {member.role === 'MANAGER' && <span className="text-accent font-medium">Manager</span>}
+                  {(!member.role || member.role === 'STAFF') && <span className="text-muted-foreground">Staff</span>}
                 </div>
 
-                <div className="md:col-span-3 text-slate-600 dark:text-slate-400 truncate text-xs w-full md:w-auto">
-                  <span className="text-xs text-slate-400 md:hidden font-medium">E-mail: </span>
+                <div className="md:col-span-3 text-muted-foreground truncate text-xs w-full md:w-auto">
+                  <span className="text-xs text-muted-foreground md:hidden font-medium">E-mail: </span>
                   {member.email}
-                  {member.user_id && <span className="ml-1 text-[10px] text-emerald-500 font-mono">(Vinculado)</span>}
+                  {member.user_id && <span className="ml-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">(Vinculado)</span>}
                 </div>
 
-                <div className="md:col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
-                  <span className="text-xs text-slate-400 md:hidden font-medium font-sans">Tel: </span>
+                <div className="md:col-span-2 text-muted-foreground font-mono text-xs truncate">
+                  <span className="text-xs text-muted-foreground md:hidden font-medium font-sans">Tel: </span>
                   {member.phone || "—"}
                 </div>
 
                 <div className="md:col-span-1 flex items-center gap-2">
                   {member.is_active ? (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                       Ativo
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-500/10 border border-slate-500/20 text-xs font-bold text-slate-400">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-muted border border-border text-xs font-bold text-muted-foreground">
                       Inativo
                     </span>
                   )}
@@ -447,14 +447,14 @@ export default function TeamClient() {
                     <>
                       <button
                         onClick={() => openEdit(member)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border hover:bg-muted text-xs font-medium text-foreground transition-colors"
                       >
                         <Pencil size={12} />
                         Editar
                       </button>
                       <button
                         onClick={() => handleDeleteClick(member)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-800 text-xs font-medium text-foreground transition-colors"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -465,7 +465,7 @@ export default function TeamClient() {
                       setSelectedProfessional(member)
                       setAvailabilityOpen(true)
                     }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium text-slate-600 dark:text-slate-300 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border hover:bg-muted text-xs font-medium text-foreground transition-colors"
                   >
                     <Clock size={12} />
                     Horários

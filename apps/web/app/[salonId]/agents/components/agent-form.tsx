@@ -54,7 +54,7 @@ function ToneTooltip() {
   const tooltipContent = isVisible && mounted ? (
     <div
       ref={tooltipRef}
-      className="fixed w-80 px-4 py-3 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs rounded-lg shadow-lg border border-slate-300 dark:border-slate-700 z-[99999]"
+      className="fixed w-80 px-4 py-3 bg-muted text-foreground text-xs rounded-lg shadow-lg border border-border z-50"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -62,39 +62,39 @@ function ToneTooltip() {
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
     >
-      <h4 className="font-bold text-sm mb-2 text-slate-900 dark:text-slate-100">Tipos de Tom</h4>
+      <h4 className="font-bold text-sm mb-2 text-foreground">Tipos de Tom</h4>
 
       {/* Tabela */}
       <div className="mb-3 overflow-x-auto">
         <table className="w-full text-xs border-collapse">
           <thead>
-            <tr className="border-b border-slate-300 dark:border-slate-700">
-              <th className="text-left py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Tom</th>
-              <th className="text-left py-1.5 px-2 font-semibold text-slate-700 dark:text-slate-300">Características</th>
+            <tr className="border-b border-border">
+              <th className="text-left py-1.5 px-2 font-semibold text-foreground">Tom</th>
+              <th className="text-left py-1.5 px-2 font-semibold text-foreground">Características</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b border-slate-200 dark:border-slate-700/50">
-              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400 font-medium">Formal</td>
-              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">Linguagem profissional e respeitosa</td>
+            <tr className="border-b border-border">
+              <td className="py-1.5 px-2 text-muted-foreground font-medium">Formal</td>
+              <td className="py-1.5 px-2 text-muted-foreground">Linguagem profissional e respeitosa</td>
             </tr>
             <tr>
-              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400 font-medium">Informal</td>
-              <td className="py-1.5 px-2 text-slate-600 dark:text-slate-400">Linguagem descontraída e amigável</td>
+              <td className="py-1.5 px-2 text-muted-foreground font-medium">Informal</td>
+              <td className="py-1.5 px-2 text-muted-foreground">Linguagem descontraída e amigável</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       {/* Explicações */}
-      <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-        <p><strong className="text-slate-700 dark:text-slate-300">Formal:</strong> Use para ambientes profissionais, clientes corporativos ou situações que exigem maior formalidade. O agente usará linguagem mais polida, evita gírias e mantém um tom respeitoso e profissional.</p>
-        <p><strong className="text-slate-700 dark:text-slate-300">Informal:</strong> Ideal para criar uma conexão mais próxima com os clientes. O agente será mais descontraído, pode usar emojis ocasionalmente e terá uma comunicação mais natural e amigável.</p>
+      <div className="space-y-1.5 text-xs text-muted-foreground">
+        <p><strong className="text-foreground">Formal:</strong> Use para ambientes profissionais, clientes corporativos ou situações que exigem maior formalidade. O agente usará linguagem mais polida, evita gírias e mantém um tom respeitoso e profissional.</p>
+        <p><strong className="text-foreground">Informal:</strong> Ideal para criar uma conexão mais próxima com os clientes. O agente será mais descontraído, pode usar emojis ocasionalmente e terá uma comunicação mais natural e amigável.</p>
       </div>
 
       {/* Seta do tooltip */}
       <div className="absolute bottom-full left-4 -mb-1">
-        <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>
+        <div className="w-2 h-2 bg-muted border-l border-t border-border rotate-45"></div>
       </div>
     </div>
   ) : null
@@ -104,7 +104,7 @@ function ToneTooltip() {
       <HelpCircle
         ref={iconRef}
         size={12}
-        className="text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 cursor-help transition-colors"
+        className="text-muted-foreground hover:text-accent cursor-help transition-colors"
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
       />
@@ -314,16 +314,16 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
           <button
             onClick={handleBack}
             disabled={isPending}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Voltar"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
+            <h2 className="text-2xl font-bold text-foreground tracking-tight">
               {mode === "create" ? "Criar Agente" : "Editar Agente"}
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {mode === "create"
                 ? "Configure um novo agente de IA para seu salão"
                 : "Atualize as configurações do agente"}
@@ -334,7 +334,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
           type="submit"
           form="agent-form"
           disabled={isPending}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20 px-5 py-2.5 flex items-center gap-2"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-md px-5 py-2.5 flex items-center gap-2"
         >
           {isPending ? (
             "Salvando..."
@@ -353,26 +353,26 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
           {/* Coluna Esquerda - Configurações Rápidas (33%) */}
           <div className="lg:col-span-4 space-y-6">
             {/* Card 1 - Informações Gerais */}
-            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-5 space-y-4 shadow-sm">
+            <div className="bg-card rounded-md border border-border p-5 space-y-4 shadow-sm">
               <div className="flex items-center gap-2">
-                <Bot size={18} className="text-indigo-500" />
-                <h3 className="text-sm font-bold text-slate-800 dark:text-white">Informações Gerais</h3>
+                <Bot size={18} className="text-accent" />
+                <h3 className="text-sm font-bold text-foreground">Informações Gerais</h3>
               </div>
 
               <div className="space-y-4">
                 {/* Nome do Agente */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label className="text-xs font-semibold text-foreground">
                     Nome do Agente
                   </label>
                   <input
                     type="text"
                     {...form.register("name")}
                     placeholder="Ex.: Assistente de Atendimento"
-                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
                   />
                   {form.formState.errors.name && (
-                    <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.name.message}</p>
                   )}
                 </div>
 
@@ -380,7 +380,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                 <div className="space-y-1.5">
 
                   <div className="flex items-center gap-1.5">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tom</label>
+                    <label className="text-xs font-semibold text-foreground">Tom</label>
                     <ToneTooltip />
                   </div>
                   <Controller
@@ -388,14 +388,14 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                     name="tone"
                     render={({ field }) => (
                       <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
+                        <SelectTrigger className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all h-9">
                           <SelectValue placeholder="Tom" />
                         </SelectTrigger>
-                        <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg">
-                          <SelectItem value="formal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                        <SelectContent className="bg-card border border-border rounded-lg shadow-lg">
+                          <SelectItem value="formal" className="cursor-pointer hover:bg-muted">
                             Formal
                           </SelectItem>
-                          <SelectItem value="informal" className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                          <SelectItem value="informal" className="cursor-pointer hover:bg-muted">
                             Informal
                           </SelectItem>
                         </SelectContent>
@@ -403,16 +403,16 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                     )}
                   />
                   {form.formState.errors.tone && (
-                    <p className="text-xs text-red-500">{form.formState.errors.tone.message}</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.tone.message}</p>
                   )}
                 </div>
 
                 {/* Toggle Agente Ativo */}
-                <div className="pt-2 border-t border-slate-200 dark:border-white/5">
+                <div className="pt-2 border-t border-border">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Agente Ativo</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="text-sm font-semibold text-foreground">Agente Ativo</p>
+                      <p className="text-xs text-muted-foreground">
                         Ativa este agente e desativa os outros automaticamente
                       </p>
                     </div>
@@ -437,14 +437,14 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
             </div>
 
             {/* Card 2 - WhatsApp do Salão (somente leitura) */}
-            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-5 space-y-4 shadow-sm">
+            <div className="bg-card rounded-md border border-border p-5 space-y-4 shadow-sm">
               <div className="flex items-center gap-2">
-                <Phone size={18} className="text-emerald-500" />
-                <h3 className="text-sm font-bold text-slate-800 dark:text-white">WhatsApp</h3>
+                <Phone size={18} className="text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-sm font-bold text-foreground">WhatsApp</h3>
               </div>
 
               {whatsappLoading && (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 size={14} className="animate-spin" />
                   Carregando...
                 </div>
@@ -460,12 +460,12 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                 return (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{mask(salonWhatsapp.phoneNumber)}</span>
+                      <span className="text-sm font-medium text-foreground">{mask(salonWhatsapp.phoneNumber)}</span>
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
                         Conectado
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-muted-foreground">
                       Este número é compartilhado por todos os agentes do salão.
                     </p>
                   </div>
@@ -474,11 +474,11 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
 
               {!whatsappLoading && !salonWhatsapp && (
                 <div className="space-y-2">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                  <p className="text-sm text-muted-foreground">
                     Nenhum WhatsApp configurado.
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Configure o WhatsApp na <a href={`/${salonId}/agents`} className="text-indigo-500 hover:text-indigo-600 underline">página de Agentes</a>.
+                  <p className="text-xs text-muted-foreground">
+                    Configure o WhatsApp na <a href={`/${salonId}/agents`} className="text-accent hover:text-accent/80 underline">página de Agentes</a>.
                   </p>
                 </div>
               )}
@@ -487,16 +487,16 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
 
           {/* Coluna Direita - System Prompt (66%) */}
           <div className="lg:col-span-8">
-            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-6 shadow-sm flex flex-col h-full min-h-[600px]">
+            <div className="bg-card rounded-md border border-border p-6 shadow-sm flex flex-col h-full min-h-[600px]">
               <div className="flex items-center gap-2 mb-4">
-                <Cpu size={18} className="text-indigo-500" />
-                <h3 className="text-sm font-bold text-slate-800 dark:text-white">System Prompt</h3>
+                <Cpu size={18} className="text-accent" />
+                <h3 className="text-sm font-bold text-foreground">System Prompt</h3>
               </div>
 
               <div className="flex-1 flex flex-col space-y-3">
                 {/* Dropdown de Templates */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label className="text-xs font-semibold text-foreground">
                     Usar um Template (opcional)
                   </label>
                   <div className="flex gap-2">
@@ -505,10 +505,10 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                       onValueChange={handleTemplateSelect}
                       disabled={isLoadingTemplates}
                     >
-                      <SelectTrigger className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all h-9">
+                      <SelectTrigger className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all h-9">
                         <SelectValue placeholder={isLoadingTemplates ? "Carregando templates..." : "Escolher um template..."} />
                       </SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg shadow-lg max-h-[300px]">
+                      <SelectContent className="bg-card border border-border rounded-lg shadow-lg max-h-[300px]">
                         {globalTemplates.length > 0 && (
                           <SelectGroup>
                             <SelectLabel>Templates Globais</SelectLabel>
@@ -516,12 +516,12 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                               <SelectItem
                                 key={template.id}
                                 value={template.id}
-                                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                                className="cursor-pointer hover:bg-muted"
                               >
                                 <div className="flex flex-col">
                                   <span className="font-medium">{template.name}</span>
                                   {template.description && (
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">{template.description}</span>
+                                    <span className="text-xs text-muted-foreground">{template.description}</span>
                                   )}
                                 </div>
                               </SelectItem>
@@ -537,12 +537,12 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                                 <SelectItem
                                   key={template.id}
                                   value={template.id}
-                                  className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
+                                  className="cursor-pointer hover:bg-muted"
                                 >
                                   <div className="flex flex-col">
                                     <span className="font-medium">{template.name}</span>
                                     {template.description && (
-                                      <span className="text-xs text-slate-500 dark:text-slate-400">{template.description}</span>
+                                      <span className="text-xs text-muted-foreground">{template.description}</span>
                                     )}
                                   </div>
                                 </SelectItem>
@@ -570,8 +570,8 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                   </div>
                   {selectedTemplateId && (
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        <FileText size={12} />
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                       <FileText size={12} />
                         {selectedTemplate && (
                           <>
                             Template: <span className="font-medium">{selectedTemplate.name}</span>
@@ -589,7 +589,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                           size="sm"
                           onClick={handleSaveTemplate}
                           disabled={isSavingTemplate || isPending}
-                          className="h-7 px-3 text-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                          className="h-7 px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                           {isSavingTemplate ? "Salvando..." : "Salvar no Template"}
                         </Button>
@@ -600,7 +600,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
 
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <label className="text-xs font-semibold text-foreground">
                       Instruções do Agente
                     </label>
                     {selectedTemplateId && hasPromptChanged && (
@@ -612,15 +612,15 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                   <textarea
                     {...form.register("systemPrompt")}
                     placeholder="Ex.: Você é um assistente do salão. Seja objetivo, confirme data/horário e peça nome/telefone quando necessário..."
-                    className="w-full h-full min-h-[500px] bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none font-mono"
+                    className="w-full h-full min-h-[500px] bg-background border border-border rounded-lg px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none font-mono"
                   />
                   {form.formState.errors.systemPrompt && (
-                    <p className="text-xs text-red-500 mt-2">{form.formState.errors.systemPrompt.message}</p>
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-2">{form.formState.errors.systemPrompt.message}</p>
                   )}
                 </div>
 
                 {/* Footer do Card - Avisos */}
-                <div className="pt-4 border-t border-slate-200 dark:border-white/5 space-y-2">
+                <div className="pt-4 border-t border-border space-y-2">
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30">
                     <AlertCircle size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                     <div className="text-xs text-blue-700 dark:text-blue-300">
@@ -628,7 +628,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                       <p>O prompt será enviado como system prompt base do agente</p>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <MessageSquareText size={14} />
                     <span>Este campo aceita formatação Markdown</span>
                   </p>

@@ -108,16 +108,16 @@ export function SidebarNav() {
         <div className="p-4">
           <button
             onClick={handleCreateSalon}
-            className="w-full flex items-center justify-center gap-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-white py-2.5 px-4 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm transition-all duration-200 group"
+            className="w-full flex items-center justify-center gap-2 bg-transparent hover:bg-sidebar-accent text-sidebar-foreground py-2 px-4 rounded-md border border-sidebar-border transition-all duration-150 group"
           >
-            <Plus size={16} className="text-indigo-500 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
-            <span className="text-sm font-medium">Criar Novo Salão</span>
+            <Plus size={16} className="text-brand-blue group-hover:scale-110 transition-transform" />
+            <span className="text-sm font-light">Criar Novo Salão</span>
           </button>
         </div>
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-4 py-2 custom-scrollbar">
+      <nav className="flex-1 overflow-y-auto px-3 py-2 custom-scrollbar">
         {menuGroups.map((group, groupIndex) => {
           // Filtra itens baseados na role
           const visibleItems = group.items.filter(item => shouldShowItem(item.href, role, isSolo))
@@ -125,8 +125,8 @@ export function SidebarNav() {
           if (visibleItems.length === 0) return null
 
           return (
-            <div key={groupIndex} className="mb-6">
-              <h4 className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 mb-2 px-3">
+            <div key={groupIndex} className="mb-5">
+              <h4 className="text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/40 mb-2 px-3">
                 {group.title}
               </h4>
               <div className="space-y-0.5">
@@ -138,13 +138,13 @@ export function SidebarNav() {
                       key={item.href}
                       href={buildHref(item.href)}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-150",
                         active
-                          ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-500/20 shadow-sm dark:shadow-[0_0_15px_rgba(99,102,241,0.1)]"
-                          : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-slate-200"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-normal"
+                          : "text-sidebar-foreground/70 font-light hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                       )}
                     >
-                      <Icon size={18} />
+                      <Icon size={16} />
                       <span>{item.label}</span>
                     </Link>
                   )
@@ -163,22 +163,22 @@ export function MobileSidebar() {
     <Sheet>
       <SheetTrigger asChild>
         <button
-          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors md:hidden"
+          className="p-2 rounded-md hover:bg-sidebar-accent/50 text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors md:hidden"
           aria-label="Abrir menu"
         >
           <Menu size={20} />
         </button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-64 p-0 bg-slate-50/80 dark:bg-slate-950/50 backdrop-blur-md border-slate-200 dark:border-white/5">
+      <SheetContent side="left" className="w-[220px] p-0 bg-sidebar border-sidebar-border">
         <div className="flex flex-col h-full">
           {/* Brand */}
-          <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-white/5">
+          <div className="h-11 flex items-center px-5 border-b border-sidebar-border">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <Bot className="text-white" size={20} />
+              <div className="w-7 h-7 rounded-md bg-brand-blue flex items-center justify-center">
+                <Bot className="text-accent-foreground" size={18} />
               </div>
-              <span className="font-bold text-lg text-slate-800 dark:text-white tracking-tight">
-                minha<span className="text-indigo-600 dark:text-indigo-400">agenda</span>.ai
+              <span className="font-bold text-base text-sidebar-foreground tracking-tight">
+                minha<span className="text-brand-blue">agenda</span>.ai
               </span>
             </div>
           </div>

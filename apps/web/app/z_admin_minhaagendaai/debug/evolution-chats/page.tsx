@@ -90,19 +90,19 @@ function ChatRow({
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(e) => e.key === 'Enter' && onSelect()}
-      className={`border-b border-slate-200 dark:border-slate-700 cursor-pointer transition-colors ${
+      className={`border-b border-border cursor-pointer transition-colors ${
         selected
-          ? 'bg-indigo-500/10 dark:bg-indigo-500/20'
-          : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+          ? 'bg-accent/10'
+          : 'hover:bg-muted'
       }`}
     >
-      <td className="px-3 py-2 text-sm font-mono text-slate-600 dark:text-slate-300 truncate max-w-[200px]" title={id}>
+      <td className="px-3 py-2 text-sm font-mono text-muted-foreground truncate max-w-[200px]" title={id}>
         {id}
       </td>
-      <td className="px-3 py-2 text-sm text-slate-800 dark:text-slate-200 truncate max-w-[180px]" title={name}>
+      <td className="px-3 py-2 text-sm text-foreground truncate max-w-[180px]" title={name}>
         {name}
       </td>
-      <td className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+      <td className="px-3 py-2 text-sm text-muted-foreground tabular-nums">
         {formatTimestamp(ts)}
       </td>
       <td className="px-3 py-2 text-sm">
@@ -111,10 +111,10 @@ function ChatRow({
             {unread}
           </span>
         ) : (
-          <span className="text-slate-400">0</span>
+          <span className="text-muted-foreground">0</span>
         )}
       </td>
-      <td className="px-3 py-2 text-sm text-slate-500">
+      <td className="px-3 py-2 text-sm text-muted-foreground">
         {archive ? 'Arquivado' : '—'}
       </td>
     </tr>
@@ -210,18 +210,18 @@ function MessagesPanel({
   const displayJid = selected.remoteJid.length > 40 ? selected.remoteJid.slice(0, 37) + '…' : selected.remoteJid;
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700">
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
+    <div className="flex flex-col h-full bg-card border-l border-border">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
         <div className="min-w-0">
-          <p className="font-medium text-slate-800 dark:text-slate-200 truncate">{selected.salonName}</p>
-          <p className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate" title={selected.remoteJid}>
+          <p className="font-medium text-foreground truncate">{selected.salonName}</p>
+          <p className="text-xs font-mono text-muted-foreground truncate" title={selected.remoteJid}>
             {displayJid}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+          className="shrink-0 p-2 rounded-md hover:bg-muted text-muted-foreground"
           aria-label="Fechar"
         >
           ✕
@@ -230,15 +230,15 @@ function MessagesPanel({
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
         {loading && (
-          <div className="text-center text-slate-500 py-6">Carregando mensagens…</div>
+          <div className="text-center text-muted-foreground py-6">Carregando mensagens...</div>
         )}
         {error && (
-          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm p-3">
+          <div className="rounded-md bg-destructive/10 text-destructive text-sm p-3">
             {error}
           </div>
         )}
         {!loading && !error && messages.length === 0 && (
-          <div className="text-center text-slate-500 py-6">Nenhuma mensagem neste chat.</div>
+          <div className="text-center text-muted-foreground py-6">Nenhuma mensagem neste chat.</div>
         )}
         {!loading && messages.map((msg, i) => {
           const fromMe = !!msg?.key?.fromMe;
@@ -250,15 +250,15 @@ function MessagesPanel({
               className={`flex ${fromMe ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                className={`max-w-[85%] rounded-md px-3 py-2 text-sm ${
                   fromMe
-                    ? 'bg-indigo-600 text-white rounded-br-md'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-md'
+                    ? 'bg-accent text-accent-foreground rounded-br-sm'
+                    : 'bg-muted text-foreground rounded-bl-sm'
                 }`}
               >
                 <p className="whitespace-pre-wrap break-words">{text || '(mídia ou outro tipo)'}</p>
                 {ts != null && (
-                  <p className={`text-xs mt-1 ${fromMe ? 'text-indigo-200' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <p className={`text-xs mt-1 ${fromMe ? 'text-accent-foreground/70' : 'text-muted-foreground'}`}>
                     {formatTimestamp(ts)}
                   </p>
                 )}
@@ -269,9 +269,9 @@ function MessagesPanel({
         <div ref={listEndRef} />
       </div>
 
-      <form onSubmit={handleSend} className="p-3 border-t border-slate-200 dark:border-slate-700 shrink-0">
+      <form onSubmit={handleSend} className="p-3 border-t border-border shrink-0">
         {sendError && (
-          <p className="text-red-600 dark:text-red-400 text-sm mb-2">{sendError}</p>
+          <p className="text-destructive text-sm mb-2">{sendError}</p>
         )}
         {sendNote && (
           <p className="text-amber-700 dark:text-amber-300 text-sm mb-2">{sendNote}</p>
@@ -282,13 +282,13 @@ function MessagesPanel({
             value={sendText}
             onChange={(e) => setSendText(e.target.value)}
             placeholder="Digite a mensagem…"
-            className="flex-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
             disabled={sending}
           />
           <button
             type="submit"
             disabled={sending || !sendText.trim()}
-            className="shrink-0 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none"
+            className="shrink-0 px-4 py-2 rounded-md bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 disabled:pointer-events-none"
           >
             {sending ? '…' : 'Enviar'}
           </button>
@@ -317,21 +317,21 @@ function InstanceCard({
     (c.remoteJid ?? c.id) === selectedChat?.remoteJid;
 
   return (
-    <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+    <section className="rounded-md border border-border bg-card overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+        className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-muted transition-colors"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-slate-500 dark:text-slate-400 text-sm font-mono">{inst.instanceName}</span>
-          <span className="text-slate-800 dark:text-slate-200 font-medium truncate">{inst.salonName}</span>
+          <span className="text-muted-foreground text-sm font-mono">{inst.instanceName}</span>
+          <span className="text-foreground font-medium truncate">{inst.salonName}</span>
           {inst.connectionStatus && (
             <span
               className={`text-xs px-2 py-0.5 rounded-full ${
                 inst.connectionStatus === 'connected'
                   ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'
+                  : 'bg-muted text-muted-foreground'
               }`}
             >
               {inst.connectionStatus}
@@ -343,26 +343,26 @@ function InstanceCard({
             </span>
           )}
         </div>
-        <span className="text-slate-500 text-sm tabular-nums shrink-0">{count} chats</span>
-        <span className="text-slate-400 shrink-0">{open ? '▼' : '▶'}</span>
+        <span className="text-muted-foreground text-sm tabular-nums shrink-0">{count} chats</span>
+        <span className="text-muted-foreground shrink-0">{open ? '▼' : '▶'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-slate-200 dark:border-slate-700">
+        <div className="border-t border-border">
           {inst.error && (
-            <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
+            <div className="px-4 py-2 bg-destructive/10 text-destructive text-sm">
               {inst.error}
             </div>
           )}
           {inst.chats.length === 0 && !inst.error && (
-            <div className="px-4 py-6 text-center text-slate-500 dark:text-slate-400 text-sm">
+            <div className="px-4 py-6 text-center text-muted-foreground text-sm">
               Nenhum chat nesta instância.
             </div>
           )}
           {inst.chats.length > 0 && (
             <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
               <table className="w-full text-left">
-                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                <thead className="sticky top-0 bg-muted text-muted-foreground text-xs uppercase tracking-wider">
                   <tr>
                     <th className="px-3 py-2 font-medium">ID / JID</th>
                     <th className="px-3 py-2 font-medium">Nome</th>
@@ -431,15 +431,15 @@ export default function TestEvolutionChatsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
       <div className="flex flex-1 min-h-0">
         <div className={`flex flex-col flex-1 min-w-0 p-4 md:p-6 ${selectedChat ? 'lg:max-w-[55%]' : ''}`}>
           <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+              <h1 className="text-2xl font-bold text-foreground">
                 Teste — Chats Evolution API
               </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Clique em um chat para ver mensagens e enviar.
               </p>
             </div>
@@ -447,33 +447,33 @@ export default function TestEvolutionChatsPage() {
               type="button"
               onClick={fetchChats}
               disabled={syncing}
-              className="shrink-0 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+              className="shrink-0 px-4 py-2 rounded-md bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 disabled:pointer-events-none transition-colors"
             >
               {syncing ? 'Sincronizando…' : 'Atualizar'}
             </button>
           </header>
 
           {loading && !data && (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-8 text-center text-slate-500 mt-4">
-              Carregando…
+            <div className="rounded-md border border-border bg-card p-8 text-center text-muted-foreground mt-4">
+              Carregando...
             </div>
           )}
 
           {error && (
-            <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-red-700 dark:text-red-300 mt-4">
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-destructive mt-4">
               {error}
             </div>
           )}
 
           {data?.instances && data.instances.length === 0 && (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-8 text-center text-slate-500 mt-4">
+            <div className="rounded-md border border-border bg-card p-8 text-center text-muted-foreground mt-4">
               Nenhuma instância Evolution configurada (salões com WhatsApp conectado).
             </div>
           )}
 
           {data?.instances && data.instances.length > 0 && (
             <div className="space-y-4 mt-4 overflow-auto min-h-0">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 Sincronizado em {new Date(data.syncedAt).toLocaleString('pt-BR')} — {data.instances.length} instância(s)
               </p>
               {data.instances.map((inst) => (
@@ -490,15 +490,15 @@ export default function TestEvolutionChatsPage() {
         </div>
 
         {selectedChat && (
-          <div className="hidden lg:flex flex-col w-[45%] min-h-0 border-l border-slate-200 dark:border-slate-700">
+          <div className="hidden lg:flex flex-col w-[45%] min-h-0 border-l border-border">
             <MessagesPanel selected={selectedChat} onClose={() => setSelectedChat(null)} />
           </div>
         )}
       </div>
 
       {selectedChat && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/50 flex flex-col">
-          <div className="flex-1 flex flex-col min-h-0 mt-12 mx-2 mb-2 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xl">
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/50 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0 mt-12 mx-2 mb-2 rounded-lg overflow-hidden bg-card">
             <MessagesPanel selected={selectedChat} onClose={() => setSelectedChat(null)} />
           </div>
         </div>

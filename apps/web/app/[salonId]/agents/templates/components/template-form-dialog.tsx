@@ -74,7 +74,7 @@ function TemplateTypeTooltip() {
   const tooltipContent = isVisible && mounted ? (
     <div
       ref={tooltipRef}
-      className="fixed w-80 px-4 py-3 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs rounded-lg shadow-lg border border-slate-300 dark:border-slate-700 z-[99999]"
+      className="fixed w-80 px-4 py-3 bg-muted text-foreground text-xs rounded-lg shadow-lg border border-border z-50"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -82,22 +82,22 @@ function TemplateTypeTooltip() {
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
     >
-      <h4 className="font-bold text-sm mb-2 text-slate-900 dark:text-slate-100">Templates Globais vs Templates do Salão</h4>
-      
-      <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
+      <h4 className="font-bold text-sm mb-2 text-foreground">Templates Globais vs Templates do Salão</h4>
+
+      <div className="space-y-2 text-xs text-muted-foreground">
         <div>
-          <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Templates Globais:</p>
+          <p className="font-semibold text-foreground mb-1">Templates Globais:</p>
           <p>Disponíveis para todos os salões (apenas administradores podem criar/editar).</p>
         </div>
         <div>
-          <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Templates do Salão:</p>
+          <p className="font-semibold text-foreground mb-1">Templates do Salão:</p>
           <p>Apenas para este salão (donos e gerentes podem criar/editar).</p>
         </div>
       </div>
       
       {/* Seta do tooltip */}
       <div className="absolute bottom-full left-4 -mb-1">
-        <div className="w-2 h-2 bg-slate-200 dark:bg-slate-800 border-l border-t border-slate-300 dark:border-slate-700 rotate-45"></div>
+        <div className="w-2 h-2 bg-muted border-l border-t border-border rotate-45"></div>
       </div>
     </div>
   ) : null
@@ -107,7 +107,7 @@ function TemplateTypeTooltip() {
       <HelpCircle
         ref={iconRef}
         size={14}
-        className="text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 cursor-help transition-colors"
+        className="text-muted-foreground hover:text-accent cursor-help transition-colors"
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
       />
@@ -250,12 +250,12 @@ export function TemplateFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-[50vw] sm:!max-w-[50vw] max-h-[95vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10">
+      <DialogContent className="!max-w-[50vw] sm:!max-w-[50vw] max-h-[95vh] overflow-y-auto bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="text-slate-800 dark:text-white">
+          <DialogTitle className="text-foreground">
             {initialData ? "Editar Template" : "Criar Novo Template"}
           </DialogTitle>
-          <DialogDescription className="text-slate-600 dark:text-slate-400">
+          <DialogDescription className="text-muted-foreground">
             {initialData
               ? "Atualize as informações do template de system prompt"
               : "Crie um novo template de system prompt para facilitar a configuração de agentes"}
@@ -267,7 +267,7 @@ export function TemplateFormDialog({
           {!initialData && userSalonsCount > 1 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                <label className="text-sm font-semibold text-foreground">
                   Tipo de Template
                 </label>
                 <TemplateTypeTooltip />
@@ -278,9 +278,9 @@ export function TemplateFormDialog({
                     type="radio"
                     checked={!isGlobal}
                     onChange={() => setIsGlobal(false)}
-                    className="text-indigo-600"
+                    className="text-accent"
                   />
-                  <Building2 size={16} className="text-indigo-500" />
+                  <Building2 size={16} className="text-accent" />
                   <span className="text-sm">Template do Salão</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -288,9 +288,9 @@ export function TemplateFormDialog({
                     type="radio"
                     checked={isGlobal}
                     onChange={() => setIsGlobal(true)}
-                    className="text-indigo-600"
+                    className="text-accent"
                   />
-                  <Globe size={16} className="text-blue-500" />
+                  <Globe size={16} className="text-blue-600 dark:text-blue-400" />
                   <span className="text-sm">Template Global</span>
                 </label>
               </div>
@@ -299,81 +299,81 @@ export function TemplateFormDialog({
 
           {initialData && initialData.salonId === null && (
             <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30">
-              <Globe size={16} className="text-blue-500" />
+              <Globe size={16} className="text-blue-600 dark:text-blue-400" />
               <span className="text-sm text-blue-700 dark:text-blue-300">Template Global</span>
             </div>
           )}
 
           {/* Nome */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-semibold text-foreground">
               Nome do Template *
             </label>
             <input
               type="text"
               {...form.register("name")}
               placeholder="Ex.: Atendimento Básico"
-              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
             />
             {form.formState.errors.name && (
-              <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
+              <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.name.message}</p>
             )}
           </div>
 
           {/* Descrição */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-semibold text-foreground">
               Descrição (opcional)
             </label>
             <input
               type="text"
               {...form.register("description")}
               placeholder="Breve descrição do template"
-              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
             />
             {form.formState.errors.description && (
-              <p className="text-xs text-red-500">{form.formState.errors.description.message}</p>
+              <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.description.message}</p>
             )}
           </div>
 
           {/* Categoria */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-semibold text-foreground">
               Categoria (opcional)
             </label>
             <input
               type="text"
               {...form.register("category")}
               placeholder="Ex.: Atendimento, Vendas, Suporte"
-              className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
             />
             {form.formState.errors.category && (
-              <p className="text-xs text-red-500">{form.formState.errors.category.message}</p>
+              <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.category.message}</p>
             )}
           </div>
 
           {/* System Prompt */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            <label className="text-sm font-semibold text-foreground">
               System Prompt *
             </label>
             <textarea
               {...form.register("systemPrompt")}
               placeholder="Ex.: Você é um assistente do salão. Seja objetivo, confirme data/horário e peça nome/telefone quando necessário..."
-              className="w-full min-h-[300px] bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-3 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none font-mono"
+              className="w-full min-h-[300px] bg-background border border-border rounded-lg px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none font-mono"
             />
             {form.formState.errors.systemPrompt && (
-              <p className="text-xs text-red-500">{form.formState.errors.systemPrompt.message}</p>
+              <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.systemPrompt.message}</p>
             )}
           </div>
 
           {/* Ativo */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-white/5">
+          <div className="flex items-center justify-between pt-2 border-t border-border">
             <div className="space-y-0.5">
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <p className="text-sm font-semibold text-foreground">
                 Template Ativo
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 Templates inativos não aparecem no dropdown de seleção
               </p>
             </div>
@@ -393,7 +393,7 @@ export function TemplateFormDialog({
             <Button
               type="submit"
               disabled={isPending}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {isPending ? (
                 "Salvando..."

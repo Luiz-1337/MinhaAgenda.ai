@@ -53,18 +53,18 @@ export default async function SalonLayout({
   return (
     <SalonProvider initialSalons={salons}>
       <RouteGuard />
-      <div className="flex h-screen w-screen bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-200 overflow-hidden font-sans selection:bg-indigo-500/30 transition-colors duration-300">
+      <div className="flex h-screen w-screen bg-background text-foreground overflow-hidden font-sans selection:bg-primary/20 transition-colors duration-300">
         {/* Sidebar Desktop */}
-        <aside className="hidden md:flex md:w-64 h-full bg-slate-50/80 dark:bg-slate-950/50 border-r border-slate-200 dark:border-white/5 flex flex-col backdrop-blur-md relative z-20 transition-colors duration-300">
+        <aside className="hidden md:flex md:w-[220px] h-full bg-sidebar border-r border-sidebar-border flex-col relative z-10 transition-colors">
           <div className="flex flex-col h-full">
             {/* Brand */}
-            <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-white/5">
+            <div className="h-11 flex items-center px-5 border-b border-sidebar-border">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                  <Bot className="text-white" size={20} />
+                <div className="w-7 h-7 rounded-md bg-brand-blue flex items-center justify-center">
+                  <Bot className="text-accent-foreground" size={18} />
                 </div>
-                <span className="font-bold text-lg text-slate-800 dark:text-white tracking-tight">
-                  minha<span className="text-indigo-600 dark:text-indigo-400">agenda</span>.ai
+                <span className="font-bold text-base text-sidebar-foreground tracking-tight">
+                  minha<span className="text-brand-blue">agenda</span>.ai
                 </span>
               </div>
             </div>
@@ -74,14 +74,10 @@ export default async function SalonLayout({
           </div>
         </aside>
 
-        {/* Conteúdo Principal */}
+        {/* Conteudo Principal */}
         <main className="flex-1 flex flex-col h-screen relative overflow-hidden md:ml-0">
-          {/* Ambient Background Effects */}
-          <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-100/50 dark:from-indigo-900/10 to-transparent pointer-events-none z-0"></div>
-          <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-indigo-500/5 dark:bg-indigo-600/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
-
           {/* Header */}
-          <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-8 border-b border-slate-200 dark:border-white/5 relative z-10 backdrop-blur-sm transition-colors duration-300">
+          <header className="h-11 flex-shrink-0 flex items-center justify-between px-4 md:px-8 bg-sidebar text-sidebar-foreground border-b border-sidebar-border relative z-10 transition-colors duration-150">
             <div className="flex items-center gap-4">
               <MobileSidebar />
               <SalonSelector />
@@ -92,8 +88,8 @@ export default async function SalonLayout({
             </div>
           </header>
 
-          {/* Conteúdo da Página */}
-          <div className="flex-1 overflow-hidden relative z-10 p-3 sm:p-4 md:p-5 lg:p-[25px] min-h-0">
+          {/* Conteudo da Pagina */}
+          <div className="flex-1 overflow-hidden p-3 sm:p-4 md:p-5 lg:p-[25px] min-h-0">
             <div className="h-full overflow-y-auto">
               {children}
             </div>

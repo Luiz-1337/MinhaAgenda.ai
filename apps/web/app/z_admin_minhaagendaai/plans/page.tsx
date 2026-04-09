@@ -7,24 +7,24 @@ const plans = [
         name: "Solo",
         price: "R$ 299/mês",
         icon: Zap,
-        color: "text-blue-500",
-        bgColor: "bg-blue-500/10",
+        color: "text-chart-1",
+        bgColor: "bg-chart-1/10",
         features: ["1 Salão", "1 Agente AI", "5.000 Tokens/mês", "Suporte por Email"]
     },
     {
         name: "Pro",
         price: "R$ 999/mês",
         icon: Star,
-        color: "text-indigo-500",
-        bgColor: "bg-indigo-500/10",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
         features: ["3 Salões", "3 Agentes AI", "25.000 Tokens/mês", "Integrações Avançadas", "Suporte Prioritário"]
     },
     {
         name: "Enterprise",
         price: "Sob Consulta",
         icon: Crown,
-        color: "text-amber-500",
-        bgColor: "bg-amber-500/10",
+        color: "text-chart-4",
+        bgColor: "bg-chart-4/10",
         features: ["Salões Ilimitados", "Agentes Ilimitados", "Tokens Ilimitados", "API Dedicada", "Gerente de Conta"]
     },
 ]
@@ -43,7 +43,7 @@ export default function PlansPage() {
             <div className="grid gap-6 md:grid-cols-3">
                 {plans.map((plan) => (
                     <Card key={plan.name} className="relative overflow-hidden">
-                        <div className={`absolute top-0 right-0 w-32 h-32 ${plan.bgColor} rounded-full blur-3xl -translate-y-1/2 translate-x-1/2`}></div>
+                        <div className={`absolute top-0 right-0 w-32 h-32 ${plan.bgColor} rounded-full opacity-50 -translate-y-1/2 translate-x-1/2`}></div>
                         <CardHeader className="relative">
                             <div className="flex items-center gap-3 mb-2">
                                 <div className={`p-2 rounded-lg ${plan.bgColor}`}>

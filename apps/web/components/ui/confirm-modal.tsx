@@ -12,12 +12,12 @@ interface ConfirmModalProps {
   type?: "danger" | "warning"
 }
 
-export function ConfirmModal({ 
-  open, 
-  onClose, 
-  onConfirm, 
-  title, 
-  description, 
+export function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  description,
   confirmText = "Confirmar",
   type = "danger"
 }: ConfirmModalProps) {
@@ -29,47 +29,47 @@ export function ConfirmModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300" 
-        onClick={onClose} 
+      <div
+        className="absolute inset-0 z-30 bg-black/50 animate-in fade-in duration-300"
+        onClick={onClose}
       />
-      
+
       {/* Small Modal Card */}
-      <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="relative z-40 w-full max-w-sm bg-card border border-border rounded-md overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="p-6">
           <div className="flex items-center gap-4 mb-4">
-            <div className={`p-3 rounded-xl ${type === "danger" ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"}`}>
+            <div className={`p-3 rounded-md ${type === "danger" ? "bg-destructive/10 text-destructive" : "bg-warning/10 text-warning"}`}>
               <AlertTriangle size={24} />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">{title}</h3>
+              <h3 className="text-lg font-bold text-foreground leading-tight">{title}</h3>
             </div>
-            <button 
+            <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
             >
               <X size={18} />
             </button>
           </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
+          <p className="text-sm text-muted-foreground leading-relaxed mb-6">
             {description}
           </p>
-          
+
           <div className="flex gap-3">
-            <button 
+            <button
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all"
+              className="flex-1 px-4 py-2.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
             >
               Cancelar
             </button>
-            <button 
+            <button
               onClick={handleConfirm}
-              className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all active:scale-95 ${
-                type === "danger" 
-                ? "bg-red-500 hover:bg-red-600 shadow-red-500/20" 
-                : "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+              className={`flex-1 px-4 py-2.5 rounded-md text-sm font-medium transition-all ${
+                type === "danger"
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : "bg-warning text-warning-foreground hover:bg-warning/90"
               }`}
             >
               {confirmText}
@@ -80,5 +80,3 @@ export function ConfirmModal({
     </div>
   )
 }
-
-

@@ -43,7 +43,7 @@ export function SubscriptionActions({ salonId, hasSubscription, tier }: Subscrip
       <button
         onClick={handleManageSubscription}
         disabled={loading}
-        className="px-5 py-2.5 bg-white text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-50 transition-colors shadow-lg flex items-center gap-2 disabled:opacity-50"
+        className="px-5 py-2.5 bg-accent-foreground text-accent rounded-md text-sm font-bold hover:bg-accent-foreground/90 transition-colors flex items-center gap-2 disabled:opacity-50"
       >
         {loading ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
         Gerenciar Assinatura
@@ -56,7 +56,7 @@ export function SubscriptionActions({ salonId, hasSubscription, tier }: Subscrip
       <button
         onClick={() => handleSubscribe('SOLO')}
         disabled={loading}
-        className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-50 transition-colors shadow-lg flex items-center gap-2 disabled:opacity-50"
+        className="px-4 py-2 bg-accent-foreground text-accent rounded-md text-sm font-bold hover:bg-accent-foreground/90 transition-colors flex items-center gap-2 disabled:opacity-50"
       >
         {loading ? <Loader2 size={14} className="animate-spin" /> : null}
         Assinar Solo - R$ 299/mês
@@ -64,7 +64,7 @@ export function SubscriptionActions({ salonId, hasSubscription, tier }: Subscrip
       <button
         onClick={() => handleSubscribe('PRO')}
         disabled={loading}
-        className="px-4 py-2 bg-white text-violet-600 rounded-xl text-sm font-bold hover:bg-violet-50 transition-colors shadow-lg flex items-center gap-2 disabled:opacity-50"
+        className="px-4 py-2 bg-accent-foreground text-accent rounded-md text-sm font-bold hover:bg-accent-foreground/90 transition-colors flex items-center gap-2 disabled:opacity-50"
       >
         {loading ? <Loader2 size={14} className="animate-spin" /> : null}
         Assinar Pro - R$ 999/mês

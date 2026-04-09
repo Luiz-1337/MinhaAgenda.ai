@@ -50,23 +50,23 @@ export function StepCredentials({ onNext }: StepCredentialsProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Crie sua conta</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Informe seu e-mail e crie uma senha para começar.</p>
+        <h3 className="text-xl font-bold text-foreground mb-2">Crie sua conta</h3>
+        <p className="text-muted-foreground text-sm">Informe seu e-mail e crie uma senha para começar.</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="space-y-1.5">
-          <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            E-mail <span className="text-indigo-500">*</span>
+          <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            E-mail <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Mail size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <Mail size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="email"
               type="email"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all shadow-sm"
               placeholder="nome@empresa.com"
               {...register("email")}
             />
@@ -77,17 +77,17 @@ export function StepCredentials({ onNext }: StepCredentialsProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Senha <span className="text-indigo-500">*</span>
+          <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Senha <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Lock size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <Lock size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="password"
               type="password"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all shadow-sm"
               placeholder="••••••••"
               {...register("password")}
             />
@@ -98,17 +98,17 @@ export function StepCredentials({ onNext }: StepCredentialsProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Confirmar Senha <span className="text-indigo-500">*</span>
+          <label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Confirmar Senha <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Lock size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <Lock size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="confirmPassword"
               type="password"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all shadow-sm"
               placeholder="••••••••"
               {...register("confirmPassword")}
             />
@@ -121,7 +121,7 @@ export function StepCredentials({ onNext }: StepCredentialsProps) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 mt-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-accent/20 hover:shadow-accent/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 mt-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
         >
           <span>{isSubmitting ? "Processando..." : "Continuar"}</span>
           {!isSubmitting && <ArrowRight size={18} />}

@@ -15,7 +15,7 @@ export default function ContactsLoading() {
       </div>
 
       <Card className="p-0 overflow-hidden">
-        <div className="divide-y divide-slate-200 dark:divide-white/10">
+        <div className="divide-y divide-border">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4 px-6 py-4">
               <Skeleton className="h-8 w-8 rounded-lg" />

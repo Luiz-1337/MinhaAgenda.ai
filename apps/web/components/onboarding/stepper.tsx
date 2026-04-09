@@ -24,10 +24,10 @@ export function Stepper({ currentStep, steps }: StepperProps) {
               <div className="flex flex-col items-center flex-1">
                 <div
                   className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all shadow-sm",
-                    isCompleted && "bg-indigo-600 border-indigo-600 text-white shadow-indigo-500/20",
-                    isCurrent && "bg-indigo-100 dark:bg-indigo-900/30 border-indigo-600 text-indigo-600 dark:text-indigo-400 shadow-indigo-500/10",
-                    isPending && "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400"
+                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
+                    isCompleted && "bg-accent border-accent text-accent-foreground",
+                    isCurrent && "bg-accent/10 border-accent text-accent",
+                    isPending && "bg-muted border-border text-muted-foreground"
                   )}
                 >
                   {isCompleted ? (
@@ -40,15 +40,15 @@ export function Stepper({ currentStep, steps }: StepperProps) {
                   <p
                     className={cn(
                       "text-xs font-semibold",
-                      isCurrent && "text-indigo-600 dark:text-indigo-400",
-                      isCompleted && "text-slate-600 dark:text-slate-400",
-                      isPending && "text-slate-400 dark:text-slate-600"
+                      isCurrent && "text-accent",
+                      isCompleted && "text-muted-foreground",
+                      isPending && "text-muted-foreground"
                     )}
                   >
                     {step.label}
                   </p>
                   {step.description && (
-                    <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
                       {step.description}
                     </p>
                   )}
@@ -60,7 +60,7 @@ export function Stepper({ currentStep, steps }: StepperProps) {
                 <div
                   className={cn(
                     "h-0.5 flex-1 mx-2 transition-colors",
-                    isCompleted ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+                    isCompleted ? "bg-accent" : "bg-border"
                   )}
                 />
               )}

@@ -66,20 +66,20 @@ export function StepLegal({ onNext, onBack }: StepLegalProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Dados Legais</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Informe seu CPF ou CNPJ para continuar.</p>
+        <h3 className="text-xl font-bold text-foreground mb-2">Dados Legais</h3>
+        <p className="text-muted-foreground text-sm">Informe seu CPF ou CNPJ para continuar.</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="space-y-1.5">
-          <label htmlFor="documentType" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Tipo de Documento <span className="text-indigo-500">*</span>
+          <label htmlFor="documentType" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Tipo de Documento <span className="text-accent">*</span>
           </label>
           <Select
             value={documentType}
             onValueChange={(value) => setValue("documentType", value as "CPF" | "CNPJ", { shouldValidate: true })}
           >
-            <SelectTrigger className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+            <SelectTrigger className="w-full bg-background border border-border rounded-xl">
               <SelectValue placeholder="Selecione o tipo" />
             </SelectTrigger>
             <SelectContent>
@@ -93,17 +93,17 @@ export function StepLegal({ onNext, onBack }: StepLegalProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="document" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            {documentType === "CPF" ? "CPF" : "CNPJ"} <span className="text-indigo-500">*</span>
+          <label htmlFor="document" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {documentType === "CPF" ? "CPF" : "CNPJ"} <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FileText size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <FileText size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="document"
               type="text"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-background border border-border rounded-xl text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all shadow-sm"
               placeholder={documentType === "CPF" ? "000.000.000-00" : "00.000.000/0000-00"}
               {...register("document", {
                 onChange: (e) => {
@@ -122,7 +122,7 @@ export function StepLegal({ onNext, onBack }: StepLegalProps) {
           <button
             type="button"
             onClick={onBack}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3.5 px-4 rounded-xl transition-all duration-200"
+            className="flex-1 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground font-semibold py-3.5 px-4 rounded-xl transition-all duration-200"
           >
             <ArrowLeft size={18} />
             Voltar
@@ -130,7 +130,7 @@ export function StepLegal({ onNext, onBack }: StepLegalProps) {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-accent/20 hover:shadow-accent/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             <span>{isSubmitting ? "Processando..." : "Continuar"}</span>
             {!isSubmitting && <ArrowRight size={18} />}

@@ -138,20 +138,20 @@ export function TemplateFormDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50"
         onClick={handleClose}
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-card rounded-md shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-white/10">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <h2 className="text-xl font-bold text-foreground">
             Criar Template
           </h2>
           <button
             onClick={handleClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
           >
             <X size={20} />
           </button>
@@ -162,7 +162,7 @@ export function TemplateFormDialog({
           <div className="space-y-5">
             {/* Nome */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
                 Nome do Template *
               </label>
               <input
@@ -170,16 +170,16 @@ export function TemplateFormDialog({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="ex: confirmacao_agendamento"
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                className="w-full bg-muted dark:bg-muted border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
               />
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Use apenas letras minúsculas, números e underscores
               </p>
             </div>
 
             {/* Categoria */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
                 Categoria *
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -191,17 +191,17 @@ export function TemplateFormDialog({
                     className={`p-3 rounded-lg border text-left transition-all ${
                       category === opt.value
                         ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-                        : "border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20"
+                        : "border-border hover:border-border"
                     }`}
                   >
                     <span className={`text-sm font-medium ${
                       category === opt.value
                         ? "text-emerald-700 dark:text-emerald-400"
-                        : "text-slate-700 dark:text-slate-300"
+                        : "text-foreground"
                     }`}>
                       {opt.label}
                     </span>
-                    <p className="text-xs text-slate-500 mt-0.5">{opt.description}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{opt.description}</p>
                   </button>
                 ))}
               </div>
@@ -209,13 +209,13 @@ export function TemplateFormDialog({
 
             {/* Idioma */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
                 Idioma
               </label>
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                className="w-full bg-muted dark:bg-muted border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
               >
                 {LANGUAGE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -227,8 +227,8 @@ export function TemplateFormDialog({
 
             {/* Header (opcional) */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Cabeçalho <span className="font-normal text-slate-400">(opcional)</span>
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
+                Cabeçalho <span className="font-normal text-muted-foreground">(opcional)</span>
               </label>
               <input
                 type="text"
@@ -236,13 +236,13 @@ export function TemplateFormDialog({
                 onChange={(e) => setHeader(e.target.value)}
                 placeholder="ex: Confirmação de Agendamento"
                 maxLength={60}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                className="w-full bg-muted dark:bg-muted border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
               />
             </div>
 
             {/* Body */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
                 Corpo da Mensagem *
               </label>
               <textarea
@@ -250,17 +250,17 @@ export function TemplateFormDialog({
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Olá {{1}}! Seu agendamento para {{2}} foi confirmado para o dia {{3}} às {{4}}."
                 rows={5}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none"
+                className="w-full bg-muted dark:bg-muted border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none"
               />
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Use {"{{1}}"}, {"{{2}}"}, etc. para variáveis dinâmicas
               </p>
             </div>
 
             {/* Footer (opcional) */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Rodapé <span className="font-normal text-slate-400">(opcional)</span>
+              <label className="block text-sm font-semibold text-foreground mb-1.5">
+                Rodapé <span className="font-normal text-muted-foreground">(opcional)</span>
               </label>
               <input
                 type="text"
@@ -268,7 +268,7 @@ export function TemplateFormDialog({
                 onChange={(e) => setFooter(e.target.value)}
                 placeholder="ex: Responda CANCELAR para cancelar"
                 maxLength={60}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                className="w-full bg-muted dark:bg-muted border border-border rounded-lg px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
               />
             </div>
 
@@ -295,19 +295,19 @@ export function TemplateFormDialog({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-slate-200 dark:border-white/10">
+          <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-border">
             <button
               type="button"
               onClick={handleClose}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-success-foreground rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && <Loader2 size={16} className="animate-spin" />}
               Criar Template

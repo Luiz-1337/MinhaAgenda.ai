@@ -188,16 +188,16 @@ export default function ContactsPage() {
       {/* Header */}
       <div className="flex flex-col gap-1 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <User size={24} className="text-slate-400" />
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Contatos</h2>
+          <User size={24} className="text-muted-foreground" />
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Contatos</h2>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Listagem dos contatos da sua conta</p>
+        <p className="text-sm text-muted-foreground">Listagem dos contatos da sua conta</p>
       </div>
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0">
         <div className="relative w-full max-w-xl">
-          <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+          <Search size={16} className="absolute left-3 top-2.5 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar por nome ou telefone..."
@@ -206,7 +206,7 @@ export default function ContactsPage() {
               setQuery(e.target.value)
               setPage(1)
             }}
-            className="w-full bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all placeholder:text-slate-500"
+            className="w-full bg-muted border border-border rounded-md pl-10 pr-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring/50 focus:ring-1 focus:ring-ring/50 transition-all placeholder:text-muted-foreground"
           />
         </div>
 
@@ -220,7 +220,7 @@ export default function ContactsPage() {
           </Button>
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-medium transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-border hover:bg-muted text-foreground rounded-xl text-sm font-medium transition-all"
           >
             <Download size={16} />
             Exportar
@@ -229,9 +229,9 @@ export default function ContactsPage() {
       </div>
 
       {/* Table Container */}
-      <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
+      <div className="flex-1 overflow-hidden bg-card rounded-md border border-border flex flex-col">
         {/* Table Header */}
-        <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+        <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-border bg-muted/50 text-xs font-bold text-muted-foreground uppercase tracking-wider">
           <div className="col-span-3 pl-2">Nome</div>
           <div className="col-span-2">Telefone</div>
           <div className="col-span-3">E-mail</div>
@@ -245,16 +245,16 @@ export default function ContactsPage() {
             <div className="p-6 space-y-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <div className="h-8 w-8 rounded-lg bg-slate-200 dark:bg-slate-800 animate-pulse" />
-                  <div className="h-4 flex-1 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-48 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
-                  <div className="h-4 w-16 bg-slate-200 dark:bg-slate-800 animate-pulse rounded" />
+                  <div className="h-8 w-8 rounded-lg bg-muted animate-pulse" />
+                  <div className="h-4 flex-1 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+                  <div className="h-4 w-16 bg-muted animate-pulse rounded" />
                 </div>
               ))}
             </div>
           ) : filtered.list.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
               <User size={32} className="mb-3 opacity-50" />
               <p>{activeSalon ? "Nenhum contato encontrado." : "Selecione um salão para ver os contatos."}</p>
             </div>
@@ -262,28 +262,28 @@ export default function ContactsPage() {
             filtered.list.map((contact, index) => (
               <div
                 key={contact.id}
-                className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-start md:items-center border-b border-slate-100 dark:border-white/5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
-                  index % 2 === 0 ? "bg-transparent" : "bg-slate-50/30 dark:bg-white/[0.01]"
+                className={`flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 items-start md:items-center border-b border-border text-sm transition-colors hover:bg-muted ${
+                  index % 2 === 0 ? "bg-transparent" : "bg-muted/30"
                 }`}
               >
                 <div className="md:col-span-3 flex items-center gap-3 md:pl-2 w-full md:w-auto">
-                  <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-white/10 font-mono">
+                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border border-border font-mono">
                     {getInitials(contact.name)}
                   </div>
-                  <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{contact.name}</span>
+                  <span className="font-semibold text-foreground truncate">{contact.name}</span>
                 </div>
 
-                <div className="md:col-span-2 text-slate-600 dark:text-slate-400 font-mono text-xs truncate">
-                  <span className="text-xs text-slate-400 md:hidden font-medium font-sans">Tel: </span>
+                <div className="md:col-span-2 text-muted-foreground font-mono text-xs truncate">
+                  <span className="text-xs text-muted-foreground md:hidden font-medium font-sans">Tel: </span>
                   {contact.phone || "Não informado"}
                 </div>
 
-                <div className="md:col-span-3 text-slate-600 dark:text-slate-400 truncate w-full md:w-auto">
-                  <span className="text-xs text-slate-400 md:hidden font-medium">E-mail: </span>
+                <div className="md:col-span-3 text-muted-foreground truncate w-full md:w-auto">
+                  <span className="text-xs text-muted-foreground md:hidden font-medium">E-mail: </span>
                   {contact.email || "Não informado"}
                 </div>
 
-                <div className="md:col-span-3 text-slate-600 dark:text-slate-400 text-xs truncate hidden md:block">
+                <div className="md:col-span-3 text-muted-foreground text-xs truncate hidden md:block">
                   {formatPreferences(contact.preferences)}
                 </div>
 
@@ -300,27 +300,27 @@ export default function ContactsPage() {
 
         {/* Footer / Pagination */}
         {!isLoading && filtered.total > 0 && (
-          <div className="p-4 border-t border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-medium text-slate-500">
+          <div className="p-4 border-t border-border bg-muted/50 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-medium text-muted-foreground">
             <div className="w-full sm:w-auto text-center sm:text-left">
-              Mostrando <span className="text-slate-900 dark:text-white">{(filtered.clampedPage - 1) * pageSize + 1}</span> a{" "}
-              <span className="text-slate-900 dark:text-white">
+              Mostrando <span className="text-foreground">{(filtered.clampedPage - 1) * pageSize + 1}</span> a{" "}
+              <span className="text-foreground">
                 {Math.min(filtered.clampedPage * pageSize, filtered.total)}
               </span>{" "}
-              de <span className="text-slate-900 dark:text-white">{filtered.total}</span>
+              de <span className="text-foreground">{filtered.total}</span>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={filtered.clampedPage === 1}
-                className="px-3 py-1.5 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 border border-border rounded-lg hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Anterior
               </button>
               <button
                 onClick={() => setPage((p) => p + 1)}
                 disabled={filtered.clampedPage >= filtered.totalPages}
-                className="px-3 py-1.5 border border-slate-200 dark:border-white/10 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 border border-border rounded-lg hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Próximo
               </button>

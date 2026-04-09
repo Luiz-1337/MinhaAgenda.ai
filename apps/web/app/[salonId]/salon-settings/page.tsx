@@ -62,23 +62,23 @@ export default function SalonSettingsPage() {
         <div className="flex items-center gap-4">
           <Link
             href={activeSalon ? `/${activeSalon.id}/settings` : "#"}
-            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors"
+            className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
           >
             <ArrowLeft size={20} />
           </Link>
           <div>
-            <h2 className="text-xl font-bold text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
-              <Store size={20} className="text-indigo-500" />
+            <h2 className="text-xl font-bold text-foreground tracking-tight flex items-center gap-2">
+              <Store size={20} className="text-accent" />
               Configurações do Salão
             </h2>
-            <p className="text-xs text-slate-500">Gerencie os dados e regras do seu estabelecimento.</p>
+            <p className="text-xs text-muted-foreground">Gerencie os dados e regras do seu estabelecimento.</p>
           </div>
         </div>
         {salonData && activeSalon && (
           <button
             onClick={() => formRef.current?.submit()}
             disabled={isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save size={16} />
             {isPending ? "Salvando..." : "Salvar Alterações"}
@@ -167,7 +167,7 @@ export default function SalonSettingsPage() {
               onPendingChange={setIsPending}
             />
           ) : (
-            <div className="py-8 text-center text-slate-400">
+            <div className="py-8 text-center text-muted-foreground">
               Nenhum salão selecionado. Selecione um salão no menu superior.
             </div>
           )}

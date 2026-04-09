@@ -30,7 +30,7 @@ function GoogleCalendarConnectButton({ isConnected }: { isConnected: boolean }) 
     <button
       type="button"
       onClick={handleConnect}
-      className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+      className="w-full px-4 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2"
     >
       <Calendar size={16} />
       {isConnected ? "Reconectar Google Calendar" : "Conectar Google Calendar"}
@@ -120,29 +120,29 @@ export function GoogleCalendarIntegration({ profile }: GoogleCalendarIntegration
   }
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 shadow-sm">
+    <div className="bg-card border border-border rounded-md p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
-            <Calendar size={16} className="text-blue-500" />
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <Calendar size={16} className="text-blue-600 dark:text-blue-400" />
             Google Calendar
           </h3>
-          <p className="text-xs text-slate-500 mt-1">Sincronize seus agendamentos com o Google Calendar</p>
+          <p className="text-xs text-muted-foreground mt-1">Sincronize seus agendamentos com o Google Calendar</p>
         </div>
         {(integrationIsActive ?? form.watch("calendarSyncEnabled")) && (
-          <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+          <span className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300">
             Ativa
           </span>
         )}
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/5">
+        <div className="flex items-center justify-between p-3 rounded-md bg-background border border-border">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <Calendar size={16} />
             </div>
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Sincronização Automática</span>
+            <span className="text-xs font-semibold text-foreground">Sincronização Automática</span>
           </div>
           <div className="flex items-center gap-2">
             <Switch
@@ -152,7 +152,7 @@ export function GoogleCalendarIntegration({ profile }: GoogleCalendarIntegration
               disabled={isPending}
             />
             {form.watch("calendarSyncEnabled") && (
-              <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1">
                 <Check size={10} /> Conectado
               </span>
             )}

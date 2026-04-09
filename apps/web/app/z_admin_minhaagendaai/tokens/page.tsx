@@ -71,7 +71,7 @@ export default async function TokensPage() {
                             {totalUsage.map((usage, idx) => (
                                 <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                                        <div className="w-2 h-2 rounded-full bg-accent"></div>
                                         <span className="font-medium">{usage.model}</span>
                                     </div>
                                     <span className="font-mono text-sm">

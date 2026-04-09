@@ -77,11 +77,11 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
   if (isComplete) {
     return (
       <div className="flex flex-col items-center justify-center py-12 space-y-4">
-        <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-          <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
+        <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
+          <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
         </div>
-        <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Pagamento processado!</h3>
-        <p className="text-slate-500 dark:text-slate-400">Redirecionando para o dashboard...</p>
+        <h3 className="text-xl font-semibold text-foreground">Pagamento processado!</h3>
+        <p className="text-muted-foreground">Redirecionando para o dashboard...</p>
       </div>
     )
   }
@@ -89,45 +89,45 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Finalizar Cadastro</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Revise os detalhes do seu plano antes de finalizar.</p>
+        <h3 className="text-xl font-bold text-foreground mb-2">Finalizar Cadastro</h3>
+        <p className="text-muted-foreground text-sm">Revise os detalhes do seu plano antes de finalizar.</p>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+      <div className="bg-card border border-border rounded-md overflow-hidden">
+        <div className="p-6 border-b border-border bg-muted">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
-              <CreditCard size={20} className="text-indigo-500 dark:text-indigo-400" />
+            <div className="p-2 bg-accent/10 rounded-md border border-accent/20">
+              <CreditCard size={20} className="text-accent" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-800 dark:text-white">Resumo do Plano</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Plano selecionado</p>
+              <h4 className="font-bold text-foreground">Resumo do Plano</h4>
+              <p className="text-xs text-muted-foreground">Plano selecionado</p>
             </div>
           </div>
         </div>
         
         <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+          <div className="flex items-center justify-between p-4 bg-accent/10 rounded-md border border-accent/20">
             <div>
-              <p className="font-semibold text-slate-900 dark:text-white">{planDetails.name}</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="font-semibold text-foreground">{planDetails.name}</p>
+              <p className="text-sm text-muted-foreground">
                 {data.salonName || "Seu salão"}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{planDetails.price}</p>
+              <p className="text-2xl font-bold text-accent">{planDetails.price}</p>
               {planDetails.period && (
-                <p className="text-sm text-slate-500 dark:text-slate-400">/{planDetails.period}</p>
+                <p className="text-sm text-muted-foreground">/{planDetails.period}</p>
               )}
             </div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Inclui:</p>
+            <p className="text-sm font-semibold text-foreground">Inclui:</p>
             <ul className="space-y-2">
               {planDetails.features.map((feature, index) => (
-                <li key={index} className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                <li key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                   <span>{feature}</span>
                 </li>
               ))}
@@ -136,8 +136,8 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
         </div>
       </div>
 
-      <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
-        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+      <div className="p-4 bg-amber-50 dark:bg-amber-950 border border-amber-700/20 dark:border-amber-300/20 rounded-md">
+        <p className="text-sm text-amber-700 dark:text-amber-300">
           <strong>Modo de teste:</strong> O pagamento está sendo simulado. 
           Em produção, você será redirecionado para um gateway de pagamento real.
         </p>
@@ -147,7 +147,7 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
         <button
           type="button"
           onClick={onBack}
-          className="flex-1 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3.5 px-4 rounded-xl transition-all duration-200"
+          className="flex-1 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200"
         >
           <ArrowLeft size={18} />
           Voltar
@@ -155,7 +155,7 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
         <button
           onClick={handleFinish}
           disabled={isProcessing}
-          className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isProcessing ? (
             <>

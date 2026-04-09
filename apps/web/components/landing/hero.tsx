@@ -72,14 +72,14 @@ const Hero: React.FC = () => {
             >
               <button
                 onClick={() => scrollTo('plans')}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
               >
                 Começar agora
                 <ArrowRight className="h-4 w-4" />
               </button>
               <button
                 onClick={() => scrollTo('about')}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-md text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors"
               >
                 Ver como funciona
               </button>
@@ -114,7 +114,7 @@ const Hero: React.FC = () => {
             className="flex flex-col gap-3"
           >
             {/* Chat card */}
-            <div className="rounded-2xl border border-border bg-card shadow-xl shadow-black/[0.08] dark:shadow-black/40 overflow-hidden">
+            <div className="rounded-md border border-border bg-card overflow-hidden">
 
               {/* Window chrome */}
               <div className="flex items-center gap-1.5 px-4 py-3 border-b border-border bg-muted/40">
@@ -132,7 +132,7 @@ const Hero: React.FC = () => {
                   <div className="shrink-0 w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
                     AI
                   </div>
-                  <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
+                  <div className="bg-muted rounded-md rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
                     Olá, Mariana! Faz 30 dias do seu último corte. Que tal uma hidratação quinta às 14h?
                   </div>
                 </div>
@@ -141,7 +141,7 @@ const Hero: React.FC = () => {
                   <div className="shrink-0 w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-accent text-[10px] font-bold">
                     M
                   </div>
-                  <div className="bg-primary rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-primary-foreground max-w-[80%] leading-relaxed">
+                  <div className="bg-primary rounded-md rounded-tr-sm px-4 py-2.5 text-sm text-primary-foreground max-w-[80%] leading-relaxed">
                     Nossa, eu estava pensando nisso agora! Pode marcar sim.
                   </div>
                 </div>
@@ -150,17 +150,17 @@ const Hero: React.FC = () => {
                   <div className="shrink-0 w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-primary text-[10px] font-bold">
                     AI
                   </div>
-                  <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
+                  <div className="bg-muted rounded-md rounded-tl-sm px-4 py-2.5 text-sm text-foreground max-w-[80%] leading-relaxed">
                     Perfeito! Quinta, 14h confirmado. Também separei o óleo reparador que você gosta. Deixo reservado?
                   </div>
                 </div>
 
                 {/* Input area */}
                 <div className="flex items-center gap-2 pt-1">
-                  <div className="flex-1 h-9 rounded-xl border border-border bg-background px-3 flex items-center">
+                  <div className="flex-1 h-9 rounded-md border border-border bg-background px-3 flex items-center">
                     <span className="text-xs text-muted-foreground/50">Responder...</span>
                   </div>
-                  <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-md bg-primary flex items-center justify-center">
                     <ArrowRight className="w-3.5 h-3.5 text-primary-foreground" />
                   </div>
                 </div>
@@ -176,7 +176,7 @@ const Hero: React.FC = () => {
               ].map((stat, i) => (
                 <div
                   key={i}
-                  className="rounded-xl border border-border bg-card px-3 py-3 text-center"
+                  className="rounded-md border border-border bg-card px-3 py-3 text-center"
                 >
                   <p className="text-lg font-bold tracking-tight text-foreground">{stat.value}</p>
                   <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{stat.label}</p>

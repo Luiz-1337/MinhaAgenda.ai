@@ -297,18 +297,18 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
     <div className="flex flex-col h-full gap-6 pt-[5px] pr-[5px] pl-[5px]">
       {/* Header */}
       <div className="flex justify-between items-center flex-shrink-0">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Agentes</h2>
+        <h2 className="text-2xl font-bold text-foreground tracking-tight">Agentes</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() => router.push(`/${salonId}/agents/templates`)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold transition-colors border border-slate-200 dark:border-white/10"
+            className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-sm font-semibold transition-colors border border-border"
           >
             <FileText size={16} />
             Templates
           </button>
           <button
             onClick={handleCreateAgent}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-semibold transition-colors "
           >
             <Plus size={16} />
             Criar agente
@@ -317,25 +317,25 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       </div>
 
       {/* WhatsApp Configuration Card */}
-      <div className="w-full md:w-1/2 lg:w-1/3 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
+      <div className="w-full md:w-1/2 lg:w-1/3 bg-card rounded-md border border-border p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <MessageCircle size={18} className="text-emerald-500" />
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">WhatsApp do Salão</h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">(compartilhado por todos os agentes)</span>
+            <MessageCircle size={18} className="text-emerald-600 dark:text-emerald-400" />
+            <h3 className="text-sm font-bold text-foreground">WhatsApp do Salão</h3>
+            <span className="text-xs text-muted-foreground">(compartilhado por todos os agentes)</span>
           </div>
         </div>
 
         {!whatsappLoading && whatsappNumbers.length === 0 && (
           <div className="flex flex-col items-center justify-center py-6">
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 text-center max-w-sm">
+            <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
               Conecte o WhatsApp do seu salão para que os agentes possam interagir com seus clientes.
             </p>
             <button
               type="button"
               disabled={isConnecting}
               onClick={() => handleConnectWhatsApp()}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-2.5 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-medium  transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />}
               Conectar WhatsApp
@@ -350,8 +350,8 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <Phone size={16} className="text-slate-400" />
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{maskPhone(n.phoneNumber)}</span>
+                  <Phone size={16} className="text-muted-foreground" />
+                  <span className="text-sm font-medium text-foreground">{maskPhone(n.phoneNumber)}</span>
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                   <Clock size={12} />
@@ -371,14 +371,14 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                     setPendingPhone(n.phoneNumber)
                     setVerificationModalOpen(true)
                   }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-all"
+                  className="px-4 py-2 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-medium transition-all"
                 >
                   Inserir Código
                 </button>
                 <button
                   type="button"
                   onClick={() => setDisconnectModalOpen(true)}
-                  className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors"
+                  className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancelar
                 </button>
@@ -394,8 +394,8 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           return (
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <Phone size={16} className="text-slate-400" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{maskPhone(n.phoneNumber)}</span>
+                <Phone size={16} className="text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">{maskPhone(n.phoneNumber)}</span>
               </div>
               {isVerified ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
@@ -403,7 +403,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                   Conectado
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-foreground">
                   {n.status}
                 </span>
               )}
@@ -412,14 +412,14 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                   type="button"
                   onClick={() => handleConnectWhatsApp(true)}
                   disabled={isConnecting}
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-xs font-medium disabled:opacity-50"
                 >
                   Reconectar
                 </button>
                 <button
                   type="button"
                   onClick={() => setDisconnectModalOpen(true)}
-                  className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-medium"
+                  className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md text-xs font-medium"
                 >
                   Desconectar
                 </button>
@@ -471,14 +471,14 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       />
 
       {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-slate-900/40 backdrop-blur-md p-2 rounded-xl border border-slate-200 dark:border-white/5">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-card p-2 rounded-md border border-border">
         <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
           <button
             type="button"
             onClick={() => setFilter("all")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === "all"
-              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
               }`}
           >
             Todos
@@ -487,8 +487,8 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
             type="button"
             onClick={() => setFilter("active")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === "active"
-              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
               }`}
           >
             Ativos
@@ -497,8 +497,8 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
             type="button"
             onClick={() => setFilter("inactive")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === "inactive"
-              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
               }`}
           >
             Inativos
@@ -506,13 +506,13 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         </div>
 
         <div className="relative w-full sm:w-64">
-          <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+          <Search size={16} className="absolute left-3 top-2.5 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar agentes..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-500"
+            className="w-full bg-muted border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground focus:outline-none focus:border-ring/50 transition-all placeholder:text-muted-foreground"
           />
         </div>
       </div>
@@ -525,20 +525,20 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           return (
             <div
               key={agent.id}
-              className={`group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-xl hover:border-indigo-500/30 transition-all duration-300 ${openMenuAgentId === agent.id ? "relative z-50" : "relative"
+              className={`group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-card border border-border rounded-md hover:border-accent/30 transition-all duration-300 ${openMenuAgentId === agent.id ? "relative z-50" : "relative"
                 }`}
             >
               <div className="flex items-start md:items-center gap-4 flex-1">
                 {/* Avatar / Initial */}
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-slate-800 dark:bg-slate-950 border border-slate-200 dark:border-white/10 flex items-center justify-center text-slate-200 font-mono text-sm font-bold">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary dark:bg-muted border border-border flex items-center justify-center text-primary-foreground dark:text-foreground font-mono text-sm font-bold">
                   {initial}
                 </div>
 
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">{agent.name}</h3>
+                    <h3 className="text-base font-bold text-foreground">{agent.name}</h3>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <BrainCircuit size={12} />
                       <span className="font-mono">{agent.model}</span>
@@ -550,18 +550,18 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
 
               <div className="flex items-center gap-4 mt-4 md:mt-0 w-full md:w-auto justify-between md:justify-end">
                 {agent.isActive ? (
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-500">
+                  <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                     Ativo
                   </span>
                 ) : (
-                  <span className="px-3 py-1 rounded-full bg-slate-500/10 border border-slate-500/20 text-xs font-bold text-slate-400">
+                  <span className="px-3 py-1 rounded-full bg-muted border border-border text-xs font-bold text-muted-foreground">
                     Inativo
                   </span>
                 )}
 
                 <button
                   onClick={() => router.push(`/${salonId}/agents/${agent.id}/training`)}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-accent hover:bg-accent/10 rounded-lg transition-colors"
                   title="Treinamentos da IA"
                 >
                   <GraduationCap size={16} />
@@ -582,13 +582,13 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         })}
 
         {filteredAgents.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <Bot size={48} className="mb-4 opacity-50" />
             <p>Nenhum agente encontrado.</p>
             {agents.length === 0 && (
               <button
                 onClick={handleCreateAgent}
-                className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors"
+                className="mt-4 px-4 py-2 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-semibold transition-colors"
               >
                 Criar primeiro agente
               </button>

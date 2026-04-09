@@ -146,27 +146,27 @@ export function VerificationModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-40 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 z-30"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-card border border-border rounded-lg z-40 p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-950 rounded-full flex items-center justify-center mx-auto mb-4">
             <Phone size={28} className="text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+          <h2 className="text-xl font-bold text-foreground mb-2">
             Verificação WhatsApp
           </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-muted-foreground">
             Enviamos um código SMS para
           </p>
-          <p className="text-sm font-medium text-slate-800 dark:text-white mt-1">
+          <p className="text-sm font-medium text-foreground mt-1">
             {maskedPhone}
           </p>
         </div>
@@ -187,7 +187,7 @@ export function VerificationModal({
               onKeyDown={(e) => handleKeyDown(index, e)}
               onPaste={handlePaste}
               disabled={isLoading}
-              className="w-12 h-14 text-center text-xl font-bold bg-slate-100 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all disabled:opacity-50"
+              className="w-12 h-14 text-center text-xl font-bold bg-muted border-2 border-border rounded-md focus:border-ring focus:ring-2 focus:ring-ring/20 outline-none transition-all disabled:opacity-50"
             />
           ))}
         </div>
@@ -206,7 +206,7 @@ export function VerificationModal({
             type="button"
             onClick={() => handleSubmit()}
             disabled={isLoading || code.some((d) => !d)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-success hover:bg-success/90 text-primary-foreground rounded-md text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
@@ -226,7 +226,7 @@ export function VerificationModal({
               type="button"
               onClick={onClose}
               disabled={isLoading}
-              className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             >
               Cancelar
             </button>
@@ -236,7 +236,7 @@ export function VerificationModal({
                 type="button"
                 onClick={handleResend}
                 disabled={isLoading || resendCooldown > 0}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm text-accent hover:text-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw size={14} className={resendCooldown > 0 ? "" : ""} />
                 {resendCooldown > 0 ? (
@@ -250,7 +250,7 @@ export function VerificationModal({
         </div>
 
         {/* Help text */}
-        <p className="text-xs text-center text-slate-500 dark:text-slate-400 mt-4">
+        <p className="text-xs text-center text-muted-foreground mt-4">
           O código expira em 10 minutos. Se não receber, verifique se o número está correto.
         </p>
       </div>

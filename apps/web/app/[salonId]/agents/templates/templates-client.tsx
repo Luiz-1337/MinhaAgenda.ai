@@ -72,16 +72,16 @@ export function TemplatesClient({ salonId, initialTemplates }: TemplatesClientPr
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">
             Templates de System Prompts
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Gerencie templates pré-definidos de system prompts para facilitar a criação de agentes
           </p>
         </div>
         <Button
           onClick={handleCreate}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20 px-5 py-2.5 flex items-center gap-2"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg shadow-md px-5 py-2.5 flex items-center gap-2"
           type="button"
         >
           <Plus size={18} />

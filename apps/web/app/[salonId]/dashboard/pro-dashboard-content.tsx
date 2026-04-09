@@ -40,23 +40,23 @@ export default function ProDashboardContent({ stats }: ProDashboardContentProps)
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 flex-shrink-0">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-1">
-            <h1 className="text-xl lg:text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Painel da Operação</h1>
-            <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wide flex items-center gap-1">
+            <h1 className="text-xl lg:text-2xl font-bold text-foreground tracking-tight">Painel da Operação</h1>
+            <span className="px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-[10px] text-accent font-bold uppercase tracking-wide flex items-center gap-1">
               <Sparkles size={10} /> IA v2 Ativa
             </span>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 text-xs lg:text-sm max-w-2xl">
+          <p className="text-muted-foreground text-xs lg:text-sm max-w-2xl">
             Monitore atendimentos, consumo e performance dos seus agentes autônomos.
           </p>
         </div>
         <div className="flex gap-4 lg:gap-8 text-left lg:text-right">
           <div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold mb-0.5">Taxa de Resposta</p>
-            <p className="text-lg lg:text-xl font-bold text-slate-800 dark:text-white">{stats.responseRate}%</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-0.5">Taxa de Resposta</p>
+            <p className="text-lg lg:text-xl font-bold text-foreground">{stats.responseRate}%</p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold mb-0.5">Fila Média</p>
-            <p className="text-lg lg:text-xl font-bold text-slate-800 dark:text-white">{stats.queueAverageTime}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-0.5">Fila Média</p>
+            <p className="text-lg lg:text-xl font-bold text-foreground">{stats.queueAverageTime}</p>
           </div>
         </div>
       </div>

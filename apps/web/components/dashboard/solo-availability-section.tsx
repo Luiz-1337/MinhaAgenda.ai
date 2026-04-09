@@ -101,21 +101,21 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
   }
 
   return (
-    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-2xl p-6 flex flex-col ${className || ""}`}>
+    <div className={`bg-card border border-border rounded-md p-6 flex flex-col ${className || ""}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/5 rounded-lg">
-            <Clock size={18} className="text-indigo-500 dark:text-indigo-400" />
+          <div className="p-2 bg-muted border border-border rounded-lg">
+            <Clock size={18} className="text-accent" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-slate-800 dark:text-white">Horários de Atendimento</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Configure sua disponibilidade semanal</p>
+            <h3 className="text-base font-semibold text-foreground">Horários de Atendimento</h3>
+            <p className="text-xs text-muted-foreground">Configure sua disponibilidade semanal</p>
           </div>
         </div>
         <button
           onClick={copyToWeekdays}
-          className="text-xs flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors font-medium px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 border border-slate-200 dark:border-white/5"
+          className="text-xs flex items-center gap-1.5 text-accent hover:text-accent/80 transition-colors font-medium px-3 py-1.5 rounded-lg hover:bg-muted border border-border"
           title="Copiar horário do primeiro dia útil para todos os dias de semana"
         >
           <Copy size={12} />
@@ -125,7 +125,7 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
 
       {/* Grid de Dias */}
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
           Carregando horários...
         </div>
       ) : (
@@ -134,15 +134,15 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
           {items.map((day) => (
             <div
               key={day.dayOfWeek}
-              className={`p-4 rounded-xl border transition-all duration-200 ${
+              className={`p-4 rounded-md border transition-all duration-200 ${
                 day.isActive
-                  ? "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-white/10"
-                  : "bg-slate-50/50 dark:bg-slate-800/50 border-slate-100 dark:border-white/5 opacity-60"
+                  ? "bg-muted border-border"
+                  : "bg-muted/50 border-border opacity-60"
               }`}
             >
               {/* Header do Card: Nome do Dia + Toggle */}
               <div className="flex items-center justify-between mb-3">
-                <span className={`text-sm font-medium ${day.isActive ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-500"}`}>
+                <span className={`text-sm font-medium ${day.isActive ? "text-foreground" : "text-muted-foreground"}`}>
                   {dayNames[day.dayOfWeek]}
                 </span>
                 <Switch
@@ -159,7 +159,7 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
               {day.isActive ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider">Início</label>
+                    <label className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Início</label>
                     <input
                       type="time"
                       value={day.startTime}
@@ -168,11 +168,11 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
                           prev.map((p) => (p.dayOfWeek === day.dayOfWeek ? { ...p, startTime: e.target.value } : p))
                         )
                       }
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-700 dark:text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
+                      className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:border-ring transition-colors"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider">Fim</label>
+                    <label className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">Fim</label>
                     <input
                       type="time"
                       value={day.endTime}
@@ -181,12 +181,12 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
                           prev.map((p) => (p.dayOfWeek === day.dayOfWeek ? { ...p, endTime: e.target.value } : p))
                         )
                       }
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-slate-700 dark:text-white focus:outline-none focus:border-indigo-500/50 transition-colors"
+                      className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:border-ring transition-colors"
                     />
                   </div>
                 </div>
               ) : (
-                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium py-2 text-center">
+                <div className="text-[10px] text-muted-foreground font-medium py-2 text-center">
                   Inativo
                 </div>
               )}
@@ -197,11 +197,11 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
       )}
 
       {/* Botão Salvar */}
-      <div className="flex-shrink-0 pt-4 border-t border-slate-200 dark:border-white/5">
+      <div className="flex-shrink-0 pt-4 border-t border-border">
         <button
           onClick={onSave}
           disabled={!canSave || isPending}
-          className="w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
+          className="w-full px-4 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save size={16} />
           {isPending ? "Salvando..." : "Salvar Horários"}

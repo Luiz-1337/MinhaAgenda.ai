@@ -4,7 +4,7 @@ export default function ChatLoading() {
   return (
     <div className="flex h-full gap-0">
       {/* Conversation list */}
-      <div className="w-80 border-r border-slate-200 dark:border-white/10 p-4 space-y-3">
+      <div className="w-80 border-r border-border p-4 space-y-3">
         <Skeleton className="h-10 w-full rounded-lg" />
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 p-2">
@@ -19,7 +19,7 @@ export default function ChatLoading() {
 
       {/* Message area */}
       <div className="flex-1 flex flex-col">
-        <div className="border-b border-slate-200 dark:border-white/10 p-4 flex items-center gap-3">
+        <div className="border-b border-border p-4 flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-full" />
           <Skeleton className="h-5 w-32" />
         </div>
@@ -30,7 +30,7 @@ export default function ChatLoading() {
             </div>
           ))}
         </div>
-        <div className="border-t border-slate-200 dark:border-white/10 p-4">
+        <div className="border-t border-border p-4">
           <Skeleton className="h-10 w-full rounded-lg" />
         </div>
       </div>

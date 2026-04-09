@@ -34,7 +34,7 @@ const Features: React.FC = () => {
         </motion.div>
 
         {/* Feature list */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border">
+        <div className="rounded-md border border-border bg-card overflow-hidden divide-y divide-border">
           {FEATURES.map((feature, index) => {
             const Icon = feature.icon;
             return (
@@ -52,7 +52,7 @@ const Features: React.FC = () => {
                 </span>
 
                 {/* Icon */}
-                <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/10 dark:bg-primary/15 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <div className="shrink-0 w-10 h-10 rounded-md bg-primary/10 dark:bg-primary/15 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                   <Icon className="w-5 h-5 text-primary" />
                 </div>
 

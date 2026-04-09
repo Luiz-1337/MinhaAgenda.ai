@@ -302,19 +302,19 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
       {/* Header */}
       <div className="flex justify-between items-end flex-shrink-0">
         <div className="space-y-1">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Automação de Marketing</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Recupere clientes inativos e impulsione suas vendas com IA.</p>
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Automação de Marketing</h2>
+          <p className="text-sm text-muted-foreground">Recupere clientes inativos e impulsione suas vendas com IA.</p>
         </div>
-        <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-white/5">
+        <div className="flex bg-muted p-1 rounded-md border border-border">
           <button
             onClick={() => setActiveTab('recovery')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'recovery' ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'recovery' ? 'bg-card text-accent dark:text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Fluxo de Recuperação
           </button>
           <button
             onClick={() => setActiveTab('broadcast')}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'broadcast' ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'broadcast' ? 'bg-card text-accent dark:text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             Campanhas e Promoções
           </button>
@@ -328,17 +328,17 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
             {(loadError || saveError || saveSuccess) && (
               <div className="space-y-2">
                 {loadError && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-600">
+                  <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-600">
                     {loadError}
                   </div>
                 )}
                 {saveError && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-600">
+                  <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-600">
                     {saveError}
                   </div>
                 )}
                 {saveSuccess && (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-600">
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-600">
                     {saveSuccess}
                   </div>
                 )}
@@ -346,30 +346,30 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
             )}
 
             {isFlowLoading ? (
-              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-4 py-6 text-center text-sm text-slate-500">
+              <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
                 Carregando fluxo...
               </div>
             ) : (
-              <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-indigo-500 before:via-slate-200 dark:before:via-slate-800 before:to-transparent">
+              <div className="relative space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-border">
                 {recoverySteps.map((step, index) => (
                   <div key={step.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group animate-in fade-in slide-in-from-bottom-4 duration-300">
                     {/* Icon Dot */}
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white dark:border-slate-900 bg-slate-50 dark:bg-slate-800 text-indigo-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-border bg-muted text-accent shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
                       <Clock size={16} />
                     </div>
 
                     {/* Card Content */}
-                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-card border border-border p-5 rounded-md hover:border-accent/30 transition-colors">
                       <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Etapa {index + 1}</span>
-                          <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-600 dark:text-indigo-400 text-[10px] font-bold">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Etapa {index + 1}</span>
+                          <div className="flex items-center gap-1 bg-accent/10 px-2 py-0.5 rounded text-accent text-[10px] font-bold">
                             <Zap size={10} /> AUTO
                           </div>
                         </div>
                         <button
                           onClick={() => removeStep(step.id)}
-                          className="text-slate-400 hover:text-red-500 transition-colors"
+                          className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -377,7 +377,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
 
                       <div className="space-y-4">
                         <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase">Enviar após</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Enviar após</label>
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
@@ -386,40 +386,40 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                                 const nextDays = Number(event.target.value);
                                 updateStep(step.id, { days: Number.isNaN(nextDays) ? 0 : nextDays });
                               }}
-                              className="w-16 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:outline-none focus:border-indigo-500"
+                              className="w-16 bg-background border border-border rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:outline-none focus:border-ring"
                             />
-                            <span className="text-xs text-slate-400 font-medium">dias de inatividade</span>
+                            <span className="text-xs text-muted-foreground font-medium">dias de inatividade</span>
                           </div>
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase">Mensagem (Suporta variáveis)</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Mensagem (Suporta variáveis)</label>
                           <textarea
                             rows={3}
                             value={step.message}
                             onChange={(event) => updateStep(step.id, { message: event.target.value })}
                             placeholder="Digite o conteúdo aqui..."
-                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-indigo-500 transition-all resize-none"
+                            className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all resize-none"
                           />
                           <div className="flex gap-2">
                             <button
                               type="button"
                               onClick={() => appendVariable(step.id, "{{nome_cliente}}")}
-                              className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
+                              className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border hover:bg-primary hover:text-primary-foreground transition-all"
                             >
                               {"{{nome_cliente}}"}
                             </button>
                             <button
                               type="button"
                               onClick={() => appendVariable(step.id, "{{ultimo_servico}}")}
-                              className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
+                              className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border hover:bg-primary hover:text-primary-foreground transition-all"
                             >
                               {"{{ultimo_servico}}"}
                             </button>
                             <button
                               type="button"
                               onClick={() => appendVariable(step.id, "{{ultima_visita}}")}
-                              className="text-[10px] bg-slate-100 dark:bg-white/5 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/5 hover:bg-indigo-500 hover:text-white transition-all"
+                              className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border hover:bg-primary hover:text-primary-foreground transition-all"
                             >
                               {"{{ultima_visita}}"}
                             </button>
@@ -436,7 +436,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
             <div className="flex flex-col items-center gap-4 pt-4">
               <button
                 onClick={addStep}
-                className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-sm font-bold text-slate-400 hover:text-indigo-500 hover:border-indigo-500/50 transition-all group"
+                className="flex items-center gap-2 px-6 py-3 bg-card border-2 border-dashed border-border rounded-md text-sm font-bold text-muted-foreground hover:text-accent hover:border-accent/50 transition-all group"
               >
                 <Plus size={18} className="group-hover:rotate-90 transition-transform" />
                 Adicionar nova etapa no fluxo
@@ -444,7 +444,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
               <button
                 onClick={handleSaveFlow}
                 disabled={isSaving || isLoading || isFlowLoading}
-                className="flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1 active:scale-95 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary/90 disabled:bg-primary/60 text-primary-foreground rounded-md text-sm font-bold transition-all hover:-translate-y-1 active:scale-95 disabled:cursor-not-allowed"
               >
                 {isSaving ? "Salvando..." : "Salvar fluxo"}
               </button>
@@ -454,24 +454,24 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Segmentation Column */}
             <div className="space-y-6 h-full">
-              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl p-6 shadow-sm h-full flex flex-col">
+              <section className="bg-card border border-border rounded-md p-6 h-full flex flex-col">
                 <div className="flex items-center gap-3 mb-6 flex-shrink-0">
-                  <div className="p-2 bg-indigo-500 rounded-xl text-white shadow-lg shadow-indigo-500/20">
+                  <div className="p-2 bg-primary rounded-md text-primary-foreground">
                     <Target size={20} />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-800 dark:text-white">Definir Público Alvo</h3>
-                    <p className="text-xs text-slate-500">Selecione quem receberá esta campanha.</p>
+                    <h3 className="text-base font-bold text-foreground">Definir Público Alvo</h3>
+                    <p className="text-xs text-muted-foreground">Selecione quem receberá esta campanha.</p>
                   </div>
                 </div>
 
                 <div className="space-y-5 flex-1">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Última Visita</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Última Visita</label>
                     <select
                       value={lastVisitFilter}
                       onChange={(event) => setLastVisitFilter(event.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-md px-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring"
                     >
                       <option value="any">Qualquer tempo</option>
                       <option value="30days">Mais de 30 dias</option>
@@ -481,13 +481,13 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Serviço Realizado</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Serviço Realizado</label>
                     <div className="space-y-3">
                       <input
                         value={serviceSearch}
                         onChange={(event) => setServiceSearch(event.target.value)}
                         placeholder="Buscar serviço..."
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-background border border-border rounded-md px-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring"
                       />
                       {serviceSearch.trim().length > 0 && (
                         <div className="flex flex-wrap gap-2">
@@ -502,7 +502,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                                 key={service.id}
                                 type="button"
                                 onClick={() => addService(service)}
-                                className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-full text-[10px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1 hover:border-indigo-500 transition-all"
+                                className="px-3 py-1 bg-card border border-border rounded-full text-[10px] font-bold text-foreground flex items-center gap-1 hover:border-accent transition-all"
                               >
                                 {service.name} <Plus size={10} />
                               </button>
@@ -511,20 +511,20 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                       )}
                       <div className="flex flex-wrap gap-2">
                         {isServicesLoading && services.length === 0 ? (
-                          <span className="text-[10px] text-slate-400">Carregando serviços...</span>
+                          <span className="text-[10px] text-muted-foreground">Carregando serviços...</span>
                         ) : selectedServices.length === 0 ? (
-                          <span className="text-[10px] text-slate-400">Nenhum serviço selecionado</span>
+                          <span className="text-[10px] text-muted-foreground">Nenhum serviço selecionado</span>
                         ) : (
                           selectedServices.map((service) => (
                             <span
                               key={service.id}
-                              className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-full text-[10px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1"
+                              className="px-3 py-1 bg-card border border-border rounded-full text-[10px] font-bold text-foreground flex items-center gap-1"
                             >
                               {service.name}
                               <button
                                 type="button"
                                 onClick={() => removeService(service.id)}
-                                className="text-slate-400 hover:text-red-500 transition-colors"
+                                className="text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
                               >
                                 <X size={10} />
                               </button>
@@ -536,29 +536,29 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                   </div>
                 </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/5 flex items-center justify-between flex-shrink-0">
+                <div className="mt-8 pt-6 border-t border-border flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                       <Users size={18} />
                     </div>
                     <div>
-                      <p className="text-xl font-bold text-slate-800 dark:text-white">
+                      <p className="text-xl font-bold text-foreground">
                         {isPreviewing ? "..." : leadsCount.toLocaleString("pt-BR")}
                       </p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Leads encontrados</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Leads encontrados</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={handleOpenLeadsModal}
                     disabled={leadsCount === 0}
-                    className="text-xs font-bold text-indigo-500 hover:underline flex items-center gap-1 disabled:text-slate-300 disabled:cursor-not-allowed"
+                    className="text-xs font-bold text-accent hover:underline flex items-center gap-1 disabled:text-muted-foreground disabled:cursor-not-allowed"
                   >
                     Ver lista <ChevronRight size={14} />
                   </button>
                 </div>
                 {previewError && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-medium text-red-600 flex-shrink-0">
+                  <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-medium text-red-600 flex-shrink-0">
                     {previewError}
                   </div>
                 )}
@@ -567,50 +567,50 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
 
             {/* Message Column */}
             <div className="space-y-6 h-full">
-              <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl p-6 shadow-sm flex flex-col h-full">
+              <section className="bg-card border border-border rounded-md p-6 flex flex-col h-full">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-violet-500 rounded-xl text-white shadow-lg shadow-violet-500/20">
+                  <div className="p-2 bg-brand-blue rounded-md text-primary-foreground">
                     <MessageSquare size={20} />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-800 dark:text-white">Conteúdo da Campanha</h3>
-                    <p className="text-xs text-slate-500">Escreva o que será enviado no broadcast.</p>
+                    <h3 className="text-base font-bold text-foreground">Conteúdo da Campanha</h3>
+                    <p className="text-xs text-muted-foreground">Escreva o que será enviado no broadcast.</p>
                   </div>
                 </div>
 
                 <div className="space-y-4 flex-1">
                   <div className="flex flex-col gap-1.5 h-full">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mensagem do Disparo</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Mensagem do Disparo</label>
                     <textarea
                       placeholder="Ex: Olá! Temos uma oferta imperdível para este final de semana..."
                       value={campaignMessage}
                       onChange={(event) => setCampaignMessage(event.target.value)}
-                      className="w-full flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-4 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-violet-500 transition-all resize-none min-h-[200px]"
+                      className="w-full flex-1 bg-background border border-border rounded-md px-4 py-4 text-sm text-foreground focus:outline-none focus:border-ring transition-all resize-none min-h-[200px]"
                     />
                   </div>
                 </div>
 
-                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/5">
+                <div className="mt-8 pt-6 border-t border-border">
                   <button
                     onClick={handleSendCampaign}
                     disabled={isSending || leadsCount === 0 || campaignMessage.trim().length === 0}
-                    className="w-full flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl font-bold shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1 active:scale-95 disabled:cursor-not-allowed"
+                    className="w-full flex items-center justify-center gap-2 py-4 bg-primary hover:bg-primary/90 disabled:bg-primary/60 text-primary-foreground rounded-md font-bold transition-all hover:-translate-y-1 active:scale-95 disabled:cursor-not-allowed"
                   >
                     <Send size={18} />
                     {isSending ? "Enviando..." : "Enviar agora"}
                   </button>
-                  <p className="text-[10px] text-center text-slate-400 mt-4 font-medium italic">
+                  <p className="text-[10px] text-center text-muted-foreground mt-4 font-medium italic">
                     Ao clicar em enviar, as mensagens serão disparadas para {leadsCount.toLocaleString("pt-BR")} contatos.
                   </p>
                   {(sendError || sendSuccess) && (
                     <div className="mt-4 space-y-2">
                       {sendError && (
-                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-medium text-red-600">
+                        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-[10px] font-medium text-red-600">
                           {sendError}
                         </div>
                       )}
                       {sendSuccess && (
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-[10px] font-medium text-emerald-600">
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-[10px] font-medium text-emerald-600">
                           {sendSuccess}
                         </div>
                       )}
@@ -624,38 +624,38 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
       </div>
       {isLeadsModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 px-4 py-3">
+          <div className="w-full max-w-md rounded-lg bg-card border border-border">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
-                <p className="text-sm font-bold text-slate-800 dark:text-white">Leads encontrados</p>
-                <p className="text-[10px] text-slate-400">Baseado no filtro atual</p>
+                <p className="text-sm font-bold text-foreground">Leads encontrados</p>
+                <p className="text-[10px] text-muted-foreground">Baseado no filtro atual</p>
               </div>
               <button
                 type="button"
                 onClick={handleCloseLeadsModal}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <X size={16} />
               </button>
             </div>
             <div className="px-4 py-4 max-h-[320px] overflow-y-auto custom-scrollbar">
               {isLeadsLoading && (
-                <p className="text-xs text-slate-400">Carregando contatos...</p>
+                <p className="text-xs text-muted-foreground">Carregando contatos...</p>
               )}
               {!isLeadsLoading && leadsListError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-medium text-red-600">
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-medium text-red-600">
                   {leadsListError}
                 </div>
               )}
               {!isLeadsLoading && !leadsListError && leadsList.length === 0 && (
-                <p className="text-xs text-slate-400">Nenhum contato encontrado.</p>
+                <p className="text-xs text-muted-foreground">Nenhum contato encontrado.</p>
               )}
               {!isLeadsLoading && !leadsListError && leadsList.length > 0 && (
                 <ul className="space-y-2">
                   {leadsList.map((lead) => (
                     <li
                       key={lead.id}
-                      className="rounded-xl border border-slate-200 dark:border-white/10 px-3 py-2 text-xs text-slate-700 dark:text-slate-200"
+                      className="rounded-md border border-border px-3 py-2 text-xs text-foreground"
                     >
                       {lead.name}
                     </li>
@@ -663,11 +663,11 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                 </ul>
               )}
             </div>
-            <div className="border-t border-slate-100 dark:border-white/5 px-4 py-3">
+            <div className="border-t border-border px-4 py-3">
               <button
                 type="button"
                 onClick={handleCloseLeadsModal}
-                className="w-full rounded-xl border border-slate-200 dark:border-white/10 py-2 text-xs font-bold text-slate-600 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                className="w-full rounded-md border border-border py-2 text-xs font-bold text-foreground hover:bg-muted"
               >
                 Fechar
               </button>

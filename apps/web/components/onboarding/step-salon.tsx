@@ -91,23 +91,23 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Detalhes do Salão</h3>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Complete as informações do seu estabelecimento.</p>
+        <h3 className="text-xl font-bold text-foreground mb-2">Detalhes do Salão</h3>
+        <p className="text-muted-foreground text-sm">Complete as informações do seu estabelecimento.</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="space-y-1.5">
-          <label htmlFor="salonName" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Nome do Salão <span className="text-indigo-500">*</span>
+          <label htmlFor="salonName" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Nome do Salão <span className="text-accent">*</span>
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Store size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <Store size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="salonName"
               type="text"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder="Barbearia do Silva"
               {...register("salonName")}
             />
@@ -118,17 +118,17 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="address" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <label htmlFor="address" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Endereço
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <MapPin size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <MapPin size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
             </div>
             <input
               id="address"
               type="text"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
               placeholder="Rua Exemplo, 123 - Bairro, Cidade - UF"
               {...register("address")}
             />
@@ -137,17 +137,17 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label htmlFor="phone" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <label htmlFor="phone" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Telefone
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Phone size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <Phone size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
               </div>
               <input
                 id="phone"
                 type="text"
-                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
                 placeholder="(11) 0000-0000"
                 {...register("phone")}
               />
@@ -155,17 +155,17 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="whatsapp" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <label htmlFor="whatsapp" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               WhatsApp
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MessageCircle size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <MessageCircle size={18} className="text-muted-foreground group-focus-within:text-accent transition-colors" />
               </div>
               <input
                 id="whatsapp"
                 type="text"
-                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+                className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
                 placeholder="(11) 99999-9999"
                 {...register("whatsapp")}
               />
@@ -174,20 +174,20 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="description" className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <label htmlFor="description" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Descrição
           </label>
           <textarea
             id="description"
             rows={3}
-            className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm resize-none"
+            className="w-full px-4 py-3 bg-card border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all resize-none"
             placeholder="Descreva seu salão, especialidades e ambiente..."
             {...register("description")}
           />
         </div>
 
         <div className="space-y-3">
-          <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
             <Clock size={16} />
             Horário de Funcionamento
           </label>
@@ -199,27 +199,27 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
               return (
                 <div
                   key={day.value}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 transition-colors"
+                  className="flex items-center justify-between p-3 rounded-md bg-muted border border-border hover:border-border transition-colors"
                 >
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{day.label}</span>
+                  <span className="text-sm font-medium text-foreground">{day.label}</span>
                   <div className="flex items-center gap-2">
                     {isActive ? (
                       <>
                         <input
                           type="time"
-                          className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 px-2 py-1 rounded focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                          className="text-xs text-foreground font-mono bg-card border border-border px-2 py-1 rounded focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
                           {...register(`workHours.${day.value}.start`)}
                         />
-                        <span className="text-slate-400">-</span>
+                        <span className="text-muted-foreground">-</span>
                         <input
                           type="time"
-                          className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 px-2 py-1 rounded focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50"
+                          className="text-xs text-foreground font-mono bg-card border border-border px-2 py-1 rounded focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
                           {...register(`workHours.${day.value}.end`)}
                         />
                         <button
                           type="button"
                           onClick={() => toggleDay(day.value)}
-                          className="text-xs px-3 py-1 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                          className="text-xs px-3 py-1 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                         >
                           Desativar
                         </button>
@@ -228,7 +228,7 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
                       <button
                         type="button"
                         onClick={() => toggleDay(day.value)}
-                        className="text-xs px-3 py-1 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+                        className="text-xs px-3 py-1 bg-muted text-foreground rounded hover:bg-muted/80 transition-colors"
                       >
                         Ativar
                       </button>
@@ -244,7 +244,7 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
           <button
             type="button"
             onClick={onBack}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-3.5 px-4 rounded-xl transition-all duration-200"
+            className="flex-1 flex items-center justify-center gap-2 bg-muted hover:bg-muted/80 text-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200"
           >
             <ArrowLeft size={18} />
             Voltar
@@ -252,7 +252,7 @@ export function StepSalon({ onNext, onBack }: StepSalonProps) {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 px-4 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>{isSubmitting ? "Processando..." : "Continuar"}</span>
             {!isSubmitting && <ArrowRight size={18} />}

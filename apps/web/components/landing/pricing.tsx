@@ -42,10 +42,10 @@ const Pricing: React.FC = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-30px" }}
               transition={{ ...spring, delay: index * 0.08 }}
-              className={`relative flex flex-col rounded-2xl p-6 ${
+              className={`relative flex flex-col rounded-md p-6 ${
                 plan.highlight
-                  ? 'bg-primary text-primary-foreground ring-1 ring-primary/20 shadow-xl md:scale-[1.03] z-10'
-                  : 'bg-card border border-border shadow-sm'
+                  ? 'bg-primary text-primary-foreground ring-1 ring-primary/20 md:scale-[1.03] z-10'
+                  : 'bg-card border border-border'
               }`}
             >
               {plan.highlight && (
@@ -89,7 +89,7 @@ const Pricing: React.FC = () => {
 
               <Link href={`/register?plan=${plan.name}`}>
                 <button
-                  className={`w-full py-2.5 px-5 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`w-full py-2.5 px-5 rounded-md text-sm font-semibold transition-colors ${
                     plan.highlight
                       ? 'bg-primary-foreground text-primary hover:bg-primary-foreground/90'
                       : 'bg-muted text-foreground hover:bg-muted/80 border border-border'

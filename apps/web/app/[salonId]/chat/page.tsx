@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 const ChatClient = dynamic(() => import("./chat-client"), {
   loading: () => (
     <div className="flex h-full gap-0">
-      <div className="w-80 border-r border-slate-200 dark:border-white/10 p-4 space-y-3">
+      <div className="w-80 border-r border-border p-4 space-y-3">
         <Skeleton className="h-10 w-full rounded-lg" />
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 p-2">

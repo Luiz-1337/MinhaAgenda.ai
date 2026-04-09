@@ -52,11 +52,11 @@ function calculateAppointmentPosition(
 }
 
 const SEQUENCE_COLORS = [
-  { bg: "bg-indigo-100 dark:bg-indigo-600", border: "border-indigo-500", text: "text-indigo-700 dark:text-indigo-200" },
-  { bg: "bg-pink-100 dark:bg-pink-600", border: "border-pink-500", text: "text-pink-700 dark:text-pink-200" },
-  { bg: "bg-emerald-100 dark:bg-emerald-600", border: "border-emerald-500", text: "text-emerald-700 dark:text-emerald-200" },
-  { bg: "bg-violet-100 dark:bg-violet-600", border: "border-violet-500", text: "text-violet-700 dark:text-violet-200" },
-  { bg: "bg-amber-100 dark:bg-amber-600", border: "border-amber-500", text: "text-amber-700 dark:text-amber-200" },
+  { bg: "bg-blue-100 dark:bg-blue-600", border: "border-blue-600", text: "text-blue-700 dark:text-blue-200" },
+  { bg: "bg-rose-100 dark:bg-rose-500", border: "border-rose-400", text: "text-rose-600 dark:text-rose-300" },
+  { bg: "bg-emerald-100 dark:bg-emerald-600", border: "border-emerald-600", text: "text-emerald-700 dark:text-emerald-200" },
+  { bg: "bg-sky-100 dark:bg-sky-600", border: "border-sky-600", text: "text-sky-700 dark:text-sky-200" },
+  { bg: "bg-amber-100 dark:bg-amber-600", border: "border-amber-600", text: "text-amber-700 dark:text-amber-200" },
 ] as const
 
 function getSequenceColor(index: number): { bg: string; border: string; text: string } {
@@ -113,34 +113,34 @@ export function DailyScheduler({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {loading ? (
-        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+        <div className="flex-1 bg-card rounded-md border border-border p-6">
           <div className="space-y-4">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-[600px] w-full" />
           </div>
         </div>
       ) : error ? (
-        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
+        <div className="flex-1 bg-card rounded-md border border-border p-6">
           <div className="text-center text-red-600 dark:text-red-400">{error}</div>
         </div>
       ) : professionals.length === 0 ? (
-        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-          <div className="text-center text-slate-500 dark:text-slate-400">
+        <div className="flex-1 bg-card rounded-md border border-border p-6">
+          <div className="text-center text-muted-foreground">
             Nenhum profissional ativo encontrado
           </div>
         </div>
       ) : !selectedProfessional ? (
-        <div className="flex-1 bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-          <div className="text-center text-slate-500 dark:text-slate-400">
+        <div className="flex-1 bg-card rounded-md border border-border p-6">
+          <div className="text-center text-muted-foreground">
             Selecione um profissional para visualizar a agenda
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden flex flex-col bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5">
+        <div className="flex-1 overflow-hidden flex flex-col bg-card rounded-md border border-border">
           {/* Header Row */}
-          <div className="flex border-b border-slate-200 dark:border-white/5">
-            <div className="w-16 flex-shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-white/5"></div>
-            <div className="flex-1 py-3 text-center text-sm font-semibold text-slate-700 dark:text-slate-300">
+          <div className="flex border-b border-border">
+            <div className="w-16 flex-shrink-0 border-r border-border bg-muted/50"></div>
+            <div className="flex-1 py-3 text-center text-sm font-semibold text-foreground">
               {formatBrazilTime(currentDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
             </div>
           </div>
@@ -148,11 +148,11 @@ export function DailyScheduler({
           {/* Time Grid */}
           <div className="flex-1 overflow-y-auto custom-scrollbar relative">
             {hours.map((hour) => (
-              <div key={hour} className="flex border-b border-slate-200 dark:border-white/5 relative group" style={{ minHeight: `${HOUR_ROW_HEIGHT}px` }}>
-                <div className="w-16 flex-shrink-0 border-r border-slate-200 dark:border-white/5 bg-slate-50/30 dark:bg-white/[0.02] text-xs text-slate-400 dark:text-slate-500 font-mono text-right pr-3 pt-2">
+              <div key={hour} className="flex border-b border-border relative group" style={{ minHeight: `${HOUR_ROW_HEIGHT}px` }}>
+                <div className="w-16 flex-shrink-0 border-r border-border bg-muted/30 text-xs text-muted-foreground font-mono text-right pr-3 pt-2">
                   {hour}:00
                 </div>
-                <div className="flex-1 relative hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                <div className="flex-1 relative hover:bg-muted/50 transition-colors">
                   {[...selectedProfessionalAppointments]
                     .filter(apt => {
                       const aptHour = getBrazilHours(apt.startTime)

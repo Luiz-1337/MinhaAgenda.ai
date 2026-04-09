@@ -22,7 +22,7 @@ const statusMap = {
     PENDING: { label: "Pendente", icon: Clock, color: "text-amber-500", bg: "bg-amber-500/10" },
     APPROVED: { label: "Aprovado", icon: CheckCircle2, color: "text-green-500", bg: "bg-green-500/10" },
     FAILED: { label: "Falhou", icon: XCircle, color: "text-red-500", bg: "bg-red-500/10" },
-    REFUNDED: { label: "Estornado", icon: Ticket, color: "text-slate-500", bg: "bg-slate-500/10" },
+    REFUNDED: { label: "Estornado", icon: Ticket, color: "text-muted-foreground", bg: "bg-muted" },
 }
 
 export function PaymentHistory({ payments }: PaymentHistoryProps) {

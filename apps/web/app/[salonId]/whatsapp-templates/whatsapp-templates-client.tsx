@@ -144,7 +144,7 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
     switch (status) {
       case "draft":
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-muted text-foreground dark:bg-muted dark:text-muted-foreground">
             <FileText size={12} />
             Rascunho
           </span>
@@ -189,16 +189,16 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
       {/* Header */}
       <div className="flex justify-between items-center flex-shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">
             Templates WhatsApp
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Gerencie templates de mensagens para conversas iniciadas pelo negócio
           </p>
         </div>
         <button
           onClick={() => setFormOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/20"
+          className="flex items-center gap-2 px-4 py-2 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-semibold transition-colors "
         >
           <Plus size={16} />
           Criar template
@@ -206,7 +206,7 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
       </div>
 
       {/* Info Card */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md p-4">
         <div className="flex items-start gap-3">
           <AlertCircle size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-blue-700 dark:text-blue-300">
@@ -222,16 +222,16 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
       {/* Templates List */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 size={32} className="animate-spin text-slate-400" />
+          <Loader2 size={32} className="animate-spin text-muted-foreground" />
         </div>
       ) : templates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <FileText size={48} className="mb-4 opacity-50" />
           <p className="text-lg font-medium">Nenhum template criado</p>
           <p className="text-sm mb-4">Crie seu primeiro template para começar a enviar mensagens</p>
           <button
             onClick={() => setFormOpen(true)}
-            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-semibold transition-colors"
+            className="px-4 py-2 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-semibold transition-colors"
           >
             Criar template
           </button>
@@ -241,28 +241,28 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
           {templates.map((template) => (
             <div
               key={template.id}
-              className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-xl p-5"
+              className="bg-card border border-border rounded-md p-5"
             >
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                    <h3 className="text-base font-bold text-foreground">
                       {template.name}
                     </h3>
                     {getStatusBadge(template.status)}
-                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
                       {getCategoryLabel(template.category)}
                     </span>
-                    <span className="text-xs text-slate-500">{template.language}</span>
+                    <span className="text-xs text-muted-foreground">{template.language}</span>
                   </div>
 
-                  <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                  <div className="bg-muted dark:bg-muted rounded-lg p-3 text-sm text-foreground whitespace-pre-wrap">
                     {template.header && (
                       <p className="font-medium mb-1">{template.header}</p>
                     )}
                     {template.body}
                     {template.footer && (
-                      <p className="text-slate-500 dark:text-slate-400 mt-2 text-xs">
+                      <p className="text-muted-foreground mt-2 text-xs">
                         {template.footer}
                       </p>
                     )}
@@ -281,7 +281,7 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
                     <button
                       onClick={() => handleSubmitForApproval(template)}
                       disabled={actionLoading === template.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                     >
                       {actionLoading === template.id ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -296,7 +296,7 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
                     <button
                       onClick={() => handleRefreshStatus(template)}
                       disabled={actionLoading === template.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-sm text-sm font-medium transition-colors disabled:opacity-50"
                     >
                       {actionLoading === template.id ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -313,7 +313,7 @@ export function WhatsAppTemplatesClient({ salonId }: WhatsAppTemplatesClientProp
                       setDeleteModalOpen(true)
                     }}
                     disabled={actionLoading === template.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md text-sm font-medium transition-colors disabled:opacity-50"
                   >
                     <Trash2 size={14} />
                   </button>

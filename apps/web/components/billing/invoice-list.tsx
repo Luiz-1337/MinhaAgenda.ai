@@ -24,36 +24,36 @@ function formatCurrency(amount: number) {
 
 function getStatusLabel(status: string | null) {
   switch (status) {
-    case 'paid': return { label: 'Pago', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' }
-    case 'open': return { label: 'Aberta', className: 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/20' }
-    case 'void': return { label: 'Cancelada', className: 'bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-400 border-slate-200 dark:border-slate-500/20' }
-    case 'uncollectible': return { label: 'Falhou', className: 'bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400 border-red-200 dark:border-red-500/20' }
-    default: return { label: status ?? 'N/A', className: 'bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-400 border-slate-200 dark:border-slate-500/20' }
+    case 'paid': return { label: 'Pago', className: 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' }
+    case 'open': return { label: 'Aberta', className: 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' }
+    case 'void': return { label: 'Cancelada', className: 'bg-muted text-muted-foreground border-border' }
+    case 'uncollectible': return { label: 'Falhou', className: 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' }
+    default: return { label: status ?? 'N/A', className: 'bg-muted text-muted-foreground border-border' }
   }
 }
 
 export function InvoiceList({ invoices }: InvoiceListProps) {
   if (invoices.length === 0) {
     return (
-      <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-8 text-center">
-        <Receipt size={32} className="text-slate-300 mx-auto mb-3" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma fatura encontrada</p>
+      <div className="bg-card rounded-md border border-border p-8 text-center">
+        <Receipt size={32} className="text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">Nenhuma fatura encontrada</p>
       </div>
     )
   }
 
   return (
-    <div className="h-full bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
-      <div className="p-6 border-b border-slate-200 dark:border-white/5 flex justify-between items-center">
-        <h3 className="text-base font-bold text-slate-800 dark:text-white flex items-center gap-2">
-          <Receipt size={18} className="text-slate-500" />
+    <div className="h-full bg-card rounded-md border border-border flex flex-col">
+      <div className="p-6 border-b border-border flex justify-between items-center">
+        <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+          <Receipt size={18} className="text-muted-foreground" />
           Historico de Faturas
         </h3>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left">
-          <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 dark:bg-white/5">
+          <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
             <tr>
               <th className="px-6 py-3 font-medium">Fatura</th>
               <th className="px-6 py-3 font-medium">Data</th>
@@ -62,19 +62,19 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
               <th className="px-6 py-3 font-medium text-right">Download</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+          <tbody className="divide-y divide-border">
             {invoices.map((inv) => {
               const status = getStatusLabel(inv.status)
               return (
-                <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200 font-mono text-xs">
+                <tr key={inv.id} className="hover:bg-muted transition-colors">
+                  <td className="px-6 py-4 font-medium text-foreground font-mono text-xs">
                     {inv.id.slice(0, 20)}...
                   </td>
-                  <td className="px-6 py-4 text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <td className="px-6 py-4 text-muted-foreground flex items-center gap-2">
                     <Calendar size={14} className="opacity-50" />
                     {formatDate(inv.date)}
                   </td>
-                  <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300">
+                  <td className="px-6 py-4 font-mono text-muted-foreground">
                     {formatCurrency(inv.amount)}
                   </td>
                   <td className="px-6 py-4">
@@ -88,12 +88,12 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
                         href={inv.pdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors inline-block"
+                        className="p-2 text-muted-foreground hover:text-accent hover:bg-accent/10 rounded-lg transition-colors inline-block"
                       >
                         <Download size={16} />
                       </a>
                     ) : (
-                      <span className="text-slate-300">-</span>
+                      <span className="text-muted-foreground">-</span>
                     )}
                   </td>
                 </tr>

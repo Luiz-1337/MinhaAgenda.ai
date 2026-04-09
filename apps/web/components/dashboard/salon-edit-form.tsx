@@ -145,132 +145,132 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
           {/* Coluna Principal - 2 colunas */}
           <div className="lg:col-span-2 space-y-4">
             {/* Card 1: Identidade */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4">Dados da Unidade</h3>
+            <div className="bg-card border border-border rounded-md p-4">
+              <h3 className="text-sm font-bold text-foreground mb-4">Dados da Unidade</h3>
               <div className="space-y-3">
                 {/* Nome do Estabelecimento */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Nome do Estabelecimento
                   </label>
                   <input
                     type="text"
                     {...form.register("name")}
                     placeholder="Ex.: Barber Club"
-                    className="w-full h-9 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500/50 transition-all"
+                    className="w-full h-9 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-ring transition-all"
                   />
                   {form.formState.errors.name && (
-                    <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.name.message}</p>
                   )}
                 </div>
 
                 {/* Bio abaixo */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Bio / Descrição
                   </label>
                   <textarea
                     rows={2}
                     {...form.register("description")}
                     placeholder="Descreva seu salão..."
-                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-ring transition-all resize-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* Card 2: Localização e Contato */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
-                <MapPin size={14} className="text-indigo-500" /> Localização & Contato
+            <div className="bg-card border border-border rounded-md p-4">
+              <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                <MapPin size={14} className="text-accent" /> Localização & Contato
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 {/* Endereço ocupa 2 colunas */}
                 <div className="col-span-2 space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Endereço</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Endereço</label>
                   <input
                     type="text"
                     {...form.register("address")}
                     placeholder="Rua Exemplo, 123"
-                    className="w-full h-9 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                    className="w-full h-9 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
                   />
                 </div>
 
                 {/* Telefone e WhatsApp lado a lado */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Telefone</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Telefone</label>
                   <div className="relative">
-                    <Phone size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                    <Phone size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
                     <input
                       type="text"
                       {...form.register("phone")}
                       placeholder="(11) 90000-0000"
-                      className="w-full h-9 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      className="w-full h-9 bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">WhatsApp</label>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">WhatsApp</label>
                   <div className="relative">
-                    <MessageCircle size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                    <MessageCircle size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
                     <input
                       type="text"
                       {...form.register("whatsapp")}
                       placeholder="(11) 99999-9999"
-                      className="w-full h-9 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      className="w-full h-9 bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
                     />
                   </div>
                   {form.formState.errors.whatsapp && (
-                    <p className="text-xs text-red-500">{form.formState.errors.whatsapp.message}</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">{form.formState.errors.whatsapp.message}</p>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Card 3: Regras de Negócio */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3">Regras de Negócio</h3>
+            <div className="bg-card border border-border rounded-md p-4">
+              <h3 className="text-sm font-bold text-foreground mb-3">Regras de Negócio</h3>
               {/* Toggles lado a lado */}
               <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="p-2.5 rounded-lg border border-slate-100 dark:border-white/5 flex items-center justify-between">
+                <div className="p-2.5 rounded-lg border border-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <CreditCard size={12} className="text-slate-400" />
+                    <CreditCard size={12} className="text-muted-foreground" />
                     <span className="text-xs font-medium">Aceita Cartão</span>
                   </div>
                   <div
                     className={`w-8 h-4 rounded-full relative cursor-pointer transition-colors ${
                       form.watch("settings.accepts_card")
-                        ? "bg-emerald-500"
-                        : "bg-slate-200 dark:bg-slate-800"
+                        ? "bg-emerald-600"
+                        : "bg-muted"
                     }`}
                     onClick={() =>
                       form.setValue("settings.accepts_card", !form.watch("settings.accepts_card"))
                     }
                   >
                     <div
-                      className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                      className={`absolute top-0.5 w-3 h-3 bg-background rounded-full transition-transform ${
                         form.watch("settings.accepts_card") ? "right-0.5" : "left-0.5"
                       }`}
                     ></div>
                   </div>
                 </div>
 
-                <div className="p-2.5 rounded-lg border border-slate-100 dark:border-white/5 flex items-center justify-between">
+                <div className="p-2.5 rounded-lg border border-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Car size={12} className="text-slate-400" />
+                    <Car size={12} className="text-muted-foreground" />
                     <span className="text-xs font-medium">Estacionamento</span>
                   </div>
                   <div
                     className={`w-8 h-4 rounded-full relative cursor-pointer transition-colors ${
                       form.watch("settings.parking")
-                        ? "bg-emerald-500"
-                        : "bg-slate-200 dark:bg-slate-800"
+                        ? "bg-emerald-600"
+                        : "bg-muted"
                     }`}
                     onClick={() => form.setValue("settings.parking", !form.watch("settings.parking"))}
                   >
                     <div
-                      className={`absolute top-0.5 w-3 h-3 bg-white dark:bg-slate-600 rounded-full transition-transform ${
+                      className={`absolute top-0.5 w-3 h-3 bg-background rounded-full transition-transform ${
                         form.watch("settings.parking") ? "right-0.5" : "left-0.5"
                       }`}
                     ></div>
@@ -281,30 +281,30 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
               {/* Tolerância e Cancelamento */}
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Tolerância de atraso (minutos)
                   </label>
                   <div className="relative w-32">
-                    <Clock size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                    <Clock size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
                     <input
                       type="number"
                       min="0"
                       {...form.register("settings.late_tolerance_minutes", { valueAsNumber: true })}
                       placeholder="15"
-                      className="w-full h-9 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                      className="w-full h-9 bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Política de Cancelamento
                   </label>
                   <textarea
                     rows={2}
                     {...form.register("settings.cancellation_policy")}
                     placeholder="Ex.: Cancelamentos devem ser feitos com pelo menos 24h de antecedência"
-                    className="w-full bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring transition-all resize-none"
                   />
                 </div>
               </div>
@@ -314,9 +314,9 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
           {/* Coluna Lateral - 1 coluna */}
           <div className="lg:col-span-1">
             {/* Card: Horário de Funcionamento */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/5 rounded-xl p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
-                <Clock size={14} className="text-indigo-500" /> Horário de Funcionamento
+            <div className="bg-card border border-border rounded-md p-4">
+              <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+                <Clock size={14} className="text-accent" /> Horário de Funcionamento
               </h3>
               <div className="space-y-2">
                 {DAYS_OF_WEEK.map((day) => {
@@ -327,7 +327,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
                   return (
                     <div
                       key={day.value}
-                      className="flex items-center gap-2 p-2 bg-slate-50/50 dark:bg-slate-950/50 rounded-lg border border-slate-200 dark:border-white/5"
+                      className="flex items-center gap-2 p-2 bg-background rounded-lg border border-border"
                     >
                       {/* Switch pequeno */}
                       <Switch
@@ -361,7 +361,7 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
                         }}
                       />
                       {/* Nome do dia abreviado */}
-                      <span className="text-xs font-medium text-slate-700 dark:text-slate-200 w-10">
+                      <span className="text-xs font-medium text-foreground w-10">
                         {day.short}
                       </span>
                       {/* Inputs de horário */}
@@ -370,24 +370,24 @@ export const SalonEditForm = forwardRef<SalonEditFormRef, SalonEditFormProps>(
                           <input
                             type="time"
                             {...form.register(`workHours.${day.value}.start`)}
-                            className="flex-1 h-9 bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                            className="flex-1 h-9 bg-card border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring transition-all"
                           />
-                          <span className="text-[10px] text-slate-400">-</span>
+                          <span className="text-[10px] text-muted-foreground">-</span>
                           <input
                             type="time"
                             {...form.register(`workHours.${day.value}.end`)}
-                            className="flex-1 h-9 bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
+                            className="flex-1 h-9 bg-card border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring transition-all"
                           />
                         </>
                       ) : (
-                        <span className="flex-1 text-[10px] text-slate-400 italic">Fechado</span>
+                        <span className="flex-1 text-[10px] text-muted-foreground italic">Fechado</span>
                       )}
                     </div>
                   )
                 })}
               </div>
               {form.formState.errors.workHours && (
-                <p className="text-xs text-red-500 mt-2">{form.formState.errors.workHours.message}</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-2">{form.formState.errors.workHours.message}</p>
               )}
             </div>
           </div>

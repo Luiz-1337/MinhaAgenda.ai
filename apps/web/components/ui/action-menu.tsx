@@ -24,12 +24,12 @@ export function ActionMenu({ onEdit, onDelete }: ActionMenuProps) {
 
   return (
     <div className="relative" ref={menuRef}>
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-1.5 rounded-lg transition-all duration-200 ${
-          isOpen 
-          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/40 scale-110" 
-          : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+        className={`p-1.5 rounded-md transition-all duration-150 ${
+          isOpen
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
         }`}
       >
         <MoreHorizontal size={18} />
@@ -38,17 +38,17 @@ export function ActionMenu({ onEdit, onDelete }: ActionMenuProps) {
       {isOpen && (
         <>
           {/* Small Floating Popup */}
-          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_10px_30px_rgba(0,0,0,0.5)] z-50 overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150 py-1.5">
-            <div className="px-3 py-1.5 mb-1 border-b border-slate-50 dark:border-white/5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ações do Item</p>
+          <div className="absolute right-0 mt-2 w-48 bg-popover border border-border rounded-md shadow-lg z-20 overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-150 py-1.5">
+            <div className="px-3 py-1.5 mb-1 border-b border-border-subtle">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Acoes do Item</p>
             </div>
-            
-            <button 
+
+            <button
               onClick={() => { onEdit(); setIsOpen(false); }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-all group"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all">
+                <div className="p-1.5 rounded-sm bg-info/10 text-info group-hover:bg-info group-hover:text-info-foreground transition-all">
                   <Pencil size={12} />
                 </div>
                 <span>Editar detalhes</span>
@@ -56,12 +56,12 @@ export function ActionMenu({ onEdit, onDelete }: ActionMenuProps) {
               <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
 
-            <button 
+            <button
               onClick={() => { onDelete(); setIsOpen(false); }}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all group"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all group"
             >
               <div className="flex items-center gap-2.5">
-                <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500 group-hover:bg-red-500 group-hover:text-white transition-all">
+                <div className="p-1.5 rounded-sm bg-destructive/10 text-destructive group-hover:bg-destructive group-hover:text-destructive-foreground transition-all">
                   <Trash2 size={12} />
                 </div>
                 <span>Remover item</span>
@@ -74,5 +74,3 @@ export function ActionMenu({ onEdit, onDelete }: ActionMenuProps) {
     </div>
   )
 }
-
-

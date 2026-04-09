@@ -265,19 +265,19 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     <div className="flex flex-col gap-3 mb-4 lg:mb-6">
       {/* Row 1: Date Navigation + New Appointment */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-        <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg p-1 flex-1 sm:flex-initial">
+        <div className="flex items-center bg-card border border-border rounded-lg p-1 flex-1 sm:flex-initial">
           <button 
             onClick={() => navigateDate('prev')}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-md text-slate-500 dark:text-slate-400 transition-colors"
+            className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
-          <div className="flex-1 sm:flex-initial px-2 sm:px-4 font-semibold text-slate-700 dark:text-slate-200 sm:min-w-[180px] lg:min-w-[200px] text-center text-xs sm:text-sm truncate">
+          <div className="flex-1 sm:flex-initial px-2 sm:px-4 font-semibold text-foreground sm:min-w-[180px] lg:min-w-[200px] text-center text-xs sm:text-sm truncate">
             {getDateLabel()}
           </div>
           <button 
             onClick={() => navigateDate('next')}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-md text-slate-500 dark:text-slate-400 transition-colors"
+            className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors"
           >
             <ChevronRight size={18} />
           </button>
@@ -285,13 +285,13 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
         <div className="flex gap-2">
           <button 
             onClick={goToToday}
-            className="flex-1 sm:flex-initial px-3 py-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 rounded-lg text-xs sm:text-sm font-medium border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
+            className="flex-1 sm:flex-initial px-3 py-2 bg-accent/10 text-accent rounded-lg text-xs sm:text-sm font-medium border border-accent/20 hover:bg-accent/20 transition-colors"
           >
             Hoje
           </button>
           <button 
             onClick={() => setIsCreateDialogOpen(true)}
-            className="flex-1 sm:flex-initial px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs sm:text-sm font-medium shadow-sm shadow-indigo-500/20 flex items-center justify-center gap-2 transition-colors"
+            className="flex-1 sm:flex-initial px-3 py-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg text-xs sm:text-sm font-medium  flex items-center justify-center gap-2 transition-colors"
           >
             <Plus size={16} />
             <span className="hidden sm:inline">Novo Agendamento</span>
@@ -307,25 +307,25 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           <DropdownMenu open={isProDropdownOpen} onOpenChange={setIsProDropdownOpen}>
             <DropdownMenuTrigger asChild>
               <button 
-                className="w-full sm:w-auto flex items-center gap-2 px-3 sm:px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-200 hover:border-indigo-500/50 transition-colors sm:min-w-[180px] justify-between flex-1 sm:flex-initial"
+                className="w-full sm:w-auto flex items-center gap-2 px-3 sm:px-4 py-2 bg-card border border-border rounded-lg text-xs sm:text-sm text-foreground hover:border-accent/50 transition-colors sm:min-w-[180px] justify-between flex-1 sm:flex-initial"
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                  <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                     {selectedPro.name.split(' ').map(n => n[0]).slice(0, 2).join('') || <Users size={12} />}
                   </div>
                   <span className="truncate">{selectedPro.name}</span>
                 </div>
-                <ChevronDown size={14} className={`text-slate-400 transition-transform flex-shrink-0 ${isProDropdownOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={14} className={`text-muted-foreground transition-transform flex-shrink-0 ${isProDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={8} className="min-w-[200px] bg-white dark:bg-slate-900 border-slate-200 dark:border-white/10 rounded-xl p-1">
+            <DropdownMenuContent align="end" sideOffset={8} className="min-w-[200px] bg-card border-border rounded-xl p-1">
               {dropdownProfessionals.map(pro => (
                 <DropdownMenuItem
                   key={pro.id}
                   onClick={() => { setSelectedProId(pro.id); setIsProDropdownOpen(false); }}
                   className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer rounded-lg"
                 >
-                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground flex-shrink-0">
                     {pro.avatar || <Users size={12} />}
                   </div>
                   {pro.name}
@@ -335,14 +335,14 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           </DropdownMenu>
         )}
         {isSolo && selectedPro && (
-          <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-lg text-[10px] sm:text-xs text-indigo-700 dark:text-indigo-300 flex-1 sm:flex-initial">
+          <div className="px-3 py-2 bg-accent/10 border border-accent/20 rounded-lg text-[10px] sm:text-xs text-accent flex-1 sm:flex-initial">
             <span className="hidden sm:inline">No plano SOLO, os agendamentos são automaticamente vinculados a você.</span>
             <span className="sm:hidden">Plano SOLO: vinculado a você</span>
           </div>
         )}
 
         {/* View Switcher */}
-        <div className="flex bg-slate-100 dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-white/5 self-stretch sm:self-auto">
+        <div className="flex bg-muted rounded-md p-1 border border-border self-stretch sm:self-auto">
           {[
             { id: 'daily' as ViewType, label: 'Diário', shortLabel: 'Dia', icon: Calendar },
             { id: 'weekly' as ViewType, label: 'Semanal', shortLabel: 'Sem', icon: CalendarRange },
@@ -355,8 +355,8 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
                 onClick={() => setViewType(v.id)}
                 className={`flex-1 sm:flex-initial px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1 sm:gap-1.5 ${
                   viewType === v.id 
-                  ? 'bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm dark:shadow-lg dark:shadow-indigo-500/20' 
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-card text-accent' 
+                  : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <Icon size={14} />

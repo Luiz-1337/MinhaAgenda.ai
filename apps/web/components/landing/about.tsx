@@ -74,7 +74,7 @@ const About: React.FC = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ ...spring, delay: i * 0.06 }}
-                  className="rounded-xl border border-background/15 dark:border-border bg-background/8 dark:bg-card px-4 py-4"
+                  className="rounded-md border border-background/15 dark:border-border bg-background/8 dark:bg-card px-4 py-4"
                 >
                   <p className="text-3xl font-bold tracking-tighter text-background dark:text-foreground">
                     {stat.value}
@@ -94,7 +94,7 @@ const About: React.FC = () => {
             viewport={{ once: true, margin: '-60px' }}
             transition={{ ...spring, delay: 0.12 }}
           >
-            <div className="relative rounded-2xl overflow-hidden border border-background/10 dark:border-border shadow-2xl shadow-black/30 aspect-[4/5]">
+            <div className="relative rounded-md overflow-hidden border border-background/10 dark:border-border aspect-[4/5]">
               <Image
                 src="https://images.unsplash.com/photo-1560066984-138dadb4c035?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
                 alt="Salão de beleza moderno"

@@ -82,20 +82,20 @@ export default function RegisterPage() {
   // Se plano inválido na URL
   if (rawPlan && !isValidPlan) {
     return (
-      <div className="w-screen h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-background p-4">
         <div className="max-w-md w-full text-center space-y-6">
           <div className="mx-auto w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
             <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+          <h1 className="text-2xl font-bold text-foreground">
             Plano não encontrado
           </h1>
-          <p className="text-slate-500 dark:text-slate-400">
+          <p className="text-muted-foreground">
             O plano selecionado não existe ou o link está incorreto.
           </p>
           <button
             onClick={() => router.push('/#plans')}
-            className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 transition-colors w-full sm:w-auto"
+            className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-accent-foreground bg-accent hover:bg-accent/90 transition-colors w-full sm:w-auto"
           >
             Ver Planos Disponíveis
             <ArrowRight className="ml-2 -mr-1 h-5 w-5" />
@@ -188,16 +188,16 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+    <div className="min-h-screen bg-background transition-colors duration-300">
       {/* Header */}
-      <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <div className="border-b border-border bg-card">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Bot className="text-white" size={24} />
+            <div className="w-10 h-10 rounded-md bg-accent flex items-center justify-center">
+              <Bot className="text-accent-foreground" size={24} />
             </div>
-            <span className="font-bold text-2xl text-slate-800 dark:text-white tracking-tight">
-              minha<span className="text-indigo-600 dark:text-indigo-400">agenda</span>.ai
+            <span className="font-bold text-2xl text-foreground tracking-tight">
+              minha<span className="text-accent">agenda</span>.ai
             </span>
           </div>
           <Stepper currentStep={currentStep} steps={STEPS} />
@@ -206,7 +206,7 @@ export default function RegisterPage() {
 
       {/* Content */}
       <div className={`mx-auto px-4 py-12 ${currentStep === 4 ? 'max-w-5xl' : 'max-w-2xl'}`}>
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-8">
+        <div className="bg-card rounded-lg border border-border p-8">
           {currentStep === 1 && <StepCredentials onNext={handleStep1Next} />}
           {currentStep === 2 && <StepAccount onNext={handleStep2Next} onBack={handleBack} />}
           {currentStep === 3 && <StepSalon onNext={handleStep3Next} onBack={handleBack} />}

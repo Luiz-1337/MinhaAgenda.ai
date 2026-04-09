@@ -245,7 +245,7 @@ export function MetaEmbeddedSignup({
       </button>
 
       {!sdkLoaded && (
-        <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
           <Loader2 size={12} className="animate-spin" />
           Carregando Facebook SDK...
         </p>
@@ -258,13 +258,13 @@ export function MetaEmbeddedSignup({
         </div>
       )}
 
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-muted-foreground">
         Você será redirecionado para o Meta Business para conectar sua conta WhatsApp Business.{" "}
         <a
           href="https://business.facebook.com/latest/whatsapp_manager"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-indigo-500 hover:text-indigo-600 inline-flex items-center gap-0.5"
+          className="text-accent hover:text-accent/80 inline-flex items-center gap-0.5"
         >
           Saiba mais <ExternalLink size={10} />
         </a>

@@ -285,19 +285,19 @@ export default function TrainingPage({ params }: PageProps) {
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push(`/${salonId}/agents`)}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-all"
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
           >
             <ArrowLeft size={20} />
           </button>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-500 rounded-lg text-white shadow-lg shadow-indigo-500/20">
+            <div className="p-2 bg-primary rounded-md text-primary-foreground">
               <GraduationCap size={18} />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">
+              <h2 className="text-2xl font-bold text-foreground tracking-tight">
                 Treinamentos da IA
               </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 {agentName ? `Agente: ${agentName}` : "Carregando..."}
               </p>
             </div>
@@ -306,14 +306,14 @@ export default function TrainingPage({ params }: PageProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsUploadDialogOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-muted/80 text-foreground rounded-lg text-sm font-semibold transition-colors"
           >
             <Upload size={16} />
             Enviar Arquivo
           </button>
           <button
             onClick={() => setIsCreateDialogOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-indigo-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-semibold transition-colors "
           >
             <Plus size={16} />
             Adicionar Conhecimento
@@ -322,8 +322,8 @@ export default function TrainingPage({ params }: PageProps) {
       </div>
 
       {/* Description */}
-      <div className="bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-200/50 dark:border-indigo-500/20 rounded-xl p-4">
-        <p className="text-sm text-slate-700 dark:text-slate-300">
+      <div className="bg-accent/10 border border-accent/20 rounded-md p-4">
+        <p className="text-sm text-foreground">
           Adicione textos, regras e políticas que a IA usará para responder dúvidas dos clientes.
           Cada texto será convertido em vetores para busca semântica e usado automaticamente no chat.
           Você pode adicionar texto manualmente ou enviar arquivos PDF e TXT que serão processados automaticamente.
@@ -331,13 +331,13 @@ export default function TrainingPage({ params }: PageProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col">
+      <div className="flex-1 overflow-hidden bg-card rounded-md border border-border flex flex-col">
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
-            <Loader2 size={32} className="animate-spin text-indigo-500" />
+            <Loader2 size={32} className="animate-spin text-accent" />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <GraduationCap size={48} className="mb-4 opacity-50" />
             <p className="text-base font-medium">Nenhum conhecimento cadastrado ainda.</p>
             <p className="text-sm mt-1">Adicione o primeiro conhecimento acima.</p>
@@ -350,16 +350,16 @@ export default function TrainingPage({ params }: PageProps) {
                 return group.chunks.map((item) => (
                   <div
                     key={item.id}
-                    className="group p-5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 rounded-xl hover:border-indigo-500/30 transition-all"
+                    className="group p-5 bg-background border border-border rounded-md hover:border-accent/30 transition-all"
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <p className="flex-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                      <p className="flex-1 text-sm text-foreground whitespace-pre-wrap leading-relaxed">
                         {item.content}
                       </p>
                       <button
                         onClick={() => handleDeleteClick(item)}
                         disabled={isDeleting === item.id || isPending}
-                        className="flex-shrink-0 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-shrink-0 p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Remover conhecimento"
                       >
                         {isDeleting === item.id ? (
@@ -369,7 +369,7 @@ export default function TrainingPage({ params }: PageProps) {
                         )}
                       </button>
                     </div>
-                    <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                    <div className="mt-2 text-xs text-muted-foreground">
                       Adicionado em {new Date(item.createdAt).toLocaleDateString("pt-BR")}
                     </div>
                   </div>
@@ -380,21 +380,21 @@ export default function TrainingPage({ params }: PageProps) {
               return (
                 <div
                   key={key}
-                  className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden"
+                  className="bg-background border border-border rounded-md overflow-hidden"
                 >
                   {/* Header do arquivo */}
-                  <div className="p-4 bg-slate-100 dark:bg-slate-800/50 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+                  <div className="p-4 bg-muted border-b border-border flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       {group.fileType === "pdf" ? (
-                        <FileText size={20} className="text-red-500" />
+                        <FileText size={20} className="text-red-600 dark:text-red-400" />
                       ) : (
-                        <File size={20} className="text-blue-500" />
+                        <File size={20} className="text-blue-600 dark:text-blue-400" />
                       )}
                       <div>
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                        <p className="text-sm font-semibold text-foreground">
                           {group.fileName}
                         </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-muted-foreground">
                           {group.chunks.length} {group.chunks.length === 1 ? "chunk" : "chunks"} •{" "}
                           {group.uploadedAt
                             ? `Enviado em ${new Date(group.uploadedAt).toLocaleDateString("pt-BR")}`
@@ -408,7 +408,7 @@ export default function TrainingPage({ params }: PageProps) {
                         setIsDeleteFileDialogOpen(true)
                       }}
                       disabled={isPending}
-                      className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Remover todos os chunks deste arquivo"
                     >
                       <Trash2 size={14} />
@@ -421,24 +421,24 @@ export default function TrainingPage({ params }: PageProps) {
                     {group.chunks.map((item, index) => (
                       <div
                         key={item.id}
-                        className="p-4 bg-white dark:bg-slate-900/30 border border-slate-200 dark:border-white/5 rounded-lg"
+                        className="p-4 bg-card border border-border rounded-lg"
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded">
+                              <span className="text-xs font-medium text-accent bg-accent/10 px-2 py-0.5 rounded">
                                 Chunk {((item.metadata as { chunkIndex?: number })?.chunkIndex ?? index) + 1}/
                                 {(item.metadata as { totalChunks?: number })?.totalChunks ?? group.chunks.length}
                               </span>
                             </div>
-                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
                               {item.content}
                             </p>
                           </div>
                           <button
                             onClick={() => handleDeleteClick(item)}
                             disabled={isDeleting === item.id || isPending}
-                            className="flex-shrink-0 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-shrink-0 p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Remover este chunk"
                           >
                             {isDeleting === item.id ? (
@@ -460,26 +460,26 @@ export default function TrainingPage({ params }: PageProps) {
 
       {/* Create Dialog */}
       {isCreateDialogOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300"
+            className="absolute inset-0 bg-black/80 animate-in fade-in duration-300"
             onClick={() => setIsCreateDialogOpen(false)}
           />
 
           {/* Modal Card */}
-          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
+          <div className="relative w-full max-w-2xl bg-card border border-border rounded-md shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
             {/* Header */}
-            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+            <div className="p-6 border-b border-border flex justify-between items-center bg-muted/50">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-500 rounded-lg text-white shadow-lg shadow-indigo-500/20">
+                <div className="p-2 bg-primary rounded-md text-primary-foreground">
                   <Plus size={18} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
+                  <h2 className="text-lg font-bold text-foreground tracking-tight">
                     Adicionar Conhecimento
                   </h2>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
                     Treinamento da IA
                   </p>
                 </div>
@@ -487,7 +487,7 @@ export default function TrainingPage({ params }: PageProps) {
               <button
                 onClick={() => setIsCreateDialogOpen(false)}
                 disabled={isPending}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X size={20} />
               </button>
@@ -497,18 +497,18 @@ export default function TrainingPage({ params }: PageProps) {
             <div className="flex-1 overflow-y-auto p-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                    Texto do Conhecimento <span className="text-red-500">*</span>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Texto do Conhecimento <span className="text-red-600 dark:text-red-400">*</span>
                   </label>
                   <textarea
                     value={newContent}
                     onChange={(e) => setNewContent(e.target.value)}
                     placeholder="Ex: Política de Atraso: Clientes que chegarem com mais de 15 minutos de atraso terão o agendamento cancelado..."
                     rows={12}
-                    className="w-full p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                    className="w-full p-4 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none placeholder:text-muted-foreground"
                     disabled={isPending}
                   />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-muted-foreground">
                     Este texto será convertido em vetores e usado para melhorar as respostas da IA no chat.
                   </p>
                 </div>
@@ -516,18 +516,18 @@ export default function TrainingPage({ params }: PageProps) {
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex justify-end gap-3">
+            <div className="p-6 border-t border-border bg-muted/50 flex justify-end gap-3">
               <button
                 onClick={() => setIsCreateDialogOpen(false)}
                 disabled={isPending}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleAdd}
                 disabled={isPending || !newContent.trim()}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
+                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed "
               >
                 {isPending ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -543,26 +543,26 @@ export default function TrainingPage({ params }: PageProps) {
 
       {/* Upload Dialog */}
       {isUploadDialogOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300"
+            className="absolute inset-0 bg-black/80 animate-in fade-in duration-300"
             onClick={() => setIsUploadDialogOpen(false)}
           />
 
           {/* Modal Card */}
-          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
+          <div className="relative w-full max-w-2xl bg-card border border-border rounded-md shadow-[0_20px_60px_rgba(0,0,0,0.5)] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
             {/* Header */}
-            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02]">
+            <div className="p-6 border-b border-border flex justify-between items-center bg-muted/50">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-500 rounded-lg text-white shadow-lg shadow-indigo-500/20">
+                <div className="p-2 bg-primary rounded-md text-primary-foreground">
                   <Upload size={18} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800 dark:text-white tracking-tight">
+                  <h2 className="text-lg font-bold text-foreground tracking-tight">
                     Enviar Arquivo
                   </h2>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
                     PDF ou TXT
                   </p>
                 </div>
@@ -573,7 +573,7 @@ export default function TrainingPage({ params }: PageProps) {
                   setUploadingFiles([])
                 }}
                 disabled={uploadingFiles.some((f) => f.status === "uploading")}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X size={20} />
               </button>
@@ -587,22 +587,22 @@ export default function TrainingPage({ params }: PageProps) {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+                  className={`border-2 border-dashed rounded-md p-8 text-center transition-all ${
                     isDragging
-                      ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10"
-                      : "border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600"
+                      ? "border-accent bg-accent/10"
+                      : "border-border hover:border-accent"
                   }`}
                 >
                   <Upload
                     size={48}
                     className={`mx-auto mb-4 ${
-                      isDragging ? "text-indigo-500" : "text-slate-400"
+                      isDragging ? "text-accent" : "text-muted-foreground"
                     }`}
                   />
-                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  <p className="text-sm font-semibold text-foreground mb-2">
                     Arraste arquivos aqui ou clique para selecionar
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                  <p className="text-xs text-muted-foreground mb-4">
                     Suporta arquivos PDF e TXT (máximo 10MB)
                   </p>
                   <input
@@ -616,7 +616,7 @@ export default function TrainingPage({ params }: PageProps) {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadingFiles.some((f) => f.status === "uploading")}
-                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Selecionar Arquivos
                   </button>
@@ -625,27 +625,27 @@ export default function TrainingPage({ params }: PageProps) {
                 {/* Uploading Files List */}
                 {uploadingFiles.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    <p className="text-sm font-semibold text-foreground">
                       Arquivos em processamento:
                     </p>
                     {uploadingFiles.map((uploadingFile, index) => (
                       <div
                         key={index}
-                        className="p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/10 rounded-lg"
+                        className="p-3 bg-background border border-border rounded-lg"
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             {uploadingFile.file.name.endsWith(".pdf") ? (
-                              <FileText size={16} className="text-red-500" />
+                              <FileText size={16} className="text-red-600 dark:text-red-400" />
                             ) : (
-                              <File size={16} className="text-blue-500" />
+                              <File size={16} className="text-blue-600 dark:text-blue-400" />
                             )}
-                            <span className="text-sm text-slate-700 dark:text-slate-300">
+                           <span className="text-sm text-foreground">
                               {uploadingFile.file.name}
                             </span>
                           </div>
                           {uploadingFile.status === "uploading" && (
-                            <Loader2 size={16} className="animate-spin text-indigo-500" />
+                            <Loader2 size={16} className="animate-spin text-accent" />
                           )}
                           {uploadingFile.status === "success" && (
                             <span className="text-xs text-green-600 dark:text-green-400 font-medium">
@@ -659,9 +659,9 @@ export default function TrainingPage({ params }: PageProps) {
                           )}
                         </div>
                         {uploadingFile.status === "uploading" && (
-                          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+                          <div className="w-full bg-muted rounded-full h-1.5">
                             <div
-                              className="bg-indigo-500 h-1.5 rounded-full transition-all"
+                              className="bg-primary h-1.5 rounded-full transition-all"
                               style={{ width: `${uploadingFile.progress}%` }}
                             />
                           </div>
@@ -679,14 +679,14 @@ export default function TrainingPage({ params }: PageProps) {
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex justify-end gap-3">
+            <div className="p-6 border-t border-border bg-muted/50 flex justify-end gap-3">
               <button
                 onClick={() => {
                   setIsUploadDialogOpen(false)
                   setUploadingFiles([])
                 }}
                 disabled={uploadingFiles.some((f) => f.status === "uploading")}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Fechar
               </button>

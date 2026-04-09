@@ -99,11 +99,11 @@ export default async function BillingPage({
     <div className="flex flex-col h-full gap-6 overflow-hidden">
       {/* Header */}
       <div className="flex flex-col gap-1 flex-shrink-0">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
-          <CreditCard size={24} className="text-indigo-500" />
+        <h2 className="text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
+          <CreditCard size={24} className="text-accent" />
           Faturamento
         </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-muted-foreground">
           Gerencie sua assinatura, metodos de pagamento e faturas.
         </p>
       </div>
@@ -114,28 +114,26 @@ export default async function BillingPage({
           {/* Coluna Esquerda: Plano + Incluso */}
           <div className="flex flex-col gap-6">
             {/* Plan Card (Hero) */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-xl shadow-indigo-500/20">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none" />
+            <div className="relative overflow-hidden rounded-md bg-accent text-accent-foreground">
 
               <div className="relative p-6 sm:p-8 flex flex-col gap-6">
                 <div className="flex justify-between items-start flex-wrap gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-3 py-1 rounded-full backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider ${
-                        details.subscriptionStatus === 'PAST_DUE' ? 'bg-amber-500/30' :
-                        details.subscriptionStatus === 'CANCELED' ? 'bg-red-500/30' :
-                        'bg-white/20'
+                      <span className={`px-3 py-1 rounded-sm border border-accent-foreground/20 text-xs font-bold uppercase tracking-wider ${
+                        details.subscriptionStatus === 'PAST_DUE' ? 'bg-amber-100 dark:bg-amber-900' :
+                        details.subscriptionStatus === 'CANCELED' ? 'bg-red-100 dark:bg-red-900' :
+                        'bg-accent-foreground/20'
                       }`}>
                         {statusInfo.label}
                       </span>
-                      <span className="flex items-center gap-1 text-xs font-medium text-indigo-100 bg-indigo-800/30 px-2 py-1 rounded-md border border-white/10">
+                      <span className="flex items-center gap-1 text-xs font-medium text-accent-foreground/80 bg-accent-foreground/10 px-2 py-1 rounded-sm border border-accent-foreground/10">
                         <Sparkles size={10} /> {details.tier}
                       </span>
                     </div>
                     <h3 className="text-3xl font-bold mb-1">{plan.name}</h3>
                     {renewalDate && (
-                      <p className="text-indigo-100 text-sm opacity-90">
+                      <p className="text-accent-foreground/80 text-sm opacity-90">
                         {details.subscription?.cancelAtPeriodEnd
                           ? <>Cancela em <span className="font-mono font-bold">{renewalDate}</span></>
                           : <>Renovacao automatica em <span className="font-mono font-bold">{renewalDate}</span></>
@@ -143,19 +141,19 @@ export default async function BillingPage({
                       </p>
                     )}
                     {!hasSubscription && details.subscriptionStatus === 'TRIAL' && (
-                      <p className="text-amber-200 text-sm flex items-center gap-1 mt-1">
+                      <p className="text-amber-300 text-sm flex items-center gap-1 mt-1">
                         <AlertTriangle size={14} />
                         Assine para continuar usando o sistema
                       </p>
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-sm opacity-80">Valor mensal</p>
-                    <p className="text-3xl font-bold">{plan.price}<span className="text-lg opacity-80">/mes</span></p>
+                    <p className="text-sm opacity-70">Valor mensal</p>
+                    <p className="text-3xl font-bold">{plan.price}<span className="text-lg opacity-70">/mes</span></p>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-white/10 flex flex-wrap gap-6 items-center justify-between">
+                <div className="pt-6 border-t border-accent-foreground/10 flex flex-wrap gap-6 items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div>
                       <p className="text-[10px] uppercase tracking-wider opacity-70 mb-1">Creditos Restantes</p>
@@ -170,7 +168,7 @@ export default async function BillingPage({
                         <span className="text-xs opacity-70">/ {credits.total >= 1_000_000 ? `${(credits.total / 1_000_000).toFixed(0)}M` : credits.total}</span>
                       </div>
                     </div>
-                    <div className="w-px h-8 bg-white/20" />
+                    <div className="w-px h-8 bg-accent-foreground/20" />
                     <div>
                       <p className="text-[10px] uppercase tracking-wider opacity-70 mb-1">Status</p>
                       <div className={`flex items-center gap-2 ${statusInfo.color}`}>
@@ -190,15 +188,15 @@ export default async function BillingPage({
             </div>
 
             {/* Incluso no Plano */}
-            <div className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-200 dark:border-white/5 p-6">
-              <h3 className="text-base font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                <Zap size={18} className="text-amber-500" />
+            <div className="bg-card rounded-md border border-border p-6">
+              <h3 className="text-base font-bold text-foreground mb-4 flex items-center gap-2">
+                <Zap size={18} className="text-amber-600 dark:text-amber-400" />
                 Incluso no seu plano
               </h3>
               <ul className="space-y-3">
                 {plan.features.map((feature, idx) => (
-                  <li key={idx} className="flex items-start gap-3 text-sm text-slate-600 dark:text-slate-300">
-                    <div className="mt-0.5 p-0.5 rounded-full bg-emerald-500/10 text-emerald-500 dark:text-emerald-400">
+                  <li key={idx} className="flex items-start gap-3 text-sm text-foreground">
+                    <div className="mt-0.5 p-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
                       <Check size={12} strokeWidth={3} />
                     </div>
                     <span>{feature}</span>

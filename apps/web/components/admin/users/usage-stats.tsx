@@ -27,7 +27,7 @@ export function UsageStats({ tokens = 0, plan }: UsageStatsProps) {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Plano Atual</CardTitle>
-                    <Zap className="h-4 w-4 text-indigo-500" />
+                    <Zap className="h-4 w-4 text-accent" />
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{plan}</div>

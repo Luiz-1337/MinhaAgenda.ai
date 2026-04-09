@@ -12,8 +12,8 @@ export function LoadingOverlay() {
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[9999] flex items-center justify-center",
-        "bg-black/50 backdrop-blur-sm",
+        "fixed inset-0 z-50 flex items-center justify-center",
+        "bg-black/50",
         "transition-opacity duration-300"
       )}
       aria-label="Carregando"
@@ -22,15 +22,15 @@ export function LoadingOverlay() {
     >
       <div
         className={cn(
-          "bg-white dark:bg-slate-900 rounded-2xl shadow-2xl",
+          "bg-card rounded-md",
           "px-8 py-6 flex flex-col items-center gap-4",
           "min-w-[200px] max-w-[90%]",
-          "border border-slate-200 dark:border-slate-800"
+          "border border-border"
         )}
       >
         <Spinner size="lg" />
         {loadingMessage && (
-          <p className="text-sm font-medium text-slate-700 dark:text-slate-300 text-center">
+          <p className="text-sm font-medium text-foreground text-center">
             {loadingMessage}
           </p>
         )}
@@ -38,7 +38,3 @@ export function LoadingOverlay() {
     </div>
   )
 }
-
-
-
-
