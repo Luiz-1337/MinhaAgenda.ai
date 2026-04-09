@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
     "pdf-parse",
     "ngrok",
     "qrcode",
+    "nodemailer",
   ],
   images: {
     formats: ["image/avif", "image/webp"],

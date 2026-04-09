@@ -52,7 +52,9 @@
       "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, Name, Path\")",
       "Bash(powershell -Command \"Get-Process | Where-Object { $_.Path -like ''*git*'' -or $_.Name -match ''bash|git'' } | Select-Object Id, Name, Path\")",
       "Bash(powershell -Command \"Stop-Process -Id 13416,17368 -Force -ErrorAction SilentlyContinue\")",
-      "Bash(powershell -Command \"Get-Process | Where-Object { $_.Name -match ''bash|git'' } | Select-Object Id, Name, Path\")"
+      "Bash(powershell -Command \"Get-Process | Where-Object { $_.Name -match ''bash|git'' } | Select-Object Id, Name, Path\")",
+      "Bash(node --env-file=.env.local -e ':*)",
+      "Bash(node --env-file=.env -e ':*)"
     ]
   }
 }

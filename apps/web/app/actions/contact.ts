@@ -1,6 +1,6 @@
 "use server"
 
-import nodemailer from "nodemailer"
+import { Resend } from "resend"
 
 interface ContactFormData {
   name: string
@@ -18,20 +18,14 @@ export async function sendContactEmail(data: ContactFormData): Promise<{ success
     return { error: "Nome, e-mail e mensagem são obrigatórios." }
   }
 
-  const user = process.env.CONTACT_EMAIL_USER
-  const pass = process.env.CONTACT_EMAIL_PASS
+  const apiKey = process.env.RESEND_API_KEY
 
-  if (!user || !pass) {
-    console.error("CONTACT_EMAIL_USER ou CONTACT_EMAIL_PASS não configurados")
+  if (!apiKey) {
+    console.error("RESEND_API_KEY não configurado")
     return { error: "Erro interno ao enviar mensagem. Tente novamente mais tarde." }
   }
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: { user, pass },
-  })
+  const resend = new Resend(apiKey)
 
   const html = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
@@ -67,13 +61,18 @@ export async function sendContactEmail(data: ContactFormData): Promise<{ success
   `
 
   try {
-    await transporter.sendMail({
-      from: `"MinhaAgenda.AI Contato" <${user}>`,
+    const { error } = await resend.emails.send({
+      from: "MinhaAgenda.AI <onboarding@resend.dev>",
       to: "minhaagendaai@gmail.com",
       replyTo: email,
       subject: `[Contato] ${company ? `${company} — ` : ""}${name}`,
       html,
     })
+
+    if (error) {
+      console.error("Erro ao enviar email de contato:", error)
+      return { error: "Falha ao enviar mensagem. Tente novamente mais tarde." }
+    }
 
     return { success: true }
   } catch (err) {
