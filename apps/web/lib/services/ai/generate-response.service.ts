@@ -652,9 +652,9 @@ function summarizeToolResult(toolName: string, result: unknown): string {
       return `${data.name || ""}, ${data.address || ""}`.substring(0, 150);
     }
 
-    // Customer identification
-    if (toolName === "identifyCustomer") {
-      return `${data.name || ""}(id:${data.customerId || ""})`;
+    // Customer name update
+    if (toolName === "updateCustomerName") {
+      return `nome atualizado: ${data.name || ""}`;
     }
 
     // Fallback genérico

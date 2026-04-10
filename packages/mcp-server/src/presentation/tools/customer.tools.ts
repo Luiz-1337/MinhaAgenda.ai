@@ -1,11 +1,9 @@
 import { Container, TOKENS } from "../../container"
 import { isOk } from "../../shared/types"
 import {
-  IdentifyCustomerUseCase,
   UpdateCustomerUseCase,
 } from "../../application/use-cases/customer"
 import {
-  identifyCustomerSchema,
   updateCustomerNameSchema,
 } from "../schemas"
 import { CustomerPresenter, ErrorPresenter } from "../presenters"
@@ -13,40 +11,15 @@ import type { ToolSet } from "./types"
 
 /**
  * Cria as tools de cliente
+ * Nota: identifyCustomer foi removido — a identificação é automática no pipeline
+ * (webhook identifica pelo telefone do WhatsApp, addAppointment faz identify internamente).
  */
 export function createCustomerTools(
   container: Container,
-  salonId: string,
-  clientPhone: string
+  _salonId: string,
+  _clientPhone: string
 ): ToolSet {
   return {
-    identifyCustomer: {
-      description:
-        "Identifica cliente existente pelo telefone. Se não encontrar, cria automaticamente. Use SEMPRE que precisar do customerId. Não precisa de parâmetros se o cliente já está conversando via WhatsApp.",
-      inputSchema: identifyCustomerSchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<IdentifyCustomerUseCase>(
-            TOKENS.IdentifyCustomerUseCase
-          )
-
-          const result = await useCase.execute({
-            phone: input.phone || clientPhone,
-            name: input.name,
-            salonId,
-          })
-
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return CustomerPresenter.identificationToJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
-      },
-    },
-
     updateCustomerName: {
       description:
         "Atualiza o nome de um cliente no sistema.",

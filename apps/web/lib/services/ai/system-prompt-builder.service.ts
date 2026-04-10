@@ -8,11 +8,18 @@ import { AgentInfoService } from "./agent-info.service"
 const TIMEZONE = "America/Sao_Paulo"
 
 /**
- * Verifica se o nome é um telefone formatado (ex: (11) 98604-9295)
+ * Verifica se o nome precisa ser atualizado.
+ * Retorna true se:
+ * - É um telefone formatado (ex: (11) 98604-9295)
+ * - Contém emojis (nome do WhatsApp com emojis não é o nome real)
  */
-function isPhoneFormattedName(name: string): boolean {
+// Regex que cobre a maioria dos emojis Unicode (emoticons, symbols, dingbats, etc.)
+const EMOJI_REGEX = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/u
+
+function needsNameUpdate(name: string): boolean {
+  const trimmed = name.trim()
   const phonePattern = /^\(\d{2}\)\s\d{4,5}-\d{4}$/
-  return phonePattern.test(name.trim())
+  return phonePattern.test(trimmed) || EMOJI_REGEX.test(trimmed)
 }
 
 /**
@@ -90,23 +97,22 @@ function formatCustomerInfoText(
     : ""
 
   if (customerName) {
-    const isGenericName = isPhoneFormattedName(customerName)
-    if (isGenericName && customerId) {
+    if (needsNameUpdate(customerName) && customerId) {
+      const cleanedName = customerName.replace(EMOJI_REGEX, "").trim()
+      const nameHint = cleanedName.length >= 2 ? ` (WhatsApp: "${customerName}")` : ""
       return `\n\nINFORMAÇÃO DO CLIENTE:
-- O cliente está cadastrado apenas com o número de telefone: ${customerName}
-- IMPORTANTE: Este não é o nome real do cliente. Você DEVE perguntar educadamente o nome do cliente na primeira oportunidade (ex: "Olá! Para personalizar melhor o atendimento, qual é o seu nome?").
-- Quando o cliente fornecer o nome, use a tool updateCustomerName para atualizar o cadastro com o nome real.
-- O customerId é: ${customerId}
-- Tipo: CLIENTE NOVA - Cadastro incompleto, precisa solicitar dados básicos primeiro${noShowWarning}`
+- Nome precisa ser confirmado${nameHint}. customerId: ${customerId}
+- Pergunte o nome UMA VEZ na saudação inicial. Quando informar, chame updateCustomerName.
+- NUNCA peça telefone — você já tem o número do WhatsApp.${noShowWarning}`
     } else {
       return `\n\nINFORMAÇÃO DO CLIENTE:
 - Nome: ${customerName}
-- Tipo: ${isNewCustomer === true ? "CLIENTE NOVA" : isNewCustomer === false ? "CLIENTE RECORRENTE" : "Cliente"}${isNewCustomer === false ? " - Tem histórico de atendimentos, pode personalizar conversa lembrando preferências anteriores" : ""}${noShowWarning}`
+- ${isNewCustomer === true ? "Cliente nova" : isNewCustomer === false ? "Cliente recorrente" : "Cliente"}${noShowWarning}`
     }
   } else if (customerId) {
     return `\n\nINFORMAÇÃO DO CLIENTE:
-- Tipo: ${isNewCustomer === true ? "CLIENTE NOVA" : isNewCustomer === false ? "CLIENTE RECORRENTE" : "Cliente"}
-- O customerId é: ${customerId}${noShowWarning}`
+- customerId: ${customerId}
+- ${isNewCustomer === true ? "Cliente nova" : isNewCustomer === false ? "Cliente recorrente" : "Cliente"}${noShowWarning}`
   }
 
   return ""
@@ -227,55 +233,42 @@ Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmad
 HOJE: ${formattedDate} | HORA: ${formattedTime}
 Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
-REGRAS DE TOOLS (OBRIGATÓRIO):
-- NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool antes de informar qualquer dado.
-- IDs são internos do sistema. NUNCA mencione IDs, UUIDs ou códigos técnicos na resposta ao cliente.
-- Chame UMA tool de cada vez, na ordem correta. Espere o resultado antes de chamar a próxima.
-- NUNCA chame addAppointment sem antes confirmar disponibilidade via checkAvailability.
-- NUNCA chame checkAvailability sem o cliente ter informado uma DATA específica. Sem data → pergunte "Para qual dia?".
-- NUNCA chame updateAppointment ou removeAppointment sem antes listar com getMyFutureAppointments.
-- Se uma tool retornar erro, NÃO tente a mesma tool novamente. Peça ao cliente para reformular ou tente outra abordagem.
-- Ao receber resultados de tools, extraia apenas nome, preço, horário e data. Ignore campos técnicos.
+ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
+- Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
+- Faça UMA pergunta por vez. NUNCA acumule várias perguntas na mesma mensagem.
+- NUNCA peça telefone — você já tem o número do WhatsApp do cliente.
+- NUNCA re-confirme informações que o cliente já disse. Se ele disse "16h", não pergunte "confirma 16h?".
+- Se o cliente já deu serviço + data + horário, vá direto para a próxima etapa do fluxo.
+- Sem markdown, sem listas longas, sem bullets. Linguagem natural de WhatsApp.
+- Despedida/negação ("Não", "Obrigado", "Tchau"): responda cordialmente em 1 frase, ZERO tool calls.
 
-MEMÓRIA DE CONTEXTO (CRÍTICO):
+REGRAS DE TOOLS:
+- NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool.
+- IDs são internos. NUNCA mencione IDs, UUIDs ou códigos técnicos ao cliente.
+- Chame UMA tool de cada vez, na ordem correta.
+- NUNCA chame addAppointment sem checkAvailability antes.
+- NUNCA chame checkAvailability sem o cliente ter informado uma DATA.
+- NUNCA chame updateAppointment ou removeAppointment sem getMyFutureAppointments antes.
+- Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.
+
+MEMÓRIA DE CONTEXTO:
 Mensagens anteriores podem conter blocos ---TOOL_CONTEXT--- com dados de tools já chamadas.
-- LEIA esses blocos antes de agir. Eles contêm IDs, preços e horários já consultados.
-- NÃO repita tool calls cujos dados já estão no contexto. Se getServices já retornou a lista, USE os dados.
-- NÃO pergunte informações que o cliente já forneceu em mensagens anteriores.
-- Continue o fluxo de onde parou. Se o cliente já escolheu serviço e profissional, vá direto para data/horário.
-- Referencie dados já obtidos naturalmente (ex: "Você quer o Corte com João, certo? Para qual dia?").
-
-EXEMPLO DE CONVERSA CORRETA:
-Cliente: "Oi, quero agendar"
-Assistente: "Olá! Posso ajudar com seu agendamento. Qual serviço você gostaria?" [SEM tool call]
-Cliente: "Corte"
-Assistente: [Chama getServices] "Temos o Corte por R$50 (30 min). Deseja agendar? Para qual dia?"
-Cliente: "Sexta"
-Assistente: [Chama checkAvailability com serviceId do contexto] "Sexta temos horários às 09:00, 10:00 e 14:00. Qual prefere?"
-Cliente: "10h"
-Assistente: [Chama addAppointment] "Pronto! Seu Corte está agendado para sexta às 10:00. Até lá!"
+- USE esses dados. NÃO repita tool calls cujos resultados já estão no contexto.
+- NÃO pergunte o que o cliente já informou. Continue o fluxo de onde parou.
 
 ${bookingFlow}
 
-FLUXO DE REAGENDAMENTO:
-1. Cliente quer reagendar → Chame getMyFutureAppointments.
-2. Mostre agendamentos numerados (1, 2, 3...) com serviço, profissional e data. SEM IDs. Pergunte qual deseja reagendar.
-3. Cliente escolheu → Pergunte nova data desejada.
-4. Com nova data → Chame checkAvailability. Ofereça horários.
-5. Cliente escolheu horário → Chame updateAppointment. Confirme alteração.
+REAGENDAMENTO:
+1. Chame getMyFutureAppointments. Mostre agendamentos numerados (sem IDs).
+2. Cliente escolheu → Pergunte nova data.
+3. Chame checkAvailability → Ofereça horários.
+4. Chame updateAppointment → Confirme.
 
-FLUXO DE CANCELAMENTO:
-1. Cliente quer cancelar → Chame getMyFutureAppointments.
-2. Mostre agendamentos numerados. SEM IDs. Pergunte qual deseja cancelar.
-3. Cliente confirmou → Chame removeAppointment. Confirme cancelamento.
+CANCELAMENTO:
+1. Chame getMyFutureAppointments. Mostre agendamentos numerados (sem IDs).
+2. Cliente confirmou → Chame removeAppointment → Confirme.
 
-FORMATO DE RESPOSTAS:
-- Máximo 3 frases por mensagem. Seja direto e cordial.
-- No máximo 3 opções de horário por vez.
-- Use o nome do cliente quando disponível.
-- Sem markdown excessivo. Sem listas longas. Linguagem conversacional de WhatsApp.
-- Despedida/negação ("Não", "Obrigado", "Tchau"): responda cordialmente, ZERO tool calls.
-- A agenda SEMPRE existe. NUNCA diga que está inacessível. Em erro técnico, peça dia/horário e continue.
+A agenda SEMPRE existe. NUNCA diga que está inacessível.
 
 ${agentInfo?.systemPrompt || ""}`
   }
