@@ -4,7 +4,7 @@
 
 import { Worker, Job, DelayedError } from "bullmq";
 import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/infra/redis";
-import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
+import { MessageJobData, MessageJobResult, parseLatestJobSentinel } from "../lib/queues/message-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/infra/logger";
 import { StageTimer } from "../lib/infra/stage-timer";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
@@ -157,18 +157,33 @@ async function processMessage(
     // dispararia avisos desnecessários ao cliente.
 
     // ETAPA 1: Coalescing check ANTES do lock.
-    // Se uma mensagem mais recente já chegou para este chat, este job nunca vai
+    // Se uma mensagem mais recente ja chegou para este chat, este job nunca vai
     // gerar resposta de IA - vai ser descartado de qualquer forma. Descartar agora
     // evita esperar 60s no moveToDelayed quando o lock estiver ocupado.
-    // Exemplo do problema antigo: cliente manda "msg A", "msg B" rapido. A pega o lock.
-    //   B falha o lock -> moveToDelayed(60s) -> 60s depois acorda -> ve "C" como latest -> descarta.
-    //   Cliente espera 60s para nada.
+    //
+    // Comparamos por TIMESTAMP da mensagem (receivedAt), nao por messageId.
+    // Razao: webhook tem latencia variavel (~3-6s), entao a ordem de SET no
+    // sentinel pode inverter a ordem real de chegada. Comparar por timestamp
+    // garante que a mensagem mais nova cronologicamente vence.
+    const myReceivedAtMs = new Date(job.data.receivedAt).getTime();
     const redis = getRedisClient();
-    const latestMessageId = await redis.get(`chat:latest-job:${chatId}`);
+    const sentinelRaw = await redis.get(`chat:latest-job:${chatId}`);
     timer.mark("coalescing_checked");
-    if (latestMessageId && latestMessageId !== messageId) {
+    const sentinel = parseLatestJobSentinel(sentinelRaw);
+    // Sou "antigo" (deve ser coalesced) somente se:
+    //   - existe sentinel
+    //   - sentinel.messageId nao sou eu
+    //   - sentinel.timestamp > meu timestamp (sentinel e mais novo)
+    // Quando timestamps empatam ou sentinel nao tem timestamp (formato antigo),
+    // fica safe e processa.
+    if (
+      sentinel
+      && sentinel.messageId !== messageId
+      && sentinel.timestampMs > 0
+      && sentinel.timestampMs > myReceivedAtMs
+    ) {
       jobLogger.info(
-        { latestMessageId, savedMs: 60_000 },
+        { latestMessageId: sentinel.messageId, latestTs: sentinel.timestampMs, myTs: myReceivedAtMs, savedMs: 60_000 },
         "Message coalesced before lock attempt — newer message will handle the response"
       );
       timer.flush(jobLogger, { outcome: "coalesced_pre_lock", queueWaitMs });
@@ -199,10 +214,16 @@ async function processMessage(
 
     // ETAPA 3: Re-check coalescing apos adquirir o lock (corrida pequena mas possivel:
     // entre o check anterior e o lock, uma mensagem ainda mais nova pode ter chegado).
-    const latestAfterLock = await redis.get(`chat:latest-job:${chatId}`);
-    if (latestAfterLock && latestAfterLock !== messageId) {
+    const sentinelAfterLockRaw = await redis.get(`chat:latest-job:${chatId}`);
+    const sentinelAfterLock = parseLatestJobSentinel(sentinelAfterLockRaw);
+    if (
+      sentinelAfterLock
+      && sentinelAfterLock.messageId !== messageId
+      && sentinelAfterLock.timestampMs > 0
+      && sentinelAfterLock.timestampMs > myReceivedAtMs
+    ) {
       jobLogger.info(
-        { latestMessageId: latestAfterLock },
+        { latestMessageId: sentinelAfterLock.messageId, latestTs: sentinelAfterLock.timestampMs, myTs: myReceivedAtMs },
         "Message coalesced after lock — newer message arrived during lock acquisition"
       );
       timer.flush(jobLogger, { outcome: "coalesced_post_lock", queueWaitMs });

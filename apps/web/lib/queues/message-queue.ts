@@ -67,8 +67,48 @@ const QUEUE_NAME = "whatsapp-messages";
 // Configurável via CHAT_DEBOUNCE_MS. Padrão: 1500ms.
 const CHAT_DEBOUNCE_MS = parseInt(process.env.CHAT_DEBOUNCE_MS ?? "1500", 10);
 
-// Prefixo da chave Redis que rastreia a mensagem mais recente por chat
-const CHAT_LATEST_JOB_KEY = (chatId: string) => `chat:latest-job:${chatId}`;
+// Prefixo da chave Redis que rastreia a mensagem mais recente por chat.
+// Valor formato: "<receivedAtMs>:<messageId>"
+// Comparamos por timestamp (nao por ordem de SET) para evitar bug onde webhook
+// com latencia variavel sobrescreve o sentinel com mensagem mais antiga.
+export const CHAT_LATEST_JOB_KEY = (chatId: string) => `chat:latest-job:${chatId}`;
+
+// Lua script atomico: so atualiza o sentinel se o novo timestamp for mais novo.
+// Evita race onde 2 webhooks em paralelo tentam SET e o mais antigo "ganha"
+// porque terminou de executar depois.
+const SET_LATEST_IF_NEWER_LUA = `
+  local current = redis.call('GET', KEYS[1])
+  if current then
+    local currentTs = tonumber(string.match(current, '^(%d+)'))
+    local newTs = tonumber(ARGV[2])
+    if currentTs and newTs and currentTs >= newTs then
+      return current
+    end
+  end
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', tonumber(ARGV[3]))
+  return ARGV[1]
+`;
+
+/**
+ * Parse o sentinel "<timestampMs>:<messageId>".
+ * Aceita formato antigo (sem timestamp) para compatibilidade com jobs ja em fila.
+ */
+export function parseLatestJobSentinel(value: string | null): { timestampMs: number; messageId: string } | null {
+  if (!value) return null;
+  const colonIdx = value.indexOf(':');
+  if (colonIdx === -1) {
+    // Formato antigo: apenas messageId, sem timestamp.
+    return { timestampMs: 0, messageId: value };
+  }
+  const tsStr = value.slice(0, colonIdx);
+  const id = value.slice(colonIdx + 1);
+  const ts = Number.parseInt(tsStr, 10);
+  if (Number.isNaN(ts)) {
+    // Formato invalido - assume que o valor inteiro e o messageId.
+    return { timestampMs: 0, messageId: value };
+  }
+  return { timestampMs: ts, messageId: id };
+}
 
 // Singleton da fila
 let messageQueue: Queue<MessageJobData, MessageJobResult> | null = null;
@@ -161,7 +201,21 @@ export async function enqueueMessage(
   // O worker usa esse valor para decidir se deve gerar resposta de IA ou
   // se uma mensagem mais recente já assumiu a responsabilidade (coalescing).
   // Feito após queue.add para evitar sentinel setado sem job correspondente.
-  await redis.set(CHAT_LATEST_JOB_KEY(data.chatId), data.messageId, "EX", 300);
+  //
+  // Usamos `receivedAt` (timestamp real da mensagem no WhatsApp) e Lua atomico
+  // para garantir que so atualizamos se for de fato mais novo. Sem isso, webhook
+  // com latencia variavel pode sobrescrever sentinel com mensagem mais antiga,
+  // fazendo a mensagem realmente mais nova ser descartada como "coalesced".
+  const receivedAtMs = new Date(data.receivedAt).getTime();
+  const sentinelValue = `${receivedAtMs}:${data.messageId}`;
+  await redis.eval(
+    SET_LATEST_IF_NEWER_LUA,
+    1,
+    CHAT_LATEST_JOB_KEY(data.chatId),
+    sentinelValue,
+    String(receivedAtMs),
+    "300"
+  );
 
   logger.info(
     {

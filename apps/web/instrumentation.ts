@@ -14,9 +14,27 @@ export async function register() {
         const { validateEnv } = await import("./lib/env");
         validateEnv();
 
+        const { logger } = await import("./lib/infra/logger");
+
+        // Em ambientes serverless (Vercel) o worker NAO deve rodar inline:
+        // - Cada cold start adiciona ~20s de latencia (Redis reconnect)
+        // - Compete pelos jobs com o worker dedicado da Railway
+        // - Workers BullMQ requerem processo de longa duracao para funcionar bem
+        // O worker dedicado roda na Railway (npm run worker:start).
+        // Para forcar inline em desenvolvimento local, defina ENABLE_INLINE_WORKER=true.
+        const isServerless = !!process.env.VERCEL;
+        const forceInline = process.env.ENABLE_INLINE_WORKER === "true";
+
+        if (isServerless && !forceInline) {
+            logger.info(
+                { vercel: !!process.env.VERCEL },
+                "Skipping inline message worker (serverless env detected; worker runs dedicated on Railway)"
+            );
+            return;
+        }
+
         // Import dinâmico para evitar problemas com Edge Runtime
         const { createMessageWorker } = await import("./workers/message-processor");
-        const { logger } = await import("./lib/infra/logger");
 
         // Evita criar múltiplos workers durante hot reload
         const globalAny = global as any;
