@@ -23,6 +23,7 @@ import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
 import { findRelevantContext, generateQueryEmbedding } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../infra/logger";
+import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, profiles, appointments, professionals, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
@@ -81,6 +82,10 @@ export async function generateAIResponse(
 
   const startTime = Date.now();
 
+  // Stage timer para ai-response (cada etapa pesada: contexto paralelo, RAG, prompt, OpenAI, sanitize).
+  // Usa startTime compartilhado para que os tempos batam com o total do worker.
+  const timer = new StageTimer("ai-response", { chatId, salonId }, startTime);
+
   try {
     // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
     const embeddingPromise = generateQueryEmbedding(userMessage);
@@ -94,6 +99,7 @@ export async function generateAIResponse(
       fetchSoloProfessionalInfo(salonId),
       embeddingPromise.catch(() => null),
     ]);
+    timer.mark("context_loaded");
 
     if (!agentInfo) {
       contextLogger.error("No active agent found for salon");
@@ -134,6 +140,7 @@ export async function generateAIResponse(
     } else {
       if (AI_DEBUG) console.log("⏭️  RAG: Skipped (hasKnowledgeBase=false)");
     }
+    timer.mark("rag_done");
     // 3. Montar mensagens para Responses API
     const conversationMessages: ResponsesRunnerInputMessage[] = historyMessages.map((msg) => ({
       role: msg.role as "user" | "assistant",
@@ -179,6 +186,7 @@ export async function generateAIResponse(
       noShowRisk, // Flag de Risco de Falta
       soloProfessional // Profissional único (null se 2+)
     );
+    timer.mark("prompt_built");
 
     if (AI_DEBUG) {
       console.log("\n📝 ========== SYSTEM PROMPT ==========");
@@ -197,6 +205,7 @@ export async function generateAIResponse(
       tools: mcpTools as unknown as ToolSetDefinition,
       maxToolRounds: 5,
     });
+    timer.mark("openai_done");
 
     // Log das tool calls e resultados
     if (AI_DEBUG) {
@@ -252,6 +261,7 @@ export async function generateAIResponse(
     const toolSummary = buildToolSummary(steps);
     // Limpar tool context e dados sensíveis do texto enviado ao WhatsApp
     const finalText = sanitizeAssistantText(stripToolContext(rawText));
+    timer.mark("sanitized");
 
     // 10. Validar resposta final
     if (!finalText || !finalText.trim()) {
@@ -285,6 +295,17 @@ export async function generateAIResponse(
       "AI response generated successfully"
     );
 
+    // Breakdown da ai-response: mostra quanto tempo em cada etapa (context_loaded/rag/prompt/openai/sanitize).
+    // `openai_done.deltaMs` eh o tempo real da OpenAI incluindo tool rounds - maior suspeito de latencia.
+    timer.flush(contextLogger, {
+      outcome: "success",
+      stepsCount: steps.length,
+      totalTokens: usage.totalTokens,
+      model: modelName,
+      hasKnowledgeBase: agentInfo.hasKnowledgeBase,
+      usedRag: !!knowledgeContext,
+    });
+
     return {
       text: finalText,
       toolSummary,
@@ -299,6 +320,10 @@ export async function generateAIResponse(
     };
   } catch (error) {
     const duration = Date.now() - startTime;
+    timer.flush(contextLogger, {
+      outcome: "error",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     contextLogger.error(
       { err: error, duration },
       "Failed to generate AI response"

@@ -6,6 +6,7 @@ import { Worker, Job, DelayedError } from "bullmq";
 import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/infra/redis";
 import { MessageJobData, MessageJobResult } from "../lib/queues/message-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/infra/logger";
+import { StageTimer } from "../lib/infra/stage-timer";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
 import { processMedia } from "../lib/services/ai/media-processor.service";
 import { saveMessage } from "../lib/services/chat.service";
@@ -126,14 +127,34 @@ async function processMessage(
   const startTime = Date.now();
   let lockId: string | null = null;
 
+  // Stage timer: mede o tempo de cada etapa do processamento.
+  // `queue_wait_ms` = tempo entre enqueue (job.timestamp) e pickup pelo worker (startTime).
+  //   Inclui debounce + espera na fila. Se > 5s, temos backlog/limiter apertado.
+  // `delay_ms` = o delay configurado no enqueue (CHAT_DEBOUNCE_MS = 1500 por default).
+  const queueWaitMs = job.processedOn ? job.processedOn - job.timestamp : startTime - job.timestamp;
+  const timer = new StageTimer("worker", {
+    messageId,
+    chatId,
+    salonId,
+    jobId: job.id,
+  });
+
   try {
-    jobLogger.info("Processing message job");
+    jobLogger.info(
+      {
+        queueWaitMs,
+        debounceDelayMs: job.opts.delay ?? 0,
+        attempt: job.attemptsMade + 1,
+      },
+      "Processing message job"
+    );
 
     // Rate limiting é feito no webhook (antes de enfileirar).
     // Não verificar aqui novamente — causaria double-count no Redis e
     // dispararia avisos desnecessários ao cliente.
 
     lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
+    timer.mark("lock_tried");
     if (!lockId) {
       // Outra instância está processando este chat. Reagendar o job para 60s depois
       // usando moveToDelayed + DelayedError — não conta como tentativa falha.
@@ -153,11 +174,13 @@ async function processMessage(
     // processar toda a conversa (incluindo esta mensagem, que já está no DB).
     const redis = getRedisClient();
     const latestMessageId = await redis.get(`chat:latest-job:${chatId}`);
+    timer.mark("coalescing_checked");
     if (latestMessageId && latestMessageId !== messageId) {
       jobLogger.info(
         { latestMessageId },
         "Message coalesced — newer message will handle the response"
       );
+      timer.flush(jobLogger, { outcome: "coalesced", queueWaitMs });
       return {
         status: "coalesced",
         chatId,
@@ -170,9 +193,11 @@ async function processMessage(
       where: eq(chats.id, chatId),
       columns: { isManual: true },
     });
+    timer.mark("chat_record_loaded");
 
     if (chatRecord?.isManual) {
       jobLogger.info("Chat in manual mode, skipping AI processing");
+      timer.flush(jobLogger, { outcome: "manual_mode", queueWaitMs });
       return {
         status: "manual_mode",
         chatId,
@@ -186,6 +211,7 @@ async function processMessage(
       where: eq(salonsTable.id, salonId),
       columns: { subscriptionStatus: true, subscriptionStatusChangedAt: true },
     });
+    timer.mark("subscription_checked");
 
     if (!salonRecord || salonRecord.subscriptionStatus === 'CANCELED') {
       jobLogger.info({ salonId, status: salonRecord?.subscriptionStatus }, "Salon subscription inactive, skipping AI processing");
@@ -216,6 +242,7 @@ async function processMessage(
 
     const { getSalonRemainingCredits } = await import("../lib/services/credits.service");
     const creditsResult = await getSalonRemainingCredits(salonId);
+    timer.mark("credits_checked");
 
     if ('error' in creditsResult) {
       jobLogger.error({ salonId, error: creditsResult.error }, "Failed to fetch remaining credits, will retry");
@@ -224,6 +251,7 @@ async function processMessage(
 
     if (creditsResult.remaining <= 0) {
       jobLogger.info({ salonId, total: creditsResult.total, used: creditsResult.used }, "Salon out of credits, skipping AI processing");
+      timer.flush(jobLogger, { outcome: "out_of_credits", queueWaitMs });
       return {
         status: "out_of_credits",
         chatId,
@@ -253,6 +281,7 @@ async function processMessage(
           instanceName,
           messageKey: { remoteJid, fromMe: false, id: messageId },
         });
+        timer.mark("media_processed_image");
 
         const caption = body && body !== "[IMAGE]" ? body : "";
         const imageContext = caption
@@ -275,8 +304,10 @@ async function processMessage(
           AI_TIMEOUT_MS,
           "generateAIResponse"
         );
+        timer.mark("ai_response_generated");
 
         await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+        timer.mark("whatsapp_sent");
 
         const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
         await saveMessage(chatId, "assistant", response.text, {
@@ -298,6 +329,13 @@ async function processMessage(
           "Image message handled via AI vision"
         );
 
+        timer.flush(jobLogger, {
+          outcome: "success_image",
+          queueWaitMs,
+          tokensUsed: response.usage?.totalTokens,
+          mediaProcessingMs: media.metadata.processingTimeMs,
+        });
+
         return {
           status: "success",
           chatId,
@@ -315,6 +353,7 @@ async function processMessage(
           instanceName,
           messageKey: { remoteJid, fromMe: false, id: messageId },
         });
+        timer.mark("media_processed_audio");
 
         if (!media.transcribedText) {
           const fallback = "Desculpe, não consegui processar seu áudio. Poderia enviar como texto?";
@@ -352,8 +391,10 @@ async function processMessage(
           AI_TIMEOUT_MS,
           "generateAIResponse"
         );
+        timer.mark("ai_response_generated");
 
         await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+        timer.mark("whatsapp_sent");
 
         const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
         await saveMessage(chatId, "assistant", response.text, {
@@ -369,11 +410,19 @@ async function processMessage(
           const { debitSalonCredits } = await import("../lib/services/credits.service");
           await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
         }
+        timer.mark("saved_and_debited");
 
         jobLogger.info(
           { mediaType, tokensUsed: response.usage?.totalTokens, processingMs: media.metadata.processingTimeMs },
           "Audio message handled via transcription + AI"
         );
+
+        timer.flush(jobLogger, {
+          outcome: "success_audio",
+          queueWaitMs,
+          tokensUsed: response.usage?.totalTokens,
+          mediaProcessingMs: media.metadata.processingTimeMs,
+        });
 
         return {
           status: "success",
@@ -414,8 +463,10 @@ async function processMessage(
       AI_TIMEOUT_MS,
       "generateAIResponse"
     );
+    timer.mark("ai_response_generated");
 
     await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+    timer.mark("whatsapp_sent");
 
     const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
 
@@ -433,6 +484,7 @@ async function processMessage(
       const { debitSalonCredits } = await import("../lib/services/credits.service");
       await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
     }
+    timer.mark("saved_and_debited");
 
     const duration = Date.now() - startTime;
 
@@ -444,6 +496,16 @@ async function processMessage(
       },
       "Message processed successfully"
     );
+
+    // Log final agregado: breakdown por stage + queue wait + tokens.
+    // Para investigar latencia, busque por `pipeline=worker` e compare `queueWaitMs` vs `totalMs`
+    // vs o tempo do stage ai_response_generated.
+    timer.flush(jobLogger, {
+      outcome: "success",
+      queueWaitMs,
+      tokensUsed: response.usage.totalTokens,
+      model: response.model,
+    });
 
     return {
       status: "success",

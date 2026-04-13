@@ -112,14 +112,31 @@ export class EvolutionAPIClient {
           'Evolution API request'
         );
 
-        const response = await fetch(url, {
-          method,
-          headers: {
-            'apikey': this.apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: body ? JSON.stringify(body) : undefined,
-        });
+        // AbortSignal para cancelar fetch de verdade.
+        // Circuit breaker timeout (30s) so mede tempo; nao cancela a conexao HTTP pendente.
+        // Sem esse signal, fetch trava indefinidamente quando servidor nao responde.
+        const controller = new AbortController();
+        const fetchTimeoutId = setTimeout(() => controller.abort(), 25_000);
+
+        let response: Response;
+        try {
+          response = await fetch(url, {
+            method,
+            headers: {
+              'apikey': this.apiKey,
+              'Content-Type': 'application/json',
+            },
+            body: body ? JSON.stringify(body) : undefined,
+            signal: controller.signal,
+          });
+        } catch (fetchError) {
+          if (fetchError instanceof Error && (fetchError.name === 'AbortError' || fetchError.name === 'TimeoutError')) {
+            throw new EvolutionAPIError(`Evolution API request timed out after 25s (${method} ${path})`, 408);
+          }
+          throw fetchError;
+        } finally {
+          clearTimeout(fetchTimeoutId);
+        }
 
         const duration = Date.now() - startTime;
 

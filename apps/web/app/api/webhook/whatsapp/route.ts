@@ -19,6 +19,7 @@ import {
   mapConnectionState,
 } from '@/lib/schemas/evolution';
 import { logger, createContextLogger, hashPhone, createRequestContext, getDuration, getReplicaId } from '@/lib/infra/logger';
+import { StageTimer } from '@/lib/infra/stage-timer';
 import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/infra/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
@@ -161,6 +162,10 @@ async function handleMessageUpsert(
   const messageId = messageData.key.id;
   const remoteJid = messageData.key.remoteJid;
 
+  // Stage timer: mede o tempo gasto em cada etapa do webhook.
+  // Um log final agregado por messageId permite correlacionar com o worker.
+  const timer = new StageTimer('webhook', { messageId, instanceName });
+
   // Ignora mensagens de grupos (@g.us)
   if (remoteJid.endsWith('@g.us')) {
     reqLogger.info({ remoteJid }, 'Ignoring group message');
@@ -178,6 +183,8 @@ async function handleMessageUpsert(
   // Keep reply addressing exactly as inbound remoteJid to preserve Signal session routing.
   const replyToJid: string = remoteJid;
   let clientPhone: string;
+
+  timer.mark('parsed');
 
   if (addressingMode === 'lid') {
     const lid = remoteJid.split('@')[0];
@@ -235,6 +242,8 @@ async function handleMessageUpsert(
     hasMedia: hasMedia(messageData),
   });
 
+  timer.mark('lid_resolved');
+
   // 1. VERIFICAR IDEMPOTÊNCIA (com timeout)
   const isProcessed = await withTimeout(
     isMessageProcessed(messageId),
@@ -242,9 +251,12 @@ async function handleMessageUpsert(
     'isMessageProcessed'
   );
 
+  timer.mark('dedup_checked');
+
   if (isProcessed) {
     reqLogger.info('Duplicate message, skipping');
     WebhookMetrics.duplicate();
+    timer.flush(reqLogger, { outcome: 'duplicate' });
     return NextResponse.json({ status: 'ok' }, { status: 200 });
   }
 
@@ -262,11 +274,14 @@ async function handleMessageUpsert(
         'Rate limit exceeded at webhook level'
       );
       WebhookMetrics.rateLimited({ phone: hashPhone(clientPhone) });
+      timer.flush(reqLogger, { outcome: 'rate_limited' });
       // Retorna 200 para não causar retry
       return NextResponse.json({ status: 'ok' }, { status: 200 });
     }
     throw error;
   }
+
+  timer.mark('rate_limit_checked');
 
   // 3. BUSCAR AGENTE/SALÃO PELA INSTÂNCIA (dual-path: agent-first, salon-fallback)
   // PRO/Enterprise: instâncias nomeadas agent-{agentId} -> busca direto no agents
@@ -327,6 +342,7 @@ async function handleMessageUpsert(
   }
 
   reqLogger = reqLogger.child({ salonId, agentId });
+  timer.mark('agent_resolved');
 
   // 4. PARALELO: Buscar customer, chat e isNewCustomer simultaneamente
   const [customer, chat, isNewCustomer] = await Promise.all([
@@ -347,6 +363,8 @@ async function handleMessageUpsert(
     ),
   ]);
 
+  timer.mark('customer_chat_resolved');
+
   reqLogger = reqLogger.child({
     chatId: chat.id,
     customerId: customer.id,
@@ -366,6 +384,8 @@ async function handleMessageUpsert(
     'markMessageProcessed'
   );
 
+  timer.mark('marked_processed');
+
   // 9. SALVAR MENSAGEM RAW NO BANCO (com timeout)
   await withTimeout(
     saveMessage(chat.id, 'user', messageContent),
@@ -373,6 +393,8 @@ async function handleMessageUpsert(
     'saveMessage'
   );
   reqLogger.debug('Message saved to database');
+
+  timer.mark('message_saved');
 
   // 10. ENFILEIRAR PROCESSAMENTO (com timeout)
   await withTimeout(
@@ -401,11 +423,16 @@ async function handleMessageUpsert(
     'enqueueMessage'
   );
 
+  timer.mark('enqueued');
+
   const duration = getDuration(ctx);
 
   // Registra métricas de sucesso
   WebhookMetrics.enqueued({ salonId });
   WebhookMetrics.latency(duration);
+
+  // Emite log agregado com breakdown por stage (busque por messageId para ver end-to-end)
+  timer.flush(reqLogger, { outcome: 'enqueued', salonId, chatId: chat.id });
 
   return NextResponse.json({ status: 'ok' }, { status: 200 });
 }

@@ -3,6 +3,8 @@ import { TRINKS_API_BASE_URL } from '../../../domain/constants'
 import { IntegrationError } from '../../../domain/errors/integration-error'
 import type { SalonId } from '../../../domain/integrations/value-objects/salon-id'
 
+const TRINKS_REQUEST_TIMEOUT_MS = 15_000
+
 /**
  * HTTP client for Trinks API
  * Encapsulates fetch logic with error handling
@@ -26,9 +28,13 @@ export class TrinksHttpClient {
       'Content-Type': 'application/json',
     }
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), TRINKS_REQUEST_TIMEOUT_MS)
+
     const config: RequestInit = {
       method: options.method || 'GET',
       headers,
+      signal: controller.signal,
     }
 
     if (options.body && (options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH')) {
@@ -62,11 +68,18 @@ export class TrinksHttpClient {
         throw error
       }
 
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      this.logger.error('Failed to make request to Trinks API', { endpoint, error: errorMessage }, error as Error)
+      const isAbort = error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+      const errorMessage = isAbort
+        ? `Trinks API request timed out after ${TRINKS_REQUEST_TIMEOUT_MS}ms`
+        : error instanceof Error ? error.message : String(error)
+
+      this.logger.error('Failed to make request to Trinks API', { endpoint, error: errorMessage, timedOut: isAbort }, error as Error)
       throw new IntegrationError(`Failed to request Trinks API: ${errorMessage}`, 'trinks', {
         endpoint,
+        timedOut: isAbort,
       })
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 }

@@ -6,6 +6,9 @@ import { createContextLogger } from "../../infra/logger"
 const AUDIO_MAX_SIZE_BYTES = 25 * 1024 * 1024 // 25MB (limite do Whisper)
 const IMAGE_MAX_SIZE_BYTES = 20 * 1024 * 1024 // 20MB
 const WHISPER_MODEL = "whisper-1"
+// Timeout especifico para transcricao Whisper (menor que timeout global 60s do client).
+// Whisper pode demorar 10-40s para audios grandes, mas >45s indica problema.
+const WHISPER_TIMEOUT_MS = 45_000
 
 export interface ProcessedMedia {
   type: "image" | "audio"
@@ -186,11 +189,16 @@ async function processAudio(params: ProcessMediaParams, startTime: number): Prom
     })
 
     const openai = getOpenAIClient()
-    const transcription = await openai.audio.transcriptions.create({
-      model: WHISPER_MODEL,
-      file,
-      language: "pt",
-    })
+    const transcription = await openai.audio.transcriptions.create(
+      {
+        model: WHISPER_MODEL,
+        file,
+        language: "pt",
+      },
+      {
+        signal: AbortSignal.timeout(WHISPER_TIMEOUT_MS),
+      }
+    )
 
     const transcribedText = transcription.text?.trim()
 

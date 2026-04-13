@@ -33,6 +33,10 @@ const client = postgres(connectionString, {
   connect_timeout: 10,    // 10s max para conectar (evita 30s+ de hang)
   idle_timeout: 20,       // Fecha conexoes idle apos 20s
   max_lifetime: 60 * 5,   // Recicla conexoes a cada 5min
+  connection: {
+    // Cancela queries que passam de 15s no servidor para nao segurar worker/webhook
+    statement_timeout: 15_000,
+  },
 })
 export const db = drizzle(client, { schema })
 export { client as postgresClient }
