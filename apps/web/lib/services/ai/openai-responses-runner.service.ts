@@ -236,7 +236,10 @@ export async function runOpenAIResponses(
       input: currentInput as any,
       previous_response_id: previousResponseId,
       tools: responseTools as any,
-      parallel_tool_calls: false,
+      // parallel_tool_calls=true: a IA pode invocar multiplas tools no mesmo round.
+      // Nosso runner ja executa tools em paralelo via Promise.allSettled (linhas ~315-320),
+      // entao isto reduz o numero de roundtrips OpenAI quando a IA precisa de varios dados.
+      parallel_tool_calls: true,
       max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "4096", 10),
       // temperature/top_p not supported by reasoning models (o-series) nor gpt-5
       ...(/^(gpt-4|gpt-3)/.test(model) ? {

@@ -100,8 +100,11 @@ async function processMessage(
     hasMedia,
     mediaType,
     customerName,
-    isNewCustomer,
   } = job.data;
+  // isNewCustomer pode vir do webhook (legado) ou ser calculado aqui no worker.
+  // A partir desta versao calculamos no worker em paralelo com credits para nao
+  // segurar o webhook com chamada a IA.
+  let isNewCustomer: boolean | undefined = job.data.isNewCustomer;
 
   const instanceName = job.data.instanceName || "unknown";
   const remoteJid = job.data.remoteJid || clientPhone;
@@ -153,34 +156,56 @@ async function processMessage(
     // Não verificar aqui novamente — causaria double-count no Redis e
     // dispararia avisos desnecessários ao cliente.
 
-    lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
-    timer.mark("lock_tried");
-    if (!lockId) {
-      // Outra instância está processando este chat. Reagendar o job para 60s depois
-      // usando moveToDelayed + DelayedError — não conta como tentativa falha.
-      // Após 60s o lock já foi liberado e o job reprocessa normalmente.
-      // O check de coalescing decidirá se deve gerar resposta ou pular.
-      const retryDelay = 60_000;
-      jobLogger.info(
-        { chatId, lockTtlMs: LOCK_TTL_MS, retryIn: retryDelay },
-        "Chat lock unavailable — rescheduling job for later."
-      );
-      await job.moveToDelayed(Date.now() + retryDelay, job.token!);
-      throw new DelayedError();
-    }
-
-    // Coalescing: verifica se uma mensagem mais recente chegou para o mesmo chat.
-    // Se sim, este job é descartado silenciosamente — o job mais recente irá
-    // processar toda a conversa (incluindo esta mensagem, que já está no DB).
+    // ETAPA 1: Coalescing check ANTES do lock.
+    // Se uma mensagem mais recente já chegou para este chat, este job nunca vai
+    // gerar resposta de IA - vai ser descartado de qualquer forma. Descartar agora
+    // evita esperar 60s no moveToDelayed quando o lock estiver ocupado.
+    // Exemplo do problema antigo: cliente manda "msg A", "msg B" rapido. A pega o lock.
+    //   B falha o lock -> moveToDelayed(60s) -> 60s depois acorda -> ve "C" como latest -> descarta.
+    //   Cliente espera 60s para nada.
     const redis = getRedisClient();
     const latestMessageId = await redis.get(`chat:latest-job:${chatId}`);
     timer.mark("coalescing_checked");
     if (latestMessageId && latestMessageId !== messageId) {
       jobLogger.info(
-        { latestMessageId },
-        "Message coalesced — newer message will handle the response"
+        { latestMessageId, savedMs: 60_000 },
+        "Message coalesced before lock attempt — newer message will handle the response"
       );
-      timer.flush(jobLogger, { outcome: "coalesced", queueWaitMs });
+      timer.flush(jobLogger, { outcome: "coalesced_pre_lock", queueWaitMs });
+      return {
+        status: "coalesced",
+        chatId,
+        messageId,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // ETAPA 2: Adquirir lock. Somos a mensagem mais recente do chat.
+    lockId = await acquireLock(`chat:${chatId}`, LOCK_TTL_MS);
+    timer.mark("lock_tried");
+    if (!lockId) {
+      // Lock ocupado por outra mensagem (provavelmente uma anterior do mesmo chat
+      // ainda em processamento). Como NOS somos o latest, vamos esperar - mas em vez
+      // de 60s usamos 10s, ja que a maioria dos jobs termina em ate 25s e o lock
+      // expira em LOCK_TTL_MS=120s mesmo no pior caso.
+      const retryDelay = 10_000;
+      jobLogger.info(
+        { chatId, lockTtlMs: LOCK_TTL_MS, retryIn: retryDelay },
+        "Chat lock unavailable — rescheduling job for later (we are the latest message)."
+      );
+      await job.moveToDelayed(Date.now() + retryDelay, job.token!);
+      throw new DelayedError();
+    }
+
+    // ETAPA 3: Re-check coalescing apos adquirir o lock (corrida pequena mas possivel:
+    // entre o check anterior e o lock, uma mensagem ainda mais nova pode ter chegado).
+    const latestAfterLock = await redis.get(`chat:latest-job:${chatId}`);
+    if (latestAfterLock && latestAfterLock !== messageId) {
+      jobLogger.info(
+        { latestMessageId: latestAfterLock },
+        "Message coalesced after lock — newer message arrived during lock acquisition"
+      );
+      timer.flush(jobLogger, { outcome: "coalesced_post_lock", queueWaitMs });
       return {
         status: "coalesced",
         chatId,
@@ -241,8 +266,21 @@ async function processMessage(
     }
 
     const { getSalonRemainingCredits } = await import("../lib/services/credits.service");
-    const creditsResult = await getSalonRemainingCredits(salonId);
-    timer.mark("credits_checked");
+    const { checkIfNewCustomer } = await import("../lib/services/ai/generate-response.service");
+
+    // Paralelo: credits + isNewCustomer (era pago no webhook). Se ja veio do payload
+    // (compatibilidade com jobs antigos), pula a chamada.
+    const [creditsResult, isNewCustomerComputed] = await Promise.all([
+      getSalonRemainingCredits(salonId),
+      isNewCustomer === undefined
+        ? checkIfNewCustomer(salonId, clientPhone).catch((err) => {
+            jobLogger.warn({ err }, "checkIfNewCustomer failed, defaulting to false");
+            return false;
+          })
+        : Promise.resolve(isNewCustomer),
+    ]);
+    isNewCustomer = isNewCustomerComputed;
+    timer.mark("credits_and_new_customer_checked");
 
     if ('error' in creditsResult) {
       jobLogger.error({ salonId, error: creditsResult.error }, "Failed to fetch remaining credits, will retry");

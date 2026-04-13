@@ -23,7 +23,6 @@ import { StageTimer } from '@/lib/infra/stage-timer';
 import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/infra/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
-import { checkIfNewCustomer } from '@/lib/services/ai/generate-response.service';
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { WebhookMetrics } from '@/lib/infra/metrics';
@@ -344,8 +343,9 @@ async function handleMessageUpsert(
   reqLogger = reqLogger.child({ salonId, agentId });
   timer.mark('agent_resolved');
 
-  // 4. PARALELO: Buscar customer, chat e isNewCustomer simultaneamente
-  const [customer, chat, isNewCustomer] = await Promise.all([
+  // 4. PARALELO: Buscar customer e chat. checkIfNewCustomer (que chama IA)
+  //    foi movido para o worker para nao segurar o webhook.
+  const [customer, chat] = await Promise.all([
     withTimeout(
       findOrCreateCustomer(clientPhone, salonId, messageData.pushName),
       DB_TIMEOUT,
@@ -355,11 +355,6 @@ async function handleMessageUpsert(
       findOrCreateChat(clientPhone, salonId, agentId),
       DB_TIMEOUT,
       'findOrCreateChat'
-    ),
-    withTimeout(
-      checkIfNewCustomer(salonId, clientPhone),
-      DB_TIMEOUT,
-      'checkIfNewCustomer'
     ),
   ]);
 
@@ -416,7 +411,7 @@ async function handleMessageUpsert(
       mediaUrl: mediaUrl ?? undefined,
       receivedAt: new Date(messageData.messageTimestamp * 1000).toISOString(),
       profileName: messageData.pushName,
-      isNewCustomer,
+      // isNewCustomer agora e calculado no worker (era 100-500ms de IA dentro do webhook)
       customerName: customer.name,
     }),
     REDIS_TIMEOUT,
