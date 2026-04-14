@@ -220,14 +220,14 @@ export async function runOpenAIResponses(
 
   // Reasoning effort: por default reasoning models (gpt-5*, o-series) usam "medium",
   // que adiciona segundos a minutos de "pensamento interno" antes da resposta.
-  // Forcamos o nivel mais baixo possivel para reduzir latencia em ~70-80%.
-  // gpt-5 suporta "minimal" (mais agressivo); o-series so suporta "low" como minimo.
-  // Pode ser sobrescrito via AI_REASONING_EFFORT.
+  // Usamos "low" como meio-termo: boa inferencia contextual (cliente disse data+horario
+  // pula direto para checar) sem a lentidao do "medium". "minimal" e disponivel via env
+  // para quem priorizar velocidade sobre qualidade do dialogo.
   const isGpt5 = /^gpt-5/.test(model)
   const isOSeries = /^o\d/.test(model)
   const isReasoningModel = isGpt5 || isOSeries
   const reasoningEffort = (process.env.AI_REASONING_EFFORT
-    || (isGpt5 ? "minimal" : "low")) as "minimal" | "low" | "medium" | "high"
+    || "low") as "minimal" | "low" | "medium" | "high"
 
   while (rounds < maxToolRounds) {
     const response = await openai.responses.create({
