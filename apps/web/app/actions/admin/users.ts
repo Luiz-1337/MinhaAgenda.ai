@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { db, profiles, customers, salons, eq, desc, ilike, or, sql } from "@repo/db"
+import { db, profiles, customers, salons, professionals, aiUsageStats, eq, desc, ilike, or, sql } from "@repo/db"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
@@ -163,7 +163,16 @@ export async function getUserDetails(userId: string) {
             return { error: "Usuário não encontrado" }
         }
 
-        return { user: userProfile }
+        // Soma de tokens consumidos por todos os salões do usuário
+        const tokensResult = await db
+            .select({ total: sql<number>`COALESCE(SUM(${aiUsageStats.credits}), 0)` })
+            .from(aiUsageStats)
+            .innerJoin(salons, eq(aiUsageStats.salonId, salons.id))
+            .where(eq(salons.ownerId, userId))
+
+        const tokens = Number(tokensResult[0]?.total || 0)
+
+        return { user: userProfile, tokens }
 
     } catch (error) {
         console.error("Error fetching user details:", error)
@@ -296,5 +305,73 @@ export async function updateSalonCreditsLimit(salonId: string, limit: number | n
     } catch (error: any) {
         console.error("Error updating credits limit:", error)
         return { error: error.message || "Erro ao atualizar limite de créditos" }
+    }
+}
+
+export async function adminDeleteUser(userId: string) {
+    const supabaseAdmin = createAdminClient()
+
+    if (!supabaseAdmin) {
+        return { error: "Admin client not configured" }
+    }
+
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) throw new Error("Unauthorized")
+
+        // Verify admin role
+        const adminProfile = await db.query.profiles.findFirst({
+            where: eq(profiles.id, user.id),
+            columns: { systemRole: true }
+        })
+
+        if (adminProfile?.systemRole !== "admin") {
+            throw new Error("Forbidden")
+        }
+
+        if (userId === user.id) {
+            return { error: "Você não pode excluir a si mesmo." }
+        }
+
+        // Confirma que o alvo existe antes de qualquer efeito colateral
+        const target = await db.query.profiles.findFirst({
+            where: eq(profiles.id, userId),
+            columns: { id: true }
+        })
+
+        if (!target) {
+            return { error: "Usuário não encontrado" }
+        }
+
+        // 1) Apaga o auth user primeiro. Se falhar aqui, o DB ainda está íntegro.
+        const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
+        if (authError) {
+            return { error: `Falha ao remover do Auth: ${authError.message}` }
+        }
+
+        // 2) Apaga DB em transação, respeitando FKs sem cascade.
+        await db.transaction(async (tx) => {
+            // Desvincula professionals que referenciam o usuário (FK sem cascade)
+            await tx.update(professionals)
+                .set({ userId: null })
+                .where(eq(professionals.userId, userId))
+
+            // Apaga salões do usuário — cascateia para services, products,
+            // professionals, appointments, chats, aiUsageStats, etc.
+            await tx.delete(salons).where(eq(salons.ownerId, userId))
+
+            // Apaga o profile — cascateia para payments
+            await tx.delete(profiles).where(eq(profiles.id, userId))
+        })
+
+        revalidatePath("/z_admin_minhaagendaai/users")
+        revalidatePath("/z_admin_minhaagendaai")
+
+        return { success: true }
+    } catch (error: any) {
+        console.error("Error deleting user:", error)
+        return { error: error.message || "Erro ao excluir usuário" }
     }
 }

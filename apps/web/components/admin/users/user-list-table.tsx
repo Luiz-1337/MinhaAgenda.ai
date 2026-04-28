@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
     Table,
     TableBody,
@@ -22,6 +23,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
+import { AdminDeleteUserDialog } from "./admin-delete-user-dialog"
 
 interface User {
     id: string
@@ -38,6 +40,8 @@ interface UserListTableProps {
 }
 
 export function UserListTable({ users }: UserListTableProps) {
+    const [userToDelete, setUserToDelete] = useState<User | null>(null)
+
     return (
         <div className="rounded-md border">
             <Table>
@@ -84,7 +88,13 @@ export function UserListTable({ users }: UserListTableProps) {
                                             </Link>
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuItem className="text-red-600">
+                                        <DropdownMenuItem
+                                            className="text-red-600 focus:text-red-600"
+                                            onSelect={(e) => {
+                                                e.preventDefault()
+                                                setUserToDelete(user)
+                                            }}
+                                        >
                                             <Trash className="mr-2 h-4 w-4" />
                                             Excluir
                                         </DropdownMenuItem>
@@ -102,6 +112,18 @@ export function UserListTable({ users }: UserListTableProps) {
                     )}
                 </TableBody>
             </Table>
+
+            {userToDelete && (
+                <AdminDeleteUserDialog
+                    userId={userToDelete.id}
+                    userName={userToDelete.fullName || ""}
+                    userEmail={userToDelete.email}
+                    open={!!userToDelete}
+                    onOpenChange={(open) => {
+                        if (!open) setUserToDelete(null)
+                    }}
+                />
+            )}
         </div>
     )
 }

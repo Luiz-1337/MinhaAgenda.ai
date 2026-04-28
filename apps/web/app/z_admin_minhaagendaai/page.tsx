@@ -1,7 +1,39 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, CreditCard, Activity, Coins } from "lucide-react"
+import { db, profiles, salons, aiUsageStats, sql, inArray, gte } from "@repo/db"
 
-export default function AdminDashboardPage() {
+export const dynamic = 'force-dynamic'
+
+async function loadDashboardMetrics() {
+    // Janela de 30 dias para consumo de tokens
+    const since = new Date()
+    since.setDate(since.getDate() - 30)
+    const sinceIso = since.toISOString().slice(0, 10) // date (YYYY-MM-DD)
+
+    const [usersRow, plansRow, tokensRow] = await Promise.all([
+        db
+            .select({ count: sql<number>`count(*)` })
+            .from(profiles),
+        db
+            .select({ count: sql<number>`count(*)` })
+            .from(salons)
+            .where(inArray(salons.subscriptionStatus, ['ACTIVE', 'PAID'])),
+        db
+            .select({ total: sql<number>`COALESCE(SUM(${aiUsageStats.credits}), 0)` })
+            .from(aiUsageStats)
+            .where(gte(aiUsageStats.date, sinceIso)),
+    ])
+
+    return {
+        totalUsers: Number(usersRow[0]?.count ?? 0),
+        activePlans: Number(plansRow[0]?.count ?? 0),
+        tokens30d: Number(tokensRow[0]?.total ?? 0),
+    }
+}
+
+export default async function AdminDashboardPage() {
+    const { totalUsers, activePlans, tokens30d } = await loadDashboardMetrics()
+
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold">Dashboard Administrativo</h1>
@@ -13,7 +45,7 @@ export default function AdminDashboardPage() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">--</div>
+                        <div className="text-2xl font-bold">{totalUsers.toLocaleString('pt-BR')}</div>
                         <p className="text-xs text-muted-foreground">Usuários cadastrados</p>
                     </CardContent>
                 </Card>
@@ -24,7 +56,7 @@ export default function AdminDashboardPage() {
                         <CreditCard className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">--</div>
+                        <div className="text-2xl font-bold">{activePlans.toLocaleString('pt-BR')}</div>
                         <p className="text-xs text-muted-foreground">Assinaturas vigentes</p>
                     </CardContent>
                 </Card>
@@ -35,7 +67,7 @@ export default function AdminDashboardPage() {
                         <Coins className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">--</div>
+                        <div className="text-2xl font-bold">{tokens30d.toLocaleString('pt-BR')}</div>
                         <p className="text-xs text-muted-foreground">Últimos 30 dias</p>
                     </CardContent>
                 </Card>

@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { CreditCard, Zap, Star, Crown } from "lucide-react"
+import { Zap, Star, Crown } from "lucide-react"
+import { db, profiles, sql } from "@repo/db"
+
+export const dynamic = 'force-dynamic'
 
 const plans = [
     {
@@ -29,7 +31,29 @@ const plans = [
     },
 ]
 
-export default function PlansPage() {
+async function loadTierCounts() {
+    const rows = await db
+        .select({ tier: profiles.tier, count: sql<number>`count(*)` })
+        .from(profiles)
+        .groupBy(profiles.tier)
+
+    const counts: Record<"SOLO" | "PRO" | "ENTERPRISE", number> = {
+        SOLO: 0,
+        PRO: 0,
+        ENTERPRISE: 0,
+    }
+
+    for (const row of rows) {
+        const tier = row.tier as keyof typeof counts
+        if (tier in counts) counts[tier] = Number(row.count)
+    }
+
+    return counts
+}
+
+export default async function PlansPage() {
+    const counts = await loadTierCounts()
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -77,15 +101,15 @@ export default function PlansPage() {
                     <div className="grid gap-4 md:grid-cols-3">
                         <div className="p-4 rounded-lg bg-muted/50">
                             <p className="text-sm text-muted-foreground">Usuários Solo</p>
-                            <p className="text-2xl font-bold">--</p>
+                            <p className="text-2xl font-bold">{counts.SOLO.toLocaleString('pt-BR')}</p>
                         </div>
                         <div className="p-4 rounded-lg bg-muted/50">
                             <p className="text-sm text-muted-foreground">Usuários Pro</p>
-                            <p className="text-2xl font-bold">--</p>
+                            <p className="text-2xl font-bold">{counts.PRO.toLocaleString('pt-BR')}</p>
                         </div>
                         <div className="p-4 rounded-lg bg-muted/50">
                             <p className="text-sm text-muted-foreground">Usuários Enterprise</p>
-                            <p className="text-2xl font-bold">--</p>
+                            <p className="text-2xl font-bold">{counts.ENTERPRISE.toLocaleString('pt-BR')}</p>
                         </div>
                     </div>
                 </CardContent>

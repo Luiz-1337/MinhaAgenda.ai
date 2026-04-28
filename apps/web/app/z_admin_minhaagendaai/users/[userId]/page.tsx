@@ -23,7 +23,7 @@ export default async function UserDetailsPage({
     params: Promise<{ userId: string }>
 }) {
     const { userId } = await params
-    const { user, error } = await getUserDetails(userId)
+    const { user, tokens, error } = await getUserDetails(userId)
 
     if (error || !user) {
         if (error === "Usuário não encontrado") return notFound()
@@ -48,7 +48,7 @@ export default async function UserDetailsPage({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-                <UsageStats plan={user.tier} tokens={0} /> {/* Tokens logic later */}
+                <UsageStats plan={user.tier} tokens={tokens ?? 0} />
 
                 {salon && (
                     <CreditLimitEditor
