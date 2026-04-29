@@ -11,7 +11,9 @@ import {
   ChevronRight,
   Target,
   Zap,
-  X
+  X,
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react';
 import { getRecoveryFlow, saveRecoveryFlow, previewSegmentedLeads, createBroadcastCampaign, sendBroadcastCampaign, listSegmentedLeads } from "@/app/actions/marketing";
 import { getServices } from "@/app/actions/services";
@@ -23,12 +25,20 @@ interface RecoveryStep {
   id: string;
   days: number;
   message: string;
+  useAiGeneration: boolean;
+  includeAiCoupon: boolean;
+  aiToneOverride: string;
+  aiSkipOptOutFooter: boolean;
 }
 
 interface RecoveryStepFromApi {
   id: string;
   daysAfterInactivity: number;
   messageTemplate: string;
+  useAiGeneration?: boolean;
+  includeAiCoupon?: boolean;
+  aiToneOverride?: string | null;
+  aiSkipOptOutFooter?: boolean;
 }
 
 export default function MarketingClient({ salonId }: { salonId: string }) {
@@ -83,6 +93,10 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
               id: step.id,
               days: step.daysAfterInactivity,
               message: step.messageTemplate,
+              useAiGeneration: step.useAiGeneration ?? false,
+              includeAiCoupon: step.includeAiCoupon ?? false,
+              aiToneOverride: step.aiToneOverride ?? '',
+              aiSkipOptOutFooter: step.aiSkipOptOutFooter ?? false,
             }))
           );
         } else {
@@ -139,7 +153,11 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
     const newStep: RecoveryStep = {
       id: `temp-${Date.now()}`,
       days: 5,
-      message: ''
+      message: '',
+      useAiGeneration: false,
+      includeAiCoupon: false,
+      aiToneOverride: '',
+      aiSkipOptOutFooter: false,
     };
     setRecoverySteps([...recoverySteps, newStep]);
   };
@@ -270,6 +288,20 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
       return;
     }
 
+    const stepWithEmptyDays = recoverySteps.find(
+      (step) => !Number.isFinite(step.days) || step.days === 0
+    );
+    if (stepWithEmptyDays) {
+      setSaveError("O número de dias de inatividade não pode estar vazio");
+      return;
+    }
+
+    const stepWithNegativeDays = recoverySteps.find((step) => step.days < 0);
+    if (stepWithNegativeDays) {
+      setSaveError("Informe um número de dias maior que zero");
+      return;
+    }
+
     startSaving(async () => {
       const result = await saveRecoveryFlow({
         salonId: salonId,
@@ -279,6 +311,10 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
           id: step.id.startsWith('temp-') ? undefined : step.id,
           days: step.days,
           message: step.message,
+          useAiGeneration: step.useAiGeneration,
+          includeAiCoupon: step.includeAiCoupon,
+          aiToneOverride: step.aiToneOverride.trim() ? step.aiToneOverride.trim() : null,
+          aiSkipOptOutFooter: step.aiSkipOptOutFooter,
         })),
       });
 
@@ -366,6 +402,11 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                           <div className="flex items-center gap-1 bg-accent/10 px-2 py-0.5 rounded text-accent text-[10px] font-bold">
                             <Zap size={10} /> AUTO
                           </div>
+                          {step.useAiGeneration && (
+                            <div className="flex items-center gap-1 bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 px-2 py-0.5 rounded text-[10px] font-bold">
+                              <Sparkles size={10} /> IA
+                            </div>
+                          )}
                         </div>
                         <button
                           onClick={() => removeStep(step.id)}
@@ -381,6 +422,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
+                              min={1}
                               value={step.days}
                               onChange={(event) => {
                                 const nextDays = Number(event.target.value);
@@ -393,7 +435,9 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase">Mensagem (Suporta variáveis)</label>
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                            {step.useAiGeneration ? 'Mensagem (fallback se a IA falhar)' : 'Mensagem (Suporta variáveis)'}
+                          </label>
                           <textarea
                             rows={3}
                             value={step.message}
@@ -424,6 +468,117 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                               {"{{ultima_visita}}"}
                             </button>
                           </div>
+                        </div>
+
+                        {/* AI Generation Settings */}
+                        <div className="border-t border-border pt-3 mt-1">
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={step.useAiGeneration}
+                              onChange={(event) => updateStep(step.id, { useAiGeneration: event.target.checked })}
+                              className="mt-0.5 accent-violet-600"
+                            />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                                <Sparkles size={12} className="text-violet-600 dark:text-violet-400" />
+                                Gerar mensagem com IA
+                              </div>
+                              <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
+                                Cada cliente recebe um texto único baseado no histórico (último serviço, profissional, dias ausente). Reduz risco de banimento por spam.
+                              </p>
+                            </div>
+                          </label>
+
+                          {step.useAiGeneration && (
+                            <div className="mt-3 ml-6 space-y-3 border-l-2 border-violet-200 dark:border-violet-900 pl-3">
+                              <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={step.includeAiCoupon}
+                                  onChange={(event) => updateStep(step.id, { includeAiCoupon: event.target.checked })}
+                                  className="mt-0.5 accent-violet-600"
+                                />
+                                <div className="flex-1">
+                                  <div className="text-[11px] font-bold text-foreground">Permitir mencionar oferta sutil</div>
+                                  <p className="text-[10px] text-muted-foreground leading-snug">
+                                    A IA pode dizer "tem horário aberto" ou "condição especial", mas nunca promete preços ou descontos específicos.
+                                  </p>
+                                </div>
+                              </label>
+
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase">
+                                  Tom de voz (opcional — sobrescreve o tom do agente)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={step.aiToneOverride}
+                                  onChange={(event) => updateStep(step.id, { aiToneOverride: event.target.value })}
+                                  placeholder="Ex: Sofisticado e elegante"
+                                  className="w-full bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
+                                />
+                              </div>
+
+                              {/* Skip opt-out footer toggle (with risk balloon) */}
+                              <div className="space-y-2">
+                                <label className="flex items-start gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={step.aiSkipOptOutFooter}
+                                    onChange={(event) => updateStep(step.id, { aiSkipOptOutFooter: event.target.checked })}
+                                    className="mt-0.5 accent-amber-600"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="text-[11px] font-bold text-foreground">
+                                      Passar-se por humano (sem rodapé "responder PARAR")
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground leading-snug">
+                                      A IA não vai incluir aviso de descadastro. A mensagem fica idêntica à de uma recepcionista real digitando.
+                                    </p>
+                                  </div>
+                                </label>
+
+                                {step.aiSkipOptOutFooter && (
+                                  <div className="ml-6 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3">
+                                    <div className="flex gap-2 items-start">
+                                      <AlertTriangle size={14} className="text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                                      <div className="flex-1 space-y-1.5">
+                                        <p className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                                          Você está assumindo risco regulatório e operacional:
+                                        </p>
+                                        <ul className="text-[10px] text-amber-900 dark:text-amber-200 leading-snug space-y-1 list-disc list-outside ml-3">
+                                          <li>
+                                            <strong>LGPD/CDC:</strong> comunicação de marketing precisa de mecanismo claro
+                                            de descadastro. Sem o aviso, em caso de reclamação no Procon ou ANPD,
+                                            o salão fica em posição frágil.
+                                          </li>
+                                          <li>
+                                            <strong>Banimento WhatsApp:</strong> mensagens proativas sem opt-out são
+                                            priorizadas no anti-spam do Meta. Risco de derrubar o número
+                                            inteiro do salão.
+                                          </li>
+                                          <li>
+                                            <strong>Mitigação parcial:</strong> a palavra <code className="px-1 bg-amber-100 dark:bg-amber-900 rounded">PARAR</code> ainda funciona
+                                            quando o cliente digita por conta própria — mas a maioria não
+                                            sabe que pode.
+                                          </li>
+                                        </ul>
+                                        <p className="text-[10px] text-amber-900 dark:text-amber-200 leading-snug pt-1">
+                                          Recomendado: ativar apenas em volumes baixos e com clientes
+                                          que já tenham relacionamento ativo com o salão.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <p className="text-[10px] text-muted-foreground leading-snug">
+                                Se a IA falhar (timeout, conteúdo inadequado), o sistema usa a mensagem acima como fallback automaticamente.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -20,6 +20,10 @@ export interface RecoveryStepRow {
   daysAfterInactivity: number
   messageTemplate: string
   isActive: boolean
+  useAiGeneration: boolean
+  includeAiCoupon: boolean
+  aiToneOverride: string | null
+  aiSkipOptOutFooter: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -134,6 +138,10 @@ export class MarketingRepository {
         daysAfterInactivity: true,
         messageTemplate: true,
         isActive: true,
+        useAiGeneration: true,
+        includeAiCoupon: true,
+        aiToneOverride: true,
+        aiSkipOptOutFooter: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -152,6 +160,10 @@ export class MarketingRepository {
     stepOrder: number
     daysAfterInactivity: number
     messageTemplate: string
+    useAiGeneration?: boolean
+    includeAiCoupon?: boolean
+    aiToneOverride?: string | null
+    aiSkipOptOutFooter?: boolean
   }): Promise<RecoveryStepRow> {
     if (stepData.id) {
       // Update existing
@@ -161,6 +173,10 @@ export class MarketingRepository {
           stepOrder: stepData.stepOrder,
           daysAfterInactivity: stepData.daysAfterInactivity,
           messageTemplate: stepData.messageTemplate,
+          useAiGeneration: stepData.useAiGeneration ?? false,
+          includeAiCoupon: stepData.includeAiCoupon ?? false,
+          aiToneOverride: stepData.aiToneOverride ?? null,
+          aiSkipOptOutFooter: stepData.aiSkipOptOutFooter ?? false,
           updatedAt: new Date(),
         })
         .where(eq(recoverySteps.id, stepData.id))
@@ -177,6 +193,10 @@ export class MarketingRepository {
           daysAfterInactivity: stepData.daysAfterInactivity,
           messageTemplate: stepData.messageTemplate,
           isActive: true,
+          useAiGeneration: stepData.useAiGeneration ?? false,
+          includeAiCoupon: stepData.includeAiCoupon ?? false,
+          aiToneOverride: stepData.aiToneOverride ?? null,
+          aiSkipOptOutFooter: stepData.aiSkipOptOutFooter ?? false,
         })
         .returning()
 

@@ -32,6 +32,7 @@ const serviceSchema = z.object({
   priceMin: z.number().positive("Preço mínimo deve ser positivo").optional(),
   priceMax: z.number().positive("Preço máximo deve ser positivo").optional(),
   isActive: z.boolean().default(true),
+  averageCycleDays: z.number().int().positive("Informe um número de dias maior que zero").nullable().optional(),
   professionalIds: z.array(z.string()).default([]),
 }).refine(
   (data) => {
@@ -77,7 +78,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   const form = useForm<ServiceForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(serviceSchema as any),
-    defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, professionalIds: [] },
+    defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [] },
   })
 
   useEffect(() => {
@@ -139,7 +140,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   function openCreate() {
     setEditing(null)
-    form.reset({ name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, professionalIds: [] })
+    form.reset({ name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [] })
     setOpen(true)
   }
 
@@ -169,6 +170,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       priceMin: service.price_min ? parseFloat(service.price_min) : undefined,
       priceMax: service.price_max ? parseFloat(service.price_max) : undefined,
       isActive: service.is_active,
+      averageCycleDays: service.average_cycle_days ?? null,
       professionalIds: linkedProfessionalIds,
     })
     setOpen(true)
@@ -188,6 +190,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
         priceType: values.priceType,
         priceMin: values.priceType === "range" ? values.priceMin : undefined,
         priceMax: values.priceType === "range" ? values.priceMax : undefined,
+        averageCycleDays: values.averageCycleDays ?? null,
       })
       if ("error" in res) {
         toast.error(res.error)
@@ -351,6 +354,29 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                 </div>
                 {form.formState.errors.duration && (
                   <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.duration.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Ciclo de retorno ideal (dias)
+                </label>
+                <div className="relative group">
+                  <Clock size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
+                  <input
+                    type="number"
+                    placeholder="Ex: 30 (corte), 90 (mechas) — em branco usa o default global"
+                    {...form.register("averageCycleDays", {
+                      setValueAs: (v) => (v === "" || v === null || v === undefined ? null : Number(v)),
+                    })}
+                    className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Usado pela IA de retenção: cliente é considerado inativo após esse número de dias sem fazer este serviço. Deixe em branco para usar o padrão do salão.
+                </p>
+                {form.formState.errors.averageCycleDays && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.averageCycleDays.message}</p>
                 )}
               </div>
 

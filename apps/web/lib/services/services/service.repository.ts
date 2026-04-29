@@ -16,6 +16,7 @@ export interface ServicePayload {
   priceMin: string | null
   priceMax: string | null
   isActive: boolean
+  averageCycleDays: number | null
 }
 
 export class ServiceRepository {
@@ -36,6 +37,7 @@ export class ServiceRepository {
         priceMin: true,
         priceMax: true,
         isActive: true,
+        averageCycleDays: true,
       },
       orderBy: asc(services.name),
     })
@@ -51,6 +53,7 @@ export class ServiceRepository {
       price_min: row.priceMin ?? null,
       price_max: row.priceMax ?? null,
       is_active: row.isActive,
+      average_cycle_days: row.averageCycleDays ?? null,
     }))
 
     return mappedRows
@@ -73,6 +76,7 @@ export class ServiceRepository {
         priceMin: true,
         priceMax: true,
         isActive: true,
+        averageCycleDays: true,
       },
     })
 
@@ -91,6 +95,7 @@ export class ServiceRepository {
       price_min: service.priceMin ?? null,
       price_max: service.priceMax ?? null,
       is_active: service.isActive,
+      average_cycle_days: service.averageCycleDays ?? null,
     }
   }
 

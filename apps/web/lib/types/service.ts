@@ -15,6 +15,7 @@ export interface ServiceRow {
   price_min: string | null
   price_max: string | null
   is_active: boolean
+  average_cycle_days: number | null
 }
 
 export interface UpsertServiceInput {
@@ -27,6 +28,7 @@ export interface UpsertServiceInput {
   priceMin?: number
   priceMax?: number
   isActive: boolean
+  averageCycleDays?: number | null
   professionalIds: string[]
 }
 
@@ -39,5 +41,6 @@ export interface ServicePayload {
   priceMin: string | null
   priceMax: string | null
   isActive: boolean
+  averageCycleDays: number | null
 }
 

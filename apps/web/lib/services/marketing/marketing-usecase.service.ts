@@ -13,6 +13,10 @@ export interface RecoveryFlowData {
     id?: string
     days: number
     message: string
+    useAiGeneration?: boolean
+    includeAiCoupon?: boolean
+    aiToneOverride?: string | null
+    aiSkipOptOutFooter?: boolean
   }>
 }
 
@@ -35,6 +39,10 @@ export interface RecoveryFlowWithSteps {
     daysAfterInactivity: number
     messageTemplate: string
     isActive: boolean
+    useAiGeneration: boolean
+    includeAiCoupon: boolean
+    aiToneOverride: string | null
+    aiSkipOptOutFooter: boolean
   }>
 }
 
@@ -70,6 +78,10 @@ export class MarketingUseCase {
         stepOrder: i + 1,
         daysAfterInactivity: step.days,
         messageTemplate: step.message,
+        useAiGeneration: step.useAiGeneration ?? false,
+        includeAiCoupon: step.includeAiCoupon ?? false,
+        aiToneOverride: step.aiToneOverride ?? null,
+        aiSkipOptOutFooter: step.aiSkipOptOutFooter ?? false,
       })
     }
 
@@ -98,6 +110,10 @@ export class MarketingUseCase {
         daysAfterInactivity: step.daysAfterInactivity,
         messageTemplate: step.messageTemplate,
         isActive: step.isActive,
+        useAiGeneration: step.useAiGeneration,
+        includeAiCoupon: step.includeAiCoupon,
+        aiToneOverride: step.aiToneOverride,
+        aiSkipOptOutFooter: step.aiSkipOptOutFooter,
       })),
     }
   }

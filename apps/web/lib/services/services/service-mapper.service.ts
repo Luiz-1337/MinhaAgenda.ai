@@ -18,6 +18,7 @@ const upsertServiceSchema = z.object({
   priceMin: z.number().positive().optional(),
   priceMax: z.number().positive().optional(),
   isActive: z.boolean().default(true),
+  averageCycleDays: z.number().int().positive().nullable().optional(),
   professionalIds: z.array(z.string().uuid()).default([]),
 }).refine(
   (data) => {
@@ -59,6 +60,7 @@ export class ServiceMapper {
       priceMin: data.priceType === "range" && data.priceMin ? data.priceMin.toFixed(2) : null,
       priceMax: data.priceType === "range" && data.priceMax ? data.priceMax.toFixed(2) : null,
       isActive: data.isActive,
+      averageCycleDays: data.averageCycleDays ?? null,
     }
   }
 

@@ -9,11 +9,15 @@
 import { fileURLToPath } from "node:url"
 
 // Container e DI
-import { container as containerInstance, registerProviders as registerProvidersFunc, TOKENS as TOKEN_CONSTANTS } from "./container"
+import { container as containerInstance, registerProviders as registerProvidersFunc, registerAiResponsesRunner as registerAiResponsesRunnerFunc, TOKENS as TOKEN_CONSTANTS } from "./container"
 export { Container } from "./container"
 export const container = containerInstance
 export const registerProviders = registerProvidersFunc
+export const registerAiResponsesRunner = registerAiResponsesRunnerFunc
 export const TOKENS = TOKEN_CONSTANTS
+
+// Use Cases - Retention (re-exported for direct app/web consumption)
+export * from "./application/use-cases/retention"
 
 // Tools locais para OpenAI Responses API (mantendo compatibilidade de import)
 import { registerAllTools as registerAllToolsFunc } from "./presentation/tools"
@@ -57,6 +61,23 @@ export * from "./presentation/presenters"
 
 // DTOs
 export * from "./application/dtos"
+
+// Domain services / ports
+export * from "./domain/services"
+
+// Domain repositories (interfaces only — implementations live in infrastructure)
+export type {
+  IRetentionRepository,
+  InactiveCustomerRow,
+  InactiveCursor,
+  FindInactiveOptions,
+  RecentRetentionInfo,
+  FlagSuspectedOptOutInput,
+  RetentionAuditRow,
+  SetSentimentInput,
+  MarkOptOutInput,
+  MarkOptOutResult,
+} from "./domain/repositories/IRetentionRepository"
 
 // Types
 export * from "./shared/types"

@@ -21,6 +21,18 @@ import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
 import { WhatsAppError, getUserFriendlyMessage } from "../lib/errors";
 import { withTimeout } from "../lib/utils/async.utils";
 import { WhatsAppMetrics } from "../lib/infra/metrics";
+import {
+  detectOptOutIntent,
+  OPT_OUT_CONFIRMATION_MESSAGE,
+  OPT_IN_CONFIRMATION_MESSAGE,
+} from "../lib/services/retention/opt-out-detector";
+import {
+  ensureRetentionContainer,
+  getRecordCustomerOptOutUseCase,
+  getFlagSuspectedOptOutUseCase,
+} from "../lib/services/retention/retention-container";
+import { container as mcpContainer, TOKENS as MCP_TOKENS } from "@repo/mcp-server";
+import type { IRetentionRepository } from "@repo/mcp-server";
 
 const QUEUE_NAME = "whatsapp-messages";
 const LOCK_TTL_MS = 120000;
@@ -151,6 +163,86 @@ async function processMessage(
       },
       "Processing message job"
     );
+
+    // ETAPA 0: Opt-out detection (only for text bodies; runs before coalescing
+    // because opt-out is a critical action that should not be dropped if a
+    // newer message arrives in the same chat).
+    if (!hasMedia && body) {
+      const intent = detectOptOutIntent(body);
+      if (intent === "hard_opt_out") {
+        try {
+          ensureRetentionContainer();
+          const useCase = getRecordCustomerOptOutUseCase();
+          const result = await useCase.execute({
+            salonId,
+            phone: clientPhone,
+            reason: body.slice(0, 200),
+            source: "keyword",
+          });
+          if (result.success) {
+            jobLogger.info(
+              { customerId: result.data.customerId, alreadyOptedOut: result.data.alreadyOptedOut },
+              "Customer hard-opted-out via WhatsApp keyword"
+            );
+          } else {
+            jobLogger.warn({ err: result.error.message }, "RecordCustomerOptOutUseCase failed");
+          }
+          await sendWhatsAppMessage(sendTo, OPT_OUT_CONFIRMATION_MESSAGE, salonId, { agentId });
+        } catch (err) {
+          jobLogger.error({ err }, "Failed to process hard opt-out");
+        }
+        timer.flush(jobLogger, { outcome: "opt_out", queueWaitMs });
+        return {
+          status: "opt_out",
+          chatId,
+          messageId,
+          duration: Date.now() - startTime,
+        };
+      }
+      if (intent === "opt_in") {
+        try {
+          ensureRetentionContainer();
+          const repo = mcpContainer.resolve<IRetentionRepository>(MCP_TOKENS.RetentionRepository);
+          const cleared = await repo.clearOptOut(salonId, clientPhone);
+          if (cleared) {
+            await sendWhatsAppMessage(sendTo, OPT_IN_CONFIRMATION_MESSAGE, salonId, { agentId });
+            jobLogger.info({}, "Customer opt-in restored");
+            timer.flush(jobLogger, { outcome: "opt_in", queueWaitMs });
+            return {
+              status: "opt_in",
+              chatId,
+              messageId,
+              duration: Date.now() - startTime,
+            };
+          }
+        } catch (err) {
+          jobLogger.error({ err }, "Failed to process opt-in");
+        }
+      }
+      if (intent === "soft_signal" && customerId) {
+        // Fire-and-forget: only flags if there was a recent AI retention message.
+        // Does NOT short-circuit the pipeline — the AI conversation continues.
+        (async () => {
+          try {
+            ensureRetentionContainer();
+            const repo = mcpContainer.resolve<IRetentionRepository>(MCP_TOKENS.RetentionRepository);
+            const recent = await repo.hasRecentAiMessage(customerId, 72);
+            if (!recent) return;
+            const flagUC = getFlagSuspectedOptOutUseCase();
+            await flagUC.execute({
+              salonId,
+              customerId,
+              phone: clientPhone,
+              responseBody: body.slice(0, 2000),
+              retentionCampaignMessageId: recent.campaignMessageId,
+            });
+            jobLogger.info({ customerId, recentRetentionId: recent.campaignMessageId }, "Soft opt-out signal flagged for review");
+          } catch (err) {
+            jobLogger.warn({ err }, "Failed to flag soft opt-out signal (non-blocking)");
+          }
+        })();
+      }
+    }
 
     // Rate limiting é feito no webhook (antes de enfileirar).
     // Não verificar aqui novamente — causaria double-count no Redis e

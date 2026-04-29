@@ -267,6 +267,62 @@ export async function sendWhatsAppMessage(
 }
 
 /**
+ * Sends a typing indicator (`composing` presence) followed by the message,
+ * with a real blocking delay between the two HTTP calls.
+ *
+ * Why a real `await setTimeout` instead of fire-and-forget:
+ * The presence event must arrive at the customer's phone BEFORE the actual
+ * text message — otherwise the "typing..." indicator is meaningless.
+ * HTTP/2 multiplexing, retries, and Evolution → WhatsApp latency variance
+ * mean the two requests can be reordered if dispatched concurrently.
+ *
+ * Delay is proportional to message length (rough humanlike typing speed):
+ *   3000ms minimum, 6000ms maximum, ~30ms per character.
+ *
+ * Used by the retention dispatcher to humanize AI-generated messages.
+ */
+export async function sendWithTypingIndicator(
+  to: string,
+  body: string,
+  salonId: string,
+  options?: SendMessageOptions
+): Promise<{ messageId: string }> {
+  const instance = await resolveEvolutionInstance(salonId, options?.agentId);
+  if (instance.connectionStatus !== 'connected') {
+    throw new WhatsAppMessageError(
+      'WhatsApp not connected. Please scan QR code first.',
+      true
+    );
+  }
+
+  const toNumber = normalizePhoneNumber(to);
+  const evolutionInstanceName = instance.instanceName;
+  const client = getEvolutionClient();
+
+  const typingMs = Math.min(6000, Math.max(3000, body.length * 30));
+
+  try {
+    await client.post(`/chat/sendPresence/${evolutionInstanceName}`, {
+      number: toNumber,
+      presence: 'composing',
+      delay: typingMs,
+    });
+  } catch (error) {
+    // Presence is best-effort — never block the message send on a failed indicator.
+    logger.warn(
+      { err: error, salonId, to: hashPhone(toNumber) },
+      'Failed to send typing indicator (continuing with message send)'
+    );
+  }
+
+  // Real blocking sleep — required so the presence event reaches the device
+  // before the message text. Fire-and-forget would race.
+  await new Promise<void>((resolve) => setTimeout(resolve, typingMs));
+
+  return sendWhatsAppMessage(to, body, salonId, options);
+}
+
+/**
  * Obtém mídia de uma mensagem do WhatsApp em base64 via Evolution API.
  * Endpoint: POST /chat/getBase64FromMediaMessage/{instanceName}
  *

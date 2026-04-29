@@ -50,7 +50,7 @@ export interface MessageJobData {
  * Resultado do processamento de mensagem
  */
 export interface MessageJobResult {
-  status: "success" | "manual_mode" | "media_handled" | "rate_limited" | "out_of_credits" | "error" | "coalesced" | "deferred";
+  status: "success" | "manual_mode" | "media_handled" | "rate_limited" | "out_of_credits" | "error" | "coalesced" | "deferred" | "opt_out" | "opt_in";
   chatId: string;
   messageId: string;
   responseText?: string;

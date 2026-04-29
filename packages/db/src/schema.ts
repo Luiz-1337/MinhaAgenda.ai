@@ -154,6 +154,7 @@ export const services = pgTable(
     priceMin: numeric('price_min', { precision: 10, scale: 2 }),
     priceMax: numeric('price_max', { precision: 10, scale: 2 }),
     isActive: boolean('is_active').default(true).notNull(),
+    averageCycleDays: integer('average_cycle_days'),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -423,6 +424,9 @@ export const customers = pgTable(
     email: text('email'),
     aiPreferences: text('ai_preferences'),
     preferences: jsonb('preferences'),
+    optedOutAt: timestamp('opted_out_at'),
+    optOutReason: text('opt_out_reason'),
+    optOutSource: text('opt_out_source'), // 'keyword' | 'manual' | 'admin'
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -484,6 +488,10 @@ export const recoverySteps = pgTable(
     daysAfterInactivity: integer('days_after_inactivity').notNull(),
     messageTemplate: text('message_template').notNull(),
     isActive: boolean('is_active').default(true).notNull(),
+    useAiGeneration: boolean('use_ai_generation').default(false).notNull(),
+    includeAiCoupon: boolean('include_ai_coupon').default(false).notNull(),
+    aiToneOverride: text('ai_tone_override'),
+    aiSkipOptOutFooter: boolean('ai_skip_opt_out_footer').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -501,8 +509,13 @@ export const campaignMessages = pgTable(
     campaignId: uuid('campaign_id').references(() => campaigns.id, { onDelete: 'cascade' }).notNull(),
     customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
     profileId: uuid('profile_id').references(() => profiles.id, { onDelete: 'set null' }),
+    recoveryStepId: uuid('recovery_step_id').references(() => recoverySteps.id, { onDelete: 'set null' }),
     phoneNumber: text('phone_number').notNull(),
     messageSent: text('message_sent').notNull(),
+    messageHash: text('message_hash'),
+    generatedByAi: boolean('generated_by_ai').default(false).notNull(),
+    tokensUsed: integer('tokens_used'),
+    modelUsed: text('model_used'),
     status: text('status').default('pending').notNull(),
     sentAt: timestamp('sent_at'),
     errorMessage: text('error_message'),
@@ -512,7 +525,32 @@ export const campaignMessages = pgTable(
     index('campaign_messages_campaign_idx').on(table.campaignId),
     index('campaign_messages_status_idx').on(table.status),
     index('campaign_messages_customer_idx').on(table.customerId),
-    index('campaign_messages_phone_idx').on(table.phoneNumber)
+    index('campaign_messages_phone_idx').on(table.phoneNumber),
+    index('campaign_messages_recovery_step_idx').on(table.recoveryStepId)
+  ]
+)
+
+export const retentionResponseAudit = pgTable(
+  'retention_response_audit',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }),
+    phone: text('phone').notNull(),
+    retentionCampaignMessageId: uuid('retention_campaign_message_id').references(() => campaignMessages.id, { onDelete: 'set null' }),
+    responseBody: text('response_body').notNull(),
+    softSignalMatch: boolean('soft_signal_match').default(true).notNull(),
+    sentimentLabel: text('sentiment_label'), // 'annoyed' | 'neutral' | 'positive'
+    sentimentConfidence: numeric('sentiment_confidence', { precision: 3, scale: 2 }),
+    reviewedAt: timestamp('reviewed_at'),
+    actionTaken: text('action_taken'), // 'auto_opt_out' | 'dismissed' | 'manual_opt_out'
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('retention_audit_salon_idx').on(table.salonId),
+    index('retention_audit_customer_idx').on(table.customerId),
+    index('retention_audit_unreviewed_idx').on(table.reviewedAt),
+    index('retention_audit_created_idx').on(table.createdAt)
   ]
 )
 
@@ -775,5 +813,12 @@ export const campaignRecipientsRelations = relations(campaignRecipients, ({ one 
 export const campaignMessagesRelations = relations(campaignMessages, ({ one }) => ({
   campaign: one(campaigns, { fields: [campaignMessages.campaignId], references: [campaigns.id] }),
   customer: one(customers, { fields: [campaignMessages.customerId], references: [customers.id] }),
-  profile: one(profiles, { fields: [campaignMessages.profileId], references: [profiles.id] })
+  profile: one(profiles, { fields: [campaignMessages.profileId], references: [profiles.id] }),
+  recoveryStep: one(recoverySteps, { fields: [campaignMessages.recoveryStepId], references: [recoverySteps.id] })
+}))
+
+export const retentionResponseAuditRelations = relations(retentionResponseAudit, ({ one }) => ({
+  salon: one(salons, { fields: [retentionResponseAudit.salonId], references: [salons.id] }),
+  customer: one(customers, { fields: [retentionResponseAudit.customerId], references: [customers.id] }),
+  campaignMessage: one(campaignMessages, { fields: [retentionResponseAudit.retentionCampaignMessageId], references: [campaignMessages.id] })
 }))

@@ -10,6 +10,7 @@ import {
   DrizzleProductRepository,
   DrizzleLeadRepository,
   DrizzleAvailabilityRepository,
+  DrizzleRetentionRepository,
 } from "../infrastructure/database"
 import { DrizzleIntegrationRepository } from "../infrastructure/database/DrizzleIntegrationRepository"
 
@@ -56,6 +57,18 @@ import {
   QualifyLeadUseCase,
   GetProfessionalAvailabilityRulesUseCase,
 } from "../application/use-cases/salon"
+
+// Application - Use Cases - Retention
+import {
+  FindInactiveCustomersUseCase,
+  GenerateReengagementMessageUseCase,
+  RecordCustomerOptOutUseCase,
+  FlagSuspectedOptOutUseCase,
+  ClassifyRetentionResponseUseCase,
+} from "../application/use-cases/retention"
+
+// Domain - Services (ports)
+import type { IAiResponsesRunner } from "../domain/services/IAiResponsesRunner"
 
 /**
  * Tokens para injeção de dependência
@@ -109,6 +122,19 @@ export const TOKENS = {
   SaveCustomerPreferenceUseCase: "SaveCustomerPreferenceUseCase",
   QualifyLeadUseCase: "QualifyLeadUseCase",
   GetProfessionalAvailabilityRulesUseCase: "GetProfessionalAvailabilityRulesUseCase",
+
+  // Repositories - Retention
+  RetentionRepository: "IRetentionRepository",
+
+  // External Services - Retention (registered lazily by app/web)
+  AiResponsesRunner: "IAiResponsesRunner",
+
+  // Use Cases - Retention
+  FindInactiveCustomersUseCase: "FindInactiveCustomersUseCase",
+  GenerateReengagementMessageUseCase: "GenerateReengagementMessageUseCase",
+  RecordCustomerOptOutUseCase: "RecordCustomerOptOutUseCase",
+  FlagSuspectedOptOutUseCase: "FlagSuspectedOptOutUseCase",
+  ClassifyRetentionResponseUseCase: "ClassifyRetentionResponseUseCase",
 } as const
 
 /**
@@ -272,4 +298,49 @@ export function registerProviders(container: Container): void {
     container.resolve(TOKENS.ProfessionalRepository),
     container.resolve(TOKENS.AvailabilityRepository)
   ))
+
+  // ==========================================================================
+  // Retention - Repository (Singleton)
+  // ==========================================================================
+
+  container.singleton(TOKENS.RetentionRepository, () => new DrizzleRetentionRepository())
+
+  // ==========================================================================
+  // Use Cases - Retention (Singletons - todos stateless)
+  //
+  // GenerateReengagementMessageUseCase and ClassifyRetentionResponseUseCase
+  // require an IAiResponsesRunner which lives in apps/web (depends on the
+  // OpenAI client). The runner must be registered via registerAiResponsesRunner()
+  // before resolving these use cases.
+  // ==========================================================================
+
+  container.singleton(TOKENS.FindInactiveCustomersUseCase, () => new FindInactiveCustomersUseCase(
+    container.resolve(TOKENS.RetentionRepository)
+  ))
+
+  container.singleton(TOKENS.RecordCustomerOptOutUseCase, () => new RecordCustomerOptOutUseCase(
+    container.resolve(TOKENS.RetentionRepository)
+  ))
+
+  container.singleton(TOKENS.FlagSuspectedOptOutUseCase, () => new FlagSuspectedOptOutUseCase(
+    container.resolve(TOKENS.RetentionRepository)
+  ))
+
+  container.singleton(TOKENS.GenerateReengagementMessageUseCase, () => new GenerateReengagementMessageUseCase(
+    container.resolve<IAiResponsesRunner>(TOKENS.AiResponsesRunner)
+  ))
+
+  container.singleton(TOKENS.ClassifyRetentionResponseUseCase, () => new ClassifyRetentionResponseUseCase(
+    container.resolve(TOKENS.RetentionRepository),
+    container.resolve<IAiResponsesRunner>(TOKENS.AiResponsesRunner),
+    container.resolve(TOKENS.RecordCustomerOptOutUseCase)
+  ))
+}
+
+/**
+ * Registers the AI responses runner implementation (lives in apps/web).
+ * Must be called before resolving any AI-dependent retention use case.
+ */
+export function registerAiResponsesRunner(container: Container, runner: IAiResponsesRunner): void {
+  container.singleton(TOKENS.AiResponsesRunner, () => runner)
 }

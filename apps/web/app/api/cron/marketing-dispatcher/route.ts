@@ -1,12 +1,25 @@
 import { db, domainServices, logger, recoveryFlows, recoverySteps, sql } from '@repo/db'
-import { sendWhatsAppMessage } from '@/lib/services/evolution/evolution-message.service'
+import { sendWhatsAppMessage, sendWithTypingIndicator } from '@/lib/services/evolution/evolution-message.service'
 import { requireCronAuth } from '@/lib/services/admin-auth.service'
 import { NextRequest } from 'next/server'
+import { runAiRetentionDispatcher } from '@/lib/services/marketing/ai-retention-dispatcher.service'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300 // Vercel Pro max — needed for parallel LLM batches and template fan-out
 
-// Wrapper para adaptar sendWhatsAppMessage ao tipo SendMarketingMessage (Promise<void>)
-const sendMarketingMessage = async (to: string, body: string, salonId: string): Promise<void> => {
+// Wrapper para adaptar sendWhatsAppMessage ao tipo SendMarketingMessage (Promise<void>).
+// AI-generated messages get a humanizing typing indicator (presence: composing + blocking
+// delay) before the text. Static templates keep the original simple-send behavior.
+const sendMarketingMessage = async (
+  to: string,
+  body: string,
+  salonId: string,
+  options?: { generatedByAi?: boolean }
+): Promise<void> => {
+  if (options?.generatedByAi) {
+    await sendWithTypingIndicator(to, body, salonId)
+    return
+  }
   await sendWhatsAppMessage(to, body, salonId)
 }
 
@@ -34,13 +47,32 @@ export async function GET(request: NextRequest) {
       limboCount += limboChats.length
     }
 
+    // 1) AI retention branch (only for allowlisted salons with use_ai_generation steps).
+    //    Failures are logged but do not abort the template dispatcher.
+    let aiResult: Awaited<ReturnType<typeof runAiRetentionDispatcher>> = {
+      scannedSteps: 0,
+      enqueuedCount: 0,
+      fallbackCount: 0,
+      skippedAllowlist: 0,
+      skippedCap: 0,
+      skippedDuplicate: 0,
+    }
+    try {
+      aiResult = await runAiRetentionDispatcher()
+    } catch (err) {
+      logger.error('AI retention dispatcher failed', { err }, err as Error)
+    }
+
+    // 2) Existing template-based dispatcher (chats/messages-based limbo).
     const result = await domainServices.runMarketingDispatcher(sendMarketingMessage)
 
     return Response.json({
       queuedCount: result.queuedCount,
       sentCount: result.sentCount,
       failedCount: result.failedCount,
+      skippedOptedOut: result.skippedOptedOut,
       limboCount,
+      ai: aiResult,
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)

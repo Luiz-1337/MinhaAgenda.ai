@@ -1,2 +1,2 @@
 export { Container, container } from "./Container"
-export { registerProviders, TOKENS } from "./providers"
+export { registerProviders, registerAiResponsesRunner, TOKENS } from "./providers"
