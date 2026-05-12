@@ -68,6 +68,8 @@ export interface GenerateResponseResult {
   model: string;
   stepsCount: number;
   hasToolErrors: boolean;
+  /** Raw steps from the OpenAI runner. Exposed for eval/inspection — not used by the worker. */
+  steps: ResponsesRunnerStep[];
 }
 
 /**
@@ -317,6 +319,7 @@ export async function generateAIResponse(
       model: agentModel,
       stepsCount: steps.length,
       hasToolErrors,
+      steps,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
