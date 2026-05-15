@@ -1,5 +1,6 @@
 export * from "./Appointment"
 export * from "./Customer"
+export * from "./CustomerTrinksProfile"
 export * from "./Professional"
 export * from "./Service"
 export * from "./Product"

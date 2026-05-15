@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { CreditLimitEditor } from "@/components/admin/users/credit-limit-editor"
+import { AiRetentionToggle } from "@/components/admin/salons/ai-retention-toggle"
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,13 @@ export default async function UserDetailsPage({
                         salonId={salon.id}
                         currentLimit={currentLimit}
                         defaultLimit={defaultLimit}
+                    />
+                )}
+
+                {salon && (
+                    <AiRetentionToggle
+                        salonId={salon.id}
+                        initialEnabled={salon.aiRetentionEnabled ?? false}
                     />
                 )}
             </div>

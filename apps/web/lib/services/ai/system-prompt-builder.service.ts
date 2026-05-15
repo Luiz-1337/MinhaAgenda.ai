@@ -5,6 +5,29 @@
 import { db, salons, eq } from "@repo/db"
 import { AgentInfoService } from "./agent-info.service"
 
+/**
+ * Cliente 360° snapshot (subset of customer_trinks_profile) injected into the
+ * system prompt to enrich agent context. Defined here to avoid a circular
+ * import with generate-response.service which composes this builder.
+ */
+export interface TrinksProfileSnapshot {
+  totalSpent: number
+  averageTicket: number
+  visitCount90Days: number
+  visitCount365Days: number
+  lastVisitAt: Date | null
+  tags: string[]
+  recentServices: Array<{
+    serviceName: string
+    professionalName?: string
+    date: string
+    amount?: number
+  }>
+  vipScore: number
+  trinksNotFound: boolean
+  syncedAt: Date
+}
+
 const TIMEZONE = "America/Sao_Paulo"
 
 /**
@@ -77,6 +100,86 @@ function formatKnowledgeContextText(knowledgeContext?: string): string {
   }
 
   return `\n\nCONTEXTO DE REGRAS DO SALÃO:\n${knowledgeContext}\n\nUse essas informações para responder de forma precisa e consistente. Se a pergunta do cliente estiver relacionada a essas regras, priorize essas informações.`
+}
+
+/**
+ * Formats Cliente 360° (Trinks) profile as a private context block.
+ *
+ * Goals:
+ * - Give the agent enough signal to personalize ("VIP", "frequent customer",
+ *   "hasn't been here in 3 months") without exposing internal IDs.
+ * - Keep monetary values qualitative — the LLM should NOT quote exact spend
+ *   to the customer; we redact the actual numbers and just hint at tier.
+ *
+ * Returns empty string when profile is missing or marked trinks_not_found.
+ */
+function formatTrinksProfileText(profile?: TrinksProfileSnapshot | null): string {
+  if (!profile || profile.trinksNotFound) return ""
+
+  // No data worth showing — Trinks returned an empty history
+  if (
+    profile.visitCount365Days === 0 &&
+    profile.totalSpent === 0 &&
+    profile.tags.length === 0
+  ) {
+    return ""
+  }
+
+  const lines: string[] = []
+
+  const tier = qualitativeTier(profile.totalSpent, profile.visitCount365Days, profile.vipScore)
+  if (tier) lines.push(`- Perfil: ${tier}`)
+
+  if (profile.visitCount365Days > 0) {
+    lines.push(`- Visitas no último ano: ${profile.visitCount365Days}`)
+  }
+
+  if (profile.visitCount90Days > 0) {
+    lines.push(`- Visitas nos últimos 90 dias: ${profile.visitCount90Days}`)
+  }
+
+  if (profile.lastVisitAt) {
+    const days = Math.floor((Date.now() - profile.lastVisitAt.getTime()) / (24 * 60 * 60 * 1000))
+    lines.push(`- Última visita: há ${days} dia${days === 1 ? "" : "s"}`)
+  }
+
+  if (profile.tags.length > 0) {
+    const safeTags = profile.tags
+      .slice(0, 5)
+      .map((t) => sanitizeUserInput(t, 40))
+      .filter((t) => t.length > 0)
+    if (safeTags.length > 0) lines.push(`- Etiquetas no sistema do salão: ${safeTags.join(", ")}`)
+  }
+
+  if (profile.recentServices.length > 0) {
+    const recent = profile.recentServices
+      .slice(0, 3)
+      .map((s) => sanitizeUserInput(s.serviceName, 60))
+      .filter((s) => s.length > 0)
+    if (recent.length > 0) lines.push(`- Serviços recentes: ${recent.join(", ")}`)
+  }
+
+  if (lines.length === 0) return ""
+
+  const isVip = profile.vipScore >= 70 || profile.tags.some((t) => t.toLowerCase().includes("vip"))
+  const vipFlag = isVip
+    ? "\n- ⭐ Cliente VIP/recorrente — atenda com prioridade, atenção extra ao tom e disponibilidade."
+    : ""
+
+  return `\n\nPERFIL DO CLIENTE (dados do sistema do salão, contexto privado — NÃO mencione valores em R$ literalmente ao cliente):\n${lines.join("\n")}${vipFlag}\n`
+}
+
+/**
+ * Maps spend + frequency + vipScore to a qualitative label that's safe to
+ * show inside the LLM prompt. We deliberately avoid raw R$ values to reduce
+ * the chance of the agent quoting them back to the customer.
+ */
+function qualitativeTier(totalSpent: number, visits: number, vipScore: number): string | null {
+  if (vipScore >= 70 || totalSpent >= 2000) return "VIP / cliente de alto valor"
+  if (vipScore >= 40 || totalSpent >= 800 || visits >= 6) return "Cliente recorrente / frequente"
+  if (visits >= 2) return "Cliente regular"
+  if (visits === 1) return "Cliente com 1 atendimento prévio"
+  return null
 }
 
 /**
@@ -160,6 +263,7 @@ export class SystemPromptBuilder {
     noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
     soloProfessional?: { id: string; name: string } | null,
     conversationStateText?: string
+    trinksProfile?: TrinksProfileSnapshot | null
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
@@ -167,6 +271,7 @@ export class SystemPromptBuilder {
     const preferencesText = formatPreferencesText(preferences)
     const knowledgeContextText = formatKnowledgeContextText(knowledgeContext)
     const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer, noShowRisk)
+    const trinksProfileText = formatTrinksProfileText(trinksProfile)
 
     // Query única para settings do salão (removida duplicação)
     const salonInfo = await db.query.salons.findFirst({
@@ -248,7 +353,7 @@ REGRAS DE TOOLS (CRÍTICO — leia ANTES de qualquer ação):
 - Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.${conversationStateText ?? ""}
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
-Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
+Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${trinksProfileText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
 ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
 - Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
@@ -297,6 +402,7 @@ export async function createSalonAssistantPrompt(
   noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
   soloProfessional?: { id: string; name: string } | null,
   conversationStateText?: string
+  trinksProfile?: TrinksProfileSnapshot | null
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -309,5 +415,6 @@ export async function createSalonAssistantPrompt(
     noShowRisk,
     soloProfessional,
     conversationStateText
+    trinksProfile
   )
 }

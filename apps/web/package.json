@@ -13,6 +13,8 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
+    "eval": "dotenv -e ../../.env -- vitest --config vitest.eval.config.ts run",
+    "eval:watch": "dotenv -e ../../.env -- vitest --config vitest.eval.config.ts",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",
     "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
     "test:e2e:debug": "playwright test --config=e2e/playwright.config.ts --debug",

@@ -853,9 +853,22 @@ if (require.main === module) {
 
   const worker = createMessageWorker();
 
+  // Also start the Trinks profile sync worker in the same process — same Redis
+  // connection, lower concurrency, no impact on message-processing throughput.
+  let trinksWorker: { close(): Promise<void> } | null = null;
+  (async () => {
+    try {
+      const { createTrinksProfileSyncWorker } = await import("./trinks-profile-sync.worker");
+      trinksWorker = createTrinksProfileSyncWorker();
+    } catch (err) {
+      logger.error({ err }, "Failed to start Trinks profile sync worker");
+    }
+  })();
+
   const shutdown = async () => {
-    logger.info("Shutting down worker...");
+    logger.info("Shutting down workers...");
     await worker.close();
+    if (trinksWorker) await trinksWorker.close();
     process.exit(0);
   };
 
