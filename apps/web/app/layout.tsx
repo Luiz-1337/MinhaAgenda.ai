@@ -20,6 +20,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.minhaagenda.ai"
+  ),
   title: "MinhaAgenda AI - Gestão Inteligente",
   description:
     "Gestão inteligente de agendamentos, CRM e automações para negócios de beleza e bem-estar.",

@@ -1,7 +1,6 @@
 "use server"
 
 import { redirect } from "next/navigation"
-import { headers } from "next/headers"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import type { ActionState } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
@@ -173,11 +172,8 @@ export async function resetPasswordRequest(prevState: ActionState, formData: For
 
   const supabase = await createClient()
 
-  // Obter a URL base do ambiente
-  const headersList = await headers()
-  const host = headersList.get('host') || 'localhost:3000'
-  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!baseUrl) throw new Error("NEXT_PUBLIC_APP_URL is required")
   const redirectUrl = `${baseUrl}/reset-password`
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
