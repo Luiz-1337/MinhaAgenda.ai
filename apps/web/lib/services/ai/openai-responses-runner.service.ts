@@ -44,6 +44,13 @@ export interface RunOpenAIResponsesParams {
   input: ResponsesRunnerInputMessage[]
   tools: ToolSetDefinition
   maxToolRounds?: number
+  /**
+   * Se setado, forca o modelo a chamar essa tool no PRIMEIRO round (rounds === 0).
+   * Usado para garantir pre-busca de IDs (ex: getServices) quando detectamos
+   * intent de agendamento sem historico de leitura. Rounds seguintes voltam
+   * ao tool_choice default (auto).
+   */
+  forceFirstTool?: string
 }
 
 export interface RunOpenAIResponsesResult {
@@ -196,7 +203,7 @@ function schemaToJsonSchema(schema: unknown, name: string): JSONSchema {
 export async function runOpenAIResponses(
   params: RunOpenAIResponsesParams
 ): Promise<RunOpenAIResponsesResult> {
-  const { model, instructions, tools } = params
+  const { model, instructions, tools, forceFirstTool } = params
   const maxToolRounds = params.maxToolRounds ?? 5
   const openai = getOpenAIClient()
 
@@ -218,16 +225,18 @@ export async function runOpenAIResponses(
   let currentInput: unknown = toResponseInput(params.input)
   let rounds = 0
 
-  // Reasoning effort: por default reasoning models (gpt-5*, o-series) usam "medium",
-  // que adiciona segundos a minutos de "pensamento interno" antes da resposta.
-  // Usamos "low" como meio-termo: boa inferencia contextual (cliente disse data+horario
-  // pula direto para checar) sem a lentidao do "medium". "minimal" e disponivel via env
-  // para quem priorizar velocidade sobre qualidade do dialogo.
+  // Reasoning effort: default "medium" para reasoning models (gpt-5*, o-series).
+  // "medium" da ao modelo orcamento de pensamento suficiente para seguir o fluxo
+  // correto de tools (ex: chamar getServices antes de addAppointment) e evitar
+  // alucinacao de IDs. Custa segundos a mais por resposta, mas reduz drasticamente
+  // tool calls fora de ordem com placeholders inventados.
+  // Override via env: AI_REASONING_EFFORT=low (mais rapido, mais erros) ou
+  // AI_REASONING_EFFORT=high (mais lento, mais preciso).
   const isGpt5 = /^gpt-5/.test(model)
   const isOSeries = /^o\d/.test(model)
   const isReasoningModel = isGpt5 || isOSeries
   const reasoningEffort = (process.env.AI_REASONING_EFFORT
-    || "low") as "minimal" | "low" | "medium" | "high"
+    || "medium") as "minimal" | "low" | "medium" | "high"
 
   while (rounds < maxToolRounds) {
     const response = await openai.responses.create({
@@ -249,6 +258,12 @@ export async function runOpenAIResponses(
       ...(isReasoningModel ? {
         reasoning: { effort: reasoningEffort },
       } : {}),
+      // Force tool_choice apenas no PRIMEIRO round (rounds === 0) quando o caller
+      // sinaliza pre-requisito (ex: getServices em intent de agendamento sem
+      // historico de leitura). Rounds seguintes voltam ao default (auto).
+      ...(rounds === 0 && forceFirstTool
+        ? { tool_choice: { type: "function" as const, name: forceFirstTool } }
+        : {}),
     })
 
     if (response.usage) {

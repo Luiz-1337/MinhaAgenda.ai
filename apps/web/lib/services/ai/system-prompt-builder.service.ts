@@ -158,7 +158,8 @@ export class SystemPromptBuilder {
     isNewCustomer?: boolean,
     existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
     noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
-    soloProfessional?: { id: string; name: string } | null
+    soloProfessional?: { id: string; name: string } | null,
+    conversationStateText?: string
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
@@ -236,6 +237,16 @@ ${paymentStepMulti}`
     return `Você é ${agentInfo?.name}, assistente virtual de agendamentos via WhatsApp.
 Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmados.
 
+REGRAS DE TOOLS (CRÍTICO — leia ANTES de qualquer ação):
+- NUNCA chame addAppointment, updateAppointment, removeAppointment ou checkAvailability com IDs inventados ou placeholders (ex: "00000000-0000-0000-0000-000000000000"). Use SOMENTE IDs reais retornados por getServices/getProfessionals/getMyFutureAppointments nesta mesma conversa.
+- NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool.
+- IDs são internos. NUNCA mencione IDs, UUIDs ou códigos técnicos ao cliente.
+- Chame UMA tool de cada vez, na ordem correta.
+- NUNCA chame addAppointment sem checkAvailability antes.
+- NUNCA chame checkAvailability sem o cliente ter informado uma DATA.
+- NUNCA chame updateAppointment ou removeAppointment sem getMyFutureAppointments antes.
+- Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.${conversationStateText ?? ""}
+
 HOJE: ${formattedDate} | HORA: ${formattedTime}
 Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
@@ -248,15 +259,6 @@ ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
 - Se o cliente já deu serviço + data + horário, vá direto para a próxima etapa do fluxo (checkAvailability com o horário específico → addAppointment ou pagamento).
 - Sem markdown, sem listas longas, sem bullets. Linguagem natural de WhatsApp.
 - Despedida/negação ("Não", "Obrigado", "Tchau"): responda cordialmente em 1 frase, ZERO tool calls.
-
-REGRAS DE TOOLS:
-- NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool.
-- IDs são internos. NUNCA mencione IDs, UUIDs ou códigos técnicos ao cliente.
-- Chame UMA tool de cada vez, na ordem correta.
-- NUNCA chame addAppointment sem checkAvailability antes.
-- NUNCA chame checkAvailability sem o cliente ter informado uma DATA.
-- NUNCA chame updateAppointment ou removeAppointment sem getMyFutureAppointments antes.
-- Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.
 
 MEMÓRIA DE CONTEXTO:
 Mensagens anteriores podem conter blocos ---TOOL_CONTEXT--- com dados de tools já chamadas.
@@ -277,6 +279,8 @@ CANCELAMENTO:
 
 A agenda SEMPRE existe. NUNCA diga que está inacessível.
 
+LEMBRETE FINAL: NUNCA chame addAppointment/updateAppointment/removeAppointment/checkAvailability com IDs inventados. Sempre obtenha IDs reais via getServices/getProfessionals/getMyFutureAppointments PRIMEIRO. Se ainda não os tem nesta conversa, chame a tool de leitura ANTES.
+
 ${agentInfo?.systemPrompt || ""}`
   }
 }
@@ -291,7 +295,8 @@ export async function createSalonAssistantPrompt(
   isNewCustomer?: boolean,
   agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
   noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
-  soloProfessional?: { id: string; name: string } | null
+  soloProfessional?: { id: string; name: string } | null,
+  conversationStateText?: string
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -302,6 +307,7 @@ export async function createSalonAssistantPrompt(
     isNewCustomer,
     agentInfo,
     noShowRisk,
-    soloProfessional
+    soloProfessional,
+    conversationStateText
   )
 }
