@@ -1,5 +1,6 @@
 export * from "./DrizzleAppointmentRepository"
 export * from "./DrizzleCustomerRepository"
+export * from "./DrizzleCustomerTrinksProfileRepository"
 export * from "./DrizzleProfessionalRepository"
 export * from "./DrizzleServiceRepository"
 export * from "./DrizzleSalonRepository"

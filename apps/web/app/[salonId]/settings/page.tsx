@@ -6,7 +6,7 @@ import { ProfileEditForm, type ProfileEditFormRef } from "@/components/dashboard
 import { GoogleCalendarIntegration } from "@/components/dashboard/google-calendar-integration"
 import { getCurrentProfile } from "@/app/actions/profile"
 import { toast } from "sonner"
-import { saveTrinksToken, getTrinksIntegration, deleteTrinksIntegration, syncTrinksData } from "@/app/actions/integrations"
+import { saveTrinksToken, getTrinksIntegration, deleteTrinksIntegration, syncTrinksData, syncTrinksCustomers, getTrinksProfilesStats } from "@/app/actions/integrations"
 import { User, Store, Save, ChevronRight, ArrowRight, Plug } from "lucide-react"
 import type { ProfileDetails } from "@/app/actions/profile"
 import Link from "next/link"
@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [trinksIntegrationStatus, setTrinksIntegrationStatus] = useState<{ isActive: boolean; hasToken: boolean } | null>(null)
   const [isLoadingTrinks, setIsLoadingTrinks] = useState(false)
   const [isPendingTrinks, startTrinksTransition] = useTransition()
+  const [trinksProfileStats, setTrinksProfileStats] = useState<{ count: number; lastSyncedAt: string | null } | null>(null)
   const profileFormRef = useRef<ProfileEditFormRef>(null)
 
   const navItems: { id: TabType; label: string; icon: React.ReactNode; description: string }[] = [
@@ -84,12 +85,39 @@ export default function SettingsPage() {
       } else {
         setTrinksIntegrationStatus(result.data || null)
       }
+
+      // Stats são opcionais — falha aqui não bloqueia a UI
+      const statsResult = await getTrinksProfilesStats(salonId)
+      if (!("error" in statsResult)) {
+        setTrinksProfileStats(statsResult.data || null)
+      }
     } catch (error) {
       console.error("Erro ao carregar integração Trinks:", error)
       setTrinksIntegrationStatus(null)
     } finally {
       setIsLoadingTrinks(false)
     }
+  }
+
+  async function handleSyncTrinksCustomers() {
+    if (!salonId) return
+
+    startTrinksTransition(async () => {
+      try {
+        const result = await syncTrinksCustomers(salonId)
+        if ("error" in result) {
+          toast.error(result.error)
+          return
+        }
+        const enqueued = result.data?.enqueued ?? 0
+        toast.success(`${enqueued} cliente(s) agendado(s) para sincronização`)
+        // Re-fetch stats — UI shows new lastSyncedAt within seconds as worker drains.
+        await loadTrinksIntegration()
+      } catch (error) {
+        console.error("Erro ao sincronizar clientes Trinks:", error)
+        toast.error("Erro ao iniciar sincronização de clientes")
+      }
+    })
   }
 
   async function handleSaveTrinksToken(e: React.FormEvent) {
@@ -389,7 +417,23 @@ export default function SettingsPage() {
                         >
                           Sincronizar Produtos
                         </button>
+                        <button
+                          type="button"
+                          onClick={handleSyncTrinksCustomers}
+                          disabled={isPendingTrinks}
+                          className="px-4 py-2 bg-accent/10 text-accent border border-accent/20 rounded-lg text-xs font-medium hover:bg-accent/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Sincronizar Clientes
+                        </button>
                       </div>
+                      {trinksProfileStats && (
+                        <p className="text-xs text-muted-foreground mt-3">
+                          {trinksProfileStats.count} cliente{trinksProfileStats.count === 1 ? "" : "s"} sincronizado{trinksProfileStats.count === 1 ? "" : "s"}
+                          {trinksProfileStats.lastSyncedAt
+                            ? ` · última atualização em ${new Date(trinksProfileStats.lastSyncedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`
+                            : ""}
+                        </p>
+                      )}
                     </div>
                   )}
                 </form>

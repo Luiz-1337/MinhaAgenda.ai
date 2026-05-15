@@ -308,6 +308,51 @@ export async function updateSalonCreditsLimit(salonId: string, limit: number | n
     }
 }
 
+const updateAiRetentionSchema = z.object({
+    salonId: z.string().uuid(),
+    enabled: z.boolean(),
+})
+
+export async function updateSalonAiRetentionFlag(salonId: string, enabled: boolean) {
+    try {
+        const parsed = updateAiRetentionSchema.parse({ salonId, enabled })
+
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) throw new Error("Unauthorized")
+
+        const adminProfile = await db.query.profiles.findFirst({
+            where: eq(profiles.id, user.id),
+            columns: { systemRole: true }
+        })
+
+        if (adminProfile?.systemRole !== "admin") {
+            throw new Error("Forbidden")
+        }
+
+        const salon = await db.query.salons.findFirst({
+            where: eq(salons.id, parsed.salonId),
+            columns: { ownerId: true }
+        })
+
+        if (!salon) {
+            return { error: "Salão não encontrado" }
+        }
+
+        await db.update(salons)
+            .set({ aiRetentionEnabled: parsed.enabled })
+            .where(eq(salons.id, parsed.salonId))
+
+        revalidatePath(`/z_admin_minhaagendaai/users/${salon.ownerId}`)
+
+        return { success: true }
+    } catch (error: any) {
+        console.error("Error updating AI retention flag:", error)
+        return { error: error.message || "Erro ao atualizar flag de retenção IA" }
+    }
+}
+
 export async function adminDeleteUser(userId: string) {
     const supabaseAdmin = createAdminClient()
 

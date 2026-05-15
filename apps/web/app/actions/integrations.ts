@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { db, salonIntegrations, eq, and } from "@repo/db"
+import { db, salonIntegrations, customers, customerTrinksProfile, eq, and, sql } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { formatZodError } from "@/lib/services/validation.service"
 import type { ActionResult } from "@/lib/types/common"
@@ -14,6 +14,7 @@ import {
   getTrinksProducts,
 } from "@repo/db"
 import { setupWatchChannelsForSalon, teardownWatchChannels } from "@repo/db/services/google-calendar-sync"
+import { enqueueTrinksProfileSync } from "@/lib/queues/trinks-sync-queue"
 
 const updateSalonIntegrationSchema = z.object({
   salonId: z.string().uuid(),
@@ -312,6 +313,101 @@ export async function syncTrinksData(
     return {
       error: error.message || `Falha ao sincronizar ${dataType} da Trinks`,
     }
+  }
+}
+
+const SYNC_CUSTOMERS_BATCH_LIMIT = 500
+
+/**
+ * Triggers Cliente 360° sync for all customers of a salon. Non-blocking:
+ * jobs are enqueued and the worker pool processes them at its own pace
+ * (concurrency 5, rate-limited 30/min by the queue limiter).
+ *
+ * Returns immediately with the count of jobs queued so the UI can show
+ * "Sincronizando X clientes…" feedback.
+ */
+export async function syncTrinksCustomers(
+  salonId: string
+): Promise<ActionResult<{ enqueued: number }>> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) return { error: "Unauthorized" }
+    if (!salonId) return { error: "salonId é obrigatório" }
+
+    const hasAccess = await hasSalonPermission(salonId, user.id)
+    if (!hasAccess) return { error: "Acesso negado a este salão" }
+
+    if (!(await isTrinksIntegrationActive(salonId))) {
+      return { error: "Integração Trinks não está ativa" }
+    }
+
+    const salonCustomers = await db
+      .select({ id: customers.id, phone: customers.phone })
+      .from(customers)
+      .where(eq(customers.salonId, salonId))
+      .limit(SYNC_CUSTOMERS_BATCH_LIMIT)
+
+    let enqueued = 0
+    for (const c of salonCustomers) {
+      const job = await enqueueTrinksProfileSync({
+        salonId,
+        customerId: c.id,
+        customerPhone: c.phone,
+      })
+      if (job) enqueued++
+    }
+
+    return { success: true, data: { enqueued } }
+  } catch (error) {
+    console.error("Erro ao sincronizar clientes Trinks:", error)
+    const msg = error instanceof Error ? error.message : "Falha ao iniciar sincronização de clientes"
+    return { error: msg }
+  }
+}
+
+/**
+ * Returns aggregate Cliente 360° stats for the integration card UI:
+ * how many profiles are stored locally and the most recent sync time.
+ */
+export async function getTrinksProfilesStats(
+  salonId: string
+): Promise<ActionResult<{ count: number; lastSyncedAt: string | null }>> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) return { error: "Unauthorized" }
+    if (!salonId) return { error: "salonId é obrigatório" }
+
+    const hasAccess = await hasSalonPermission(salonId, user.id)
+    if (!hasAccess) return { error: "Acesso negado a este salão" }
+
+    const result = await db
+      .select({
+        count: sql<number>`count(*)::int`,
+        lastSyncedAt: sql<Date | null>`max(${customerTrinksProfile.syncedAt})`,
+      })
+      .from(customerTrinksProfile)
+      .where(eq(customerTrinksProfile.salonId, salonId))
+
+    const row = result[0]
+    return {
+      success: true,
+      data: {
+        count: Number(row?.count ?? 0),
+        lastSyncedAt: row?.lastSyncedAt ? row.lastSyncedAt.toISOString() : null,
+      },
+    }
+  } catch (error) {
+    console.error("Erro ao buscar estatísticas de perfis Trinks:", error)
+    const msg = error instanceof Error ? error.message : "Falha ao buscar estatísticas"
+    return { error: msg }
   }
 }
 

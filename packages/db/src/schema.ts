@@ -125,6 +125,7 @@ export const salons = pgTable(
     subscriptionStatusChangedAt: timestamp('subscription_status_changed_at').defaultNow(),
     stripeSubscriptionId: text('stripe_subscription_id').unique(),
     extraCredits: bigint('extra_credits', { mode: 'number' }).default(0).notNull(),
+    aiRetentionEnabled: boolean('ai_retention_enabled').default(false).notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
     // Evolution API fields
@@ -434,6 +435,33 @@ export const customers = pgTable(
     uniqueIndex('customers_salon_phone_unique').on(table.salonId, table.phone),
     index('customers_salon_idx').on(table.salonId),
     index('customers_phone_idx').on(table.phone)
+  ]
+)
+
+export const customerTrinksProfile = pgTable(
+  'customer_trinks_profile',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    trinksClientId: text('trinks_client_id'),
+    totalSpent: numeric('total_spent', { precision: 10, scale: 2 }).default('0').notNull(),
+    averageTicket: numeric('average_ticket', { precision: 10, scale: 2 }).default('0').notNull(),
+    visitCount90Days: integer('visit_count_90_days').default(0).notNull(),
+    visitCount365Days: integer('visit_count_365_days').default(0).notNull(),
+    lastVisitAt: timestamp('last_visit_at'),
+    firstVisitAt: timestamp('first_visit_at'),
+    tags: jsonb('tags').default([]).notNull(),
+    recentServices: jsonb('recent_services').default([]).notNull(),
+    vipScore: integer('vip_score').default(0).notNull(),
+    trinksNotFound: boolean('trinks_not_found').default(false).notNull(),
+    syncedAt: timestamp('synced_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('customer_trinks_profile_customer_idx').on(table.customerId),
+    index('customer_trinks_profile_salon_synced_idx').on(table.salonId, table.syncedAt)
   ]
 )
 
@@ -764,7 +792,16 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 // chatMessagesRelations removed (obsolete)
 
 export const customersRelations = relations(customers, ({ one }) => ({
-  salon: one(salons, { fields: [customers.salonId], references: [salons.id] })
+  salon: one(salons, { fields: [customers.salonId], references: [salons.id] }),
+  trinksProfile: one(customerTrinksProfile, {
+    fields: [customers.id],
+    references: [customerTrinksProfile.customerId]
+  })
+}))
+
+export const customerTrinksProfileRelations = relations(customerTrinksProfile, ({ one }) => ({
+  customer: one(customers, { fields: [customerTrinksProfile.customerId], references: [customers.id] }),
+  salon: one(salons, { fields: [customerTrinksProfile.salonId], references: [salons.id] })
 }))
 
 export const agentsRelations = relations(agents, ({ one, many }) => ({

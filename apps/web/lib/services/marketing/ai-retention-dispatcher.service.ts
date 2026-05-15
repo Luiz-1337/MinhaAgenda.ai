@@ -2,8 +2,8 @@
  * AI Retention Dispatcher
  *
  * Per-step branch executed by /api/cron/marketing-dispatcher when
- * `recoverySteps.useAiGeneration = true` AND the salon is on the
- * RETENTION_AI_SALON_ALLOWLIST.
+ * `recoverySteps.useAiGeneration = true` AND the salon has
+ * `salons.ai_retention_enabled = true` (toggled via admin UI).
  *
  * Pipeline:
  *  1. Find inactive customers (appointments-based, opt-out aware, cooldown enforced)
@@ -21,10 +21,12 @@ import {
   recoverySteps,
   campaigns,
   campaignMessages,
+  customerTrinksProfile,
   agents,
   salons,
   and,
   eq,
+  inArray,
   sql,
   logger,
 } from '@repo/db'
@@ -39,7 +41,7 @@ import {
 import { createHash } from 'node:crypto'
 import { OpenAiResponsesRunnerAdapter } from '../ai/openai-responses-runner.adapter'
 import { checkRetentionMessageSafety } from '../ai/content-filter.service'
-import { retentionConfig, isSalonAllowlisted } from '../../config/retention'
+import { retentionConfig } from '../../config/retention'
 
 export interface AiRetentionResult {
   scannedSteps: number
@@ -135,6 +137,18 @@ async function ensureRecoveryCampaign(flow: { id: string; salonId: string; name:
   return created.id
 }
 
+async function loadEnabledSalonIds(salonIds: string[]): Promise<Set<string>> {
+  const unique = Array.from(new Set(salonIds))
+  if (unique.length === 0) return new Set()
+
+  const rows = await db
+    .select({ id: salons.id })
+    .from(salons)
+    .where(and(inArray(salons.id, unique), eq(salons.aiRetentionEnabled, true)))
+
+  return new Set(rows.map((r) => r.id))
+}
+
 async function getSalonContext(salonId: string): Promise<{ salonName: string; agentTone: string } | null> {
   const salonRow = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
@@ -151,6 +165,43 @@ async function getSalonContext(salonId: string): Promise<{ salonName: string; ag
     salonName: salonRow.name,
     agentTone: agent?.tone ?? 'Amigavel e profissional',
   }
+}
+
+type TrinksTier = 'vip' | 'frequent' | 'regular' | null
+
+const VIP_THRESHOLD = 70
+const FREQUENT_THRESHOLD = 40
+
+/**
+ * Loads Cliente 360° profiles for a batch of customers in a single query.
+ * Returns a Map keyed by customerId; entries are missing when no profile
+ * exists or when trinks_not_found=true (no point classifying those).
+ */
+async function loadProfilesForCustomers(
+  customerIds: string[]
+): Promise<Map<string, { vipScore: number; tier: TrinksTier }>> {
+  if (customerIds.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      customerId: customerTrinksProfile.customerId,
+      vipScore: customerTrinksProfile.vipScore,
+      trinksNotFound: customerTrinksProfile.trinksNotFound,
+      visitCount365Days: customerTrinksProfile.visitCount365Days,
+    })
+    .from(customerTrinksProfile)
+    .where(inArray(customerTrinksProfile.customerId, customerIds))
+
+  const map = new Map<string, { vipScore: number; tier: TrinksTier }>()
+  for (const row of rows) {
+    if (row.trinksNotFound) continue
+    let tier: TrinksTier = null
+    if (row.vipScore >= VIP_THRESHOLD) tier = 'vip'
+    else if (row.vipScore >= FREQUENT_THRESHOLD) tier = 'frequent'
+    else if (row.visitCount365Days >= 2) tier = 'regular'
+    map.set(row.customerId, { vipScore: row.vipScore, tier })
+  }
+  return map
 }
 
 /**
@@ -197,9 +248,6 @@ export async function runAiRetentionDispatcher(): Promise<AiRetentionResult> {
     logger.info('AI retention dispatcher disabled by env')
     return result
   }
-  if (retentionConfig.salonAllowlist.size === 0) {
-    return result
-  }
 
   ensureProvidersRegistered()
 
@@ -235,8 +283,10 @@ export async function runAiRetentionDispatcher(): Promise<AiRetentionResult> {
 
   result.scannedSteps = aiSteps.length
 
+  const enabledSalonIds = await loadEnabledSalonIds(aiSteps.map((s) => s.salonId))
+
   for (const step of aiSteps) {
-    if (!isSalonAllowlisted(step.salonId)) {
+    if (!enabledSalonIds.has(step.salonId)) {
       result.skippedAllowlist += 1
       continue
     }
@@ -283,6 +333,18 @@ export async function runAiRetentionDispatcher(): Promise<AiRetentionResult> {
       continue
     }
 
+    // Cliente 360° enrichment: load Trinks profiles for the batch and
+    // re-order so VIPs are processed first (their messages get prioritized
+    // when the daily cap is tight).
+    const profileMap = await loadProfilesForCustomers(
+      inactiveResult.data.items.map((c) => c.customerId)
+    )
+    const orderedItems = [...inactiveResult.data.items].sort((a, b) => {
+      const aScore = profileMap.get(a.customerId)?.vipScore ?? 0
+      const bScore = profileMap.get(b.customerId)?.vipScore ?? 0
+      return bScore - aScore
+    })
+
     const campaignId = await ensureRecoveryCampaign({
       id: step.flowId,
       salonId: step.salonId,
@@ -290,9 +352,10 @@ export async function runAiRetentionDispatcher(): Promise<AiRetentionResult> {
     })
 
     const generations = await batchProcess(
-      inactiveResult.data.items,
+      orderedItems,
       retentionConfig.generationConcurrency,
       async (customer) => {
+        const profile = profileMap.get(customer.customerId)
         const genResult = await generateMessage.execute({
           salonId: step.salonId,
           salonName: ctx.salonName,
@@ -305,6 +368,7 @@ export async function runAiRetentionDispatcher(): Promise<AiRetentionResult> {
           includeCoupon: step.includeAiCoupon,
           skipOptOutFooter: step.aiSkipOptOutFooter,
           model: retentionConfig.generationModel,
+          customerTier: profile?.tier ?? null,
         })
 
         if (!genResult.success) {
