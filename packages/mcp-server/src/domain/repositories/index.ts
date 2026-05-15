@@ -1,5 +1,6 @@
 export * from "./IAppointmentRepository"
 export * from "./ICustomerRepository"
+export * from "./ICustomerTrinksProfileRepository"
 export * from "./IProfessionalRepository"
 export * from "./IServiceRepository"
 export * from "./ISalonRepository"

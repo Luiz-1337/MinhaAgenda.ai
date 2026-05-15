@@ -19,6 +19,9 @@ export const TOKENS = TOKEN_CONSTANTS
 // Use Cases - Retention (re-exported for direct app/web consumption)
 export * from "./application/use-cases/retention"
 
+// Use Cases - Trinks (Cliente 360° — re-exported for cron/worker in apps/web)
+export * from "./application/use-cases/trinks"
+
 // Tools locais para OpenAI Responses API (mantendo compatibilidade de import)
 import { registerAllTools as registerAllToolsFunc } from "./presentation/tools"
 export {

@@ -214,11 +214,104 @@ export async function getTrinksBusySlots(
   timeMax: Date
 ): Promise<{ start: Date; end: Date }[]> {
   const appointments = await getTrinksAppointments(salonId, timeMin, timeMax, professionalId)
-  
+
   return appointments
     .filter(apt => apt.dataInicio && apt.dataFim && apt.status !== 'cancelado')
     .map(apt => ({
       start: new Date(apt.dataInicio),
       end: new Date(apt.dataFim),
     }))
+}
+
+/**
+ * Raw client payload returned by Trinks /clientes endpoints.
+ * Field shapes follow Trinks public API conventions; mappers are defensive
+ * against missing fields.
+ */
+export interface TrinksClientPayload {
+  id?: string | number
+  codigo?: string | number
+  nome?: string
+  email?: string
+  telefones?: Array<{ ddd?: string; numero?: string; tipo?: string }>
+  etiquetas?: Array<{ nome?: string } | string>
+  dataCadastro?: string
+  dataPrimeiroAtendimento?: string
+}
+
+interface TrinksClientListResponse {
+  data?: TrinksClientPayload[]
+  meta?: { total?: number }
+}
+
+/**
+ * Searches a Trinks client by phone number (E.164/digits-only). Returns the
+ * raw payload for the best phone match (or the first list result), or null if
+ * the integration isn't configured or no client matches.
+ *
+ * The salon's Trinks token is resolved via TrinksApiClient. Phone normalization
+ * is the caller's responsibility — this function passes the value directly.
+ */
+export async function findTrinksClientByPhone(
+  salonId: string,
+  phoneSuffix: string
+): Promise<TrinksClientPayload | null> {
+  if (!phoneSuffix || phoneSuffix.length < 8) return null
+
+  const apiClient = new TrinksApiClient(createSalonId(salonId), logger)
+  if (!(await apiClient.isActive())) return null
+
+  try {
+    const endpoint = `/clientes?telefone=${encodeURIComponent(phoneSuffix)}`
+    const response = await apiClient.request<TrinksClientListResponse | TrinksClientPayload[]>(endpoint)
+    const list = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : []
+    return list[0] ?? null
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    // 404 / no result → caller treats as not found.
+    if (msg.includes("404")) return null
+    logger.error("Failed to search Trinks client by phone", { salonId, error: msg })
+    throw error
+  }
+}
+
+export interface TrinksHistoryAppointment {
+  dataInicio?: string
+  dataFim?: string
+  status?: string
+  servico?: { id?: string | number; nome?: string }
+  profissional?: { id?: string | number; nome?: string }
+  valor?: number | string
+  valorTotal?: number | string
+}
+
+/**
+ * Fetches all completed-status Trinks appointments for a given client over
+ * the lookback window. Returns raw payloads — the caller (mcp-server) aggregates
+ * totals and recent services.
+ */
+export async function getTrinksClientAppointments(
+  salonId: string,
+  trinksClientId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<TrinksHistoryAppointment[]> {
+  const apiClient = new TrinksApiClient(createSalonId(salonId), logger)
+  if (!(await apiClient.isActive())) return []
+
+  try {
+    const startStr = startDate.toISOString().split("T")[0]
+    const endStr = endDate.toISOString().split("T")[0]
+    const endpoint =
+      `/agendamentos?clienteId=${encodeURIComponent(trinksClientId)}` +
+      `&dataInicio=${startStr}&dataFim=${endStr}`
+
+    const response = await apiClient.request<{ data?: TrinksHistoryAppointment[] } | TrinksHistoryAppointment[]>(endpoint)
+    return Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : []
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (msg.includes("404")) return []
+    logger.error("Failed to fetch Trinks client appointments", { salonId, trinksClientId, error: msg })
+    return []
+  }
 }

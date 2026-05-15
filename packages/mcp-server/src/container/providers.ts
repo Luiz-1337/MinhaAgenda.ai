@@ -4,6 +4,7 @@ import { Container } from "./Container"
 import {
   DrizzleAppointmentRepository,
   DrizzleCustomerRepository,
+  DrizzleCustomerTrinksProfileRepository,
   DrizzleProfessionalRepository,
   DrizzleServiceRepository,
   DrizzleSalonRepository,
@@ -16,7 +17,7 @@ import { DrizzleIntegrationRepository } from "../infrastructure/database/Drizzle
 
 // Infrastructure - External
 import { GoogleCalendarService } from "../infrastructure/external/google-calendar"
-import { TrinksSchedulerService } from "../infrastructure/external/trinks"
+import { TrinksSchedulerService, TrinksCustomerService } from "../infrastructure/external/trinks"
 import { TrinksServiceAdapter } from "../infrastructure/external/trinks/TrinksServiceAdapter"
 
 // Application - Services
@@ -66,6 +67,12 @@ import {
   FlagSuspectedOptOutUseCase,
   ClassifyRetentionResponseUseCase,
 } from "../application/use-cases/retention"
+
+// Application - Use Cases - Trinks
+import {
+  SyncCustomerTrinksProfileUseCase,
+  SyncAllCustomersForSalonUseCase,
+} from "../application/use-cases/trinks"
 
 // Domain - Services (ports)
 import type { IAiResponsesRunner } from "../domain/services/IAiResponsesRunner"
@@ -135,6 +142,12 @@ export const TOKENS = {
   RecordCustomerOptOutUseCase: "RecordCustomerOptOutUseCase",
   FlagSuspectedOptOutUseCase: "FlagSuspectedOptOutUseCase",
   ClassifyRetentionResponseUseCase: "ClassifyRetentionResponseUseCase",
+
+  // Trinks (Cliente 360°)
+  TrinksCustomerService: "ITrinksCustomerService",
+  CustomerTrinksProfileRepository: "ICustomerTrinksProfileRepository",
+  SyncCustomerTrinksProfileUseCase: "SyncCustomerTrinksProfileUseCase",
+  SyncAllCustomersForSalonUseCase: "SyncAllCustomersForSalonUseCase",
 } as const
 
 /**
@@ -335,6 +348,35 @@ export function registerProviders(container: Container): void {
     container.resolve<IAiResponsesRunner>(TOKENS.AiResponsesRunner),
     container.resolve(TOKENS.RecordCustomerOptOutUseCase)
   ))
+
+  // ==========================================================================
+  // Trinks - Cliente 360° (Singletons)
+  // ==========================================================================
+
+  container.singleton(TOKENS.TrinksCustomerService, () => new TrinksCustomerService())
+  container.singleton(
+    TOKENS.CustomerTrinksProfileRepository,
+    () => new DrizzleCustomerTrinksProfileRepository()
+  )
+
+  container.singleton(
+    TOKENS.SyncCustomerTrinksProfileUseCase,
+    () =>
+      new SyncCustomerTrinksProfileUseCase(
+        container.resolve(TOKENS.TrinksCustomerService),
+        container.resolve(TOKENS.CustomerTrinksProfileRepository)
+      )
+  )
+
+  container.singleton(
+    TOKENS.SyncAllCustomersForSalonUseCase,
+    () =>
+      new SyncAllCustomersForSalonUseCase(
+        container.resolve(TOKENS.CustomerRepository),
+        container.resolve(TOKENS.CustomerTrinksProfileRepository),
+        container.resolve(TOKENS.SyncCustomerTrinksProfileUseCase)
+      )
+  )
 }
 
 /**
