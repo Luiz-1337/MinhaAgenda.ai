@@ -2,18 +2,9 @@
  * Retention AI feature flags and tunables.
  *
  * All values come from env vars and are read once per server cold start.
- * Defaults are intentionally conservative — opt-in via allowlist.
+ * Per-salon enablement is stored in the `salons.ai_retention_enabled` column,
+ * not in env — see the dispatcher service for the database lookup.
  */
-
-function parseAllowlist(raw: string | undefined): Set<string> {
-  if (!raw) return new Set()
-  return new Set(
-    raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  )
-}
 
 function parseInt(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback
@@ -29,9 +20,6 @@ function parseBool(raw: string | undefined, fallback = false): boolean {
 export const retentionConfig = {
   /** Global kill switch. true = bypass entire AI retention pipeline. */
   disabled: parseBool(process.env.RETENTION_AI_DISABLED, false),
-
-  /** Salons enabled for AI retention. Empty = none. */
-  salonAllowlist: parseAllowlist(process.env.RETENTION_AI_SALON_ALLOWLIST),
 
   /** Fallback inactivity cycle when service.average_cycle_days is NULL. */
   defaultCycleDays: parseInt(process.env.RETENTION_DEFAULT_CYCLE_DAYS, 30),
@@ -67,8 +55,3 @@ export const retentionConfig = {
 } as const
 
 export type RetentionConfig = typeof retentionConfig
-
-export function isSalonAllowlisted(salonId: string): boolean {
-  if (retentionConfig.disabled) return false
-  return retentionConfig.salonAllowlist.has(salonId)
-}

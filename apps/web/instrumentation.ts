@@ -35,6 +35,7 @@ export async function register() {
 
         // Import dinâmico para evitar problemas com Edge Runtime
         const { createMessageWorker } = await import("./workers/message-processor");
+        const { createTrinksProfileSyncWorker } = await import("./workers/trinks-profile-sync.worker");
 
         // Evita criar múltiplos workers durante hot reload
         const globalAny = global as any;
@@ -42,6 +43,13 @@ export async function register() {
             logger.info("Starting message worker from instrumentation...");
             globalAny._messageWorker = createMessageWorker();
             logger.info("Message worker started successfully");
+        }
+        if (!globalAny._trinksProfileWorker) {
+            try {
+                globalAny._trinksProfileWorker = createTrinksProfileSyncWorker();
+            } catch (err) {
+                logger.error({ err }, "Failed to start Trinks profile sync worker");
+            }
         }
     }
 }

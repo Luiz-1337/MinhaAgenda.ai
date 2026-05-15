@@ -25,9 +25,13 @@ import { findRelevantContext, generateQueryEmbedding } from "./rag-context.servi
 import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
-import { db, customers, profiles, appointments, professionals, eq, and } from "@repo/db";
+import { db, customers, customerTrinksProfile, profiles, appointments, professionals, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 import type { ProcessedMedia } from "./media-processor.service";
+import type { TrinksProfileSnapshot } from "./system-prompt-builder.service";
+import { enqueueTrinksProfileSync } from "../../queues/trinks-sync-queue";
+
+const TRINKS_PROFILE_STALE_HOURS = 24;
 
 // Debug verboso controlado por env var (desligado em produção)
 const AI_DEBUG = process.env.AI_DEBUG === 'true';
@@ -68,6 +72,8 @@ export interface GenerateResponseResult {
   model: string;
   stepsCount: number;
   hasToolErrors: boolean;
+  /** Raw steps from the OpenAI runner. Exposed for eval/inspection — not used by the worker. */
+  steps: ResponsesRunnerStep[];
 }
 
 /**
@@ -90,7 +96,7 @@ export async function generateAIResponse(
     // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
     const embeddingPromise = generateQueryEmbedding(userMessage);
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
@@ -98,6 +104,7 @@ export async function generateAIResponse(
       customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined),
       fetchSoloProfessionalInfo(salonId),
       embeddingPromise.catch(() => null),
+      fetchTrinksProfile(salonId, customerId, clientPhone, contextLogger),
     ]);
     timer.mark("context_loaded");
 
@@ -184,7 +191,8 @@ export async function generateAIResponse(
       isNewCustomer,
       agentInfo, // Passa agentInfo para evitar query duplicada
       noShowRisk, // Flag de Risco de Falta
-      soloProfessional // Profissional único (null se 2+)
+      soloProfessional, // Profissional único (null se 2+)
+      trinksProfile // Cliente 360° vindo do cache (null quando integração inativa ou cliente novo)
     );
     timer.mark("prompt_built");
 
@@ -317,6 +325,7 @@ export async function generateAIResponse(
       model: agentModel,
       stepsCount: steps.length,
       hasToolErrors,
+      steps,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -447,6 +456,62 @@ async function fetchCustomerPreferences(
   }
 
   return undefined;
+}
+
+/**
+ * Loads the cached Cliente 360° profile from customer_trinks_profile.
+ *
+ * If the profile is missing or stale (> 24h) AND the salon has Trinks active,
+ * enqueues an asynchronous refresh job — the current message uses whatever is
+ * cached (or no profile at all on first hit), and the next conversation gets
+ * fresh data. This keeps Trinks API latency off the hot path.
+ *
+ * Returns null when: customerId is missing, profile doesn't exist, or
+ * trinks_not_found=true (cached negative — customer simply doesn't exist in
+ * Trinks for this salon, no point showing empty fields to the LLM).
+ */
+async function fetchTrinksProfile(
+  salonId: string,
+  customerId: string | undefined,
+  clientPhone: string,
+  contextLogger: Logger
+): Promise<TrinksProfileSnapshot | null> {
+  if (!customerId) return null;
+
+  try {
+    const row = await db.query.customerTrinksProfile.findFirst({
+      where: eq(customerTrinksProfile.customerId, customerId),
+    });
+
+    const isStale =
+      !row ||
+      Date.now() - row.syncedAt.getTime() > TRINKS_PROFILE_STALE_HOURS * 60 * 60 * 1000;
+
+    if (isStale) {
+      // Fire-and-forget: don't block the conversation on Trinks API.
+      enqueueTrinksProfileSync({ salonId, customerId, customerPhone: clientPhone }).catch((err) => {
+        contextLogger.warn({ err }, "Failed to enqueue Trinks profile sync");
+      });
+    }
+
+    if (!row || row.trinksNotFound) return null;
+
+    return {
+      totalSpent: parseFloat(row.totalSpent as unknown as string),
+      averageTicket: parseFloat(row.averageTicket as unknown as string),
+      visitCount90Days: row.visitCount90Days,
+      visitCount365Days: row.visitCount365Days,
+      lastVisitAt: row.lastVisitAt,
+      tags: (row.tags as string[] | null) ?? [],
+      recentServices: (row.recentServices as TrinksProfileSnapshot["recentServices"] | null) ?? [],
+      vipScore: row.vipScore,
+      trinksNotFound: row.trinksNotFound,
+      syncedAt: row.syncedAt,
+    };
+  } catch (error) {
+    contextLogger.warn({ err: error }, "Error fetching Trinks profile");
+    return null;
+  }
 }
 
 /**

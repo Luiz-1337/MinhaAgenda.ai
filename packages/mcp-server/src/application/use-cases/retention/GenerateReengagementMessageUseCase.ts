@@ -22,6 +22,13 @@ export interface GenerateReengagementMessageInput {
   skipOptOutFooter?: boolean
   model: string
   maxTokens?: number
+  /**
+   * Optional Cliente 360° context from Trinks. When present, the LLM is told
+   * (privately) that this is a VIP / frequent / regular customer so the message
+   * tone reflects their value to the salon. Monetary values are NEVER passed —
+   * the goal is qualitative personalization, not quoting numbers back.
+   */
+  customerTier?: "vip" | "frequent" | "regular" | null
 }
 
 export interface GenerateReengagementMessageOutput {
@@ -76,26 +83,42 @@ function buildSystemPrompt(args: {
   ].join("\n")
 }
 
+function tierContextLine(tier: GenerateReengagementMessageInput["customerTier"]): string | null {
+  switch (tier) {
+    case "vip":
+      return "- Perfil: cliente VIP (alto valor para o salao). Mostre apreco genuino e exclusividade no tom, sem citar valores."
+    case "frequent":
+      return "- Perfil: cliente frequente / fiel. Reforce que sentem falta da presenca dela, sem citar valores."
+    case "regular":
+      return "- Perfil: cliente regular. Mensagem cordial, sem mencionar status especial."
+    default:
+      return null
+  }
+}
+
 function buildUserPrompt(args: {
   customerName: string
   lastServiceName: string | null
   daysSinceVisit: number
   lastProfessionalName: string | null
   tone: string
+  customerTier?: GenerateReengagementMessageInput["customerTier"]
 }): string {
   const firstName = (args.customerName.match(FIRST_NAME_RE)?.[0] || args.customerName).trim()
   const service = args.lastServiceName || "ultimo servico"
   const professional = args.lastProfessionalName || "profissional"
-  return [
+  const lines = [
     "Dados do Cliente:",
     `- Nome: ${firstName}`,
     `- Ultimo Servico: ${service}`,
     `- Dias desde a ultima visita: ${args.daysSinceVisit}`,
     `- Profissional anterior: ${professional}`,
     `- Tom de voz: ${args.tone}`,
-    "",
-    "Gere a mensagem de reconquista.",
-  ].join("\n")
+  ]
+  const tierLine = tierContextLine(args.customerTier)
+  if (tierLine) lines.push(tierLine)
+  lines.push("", "Gere a mensagem de reconquista.")
+  return lines.join("\n")
 }
 
 /**
@@ -126,6 +149,7 @@ export class GenerateReengagementMessageUseCase {
       daysSinceVisit: input.daysSinceVisit,
       lastProfessionalName: input.lastProfessionalName,
       tone,
+      customerTier: input.customerTier,
     })
 
     try {
