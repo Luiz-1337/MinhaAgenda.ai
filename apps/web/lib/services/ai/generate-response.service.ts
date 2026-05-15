@@ -210,7 +210,7 @@ export async function generateAIResponse(
       agentInfo, // Passa agentInfo para evitar query duplicada
       noShowRisk, // Flag de Risco de Falta
       soloProfessional, // Profissional único (null se 2+)
-      conversationStateText // Estado de tools de leitura ja executadas
+      conversationStateText, // Estado de tools de leitura ja executadas
       trinksProfile // Cliente 360° vindo do cache (null quando integração inativa ou cliente novo)
     );
     timer.mark("prompt_built");

@@ -262,7 +262,7 @@ export class SystemPromptBuilder {
     existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
     noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
     soloProfessional?: { id: string; name: string } | null,
-    conversationStateText?: string
+    conversationStateText?: string,
     trinksProfile?: TrinksProfileSnapshot | null
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
@@ -401,7 +401,7 @@ export async function createSalonAssistantPrompt(
   agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
   noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
   soloProfessional?: { id: string; name: string } | null,
-  conversationStateText?: string
+  conversationStateText?: string,
   trinksProfile?: TrinksProfileSnapshot | null
 ): Promise<string> {
   return SystemPromptBuilder.build(
@@ -414,7 +414,7 @@ export async function createSalonAssistantPrompt(
     agentInfo,
     noShowRisk,
     soloProfessional,
-    conversationStateText
+    conversationStateText,
     trinksProfile
   )
 }
