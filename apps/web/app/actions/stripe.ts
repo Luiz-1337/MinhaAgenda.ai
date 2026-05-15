@@ -48,7 +48,8 @@ export async function createCheckoutSession(salonId: string, tier: 'SOLO' | 'PRO
   const priceId = TIER_TO_PRICE[tier]
   if (!priceId) throw new Error('Plano inválido')
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
@@ -80,7 +81,8 @@ export async function createPortalSession(salonId: string) {
     throw new Error('Nenhuma assinatura encontrada')
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
 
   const session = await stripe.billingPortal.sessions.create({
     customer: profile.stripeCustomerId,
@@ -213,7 +215,8 @@ export async function createCreditPackCheckoutSession(salonId: string, packId: s
     await db.update(profiles).set({ stripeCustomerId: customerId, updatedAt: new Date() }).where(eq(profiles.id, profile.id))
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
