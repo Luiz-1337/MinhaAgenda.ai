@@ -1,22 +1,19 @@
 import { z } from "zod"
-import { uuidSchema, uuidOptionalSchema, leadInterestSchema, phoneSchema } from "./common.schema"
+import { leadInterestSchema, phoneSchema } from "./common.schema"
 
 /**
- * Schema para buscar informações do salão
+ * Schema para buscar informações do salão.
+ * Não recebe parâmetros: o salonId vem do closure da tool (contexto do WhatsApp).
  */
-export const getSalonInfoSchema = z.object({
-  salonId: uuidOptionalSchema.describe("ID do salão (opcional)"),
-})
+export const getSalonInfoSchema = z.object({})
 
 export type GetSalonInfoInput = z.infer<typeof getSalonInfoSchema>
 
 /**
- * Schema para salvar preferência do cliente
+ * Schema para salvar preferência do cliente.
+ * O cliente é sempre identificado via clientPhone do closure — a IA não passa customerId.
  */
 export const saveCustomerPreferenceSchema = z.object({
-  customerId: uuidOptionalSchema.describe(
-    "ID do cliente (opcional - padrão = cliente do WhatsApp)"
-  ),
   key: z.string().min(1, "Chave é obrigatória").describe("Nome da preferência"),
   value: z
     .union([z.string(), z.number(), z.boolean()])

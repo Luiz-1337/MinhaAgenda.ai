@@ -39,8 +39,8 @@ describe("salon.tools", () => {
     getSalonDetailsExecute.mockResolvedValueOnce(okResult(makeSalonDTO()))
     const success = await tools.getSalonInfo.execute({})
     expect(getSalonDetailsExecute).toHaveBeenCalledWith(IDS.salonId)
+    // A tool não expõe `id` ao LLM — esse dado é interno e fica no closure.
     expect(success).toEqual({
-      id: IDS.salonId,
       name: "Barbearia Teste",
       address: "Rua Teste, 123",
       phone: "1133334444",
@@ -66,40 +66,7 @@ describe("salon.tools", () => {
     })
   })
 
-  it("saveCustomerPreference com customerId informado", async () => {
-    const tools = createSalonTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
-
-    savePreferenceExecute.mockResolvedValueOnce(
-      okResult({
-        customerId: IDS.customerId,
-        key: "allergy",
-        value: "lâmina",
-        message: "Preferência salva",
-      })
-    )
-
-    const result = await tools.saveCustomerPreference.execute({
-      customerId: IDS.customerId,
-      key: "allergy",
-      value: "lâmina",
-    })
-
-    expect(identifyExecute).not.toHaveBeenCalled()
-    expect(savePreferenceExecute).toHaveBeenCalledWith({
-      salonId: IDS.salonId,
-      customerId: IDS.customerId,
-      key: "allergy",
-      value: "lâmina",
-    })
-    expect(result).toEqual({
-      customerId: IDS.customerId,
-      key: "allergy",
-      value: "lâmina",
-      message: "Preferência salva",
-    })
-  })
-
-  it("saveCustomerPreference sem customerId faz identificação automática", async () => {
+  it("saveCustomerPreference sempre identifica cliente via phone do closure e salva preferência", async () => {
     identifyExecute.mockResolvedValue(okResult(makeIdentifyResultDTO()))
     savePreferenceExecute.mockResolvedValue(
       okResult({
@@ -144,17 +111,17 @@ describe("salon.tools", () => {
     })
     expect(identifyFailed).toBe("Não foi possível identificar o cliente")
 
+    identifyExecute.mockResolvedValueOnce(okResult(makeIdentifyResultDTO()))
     savePreferenceExecute.mockResolvedValueOnce(failResult(new Error("Erro ao salvar preferência")))
     const saveFailed = await tools.saveCustomerPreference.execute({
-      customerId: IDS.customerId,
       key: "allergy",
       value: "lâmina",
     })
     expect(saveFailed).toBe("Erro ao salvar preferência")
 
+    identifyExecute.mockResolvedValueOnce(okResult(makeIdentifyResultDTO()))
     savePreferenceExecute.mockRejectedValueOnce(new Error("Falha inesperada em preferência"))
     const errored = await tools.saveCustomerPreference.execute({
-      customerId: IDS.customerId,
       key: "allergy",
       value: "lâmina",
     })

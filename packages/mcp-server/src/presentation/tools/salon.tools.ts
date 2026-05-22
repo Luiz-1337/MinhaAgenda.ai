@@ -15,15 +15,11 @@ import { ErrorPresenter } from "../presenters"
 import type { ToolSet } from "./types"
 
 /**
- * Normaliza input que pode vir como undefined
- * quando a IA chama uma tool sem argumentos
- */
-function normalizeInput<T>(input: T | undefined): T {
-  return (input ?? {}) as T
-}
-
-/**
- * Cria as tools do salão
+ * Cria as tools do salão.
+ *
+ * salonId e clientPhone vêm do closure (contexto do WhatsApp resolvido pelo webhook).
+ * As tools NUNCA devem aceitar esses IDs como input — caso contrário, a IA tende
+ * a alucinar valores (ex: UUID nulo "00000000-0000-0000-0000-000000000000").
  */
 export function createSalonTools(
   container: Container,
@@ -35,11 +31,8 @@ export function createSalonTools(
       description:
         "Retorna informações do salão: nome, endereço, horários de funcionamento, política de cancelamento.",
       inputSchema: getSalonInfoSchema,
-      execute: async (input) => {
+      execute: async () => {
         try {
-          const params = normalizeInput(input)
-          void params
-
           const useCase = container.resolve<GetSalonDetailsUseCase>(
             TOKENS.GetSalonDetailsUseCase
           )
@@ -71,24 +64,21 @@ export function createSalonTools(
       inputSchema: saveCustomerPreferenceSchema,
       execute: async (input) => {
         try {
-          // Se não tiver customerId, tenta identificar pelo telefone
-          let customerId = input.customerId
-          if (!customerId) {
-            const identifyUseCase = container.resolve<IdentifyCustomerUseCase>(
-              TOKENS.IdentifyCustomerUseCase
-            )
-            const identifyResult = await identifyUseCase.execute({
-              phone: clientPhone,
-              salonId,
-            })
+          // Cliente sempre identificado via telefone do WhatsApp (closure).
+          const identifyUseCase = container.resolve<IdentifyCustomerUseCase>(
+            TOKENS.IdentifyCustomerUseCase
+          )
+          const identifyResult = await identifyUseCase.execute({
+            phone: clientPhone,
+            salonId,
+          })
 
-            if (!isOk(identifyResult) || !identifyResult.data.id) {
-              return ErrorPresenter.format(
-                new Error("Não foi possível identificar o cliente")
-              )
-            }
-            customerId = identifyResult.data.id
+          if (!isOk(identifyResult) || !identifyResult.data.id) {
+            return ErrorPresenter.format(
+              new Error("Não foi possível identificar o cliente")
+            )
           }
+          const customerId = identifyResult.data.id
 
           const useCase = container.resolve<SaveCustomerPreferenceUseCase>(
             TOKENS.SaveCustomerPreferenceUseCase

@@ -137,9 +137,10 @@ export function createAppointmentTools(
             TOKENS.GetUpcomingAppointmentsUseCase
           )
 
+          // O cliente é resolvido pelo use case via phone (closure ou override do input).
           const result = await useCase.execute({
             salonId,
-            customerId: input.clientId,
+            customerId: undefined,
             phone: input.phone || clientPhone,
           })
 

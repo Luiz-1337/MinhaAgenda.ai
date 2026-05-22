@@ -203,17 +203,15 @@ describe("appointment.tools", () => {
     })
   })
 
-  it("getMyFutureAppointments usa fallback de phone e cobre erro/exceção", async () => {
+  it("getMyFutureAppointments resolve cliente via phone do closure e cobre erro/exceção", async () => {
     const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
 
     upcomingExecute.mockResolvedValueOnce(okResult(makeAppointmentListDTO()))
-    const success = await tools.getMyFutureAppointments.execute({
-      clientId: IDS.customerId,
-    })
+    const success = await tools.getMyFutureAppointments.execute({})
 
     expect(upcomingExecute).toHaveBeenCalledWith({
       salonId,
-      customerId: IDS.customerId,
+      customerId: undefined,
       phone: clientPhone,
     })
     expect(success).toMatchObject({
@@ -227,11 +225,11 @@ describe("appointment.tools", () => {
     })
 
     upcomingExecute.mockResolvedValueOnce(failResult(new Error("Cliente não encontrado")))
-    const failed = await tools.getMyFutureAppointments.execute({ clientId: IDS.customerId })
+    const failed = await tools.getMyFutureAppointments.execute({})
     expect(failed).toBe("Cliente não encontrado")
 
     upcomingExecute.mockRejectedValueOnce(new Error("Erro ao listar"))
-    const errored = await tools.getMyFutureAppointments.execute({ clientId: IDS.customerId })
+    const errored = await tools.getMyFutureAppointments.execute({})
     expect(errored).toEqual({
       error: true,
       code: "UNKNOWN_ERROR",
@@ -257,9 +255,9 @@ describe("appointment.tools", () => {
       okResult({ appointmentId, message: "Agendamento cancelado com sucesso" })
     )
 
-    const listed = (await tools.getMyFutureAppointments.execute({
-      clientId: IDS.customerId,
-    })) as { appointments: Array<{ id: string }> }
+    const listed = (await tools.getMyFutureAppointments.execute({})) as {
+      appointments: Array<{ id: string }>
+    }
     const listedId = listed.appointments[0].id
 
     const updated = await tools.updateAppointment.execute({

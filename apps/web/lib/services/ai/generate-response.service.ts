@@ -9,6 +9,7 @@
  */
 
 import { createMCPTools } from "@repo/mcp-server/tools/vercel-ai";
+import { NIL_UUID } from "@repo/mcp-server";
 import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
 import { getActiveAgentInfo } from "./agent-info.service";
 import { mapModelToOpenAI } from "./model-mapper.service";
@@ -85,6 +86,17 @@ export async function generateAIResponse(
 ): Promise<GenerateResponseResult> {
   const { chatId, salonId, clientPhone, userMessage, customerId, customerName, isNewCustomer } = params;
   const contextLogger = createContextLogger({ chatId, salonId, service: "ai-response" });
+
+  // Fail-fast: salonId é o ID que propaga via closure para todas as tools MCP.
+  // Um valor vazio ou UUID nulo significa que o pipeline upstream (webhook) falhou.
+  // Não retentar — não há como o retry consertar isso.
+  if (!salonId || salonId === NIL_UUID) {
+    contextLogger.error({ receivedSalonId: salonId }, "generateAIResponse called with invalid salonId");
+    throw new AIGenerationError(
+      `salonId inválido (recebido: ${JSON.stringify(salonId)})`,
+      { retryable: false }
+    );
+  }
 
   const startTime = Date.now();
 

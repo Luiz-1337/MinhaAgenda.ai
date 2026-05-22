@@ -24,6 +24,7 @@ export * from "./application/use-cases/trinks"
 
 // Tools locais para OpenAI Responses API (mantendo compatibilidade de import)
 import { registerAllTools as registerAllToolsFunc } from "./presentation/tools"
+import { NIL_UUID as NIL_UUID_CONST } from "./presentation/schemas/common.schema"
 export {
   registerAllTools,
   createAppointmentTools,
@@ -40,6 +41,7 @@ export {
   isoDateTimeOptionalSchema,
   uuidSchema,
   uuidOptionalSchema,
+  NIL_UUID,
   phoneSchema,
   leadInterestSchema,
   createAppointmentSchema,
@@ -98,9 +100,22 @@ export const stop = stopServer
 
 /**
  * Cria as tools MCP para uso local com OpenAI Responses API.
- * Esta é a função principal para integração
+ * Esta é a função principal para integração.
+ *
+ * Validação fail-fast: salonId e clientPhone DEVEM ser valores reais resolvidos
+ * pelo webhook do WhatsApp. Um salonId vazio ou UUID nulo significa que o pipeline
+ * de resolução upstream falhou — não faz sentido chamar a IA sem contexto válido.
  */
 export async function createMCPTools(salonId: string, clientPhone: string) {
+  if (!salonId || salonId === NIL_UUID_CONST) {
+    throw new Error(
+      `createMCPTools: salonId inválido (recebido: ${JSON.stringify(salonId)}). O webhook do WhatsApp deve resolver o salonId antes de enfileirar o job.`
+    )
+  }
+  if (!clientPhone) {
+    throw new Error("createMCPTools: clientPhone vazio")
+  }
+
   // Registra providers se ainda não foram registrados
   if (!containerInstance.has(TOKEN_CONSTANTS.AppointmentRepository)) {
     registerProvidersFunc(containerInstance)
