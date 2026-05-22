@@ -202,7 +202,9 @@ export async function GET(req: NextRequest) {
     })
 
     if (existingIntegration) {
-      // Atualiza existente (mantém isActive atual, não sobrescreve)
+      // Reconexão: força isActive=true. Se o usuário está passando pelo OAuth de
+      // novo, ele quer estar conectado — manter is_active=false do estado anterior
+      // causava o bug de tokens OK porém sync silenciosamente desligado.
       console.log('🔄 Atualizando integração existente:', existingIntegration.id)
 
       const updateResult = await db
@@ -212,8 +214,8 @@ export async function GET(req: NextRequest) {
           accessToken: tokens.access_token || null,
           expiresAt,
           ...(email != null && email !== '' ? { email } : {}), // não sobrescreve com null se userinfo falhar
+          isActive: true,
           updatedAt: new Date(),
-          // isActive não é atualizado aqui - mantém o valor atual
         })
         .where(eq(salonIntegrations.id, existingIntegration.id))
         .returning({
