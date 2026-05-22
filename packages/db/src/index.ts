@@ -28,14 +28,25 @@ if (!process.env.DATABASE_URL) {
 }
 
 const connectionString = process.env.DATABASE_URL
+
+// Pool sizing: Supabase Pro = ~200 conexoes client-side via PgBouncer. Com web (Vercel)
+// + worker (Railway, CONCURRENCY=10) + scripts CLI ocasionais, manter um teto baixo por
+// processo evita saturar o pooler em pico (ex: 10 mensagens WhatsApp simultaneas).
+// Sobrescrevivel via DB_POOL_MAX para diagnostico/load test.
+const DB_POOL_MAX = parseInt(process.env.DB_POOL_MAX || "10", 10)
+// 20s de statement_timeout = margem confortavel sobre os 5-7s tipicos de query no horario
+// de pico do Supabase, sem deixar request da IA pendurada por muito tempo.
+const DB_STATEMENT_TIMEOUT_MS = parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || "20000", 10)
+
 const client = postgres(connectionString, {
   prepare: false,
+  max: DB_POOL_MAX,
   connect_timeout: 10,    // 10s max para conectar (evita 30s+ de hang)
   idle_timeout: 20,       // Fecha conexoes idle apos 20s
   max_lifetime: 60 * 5,   // Recicla conexoes a cada 5min
   connection: {
-    // Cancela queries que passam de 15s no servidor para nao segurar worker/webhook
-    statement_timeout: 15_000,
+    // Cancela queries que excedem o timeout no servidor para nao segurar worker/webhook.
+    statement_timeout: DB_STATEMENT_TIMEOUT_MS,
   },
 })
 export const db = drizzle(client, { schema })

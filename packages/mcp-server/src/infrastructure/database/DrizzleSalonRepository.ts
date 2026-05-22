@@ -3,8 +3,11 @@ import { ISalonRepository } from "../../domain/repositories"
 import { Salon, SalonIntegration } from "../../domain/entities"
 import { SalonMapper } from "../mappers"
 import { InMemoryCache } from "../cache"
+import { withDbRetry } from "../../shared/utils/db-retry"
 
 const CACHE_TTL = 10 * 60 * 1000 // 10 minutos
+
+const AI_DEBUG = process.env.AI_DEBUG === "true"
 
 // Mapeia status interno para status do schema
 type SchemaSubscriptionStatus = "ACTIVE" | "PAID" | "PAST_DUE" | "CANCELED" | "TRIAL"
@@ -36,9 +39,10 @@ export class DrizzleSalonRepository implements ISalonRepository {
     const cached = this.salonCache.get(id)
     if (cached !== undefined) return cached
 
-    const row = await db.query.salons.findFirst({
-      where: eq(salons.id, id),
-    })
+    const row = await withDbRetry(
+      () => db.query.salons.findFirst({ where: eq(salons.id, id) }),
+      { operationName: "salons.findById", onRetry: this.logRetry }
+    )
 
     if (!row) {
       this.salonCache.set(id, null)
@@ -72,9 +76,10 @@ export class DrizzleSalonRepository implements ISalonRepository {
   }
 
   async findBySlug(slug: string): Promise<Salon | null> {
-    const row = await db.query.salons.findFirst({
-      where: eq(salons.slug, slug),
-    })
+    const row = await withDbRetry(
+      () => db.query.salons.findFirst({ where: eq(salons.slug, slug) }),
+      { operationName: "salons.findBySlug", onRetry: this.logRetry }
+    )
 
     if (!row) return null
 
@@ -82,9 +87,10 @@ export class DrizzleSalonRepository implements ISalonRepository {
   }
 
   async findByOwner(ownerId: string): Promise<Salon | null> {
-    const row = await db.query.salons.findFirst({
-      where: eq(salons.ownerId, ownerId),
-    })
+    const row = await withDbRetry(
+      () => db.query.salons.findFirst({ where: eq(salons.ownerId, ownerId) }),
+      { operationName: "salons.findByOwner", onRetry: this.logRetry }
+    )
 
     if (!row) return null
 
@@ -92,9 +98,13 @@ export class DrizzleSalonRepository implements ISalonRepository {
   }
 
   async getIntegrations(salonId: string): Promise<SalonIntegration[]> {
-    const rows = await db.query.salonIntegrations.findMany({
-      where: eq(salonIntegrations.salonId, salonId),
-    })
+    const rows = await withDbRetry(
+      () =>
+        db.query.salonIntegrations.findMany({
+          where: eq(salonIntegrations.salonId, salonId),
+        }),
+      { operationName: "salonIntegrations.findMany", onRetry: this.logRetry }
+    )
 
     return rows.map((row) => ({
       provider: row.provider as "google" | "trinks",
@@ -108,17 +118,35 @@ export class DrizzleSalonRepository implements ISalonRepository {
     const cached = this.integrationCache.get(cacheKey)
     if (cached !== undefined) return cached
 
-    const row = await db.query.salonIntegrations.findFirst({
-      where: and(
-        eq(salonIntegrations.salonId, salonId),
-        eq(salonIntegrations.provider, provider),
-        eq(salonIntegrations.isActive, true)
-      ),
-    })
+    const row = await withDbRetry(
+      () =>
+        db.query.salonIntegrations.findFirst({
+          where: and(
+            eq(salonIntegrations.salonId, salonId),
+            eq(salonIntegrations.provider, provider),
+            eq(salonIntegrations.isActive, true)
+          ),
+        }),
+      { operationName: "salonIntegrations.findFirst", onRetry: this.logRetry }
+    )
 
     const result = !!row
     this.integrationCache.set(cacheKey, result)
     return result
+  }
+
+  private logRetry = (info: {
+    attempt: number
+    delayMs: number
+    error: unknown
+    operationName?: string
+  }): void => {
+    if (!AI_DEBUG) return
+    const message = info.error instanceof Error ? info.error.message : String(info.error)
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[DrizzleSalonRepository] retrying ${info.operationName ?? "query"} (attempt ${info.attempt}, delay ${info.delayMs}ms): ${message}`
+    )
   }
 
   async save(salon: Salon): Promise<void> {
