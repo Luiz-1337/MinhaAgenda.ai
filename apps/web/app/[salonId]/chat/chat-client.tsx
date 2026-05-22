@@ -125,11 +125,12 @@ export default function ChatClient({ salonId }: { salonId: string }) {
       list = list.filter((c) => c.status === "Aguardando humano")
     }
     if (q) {
+      const qDigits = q.replace(/\D/g, "")
       list = list.filter(
         (c) =>
           c.customer.name.toLowerCase().includes(q) ||
           c.preview.toLowerCase().includes(q) ||
-          c.customer.phone.replace(/\D/g, "").includes(q.replace(/\D/g, ""))
+          (qDigits.length > 0 && c.customer.phone.replace(/\D/g, "").includes(qDigits))
       )
     }
     return list
