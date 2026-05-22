@@ -22,6 +22,7 @@ import {
   Package,
   Megaphone,
   Trello,
+  Plug,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
@@ -72,6 +73,7 @@ const menuGroups = [
       { href: "services", label: "Serviços", icon: Zap },
       { href: "products", label: "Produtos", icon: Package },
       { href: "marketing", label: "Marketing", icon: Megaphone },
+      { href: "integrations", label: "Integrações", icon: Plug },
     ]
   }
 ] as const
