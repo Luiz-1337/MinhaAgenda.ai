@@ -84,6 +84,33 @@ interface AppointmentData {
   clientName: string
 }
 
+const GOOGLE_OAUTH_CALLBACK_PATH = '/api/google/callback'
+
+/**
+ * Resolve o redirect_uri usado no OAuth do Google.
+ *
+ * Prioridade:
+ * 1. GOOGLE_REDIRECT_URI explícito (recomendado em produção).
+ * 2. Fallback: NEXT_PUBLIC_APP_URL + /api/google/callback.
+ *
+ * O fallback antigo (`GOOGLE_REDIRECT_URI || NEXT_PUBLIC_APP_URL`) mandava só o
+ * host, sem o path do callback — o Google retornava redirect_uri_mismatch em
+ * qualquer ambiente que tivesse só NEXT_PUBLIC_APP_URL definido.
+ */
+export function resolveGoogleRedirectUri(): string {
+  const explicit = process.env.GOOGLE_REDIRECT_URI
+  if (explicit) return explicit
+
+  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '')
+  if (!base) {
+    throw new Error(
+      'OAuth Google: defina GOOGLE_REDIRECT_URI ou NEXT_PUBLIC_APP_URL'
+    )
+  }
+
+  return `${base}${GOOGLE_OAUTH_CALLBACK_PATH}`
+}
+
 // ============================================================================
 // Google Calendar Service (Singleton)
 // ============================================================================
@@ -136,7 +163,7 @@ export class GoogleCalendarService {
 
     const clientId = process.env.GOOGLE_CLIENT_ID
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || process.env.NEXT_PUBLIC_APP_URL
+    const redirectUri = resolveGoogleRedirectUri()
 
     if (!clientId || !clientSecret) {
       this.logger.error('GOOGLE_CLIENT_ID/SECRET not configured')
@@ -865,7 +892,7 @@ export async function ensureProfessionalCalendar(
 export function getRawOAuth2Client(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || process.env.NEXT_PUBLIC_APP_URL
+  const redirectUri = resolveGoogleRedirectUri()
 
   if (!clientId || !clientSecret) {
     throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured')
