@@ -21,6 +21,7 @@ import {
   Zap,
   Package,
   Megaphone,
+  Trello,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
@@ -58,6 +59,7 @@ const menuGroups = [
     title: 'Operação Intelligence',
     items: [
       { href: "chat", label: "Conversas", icon: MessageSquare },
+      { href: "kanban", label: "Kanban", icon: Trello },
       { href: "agents", label: "Agentes AI", icon: Bot },
       { href: "contacts", label: "Contatos", icon: User },
       { href: "team", label: "Equipe", icon: Briefcase },

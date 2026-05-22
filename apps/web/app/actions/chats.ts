@@ -1,6 +1,6 @@
 "use server"
 
-import { db, chats, messages, customers, and, desc, eq, inArray } from "@repo/db"
+import { db, chats, messages, customers, chatKanbanColumns, and, asc, desc, eq, inArray } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { sendWhatsAppMessage } from "@/lib/services/evolution/evolution-message.service"
 import { saveMessage } from "@/lib/services/chat.service"
@@ -16,6 +16,9 @@ export interface ChatConversation {
   status: "Ativo" | "Finalizado" | "Aguardando humano"
   assignedTo: string
   isManual: boolean
+  kanbanColumnId: string | null
+  kanbanColumnName: string | null
+  kanbanColumnColor: string | null
 }
 
 export interface ChatMessage {
@@ -116,6 +119,16 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
       }
     }
 
+    // Busca colunas kanban do salão para enriquecer cada chat com nome/cor
+    const kanbanCols = await db.query.chatKanbanColumns.findMany({
+      where: eq(chatKanbanColumns.salonId, salonId),
+      orderBy: asc(chatKanbanColumns.position),
+      columns: { id: true, name: true, color: true, isDefault: true }
+    })
+    const kanbanById = new Map<string, { name: string; color: string }>()
+    for (const col of kanbanCols) kanbanById.set(col.id, { name: col.name, color: col.color })
+    const defaultKanban = kanbanCols.find((c) => c.isDefault)
+
     // Busca nomes dos clientes WhatsApp pela tabela customers
     const phoneNumbers = salonChats.map((chat) => chat.clientPhone.replace(/\D/g, ""))
     const customerByPhone = new Map<string, { id: string; name: string; phone: string }>()
@@ -151,6 +164,11 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           ? `(${normalizedPhone.slice(0, 2)}) ${normalizedPhone.slice(2, 7)}-${normalizedPhone.slice(7)}`
           : chat.clientPhone
 
+        const effectiveColumnId = chat.kanbanColumnId && kanbanById.has(chat.kanbanColumnId)
+          ? chat.kanbanColumnId
+          : defaultKanban?.id ?? null
+        const effectiveColumn = effectiveColumnId ? kanbanById.get(effectiveColumnId) : undefined
+
         return {
           id: chat.id,
           customer: {
@@ -162,6 +180,9 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           status: (chat.status === "active" ? "Ativo" : "Finalizado") as "Ativo" | "Finalizado" | "Aguardando humano",
           assignedTo: "IA Assistente",
           isManual: chat.isManual || false,
+          kanbanColumnId: effectiveColumnId,
+          kanbanColumnName: effectiveColumn?.name ?? null,
+          kanbanColumnColor: effectiveColumn?.color ?? null,
         }
       })
 

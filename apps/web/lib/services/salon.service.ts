@@ -4,11 +4,28 @@
  */
 
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionals, profiles, agents, and, asc, eq } from "@repo/db"
+import { db, salons, professionals, profiles, agents, chatKanbanColumns, and, asc, eq } from "@repo/db"
 import type { SalonOwnerResult } from "@/lib/types/salon"
 import type { CreateSalonSchema } from "@/lib/schemas"
 import { headers } from "next/headers"
 import { normalizeString } from "@/lib/services/validation.service"
+
+/**
+ * Seeds the 4 default kanban columns for a new salon.
+ * Must be called inside the same transaction that creates the salon.
+ * Same defaults as the migration backfill in 0035_chat_kanban.sql.
+ */
+export async function seedDefaultKanbanColumns(
+  tx: Pick<typeof db, "insert">,
+  salonId: string
+) {
+  await tx.insert(chatKanbanColumns).values([
+    { salonId, name: "Pendentes",  color: "#f59e0b", position: 0, isDefault: true,  isSystem: true },
+    { salonId, name: "Andamento",  color: "#3b82f6", position: 1, isDefault: false, isSystem: true },
+    { salonId, name: "Concluídas", color: "#10b981", position: 2, isDefault: false, isSystem: true },
+    { salonId, name: "Atenção",    color: "#ef4444", position: 3, isDefault: false, isSystem: true }
+  ])
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -238,6 +255,9 @@ export async function createSalonWithOwner(userId: string, data: CreateSalonSche
         .update(profiles)
         .set({ systemRole: "admin" })
         .where(eq(profiles.id, userId))
+
+      // 5. Seed das colunas default do kanban
+      await seedDefaultKanbanColumns(tx, newSalon.id)
 
       console.log("Salão criado com sucesso:", newSalon.id)
       return newSalon

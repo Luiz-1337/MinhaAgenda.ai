@@ -5,7 +5,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import type { ActionState } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString } from "@/lib/services/validation.service"
-import { getOwnerSalonId, isSalonOwnerError } from "@/lib/services/salon.service"
+import { getOwnerSalonId, isSalonOwnerError, seedDefaultKanbanColumns } from "@/lib/services/salon.service"
 import { db, profiles, salons, eq } from "@repo/db"
 
 /**
@@ -126,6 +126,9 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
         salonId: newSalon.id,
         updatedAt: new Date(),
       }).where(eq(profiles.id, userId!))
+
+      // 4. Seed das colunas default do kanban
+      await seedDefaultKanbanColumns(tx, newSalon.id)
     })
   } catch (err) {
     console.error("Erro CRÍTICO ao configurar conta no DB:", err)

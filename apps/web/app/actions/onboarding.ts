@@ -6,6 +6,7 @@ import { db, profiles, salons, professionals, eq } from "@repo/db"
 import type { ActionResult } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
+import { seedDefaultKanbanColumns } from "@/lib/services/salon.service"
 
 interface OnboardingStep1Data {
   salonName: string
@@ -166,6 +167,9 @@ export async function completeOnboardingWithPayment(
         salonId: newSalon.id,
         updatedAt: new Date(),
       }).where(eq(profiles.id, userId!))
+
+      // Seed das colunas default do kanban
+      await seedDefaultKanbanColumns(tx, newSalon.id)
 
       // Criar profissional automaticamente se for plano SOLO
       if (data.plan === 'SOLO') {

@@ -354,6 +354,24 @@ export const googleCalendarSyncChannels = pgTable(
 // ============================================================================
 // TABLES - Chat/CRM
 // ============================================================================
+export const chatKanbanColumns = pgTable(
+  'chat_kanban_columns',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    color: text('color').default('#94a3b8').notNull(),
+    position: integer('position').default(0).notNull(),
+    isDefault: boolean('is_default').default(false).notNull(),
+    isSystem: boolean('is_system').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('chat_kanban_columns_salon_idx').on(table.salonId, table.position)
+  ]
+)
+
 export const chats = pgTable(
   'chats',
   {
@@ -368,12 +386,15 @@ export const chats = pgTable(
     lastBotMessageRequiresResponse: boolean('last_bot_message_requires_response')
       .default(false)
       .notNull(),
+    kanbanColumnId: uuid('kanban_column_id').references(() => chatKanbanColumns.id, { onDelete: 'set null' }),
+    kanbanPosition: numeric('kanban_position', { precision: 20, scale: 10 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
     index('chats_salon_status_idx').on(table.salonId, table.status),
-    index('chats_agent_idx').on(table.agentId)
+    index('chats_agent_idx').on(table.agentId),
+    index('chats_kanban_idx').on(table.salonId, table.kanbanColumnId)
   ]
 )
 
@@ -782,7 +803,13 @@ export const professionalServicesRelations = relations(professionalServices, ({ 
 export const chatsRelations = relations(chats, ({ one, many }) => ({
   salon: one(salons, { fields: [chats.salonId], references: [salons.id] }),
   agent: one(agents, { fields: [chats.agentId], references: [agents.id] }),
+  kanbanColumn: one(chatKanbanColumns, { fields: [chats.kanbanColumnId], references: [chatKanbanColumns.id] }),
   messages: many(messages)
+}))
+
+export const chatKanbanColumnsRelations = relations(chatKanbanColumns, ({ one, many }) => ({
+  salon: one(salons, { fields: [chatKanbanColumns.salonId], references: [salons.id] }),
+  chats: many(chats)
 }))
 
 export const messagesRelations = relations(messages, ({ one }) => ({

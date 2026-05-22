@@ -1,13 +1,24 @@
 "use client"
 
 import { useDeferredValue, useMemo, useState, useRef, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, getNoShowRiskForChat, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
+import { listKanbanColumns, moveChatToKanbanColumn } from "@/app/actions/kanban"
+import type { KanbanColumnDTO } from "@/lib/types/kanban"
 
 type ConversationStatus = "Ativo" | "Finalizado" | "Aguardando humano"
 
@@ -49,10 +60,12 @@ function getStatusBadge(status: ConversationStatus) {
 
 export default function ChatClient({ salonId }: { salonId: string }) {
   const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  const requestedChatId = searchParams.get("chatId")
   const [filter, setFilter] = useState<"all" | "waiting">("all")
   const [query, setQuery] = useState("")
   const deferredQuery = useDeferredValue(query)
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(requestedChatId)
   const [showConversationList, setShowConversationList] = useState(true) // Mobile toggle
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageText, setMessageText] = useState("")
@@ -80,6 +93,18 @@ export default function ChatClient({ salonId }: { salonId: string }) {
     enabled: !!salonId,
     refetchInterval: 30_000, // 30s polling
     refetchIntervalInBackground: false, // Não refetch quando tab oculta
+  })
+
+  // Busca colunas kanban para o submenu "Encaminhar para…"
+  const { data: kanbanColumns = [] } = useQuery<KanbanColumnDTO[]>({
+    queryKey: ["kanban-columns", salonId],
+    queryFn: async () => {
+      const result = await listKanbanColumns(salonId)
+      if ("error" in result) return []
+      return result
+    },
+    enabled: !!salonId,
+    staleTime: 60_000,
   })
 
   // Define activeId quando conversas carregam pela primeira vez
@@ -322,9 +347,15 @@ export default function ChatClient({ salonId }: { salonId: string }) {
     }
   }
 
-  function handleTransferConversation(conversationId: string) {
-    toast.info("Transferindo conversa...")
-    // TODO: Implementar lógica de transferência
+  async function handleForwardToColumn(conversationId: string, columnId: string) {
+    const result = await moveChatToKanbanColumn({ chatId: conversationId, columnId })
+    if ("error" in result) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Conversa encaminhada")
+    queryClient.invalidateQueries({ queryKey: ["conversations", salonId] })
+    queryClient.invalidateQueries({ queryKey: ["kanban", salonId] })
   }
 
   function handleFinishConversation(conversationId: string) {
@@ -470,6 +501,18 @@ export default function ChatClient({ salonId }: { salonId: string }) {
                 <div>
                   <h2 className="text-xs md:text-sm font-bold text-foreground flex items-center gap-2">
                     {active.customer.name}
+                    {active.kanbanColumnName && active.kanbanColumnColor && (
+                      <span
+                        className="px-2 py-0.5 rounded-full border text-[10px] font-medium"
+                        style={{
+                          backgroundColor: active.kanbanColumnColor + "20",
+                          borderColor: active.kanbanColumnColor + "40",
+                          color: active.kanbanColumnColor
+                        }}
+                      >
+                        {active.kanbanColumnName}
+                      </span>
+                    )}
                     {activeRisk && (
                       <span
                         className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-[10px] font-medium text-red-700 dark:text-red-300"
@@ -509,7 +552,27 @@ export default function ChatClient({ salonId }: { salonId: string }) {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleTransferConversation(active.id)}>Transferir</DropdownMenuItem>
+                    {kanbanColumns.length > 0 && (
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Encaminhar para…</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          {kanbanColumns
+                            .filter((col) => col.id !== active.kanbanColumnId)
+                            .map((col) => (
+                              <DropdownMenuItem
+                                key={col.id}
+                                onClick={() => handleForwardToColumn(active.id, col.id)}
+                              >
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: col.color }}
+                                />
+                                {col.name}
+                              </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    )}
                     <DropdownMenuItem onClick={() => handleFinishConversation(active.id)}>Finalizar</DropdownMenuItem>
                     <DropdownMenuItem
                       className="text-red-600 dark:text-red-400"
