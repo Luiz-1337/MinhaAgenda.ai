@@ -89,8 +89,9 @@ export async function setupWatchChannel(
 
     logger.info('Watch channel created', { salonId, calendarId, channelId })
 
-    // Perform initial full sync to get the first syncToken
-    await performFullSync(salonId, calendarId, channelId)
+    // Perform initial full sync: backfill events (90d back → 365d forward)
+    // and store the first syncToken for incremental syncs.
+    await performFullSync(salonId, calendarId, channelId, professionalId ?? null)
 
     return { channelId, resourceId }
   } catch (error) {
@@ -264,15 +265,29 @@ export async function setupWatchChannelsForSalon(salonId: string): Promise<numbe
 // Incremental Sync
 // ============================================================================
 
+// Janela de backfill do full sync: ao conectar (ou reconectar), importa eventos
+// dos últimos 90 dias e dos próximos 365. Evita trazer ruído de calendário antigo
+// e ao mesmo tempo cobre eventos recorrentes/agendamentos futuros já marcados.
+const FULL_SYNC_BACKFILL_PAST_MS = 90 * 24 * 60 * 60 * 1000
+const FULL_SYNC_BACKFILL_FUTURE_MS = 365 * 24 * 60 * 60 * 1000
+
 /**
- * Performs a full sync to establish the initial syncToken.
- * This fetches all events but only stores the token, not the events.
- * (Events already in the app are linked via googleEventId)
+ * Performs a full sync used on first connection / reconnection.
+ *
+ * Importa eventos do Google Calendar dentro de uma janela razoável
+ * (90 dias atrás → 365 dias à frente) via `reconcileGoogleEvent`, e estabelece
+ * o `syncToken` que servirá às sincronizações incrementais subsequentes.
+ *
+ * Eventos pré-existentes já vinculados ao sistema (via `google_event_id`)
+ * são detectados pelo reconcile e atualizados conforme `updated_at` do Google.
+ * Eventos não vinculados viram blocked times — preservando o horário ocupado
+ * para `checkAvailability` no fluxo da IA.
  */
 async function performFullSync(
   salonId: string,
   calendarId: string,
-  channelId: string
+  channelId: string,
+  professionalId: string | null
 ): Promise<void> {
   const service = GoogleCalendarService.getInstance()
   const authClient = await service.getAuthClient(salonId)
@@ -280,18 +295,44 @@ async function performFullSync(
 
   const calendar = google.calendar({ version: 'v3', auth: authClient.client })
 
+  const now = Date.now()
+  const timeMin = new Date(now - FULL_SYNC_BACKFILL_PAST_MS).toISOString()
+  const timeMax = new Date(now + FULL_SYNC_BACKFILL_FUTURE_MS).toISOString()
+
+  let processed = 0
+  let skipped = 0
+  let errors = 0
+
   try {
     let pageToken: string | undefined
     let nextSyncToken: string | undefined
 
-    // Paginate through all events to get the final syncToken
     do {
       const response = await calendar.events.list({
         calendarId,
         pageToken,
         maxResults: 250,
         singleEvents: true,
+        timeMin,
+        timeMax,
       })
+
+      const events = response.data.items || []
+      for (const event of events) {
+        try {
+          const result = await reconcileGoogleEvent(event, salonId, professionalId)
+          if (result === 'processed') processed++
+          else skipped++
+        } catch (error) {
+          logger.error('Full sync: failed to reconcile event', {
+            salonId,
+            calendarId,
+            eventId: event.id,
+            error,
+          })
+          errors++
+        }
+      }
 
       pageToken = response.data.nextPageToken || undefined
       nextSyncToken = response.data.nextSyncToken || undefined
@@ -302,8 +343,6 @@ async function performFullSync(
         .update(googleCalendarSyncChannels)
         .set({ syncToken: nextSyncToken, updatedAt: new Date() })
         .where(eq(googleCalendarSyncChannels.channelId, channelId))
-
-      logger.info('Full sync complete, syncToken stored', { salonId, calendarId })
     }
 
     // Mark initial sync as done
@@ -314,6 +353,14 @@ async function performFullSync(
         eq(salonIntegrations.salonId, salonId),
         eq(salonIntegrations.provider, 'google')
       ))
+
+    logger.info('Full sync complete', {
+      salonId,
+      calendarId,
+      processed,
+      skipped,
+      errors,
+    })
   } catch (error) {
     logger.error('Full sync failed', { salonId, calendarId, error })
   }
@@ -381,7 +428,7 @@ export async function performIncrementalSync(channelId: string): Promise<{
         const errObj = error as { code?: number }
         if (errObj?.code === 410) {
           logger.info('SyncToken expired, performing full re-sync', { channelId })
-          await performFullSync(channel.salonId, channel.calendarId, channelId)
+          await performFullSync(channel.salonId, channel.calendarId, channelId, channel.professionalId)
           return { processed: 0, skipped: 0, errors: 0 }
         }
         throw error
