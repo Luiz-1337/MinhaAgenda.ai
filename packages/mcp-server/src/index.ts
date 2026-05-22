@@ -59,6 +59,7 @@ export {
   getSalonInfoSchema,
   saveCustomerPreferenceSchema,
   qualifyLeadSchema,
+  setChatKanbanColumnSchema,
 } from "./presentation/schemas"
 
 // Presenters para formatação
@@ -105,8 +106,11 @@ export const stop = stopServer
  * Validação fail-fast: salonId e clientPhone DEVEM ser valores reais resolvidos
  * pelo webhook do WhatsApp. Um salonId vazio ou UUID nulo significa que o pipeline
  * de resolução upstream falhou — não faz sentido chamar a IA sem contexto válido.
+ *
+ * `chatId` é opcional: quando passado, ativa a tool `setChatKanbanColumn` para
+ * a IA classificar o chat no Kanban durante a conversa.
  */
-export async function createMCPTools(salonId: string, clientPhone: string) {
+export async function createMCPTools(salonId: string, clientPhone: string, chatId?: string) {
   if (!salonId || salonId === NIL_UUID_CONST) {
     throw new Error(
       `createMCPTools: salonId inválido (recebido: ${JSON.stringify(salonId)}). O webhook do WhatsApp deve resolver o salonId antes de enfileirar o job.`
@@ -121,7 +125,7 @@ export async function createMCPTools(salonId: string, clientPhone: string) {
     registerProvidersFunc(containerInstance)
   }
 
-  return registerAllToolsFunc(containerInstance, salonId, clientPhone)
+  return registerAllToolsFunc(containerInstance, salonId, clientPhone, chatId)
 }
 
 // Entry point para execução direta como MCP server (ESM-compatible)

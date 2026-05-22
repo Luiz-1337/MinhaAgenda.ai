@@ -56,6 +56,8 @@ BEGIN
       SELECT 1 FROM chat_kanban_columns WHERE salon_id = sa.id
     )
   LOOP
+    -- system_key adicionado retroativamente em 0036_chat_kanban_system_key.sql
+    -- (deixado fora aqui porque a coluna ainda não existe nesta migration)
     INSERT INTO chat_kanban_columns (salon_id, name, color, position, is_default, is_system) VALUES
       (s.id, 'Pendentes',  '#f59e0b', 0, true,  true),
       (s.id, 'Andamento',  '#3b82f6', 1, false, true),

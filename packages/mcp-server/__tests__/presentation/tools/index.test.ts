@@ -6,7 +6,7 @@ import { FIXED, IDS, makeAvailabilityDTO, makeIdentifyResultDTO } from "../../he
 import { okResult } from "../../helpers/result"
 
 describe("presentation/tools/index", () => {
-  it("registerAllTools agrega 16 tools esperadas", () => {
+  it("registerAllTools agrega as tools esperadas", () => {
     const container = {
       resolve: vi.fn(),
     } as any
@@ -19,10 +19,7 @@ describe("presentation/tools/index", () => {
       "removeAppointment",
       "getMyFutureAppointments",
       "checkAvailability",
-      "getAvailableSlots",
       "getProfessionalAvailabilityRules",
-      "identifyCustomer",
-      "createCustomer",
       "updateCustomerName",
       "getServices",
       "getProducts",
@@ -30,6 +27,7 @@ describe("presentation/tools/index", () => {
       "getSalonInfo",
       "saveCustomerPreference",
       "qualifyLead",
+      "setChatKanbanColumn",
     ])
   })
 

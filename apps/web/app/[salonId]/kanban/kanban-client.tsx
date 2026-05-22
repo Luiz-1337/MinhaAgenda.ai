@@ -22,8 +22,12 @@ import {
   renameKanbanColumn,
   deleteKanbanColumn,
   reorderKanbanColumns,
+  getKanbanAIClassificationEnabled,
+  setKanbanAIClassificationEnabled,
 } from "@/app/actions/kanban"
 import type { KanbanBoardDTO, KanbanChatCard, KanbanColumnDTO } from "@/lib/types/kanban"
+import { Switch } from "@/components/ui/switch"
+import { Sparkles } from "lucide-react"
 import { KanbanColumn } from "./_components/kanban-column"
 import { KanbanCard } from "./_components/kanban-card"
 import { CreateColumnDialog } from "./_components/create-column-dialog"
@@ -50,6 +54,28 @@ export default function KanbanClient({ salonId }: { salonId: string }) {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   )
 
+  const { data: aiClassification } = useQuery({
+    queryKey: ["kanban-ai-flag", salonId],
+    queryFn: async () => {
+      const result = await getKanbanAIClassificationEnabled(salonId)
+      if ("error" in result) return { enabled: false }
+      return result
+    },
+    enabled: !!salonId,
+    staleTime: 60_000,
+  })
+
+  async function handleToggleAIClassification(enabled: boolean) {
+    queryClient.setQueryData(["kanban-ai-flag", salonId], { enabled })
+    const result = await setKanbanAIClassificationEnabled({ salonId, enabled })
+    if ("error" in result) {
+      toast.error(result.error)
+      queryClient.invalidateQueries({ queryKey: ["kanban-ai-flag", salonId] })
+    } else {
+      toast.success(enabled ? "IA classificará chats automaticamente" : "Classificação por IA desativada")
+    }
+  }
+
   const { data: board, isLoading } = useQuery<KanbanBoardDTO>({
     queryKey: ["kanban", salonId],
     queryFn: async () => {
@@ -70,13 +96,14 @@ export default function KanbanClient({ salonId }: { salonId: string }) {
     const q = query.trim().toLowerCase()
     if (!q) return board
 
+    const qDigits = q.replace(/\D/g, "")
     const filtered: Record<string, KanbanChatCard[]> = {}
     for (const colId of Object.keys(board.chatsByColumnId)) {
       filtered[colId] = board.chatsByColumnId[colId].filter(
         (c) =>
           c.customer.name.toLowerCase().includes(q) ||
           c.preview.toLowerCase().includes(q) ||
-          c.customer.phone.replace(/\D/g, "").includes(q.replace(/\D/g, ""))
+          (qDigits.length > 0 && c.customer.phone.replace(/\D/g, "").includes(qDigits))
       )
     }
     return { columns: board.columns, chatsByColumnId: filtered }
@@ -282,6 +309,17 @@ export default function KanbanClient({ salonId }: { salonId: string }) {
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold text-foreground">Kanban</h1>
           <CreateColumnDialog onCreate={handleCreateColumn} />
+          <label
+            className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
+            title="A IA move chats entre colunas automaticamente durante a conversa (pending/in_progress/completed/attention)."
+          >
+            <Sparkles size={14} className={aiClassification?.enabled ? "text-amber-500" : ""} />
+            <span>IA classifica</span>
+            <Switch
+              checked={!!aiClassification?.enabled}
+              onCheckedChange={handleToggleAIClassification}
+            />
+          </label>
         </div>
         <div className="relative w-64">
           <Search size={14} className="absolute left-3 top-2.5 text-muted-foreground" />

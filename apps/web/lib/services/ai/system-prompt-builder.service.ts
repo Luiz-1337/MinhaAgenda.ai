@@ -275,9 +275,22 @@ export class SystemPromptBuilder {
     // Query única para settings do salão (removida duplicação)
     const salonInfo = await db.query.salons.findFirst({
       where: eq(salons.id, salonId),
-      columns: { settings: true },
+      columns: { settings: true, aiKanbanClassificationEnabled: true },
     })
     const salonSettings = (salonInfo?.settings as Record<string, unknown>) || {}
+    const aiKanbanEnabled = !!salonInfo?.aiKanbanClassificationEnabled
+
+    const kanbanClassificationText = aiKanbanEnabled
+      ? `
+
+CLASSIFICAÇÃO DO CHAT NO KANBAN:
+Você pode mover este chat entre colunas do kanban usando a tool setChatKanbanColumn(category, reason). Use APENAS quando o estado da conversa MUDAR claramente:
+- 'in_progress' quando o cliente confirma horário ou está em negociação ativa (escolheu serviço, mandou comprovante, etc).
+- 'completed' quando o cliente finaliza satisfeito (agradeceu, despediu, agendamento confirmado).
+- 'attention' quando o cliente está irritado, reclamando, cancelando, ou tem problema urgente que precisa intervenção humana.
+- 'pending' quando volta a ser uma pergunta inicial sem ação concreta.
+NÃO chame se a categoria não mudou — evite mover o chat repetidamente na mesma conversa.`
+      : ""
     const toleranceMinutes = salonSettings.late_tolerance_minutes as number | undefined
     const salonInfoText = toleranceMinutes !== undefined
       ? `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${toleranceMinutes} minutos`
@@ -380,7 +393,7 @@ CANCELAMENTO:
 1. Chame getMyFutureAppointments. Mostre agendamentos numerados (sem IDs).
 2. Cliente confirmou → Chame removeAppointment → Confirme.
 
-A agenda SEMPRE existe. NUNCA diga que está inacessível.
+A agenda SEMPRE existe. NUNCA diga que está inacessível.${kanbanClassificationText}
 
 ${agentInfo?.systemPrompt || ""}`
   }

@@ -20,10 +20,10 @@ export async function seedDefaultKanbanColumns(
   salonId: string
 ) {
   await tx.insert(chatKanbanColumns).values([
-    { salonId, name: "Pendentes",  color: "#f59e0b", position: 0, isDefault: true,  isSystem: true },
-    { salonId, name: "Andamento",  color: "#3b82f6", position: 1, isDefault: false, isSystem: true },
-    { salonId, name: "Concluídas", color: "#10b981", position: 2, isDefault: false, isSystem: true },
-    { salonId, name: "Atenção",    color: "#ef4444", position: 3, isDefault: false, isSystem: true }
+    { salonId, name: "Pendentes",  color: "#f59e0b", position: 0, isDefault: true,  isSystem: true, systemKey: "pending" },
+    { salonId, name: "Andamento",  color: "#3b82f6", position: 1, isDefault: false, isSystem: true, systemKey: "in_progress" },
+    { salonId, name: "Concluídas", color: "#10b981", position: 2, isDefault: false, isSystem: true, systemKey: "completed" },
+    { salonId, name: "Atenção",    color: "#ef4444", position: 3, isDefault: false, isSystem: true, systemKey: "attention" }
   ])
 }
 

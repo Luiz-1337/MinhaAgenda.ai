@@ -14,19 +14,23 @@ export { createSalonTools } from "./salon.tools"
 export type { ToolDefinition, ToolSet } from "./types"
 
 /**
- * Registra todas as tools no container
+ * Registra todas as tools no container.
+ *
+ * `chatId` é opcional — propagado apenas para tools que precisam dele
+ * (setChatKanbanColumn). Tools de catálogo/disponibilidade/etc não usam.
  */
 export function registerAllTools(
   container: Container,
   salonId: string,
-  clientPhone: string
+  clientPhone: string,
+  chatId?: string
 ): ToolSet {
   return {
     ...createAppointmentTools(container, salonId, clientPhone),
     ...createAvailabilityTools(container, salonId, clientPhone),
     ...createCustomerTools(container, salonId, clientPhone),
     ...createCatalogTools(container, salonId, clientPhone),
-    ...createSalonTools(container, salonId, clientPhone),
+    ...createSalonTools(container, salonId, clientPhone, chatId),
   }
 }
 

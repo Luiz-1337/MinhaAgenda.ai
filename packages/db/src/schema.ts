@@ -126,6 +126,7 @@ export const salons = pgTable(
     stripeSubscriptionId: text('stripe_subscription_id').unique(),
     extraCredits: bigint('extra_credits', { mode: 'number' }).default(0).notNull(),
     aiRetentionEnabled: boolean('ai_retention_enabled').default(false).notNull(),
+    aiKanbanClassificationEnabled: boolean('ai_kanban_classification_enabled').default(false).notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
     // Evolution API fields
@@ -364,6 +365,7 @@ export const chatKanbanColumns = pgTable(
     position: integer('position').default(0).notNull(),
     isDefault: boolean('is_default').default(false).notNull(),
     isSystem: boolean('is_system').default(false).notNull(),
+    systemKey: text('system_key'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },

@@ -44,3 +44,22 @@ export interface QualifyLeadResultDTO {
   status: string
   message: string
 }
+
+/**
+ * DTO para classificar chat no Kanban via IA.
+ * A categoria é resolvida para uma coluna real do salão via system_key.
+ */
+export interface SetChatKanbanColumnDTO {
+  salonId: string
+  chatId: string
+  category: "pending" | "in_progress" | "completed" | "attention"
+  reason: string
+}
+
+export interface SetChatKanbanColumnResultDTO {
+  chatId: string
+  columnId: string
+  columnName: string
+  changed: boolean
+  message: string
+}

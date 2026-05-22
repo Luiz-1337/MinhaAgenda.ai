@@ -57,6 +57,7 @@ import {
   SaveCustomerPreferenceUseCase,
   QualifyLeadUseCase,
   GetProfessionalAvailabilityRulesUseCase,
+  SetChatKanbanColumnUseCase,
 } from "../application/use-cases/salon"
 
 // Application - Use Cases - Retention
@@ -129,6 +130,7 @@ export const TOKENS = {
   SaveCustomerPreferenceUseCase: "SaveCustomerPreferenceUseCase",
   QualifyLeadUseCase: "QualifyLeadUseCase",
   GetProfessionalAvailabilityRulesUseCase: "GetProfessionalAvailabilityRulesUseCase",
+  SetChatKanbanColumnUseCase: "SetChatKanbanColumnUseCase",
 
   // Repositories - Retention
   RetentionRepository: "IRetentionRepository",
@@ -306,6 +308,8 @@ export function registerProviders(container: Container): void {
   container.singleton(TOKENS.QualifyLeadUseCase, () => new QualifyLeadUseCase(
     container.resolve(TOKENS.LeadRepository)
   ))
+
+  container.singleton(TOKENS.SetChatKanbanColumnUseCase, () => new SetChatKanbanColumnUseCase())
 
   container.singleton(TOKENS.GetProfessionalAvailabilityRulesUseCase, () => new GetProfessionalAvailabilityRulesUseCase(
     container.resolve(TOKENS.ProfessionalRepository),

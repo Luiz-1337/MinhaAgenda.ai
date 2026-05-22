@@ -34,3 +34,29 @@ export const qualifyLeadSchema = z.object({
 })
 
 export type QualifyLeadInput = z.infer<typeof qualifyLeadSchema>
+
+/**
+ * Schema para classificar o chat no Kanban.
+ *
+ * `category` é uma chave SEMÂNTICA estável (não UUID) que o use case resolve
+ * para a coluna correta do salão via `chat_kanban_columns.system_key`. Isso
+ * sobrevive a renames feitos pelo usuário.
+ *
+ * O `chatId` vem do closure — a IA nunca passa.
+ */
+export const setChatKanbanColumnSchema = z.object({
+  category: z
+    .enum(["pending", "in_progress", "completed", "attention"])
+    .describe(
+      "Categoria semântica do chat: 'pending' (cliente perguntando), " +
+      "'in_progress' (negociando/confirmando agendamento), " +
+      "'completed' (cliente finalizou satisfeito), " +
+      "'attention' (cliente irritado, cancelando ou com problema)."
+    ),
+  reason: z
+    .string()
+    .max(200)
+    .describe("Justificativa curta da mudança de coluna (1 frase).")
+})
+
+export type SetChatKanbanColumnInput = z.infer<typeof setChatKanbanColumnSchema>

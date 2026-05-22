@@ -6,6 +6,7 @@ import {
   messages,
   customers,
   chatKanbanColumns,
+  salons,
   and,
   asc,
   desc,
@@ -310,6 +311,43 @@ export async function reorderKanbanColumns(input: {
     return { success: true }
   } catch (error) {
     console.error("Erro ao reordenar colunas kanban:", error)
+    return { error: error instanceof Error ? error.message : "Erro desconhecido" }
+  }
+}
+
+export async function getKanbanAIClassificationEnabled(
+  salonId: string
+): Promise<{ enabled: boolean } | { error: string }> {
+  const auth = await authorize(salonId)
+  if ("error" in auth) return auth
+
+  try {
+    const row = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { aiKanbanClassificationEnabled: true }
+    })
+    return { enabled: !!row?.aiKanbanClassificationEnabled }
+  } catch (error) {
+    console.error("Erro ao buscar flag de IA kanban:", error)
+    return { error: error instanceof Error ? error.message : "Erro desconhecido" }
+  }
+}
+
+export async function setKanbanAIClassificationEnabled(input: {
+  salonId: string
+  enabled: boolean
+}): Promise<{ success: true } | { error: string }> {
+  const auth = await authorize(input.salonId)
+  if ("error" in auth) return auth
+
+  try {
+    await db
+      .update(salons)
+      .set({ aiKanbanClassificationEnabled: input.enabled, updatedAt: new Date() })
+      .where(eq(salons.id, input.salonId))
+    return { success: true }
+  } catch (error) {
+    console.error("Erro ao atualizar flag de IA kanban:", error)
     return { error: error instanceof Error ? error.message : "Erro desconhecido" }
   }
 }

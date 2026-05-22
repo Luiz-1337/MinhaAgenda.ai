@@ -112,7 +112,7 @@ export async function generateAIResponse(
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
-      createMCPTools(salonId, clientPhone),
+      createMCPTools(salonId, clientPhone, chatId),
       customerId ? evaluateNoShowRisk(customerId, salonId) : Promise.resolve(undefined),
       fetchSoloProfessionalInfo(salonId),
       embeddingPromise.catch(() => null),

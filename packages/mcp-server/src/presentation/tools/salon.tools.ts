@@ -4,12 +4,14 @@ import {
   GetSalonDetailsUseCase,
   SaveCustomerPreferenceUseCase,
   QualifyLeadUseCase,
+  SetChatKanbanColumnUseCase,
 } from "../../application/use-cases/salon"
 import { IdentifyCustomerUseCase } from "../../application/use-cases/customer"
 import {
   getSalonInfoSchema,
   saveCustomerPreferenceSchema,
   qualifyLeadSchema,
+  setChatKanbanColumnSchema,
 } from "../schemas"
 import { ErrorPresenter } from "../presenters"
 import type { ToolSet } from "./types"
@@ -17,14 +19,18 @@ import type { ToolSet } from "./types"
 /**
  * Cria as tools do salão.
  *
- * salonId e clientPhone vêm do closure (contexto do WhatsApp resolvido pelo webhook).
+ * salonId, clientPhone e chatId vêm do closure (contexto do WhatsApp resolvido pelo webhook).
  * As tools NUNCA devem aceitar esses IDs como input — caso contrário, a IA tende
  * a alucinar valores (ex: UUID nulo "00000000-0000-0000-0000-000000000000").
+ *
+ * `chatId` é opcional: quando ausente, tools que precisam dele (setChatKanbanColumn)
+ * retornam erro amigável que a IA pode ignorar.
  */
 export function createSalonTools(
   container: Container,
   salonId: string,
-  clientPhone: string
+  clientPhone: string,
+  chatId?: string
 ): ToolSet {
   return {
     getSalonInfo: {
@@ -131,6 +137,50 @@ export function createSalonTools(
           return {
             leadId: result.data.leadId,
             status: result.data.status,
+            message: result.data.message,
+          }
+        } catch (error) {
+          return ErrorPresenter.toJSON(error as Error)
+        }
+      },
+    },
+
+    setChatKanbanColumn: {
+      description:
+        "Move este chat para uma coluna do Kanban. USE APENAS quando o estado da conversa MUDAR claramente: " +
+        "1) 'in_progress' quando o cliente confirma agendamento ou está em negociação ativa; " +
+        "2) 'completed' quando o cliente agradece, finaliza ou sai satisfeito; " +
+        "3) 'attention' quando o cliente está irritado, reclamando, cancelando ou com problema urgente; " +
+        "4) 'pending' quando volta a ser apenas uma pergunta inicial sem ação. " +
+        "Não chame se a categoria não mudou — evite mover o chat repetidamente.",
+      inputSchema: setChatKanbanColumnSchema,
+      execute: async (input) => {
+        try {
+          if (!chatId) {
+            return ErrorPresenter.format(
+              new Error("chatId não disponível neste contexto")
+            )
+          }
+
+          const useCase = container.resolve<SetChatKanbanColumnUseCase>(
+            TOKENS.SetChatKanbanColumnUseCase
+          )
+
+          const result = await useCase.execute({
+            salonId,
+            chatId,
+            category: input.category,
+            reason: input.reason,
+          })
+
+          if (!isOk(result)) {
+            return ErrorPresenter.format(result.error)
+          }
+
+          return {
+            columnId: result.data.columnId,
+            columnName: result.data.columnName,
+            changed: result.data.changed,
             message: result.data.message,
           }
         } catch (error) {
