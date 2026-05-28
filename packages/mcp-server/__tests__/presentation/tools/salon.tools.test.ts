@@ -34,7 +34,7 @@ describe("salon.tools", () => {
   })
 
   it("getSalonInfo cobre sucesso, falha e exceção", async () => {
-    const tools = createSalonTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
+    const tools = createSalonTools({ container: containerController.container as any, salonId: IDS.salonId, clientPhone: FIXED.clientPhone })
 
     getSalonDetailsExecute.mockResolvedValueOnce(okResult(makeSalonDTO()))
     const success = await tools.getSalonInfo.execute({})
@@ -54,7 +54,12 @@ describe("salon.tools", () => {
 
     getSalonDetailsExecute.mockResolvedValueOnce(failResult(new Error("Salão não encontrado")))
     const failed = await tools.getSalonInfo.execute({})
-    expect(failed).toBe("Salão não encontrado")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Salão não encontrado",
+      details: "Salão não encontrado",
+    })
 
     getSalonDetailsExecute.mockRejectedValueOnce(new Error("Erro ao buscar salão"))
     const errored = await tools.getSalonInfo.execute({})
@@ -77,7 +82,7 @@ describe("salon.tools", () => {
       })
     )
 
-    const tools = createSalonTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
+    const tools = createSalonTools({ container: containerController.container as any, salonId: IDS.salonId, clientPhone: FIXED.clientPhone })
     const result = await tools.saveCustomerPreference.execute({
       key: "service_preference",
       value: "degradê",
@@ -102,14 +107,19 @@ describe("salon.tools", () => {
   })
 
   it("saveCustomerPreference cobre falha de identificação, falha de save e exceção", async () => {
-    const tools = createSalonTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
+    const tools = createSalonTools({ container: containerController.container as any, salonId: IDS.salonId, clientPhone: FIXED.clientPhone })
 
     identifyExecute.mockResolvedValueOnce(okResult(makeIdentifyResultDTO({ id: "" })))
     const identifyFailed = await tools.saveCustomerPreference.execute({
       key: "allergy",
       value: "lâmina",
     })
-    expect(identifyFailed).toBe("Não foi possível identificar o cliente")
+    expect(identifyFailed).toEqual({
+      error: true,
+      code: "CUSTOMER_NOT_FOUND",
+      message: "Não encontrei seu cadastro. Pode me informar seu nome para te cadastrar?",
+      details: "Cliente não encontrado",
+    })
 
     identifyExecute.mockResolvedValueOnce(okResult(makeIdentifyResultDTO()))
     savePreferenceExecute.mockResolvedValueOnce(failResult(new Error("Erro ao salvar preferência")))
@@ -117,7 +127,12 @@ describe("salon.tools", () => {
       key: "allergy",
       value: "lâmina",
     })
-    expect(saveFailed).toBe("Erro ao salvar preferência")
+    expect(saveFailed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Erro ao salvar preferência",
+      details: "Erro ao salvar preferência",
+    })
 
     identifyExecute.mockResolvedValueOnce(okResult(makeIdentifyResultDTO()))
     savePreferenceExecute.mockRejectedValueOnce(new Error("Falha inesperada em preferência"))
@@ -134,7 +149,7 @@ describe("salon.tools", () => {
   })
 
   it("qualifyLead usa fallback de phoneNumber e cobre falha/exceção", async () => {
-    const tools = createSalonTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
+    const tools = createSalonTools({ container: containerController.container as any, salonId: IDS.salonId, clientPhone: FIXED.clientPhone })
 
     qualifyLeadExecute.mockResolvedValueOnce(okResult(makeQualifyLeadResultDTO()))
     const success = await tools.qualifyLead.execute({
@@ -158,7 +173,12 @@ describe("salon.tools", () => {
     const failed = await tools.qualifyLead.execute({
       interest: "medium",
     })
-    expect(failed).toBe("Lead inválido")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Lead inválido",
+      details: "Lead inválido",
+    })
 
     qualifyLeadExecute.mockRejectedValueOnce(new Error("Erro ao qualificar lead"))
     const errored = await tools.qualifyLead.execute({

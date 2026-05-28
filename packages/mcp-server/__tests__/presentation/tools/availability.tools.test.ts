@@ -9,28 +9,25 @@ describe("availability.tools", () => {
   let containerController: ContainerMockController
 
   const checkAvailabilityExecute = vi.fn()
-  const getAvailableSlotsExecute = vi.fn()
   const rulesExecute = vi.fn()
 
   beforeEach(() => {
     checkAvailabilityExecute.mockReset()
-    getAvailableSlotsExecute.mockReset()
     rulesExecute.mockReset()
 
     containerController = createContainerMock({
       [TOKENS.CheckAvailabilityUseCase]: { execute: checkAvailabilityExecute },
-      [TOKENS.GetAvailableSlotsUseCase]: { execute: getAvailableSlotsExecute },
       [TOKENS.GetProfessionalAvailabilityRulesUseCase]: { execute: rulesExecute },
     })
   })
 
   it("checkAvailability normaliza data e retorna payload estruturado", async () => {
     checkAvailabilityExecute.mockResolvedValue(okResult(makeAvailabilityDTO()))
-    const tools = createAvailabilityTools(
-      containerController.container as any,
-      IDS.salonId,
-      FIXED.clientPhone
-    )
+    const tools = createAvailabilityTools({
+      container: containerController.container as any,
+      salonId: IDS.salonId,
+      clientPhone: FIXED.clientPhone,
+    })
 
     const result = await tools.checkAvailability.execute({
       date: FIXED.isoDateWithoutTimezone,
@@ -48,21 +45,25 @@ describe("availability.tools", () => {
     })
     expect(result).toMatchObject({
       date: "2026-04-10",
-      professionalId: IDS.professionalId,
       totalAvailable: 2,
     })
   })
 
   it("checkAvailability cobre erro de negócio e exceção", async () => {
-    const tools = createAvailabilityTools(
-      containerController.container as any,
-      IDS.salonId,
-      FIXED.clientPhone
-    )
+    const tools = createAvailabilityTools({
+      container: containerController.container as any,
+      salonId: IDS.salonId,
+      clientPhone: FIXED.clientPhone,
+    })
 
     checkAvailabilityExecute.mockResolvedValueOnce(failResult(new Error("Dia sem agenda")))
     const failed = await tools.checkAvailability.execute({ date: FIXED.isoDateWithTimezone })
-    expect(failed).toBe("Dia sem agenda")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Dia sem agenda",
+      details: "Dia sem agenda",
+    })
 
     checkAvailabilityExecute.mockRejectedValueOnce(new Error("Falha externa"))
     const errored = await tools.checkAvailability.execute({ date: FIXED.isoDateWithTimezone })
@@ -74,56 +75,12 @@ describe("availability.tools", () => {
     })
   })
 
-  it("getAvailableSlots normaliza data e cobre erro/exceção", async () => {
-    const tools = createAvailabilityTools(
-      containerController.container as any,
-      IDS.salonId,
-      FIXED.clientPhone
-    )
-
-    getAvailableSlotsExecute.mockResolvedValueOnce(okResult(makeAvailabilityDTO()))
-    const success = await tools.getAvailableSlots.execute({
-      date: FIXED.isoDateOnly,
-      professionalId: IDS.professionalId,
-    })
-    expect(getAvailableSlotsExecute).toHaveBeenCalledWith({
-      salonId: IDS.salonId,
-      date: "2026-04-10T09:00:00-03:00",
-      professionalId: IDS.professionalId,
-      serviceId: undefined,
-      serviceDuration: undefined,
-    })
-    expect(success).toMatchObject({
-      slots: expect.arrayContaining([
-        { time: "09:00", available: true },
-        { time: "09:30", available: false },
-      ]),
-    })
-
-    getAvailableSlotsExecute.mockResolvedValueOnce(failResult(new Error("Sem slots")))
-    const failed = await tools.getAvailableSlots.execute({
-      date: FIXED.isoDateWithTimezone,
-    })
-    expect(failed).toBe("Sem slots")
-
-    getAvailableSlotsExecute.mockRejectedValueOnce(new Error("Erro de disponibilidade"))
-    const errored = await tools.getAvailableSlots.execute({
-      date: FIXED.isoDateWithTimezone,
-    })
-    expect(errored).toEqual({
-      error: true,
-      code: "UNKNOWN_ERROR",
-      message: "Erro de disponibilidade",
-      details: "Erro de disponibilidade",
-    })
-  })
-
   it("getProfessionalAvailabilityRules mapeia saída e cobre erro/exceção", async () => {
-    const tools = createAvailabilityTools(
-      containerController.container as any,
-      IDS.salonId,
-      FIXED.clientPhone
-    )
+    const tools = createAvailabilityTools({
+      container: containerController.container as any,
+      salonId: IDS.salonId,
+      clientPhone: FIXED.clientPhone,
+    })
 
     rulesExecute.mockResolvedValueOnce(okResult(makeRulesDTO()))
     const success = await tools.getProfessionalAvailabilityRules.execute({
@@ -152,7 +109,12 @@ describe("availability.tools", () => {
     const failed = await tools.getProfessionalAvailabilityRules.execute({
       professionalName: "Desconhecido",
     })
-    expect(failed).toBe("Profissional não encontrado")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Profissional não encontrado",
+      details: "Profissional não encontrado",
+    })
 
     rulesExecute.mockRejectedValueOnce(new Error("Erro ao consultar regras"))
     const errored = await tools.getProfessionalAvailabilityRules.execute({

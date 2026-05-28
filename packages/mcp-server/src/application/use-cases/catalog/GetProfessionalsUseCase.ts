@@ -1,6 +1,10 @@
-import { Result, ok } from "../../../shared/types"
-import { DomainError } from "../../../domain/errors"
-import { IProfessionalRepository, IServiceRepository } from "../../../domain/repositories"
+import { Result, ok, fail } from "../../../shared/types"
+import { DomainError, PlanRestrictionError } from "../../../domain/errors"
+import {
+  IProfessionalRepository,
+  IServiceRepository,
+  ISalonRepository,
+} from "../../../domain/repositories"
 import { ProfessionalDTO, ProfessionalListDTO } from "../../dtos"
 
 export interface GetProfessionalsInput {
@@ -11,12 +15,24 @@ export interface GetProfessionalsInput {
 export class GetProfessionalsUseCase {
   constructor(
     private professionalRepo: IProfessionalRepository,
-    private serviceRepo: IServiceRepository
+    private serviceRepo: IServiceRepository,
+    private salonRepo: ISalonRepository
   ) {}
 
   async execute(
     input: GetProfessionalsInput
   ): Promise<Result<ProfessionalListDTO, DomainError>> {
+    // Plano SOLO: o salão tem 1 profissional, já disponível no contexto do sistema.
+    // Não faz sentido listar profissionais.
+    const salon = await this.salonRepo.findById(input.salonId)
+    if (salon && salon.isSoloPlan()) {
+      return fail(
+        new PlanRestrictionError(
+          "Plano SOLO: este salão tem apenas 1 profissional. O professionalId já está disponível no contexto do sistema. Não é necessário listar profissionais."
+        )
+      )
+    }
+
     const professionals = await this.professionalRepo.findBySalon(
       input.salonId,
       input.includeInactive

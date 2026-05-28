@@ -1,49 +1,31 @@
-import { Container, TOKENS } from "../../container"
-import { isOk } from "../../shared/types"
-import {
-  UpdateCustomerUseCase,
-} from "../../application/use-cases/customer"
-import {
-  updateCustomerNameSchema,
-} from "../schemas"
-import { CustomerPresenter, ErrorPresenter } from "../presenters"
-import type { ToolSet } from "./types"
+import { TOKENS } from "../../container"
+import { unwrap } from "../../shared/types"
+import { UpdateCustomerUseCase } from "../../application/use-cases/customer"
+import { updateCustomerNameSchema } from "../schemas"
+import { CustomerPresenter } from "../presenters"
+import { defineTool } from "./defineTool"
+import type { ToolContext, ToolSet } from "./types"
 
 /**
  * Cria as tools de cliente
  * Nota: identifyCustomer foi removido — a identificação é automática no pipeline
  * (webhook identifica pelo telefone do WhatsApp, addAppointment faz identify internamente).
  */
-export function createCustomerTools(
-  container: Container,
-  _salonId: string,
-  _clientPhone: string
-): ToolSet {
+export function createCustomerTools(ctx: ToolContext): ToolSet {
   return {
-    updateCustomerName: {
-      description:
-        "Atualiza o nome de um cliente no sistema.",
+    updateCustomerName: defineTool(ctx, {
+      description: "Atualiza o nome de um cliente no sistema.",
       inputSchema: updateCustomerNameSchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<UpdateCustomerUseCase>(
-            TOKENS.UpdateCustomerUseCase
-          )
-
-          const result = await useCase.execute({
+      handler: async (input, { container }) => {
+        const result = await container
+          .resolve<UpdateCustomerUseCase>(TOKENS.UpdateCustomerUseCase)
+          .execute({
             customerId: input.customerId,
             name: input.name,
           })
 
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return CustomerPresenter.toJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
+        return CustomerPresenter.toJSON(unwrap(result))
       },
-    },
+    }),
   }
 }

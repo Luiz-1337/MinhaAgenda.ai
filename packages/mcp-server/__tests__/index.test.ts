@@ -20,6 +20,7 @@ function makeTool(name: string) {
 vi.mock("../src/container", () => ({
   container: containerMock,
   registerProviders: registerProvidersMock,
+  registerAiResponsesRunner: vi.fn(),
   TOKENS: {
     AppointmentRepository: "IAppointmentRepository",
   },
@@ -55,7 +56,7 @@ describe("src/index createMCPTools", () => {
 
     expect(hasMock).toHaveBeenCalledWith("IAppointmentRepository")
     expect(registerProvidersMock).toHaveBeenCalledWith(containerMock)
-    expect(registerAllToolsMock).toHaveBeenCalledWith(containerMock, "salon-1", "5511999999999")
+    expect(registerAllToolsMock).toHaveBeenCalledWith(containerMock, "salon-1", "5511999999999", undefined)
     expect(result).toBe(tools)
   })
 
@@ -72,7 +73,7 @@ describe("src/index createMCPTools", () => {
 
     expect(hasMock).toHaveBeenCalledWith("IAppointmentRepository")
     expect(registerProvidersMock).not.toHaveBeenCalled()
-    expect(registerAllToolsMock).toHaveBeenCalledWith(containerMock, "salon-2", "5511888888888")
+    expect(registerAllToolsMock).toHaveBeenCalledWith(containerMock, "salon-2", "5511888888888", undefined)
     expect(result).toBe(tools)
   })
 })

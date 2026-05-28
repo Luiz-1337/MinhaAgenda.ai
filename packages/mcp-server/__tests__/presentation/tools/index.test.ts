@@ -60,7 +60,6 @@ describe("presentation/tools/index", () => {
     const tools = registerAllTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
 
     await tools.checkAvailability.execute({ date: FIXED.isoDateWithTimezone })
-    await tools.identifyCustomer.execute({})
 
     expect(checkAvailabilityExecute).toHaveBeenCalledWith({
       salonId: IDS.salonId,
@@ -68,11 +67,6 @@ describe("presentation/tools/index", () => {
       professionalId: undefined,
       serviceId: undefined,
       serviceDuration: undefined,
-    })
-    expect(identifyExecute).toHaveBeenCalledWith({
-      phone: FIXED.clientPhone,
-      name: undefined,
-      salonId: IDS.salonId,
     })
   })
 })

@@ -37,7 +37,7 @@ describe("appointment.tools", () => {
     identifyExecute.mockResolvedValue(okResult(makeIdentifyResultDTO()))
     createExecute.mockResolvedValue(okResult(makeAppointmentDTO()))
 
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
     const result = await tools.addAppointment.execute({
       professionalId: IDS.professionalId,
       serviceId: IDS.serviceId,
@@ -68,7 +68,7 @@ describe("appointment.tools", () => {
   it("addAppointment retorna erro amigável quando cliente não é identificado", async () => {
     identifyExecute.mockResolvedValue(okResult(makeIdentifyResultDTO({ id: "" })))
 
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
     const result = await tools.addAppointment.execute({
       professionalId: IDS.professionalId,
       serviceId: IDS.serviceId,
@@ -76,28 +76,38 @@ describe("appointment.tools", () => {
     })
 
     expect(createExecute).not.toHaveBeenCalled()
-    expect(result).toBe("Cliente não identificado. Forneça o nome primeiro.")
+    expect(result).toEqual({
+      error: true,
+      code: "CUSTOMER_NOT_FOUND",
+      message: "Não encontrei seu cadastro. Pode me informar seu nome para te cadastrar?",
+      details: "Cliente não encontrado",
+    })
   })
 
   it("addAppointment retorna erro de negócio quando create falha", async () => {
     identifyExecute.mockResolvedValue(okResult(makeIdentifyResultDTO()))
     createExecute.mockResolvedValue(failResult(new Error("Conflito de horário")))
 
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
     const result = await tools.addAppointment.execute({
       professionalId: IDS.professionalId,
       serviceId: IDS.serviceId,
       date: FIXED.isoDateWithoutTimezone,
     })
 
-    expect(result).toBe("Conflito de horário")
+    expect(result).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Conflito de horário",
+      details: "Conflito de horário",
+    })
   })
 
   it("addAppointment retorna payload de erro quando ocorre exceção", async () => {
     identifyExecute.mockResolvedValue(okResult(makeIdentifyResultDTO()))
     createExecute.mockRejectedValue(new Error("Falha inesperada"))
 
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
     const result = await tools.addAppointment.execute({
       professionalId: IDS.professionalId,
       serviceId: IDS.serviceId,
@@ -115,7 +125,7 @@ describe("appointment.tools", () => {
   it("updateAppointment normaliza data quando informada", async () => {
     updateExecute.mockResolvedValue(okResult(makeAppointmentDTO()))
 
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
     const result = await tools.updateAppointment.execute({
       appointmentId: IDS.appointmentId,
       date: FIXED.isoDateWithoutTimezone,
@@ -138,7 +148,7 @@ describe("appointment.tools", () => {
   it("updateAppointment mantém startsAt undefined quando date não é enviada", async () => {
     updateExecute.mockResolvedValue(okResult(makeAppointmentDTO()))
 
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
     await tools.updateAppointment.execute({
       appointmentId: IDS.appointmentId,
       notes: "Sem alteração de data",
@@ -154,14 +164,19 @@ describe("appointment.tools", () => {
   })
 
   it("updateAppointment cobre falha de negócio e exceção", async () => {
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
 
     updateExecute.mockResolvedValueOnce(failResult(new Error("Agendamento inexistente")))
     const failed = await tools.updateAppointment.execute({
       appointmentId: IDS.appointmentId,
       date: FIXED.isoDateWithTimezone,
     })
-    expect(failed).toBe("Agendamento inexistente")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Agendamento inexistente",
+      details: "Agendamento inexistente",
+    })
 
     updateExecute.mockRejectedValueOnce(new Error("Erro ao atualizar"))
     const errored = await tools.updateAppointment.execute({
@@ -177,7 +192,7 @@ describe("appointment.tools", () => {
   })
 
   it("removeAppointment cobre sucesso, falha e exceção", async () => {
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
 
     deleteExecute.mockResolvedValueOnce(
       okResult({ appointmentId: IDS.appointmentId, message: "Agendamento cancelado" })
@@ -191,7 +206,12 @@ describe("appointment.tools", () => {
 
     deleteExecute.mockResolvedValueOnce(failResult(new Error("Não foi possível cancelar")))
     const failed = await tools.removeAppointment.execute({ appointmentId: IDS.appointmentId })
-    expect(failed).toBe("Não foi possível cancelar")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Não foi possível cancelar",
+      details: "Não foi possível cancelar",
+    })
 
     deleteExecute.mockRejectedValueOnce(new Error("Erro interno"))
     const errored = await tools.removeAppointment.execute({ appointmentId: IDS.appointmentId })
@@ -204,7 +224,7 @@ describe("appointment.tools", () => {
   })
 
   it("getMyFutureAppointments resolve cliente via phone do closure e cobre erro/exceção", async () => {
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
 
     upcomingExecute.mockResolvedValueOnce(okResult(makeAppointmentListDTO()))
     const success = await tools.getMyFutureAppointments.execute({})
@@ -226,7 +246,12 @@ describe("appointment.tools", () => {
 
     upcomingExecute.mockResolvedValueOnce(failResult(new Error("Cliente não encontrado")))
     const failed = await tools.getMyFutureAppointments.execute({})
-    expect(failed).toBe("Cliente não encontrado")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Cliente não encontrado",
+      details: "Cliente não encontrado",
+    })
 
     upcomingExecute.mockRejectedValueOnce(new Error("Erro ao listar"))
     const errored = await tools.getMyFutureAppointments.execute({})
@@ -240,7 +265,7 @@ describe("appointment.tools", () => {
 
   it("simula fluxo real: listar futuros -> reagendar -> cancelar", async () => {
     const appointmentId = IDS.appointmentId2
-    const tools = createAppointmentTools(containerController.container as any, salonId, clientPhone)
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
 
     upcomingExecute.mockResolvedValueOnce(
       okResult(

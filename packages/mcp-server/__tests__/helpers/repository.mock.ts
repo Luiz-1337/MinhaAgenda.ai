@@ -7,7 +7,6 @@ import type { IServiceRepository } from "../../src/domain/repositories/IServiceR
 import type { ISalonRepository } from "../../src/domain/repositories/ISalonRepository"
 import type { ICalendarService } from "../../src/application/ports/ICalendarService"
 import type { IExternalScheduler } from "../../src/application/ports/IExternalScheduler"
-import type { IntegrationSyncService } from "../../src/application/services/IntegrationSyncService"
 
 export function mockAppointmentRepo(): Record<keyof IAppointmentRepository, ReturnType<typeof vi.fn>> {
   return {
@@ -100,13 +99,5 @@ export function mockExternalScheduler(): Record<keyof IExternalScheduler, Return
     updateBooking: vi.fn().mockResolvedValue(undefined),
     cancelBooking: vi.fn().mockResolvedValue(undefined),
     isConfigured: vi.fn().mockResolvedValue(false),
-  }
-}
-
-export function mockIntegrationSyncService(): { syncDelete: ReturnType<typeof vi.fn>; syncCreate: ReturnType<typeof vi.fn>; syncUpdate: ReturnType<typeof vi.fn> } {
-  return {
-    syncDelete: vi.fn().mockResolvedValue({ success: true, errors: [] }),
-    syncCreate: vi.fn().mockResolvedValue({ success: true, errors: [] }),
-    syncUpdate: vi.fn().mockResolvedValue({ success: true, errors: [] }),
   }
 }

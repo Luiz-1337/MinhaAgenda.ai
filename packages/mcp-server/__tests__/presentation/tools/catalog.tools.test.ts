@@ -17,24 +17,28 @@ describe("catalog.tools", () => {
   const getServicesExecute = vi.fn()
   const getProductsExecute = vi.fn()
   const getProfessionalsExecute = vi.fn()
-  const findSalonById = vi.fn()
 
   beforeEach(() => {
     getServicesExecute.mockReset()
     getProductsExecute.mockReset()
     getProfessionalsExecute.mockReset()
-    findSalonById.mockReset()
 
     containerController = createContainerMock({
       [TOKENS.GetServicesUseCase]: { execute: getServicesExecute },
       [TOKENS.GetProductsUseCase]: { execute: getProductsExecute },
       [TOKENS.GetProfessionalsUseCase]: { execute: getProfessionalsExecute },
-      [TOKENS.SalonRepository]: { findById: findSalonById },
     })
   })
 
+  const makeTools = () =>
+    createCatalogTools({
+      container: containerController.container as any,
+      salonId: IDS.salonId,
+      clientPhone: FIXED.clientPhone,
+    })
+
   it("getServices normaliza input undefined e cobre sucesso/falha/exceção", async () => {
-    const tools = createCatalogTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
+    const tools = makeTools()
 
     getServicesExecute.mockResolvedValueOnce(okResult(makeServiceListDTO()))
     const success = await tools.getServices.execute(undefined as any)
@@ -55,7 +59,12 @@ describe("catalog.tools", () => {
 
     getServicesExecute.mockResolvedValueOnce(failResult(new Error("Erro ao buscar serviços")))
     const failed = await tools.getServices.execute({})
-    expect(failed).toBe("Erro ao buscar serviços")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Erro ao buscar serviços",
+      details: "Erro ao buscar serviços",
+    })
 
     getServicesExecute.mockRejectedValueOnce(new Error("Falha de catálogo"))
     const errored = await tools.getServices.execute({})
@@ -68,7 +77,7 @@ describe("catalog.tools", () => {
   })
 
   it("getProducts normaliza input undefined e cobre sucesso/falha/exceção", async () => {
-    const tools = createCatalogTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
+    const tools = makeTools()
 
     getProductsExecute.mockResolvedValueOnce(okResult(makeProductListDTO()))
     const success = await tools.getProducts.execute(undefined as any)
@@ -83,7 +92,12 @@ describe("catalog.tools", () => {
 
     getProductsExecute.mockResolvedValueOnce(failResult(new Error("Erro ao buscar produtos")))
     const failed = await tools.getProducts.execute({})
-    expect(failed).toBe("Erro ao buscar produtos")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Erro ao buscar produtos",
+      details: "Erro ao buscar produtos",
+    })
 
     getProductsExecute.mockRejectedValueOnce(new Error("Falha em produtos"))
     const errored = await tools.getProducts.execute({})
@@ -95,34 +109,11 @@ describe("catalog.tools", () => {
     })
   })
 
-  it("getProfessionals retorna restrição de plano SOLO sem chamar use case", async () => {
-    findSalonById.mockResolvedValue({
-      isSoloPlan: () => true,
-    })
+  it("getProfessionals delega ao use case e cobre sucesso, falha e exceção", async () => {
+    const tools = makeTools()
 
-    const tools = createCatalogTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
-    const result = await tools.getProfessionals.execute({})
-
-    expect(findSalonById).toHaveBeenCalledWith(IDS.salonId)
-    expect(getProfessionalsExecute).not.toHaveBeenCalled()
-    expect(result).toBeTypeOf("string")
-    expect(JSON.parse(result as string)).toEqual({
-      error: true,
-      message:
-        "Este recurso não está disponível para o plano SOLO (apenas 1 profissional). Utilize o único profissional que tenha conhecimento",
-      code: "PLAN_RESTRICTION",
-    })
-  })
-
-  it("getProfessionals cobre sucesso fora do SOLO, falha e exceção", async () => {
-    const tools = createCatalogTools(containerController.container as any, IDS.salonId, FIXED.clientPhone)
-
-    findSalonById.mockResolvedValueOnce({
-      isSoloPlan: () => false,
-    })
     getProfessionalsExecute.mockResolvedValueOnce(okResult(makeProfessionalListDTO()))
     const success = await tools.getProfessionals.execute(undefined as any)
-
     expect(getProfessionalsExecute).toHaveBeenCalledWith({
       salonId: IDS.salonId,
       includeInactive: undefined,
@@ -132,22 +123,24 @@ describe("catalog.tools", () => {
       professionals: [{ id: IDS.professionalId, name: "João" }],
     })
 
-    findSalonById.mockResolvedValueOnce({
-      isSoloPlan: () => false,
-    })
     getProfessionalsExecute.mockResolvedValueOnce(
       failResult(new Error("Erro ao buscar profissionais"))
     )
     const failed = await tools.getProfessionals.execute({})
-    expect(failed).toBe("Erro ao buscar profissionais")
+    expect(failed).toEqual({
+      error: true,
+      code: "UNKNOWN_ERROR",
+      message: "Erro ao buscar profissionais",
+      details: "Erro ao buscar profissionais",
+    })
 
-    findSalonById.mockRejectedValueOnce(new Error("Erro ao consultar salão"))
+    getProfessionalsExecute.mockRejectedValueOnce(new Error("Erro ao consultar profissionais"))
     const errored = await tools.getProfessionals.execute({})
     expect(errored).toEqual({
       error: true,
       code: "UNKNOWN_ERROR",
-      message: "Erro ao consultar salão",
-      details: "Erro ao consultar salão",
+      message: "Erro ao consultar profissionais",
+      details: "Erro ao consultar profissionais",
     })
   })
 })

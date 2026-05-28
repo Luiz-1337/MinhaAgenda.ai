@@ -13,7 +13,6 @@ import {
   DrizzleAvailabilityRepository,
   DrizzleRetentionRepository,
 } from "../infrastructure/database"
-import { DrizzleIntegrationRepository } from "../infrastructure/database/DrizzleIntegrationRepository"
 
 // Infrastructure - External
 import { GoogleCalendarService } from "../infrastructure/external/google-calendar"
@@ -21,7 +20,7 @@ import { TrinksSchedulerService, TrinksCustomerService } from "../infrastructure
 import { TrinksServiceAdapter } from "../infrastructure/external/trinks/TrinksServiceAdapter"
 
 // Application - Services
-import { AvailabilityService, SyncService, IntegrationSyncService } from "../application/services"
+import { AvailabilityService, SyncService } from "../application/services"
 
 // Application - Use Cases - Appointment
 import {
@@ -97,13 +96,9 @@ export const TOKENS = {
   ExternalScheduler: "IExternalScheduler",
   TrinksService: "ITrinksService",
 
-  // Repositories - Integrations
-  IntegrationRepository: "IIntegrationRepository",
-
   // Application Services
   AvailabilityService: "AvailabilityService",
   SyncService: "SyncService",
-  IntegrationSyncService: "IntegrationSyncService",
 
   // Use Cases - Appointment
   CreateAppointmentUseCase: "CreateAppointmentUseCase",
@@ -170,12 +165,6 @@ export function registerProviders(container: Container): void {
   container.singleton(TOKENS.AvailabilityRepository, () => new DrizzleAvailabilityRepository())
 
   // ==========================================================================
-  // Integration Repository (Singleton)
-  // ==========================================================================
-
-  container.singleton(TOKENS.IntegrationRepository, () => new DrizzleIntegrationRepository())
-
-  // ==========================================================================
   // External Services (Lazy - nova instância quando necessário)
   // ==========================================================================
 
@@ -205,14 +194,6 @@ export function registerProviders(container: Container): void {
     container.resolve(TOKENS.ExternalScheduler)
   ))
 
-  // IntegrationSyncService - usado pelos Use Cases para sincronizar com integrações
-  container.singleton(TOKENS.IntegrationSyncService, () => new IntegrationSyncService(
-    container.resolve(TOKENS.IntegrationRepository),
-    container.resolve(TOKENS.CalendarService),
-    undefined, // TrinksService é criado por salonId - será passado por parâmetro quando necessário
-    console // Logger simples
-  ))
-
   // ==========================================================================
   // Use Cases - Appointment (Singletons - todos stateless)
   // ==========================================================================
@@ -231,9 +212,7 @@ export function registerProviders(container: Container): void {
   ))
 
   container.singleton(TOKENS.DeleteAppointmentUseCase, () => new DeleteAppointmentUseCase(
-    container.resolve(TOKENS.AppointmentRepository),
-    container.resolve(TOKENS.ProfessionalRepository),
-    container.resolve(TOKENS.IntegrationSyncService)
+    container.resolve(TOKENS.AppointmentRepository)
   ))
 
   container.singleton(TOKENS.GetUpcomingAppointmentsUseCase, () => new GetUpcomingAppointmentsUseCase(
@@ -290,7 +269,8 @@ export function registerProviders(container: Container): void {
 
   container.singleton(TOKENS.GetProfessionalsUseCase, () => new GetProfessionalsUseCase(
     container.resolve(TOKENS.ProfessionalRepository),
-    container.resolve(TOKENS.ServiceRepository)
+    container.resolve(TOKENS.ServiceRepository),
+    container.resolve(TOKENS.SalonRepository)
   ))
 
   // ==========================================================================

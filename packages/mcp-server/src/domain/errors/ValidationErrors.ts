@@ -72,6 +72,17 @@ export class InvalidUUIDError extends DomainError {
 }
 
 /**
+ * Erro quando um recurso não está disponível para o plano do salão
+ */
+export class PlanRestrictionError extends DomainError {
+  readonly code = "PLAN_RESTRICTION"
+
+  constructor(message: string) {
+    super(message)
+  }
+}
+
+/**
  * Erro de valor fora do intervalo permitido
  */
 export class OutOfRangeError extends DomainError {

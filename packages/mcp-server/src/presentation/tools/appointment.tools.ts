@@ -1,5 +1,5 @@
-import { Container, TOKENS } from "../../container"
-import { isOk } from "../../shared/types"
+import { TOKENS } from "../../container"
+import { unwrap } from "../../shared/types"
 import { ensureIsoWithTimezone } from "../../shared/utils/date.utils"
 import {
   CreateAppointmentUseCase,
@@ -7,81 +7,52 @@ import {
   DeleteAppointmentUseCase,
   GetUpcomingAppointmentsUseCase,
 } from "../../application/use-cases/appointment"
-import { IdentifyCustomerUseCase } from "../../application/use-cases/customer"
 import {
   createAppointmentSchema,
   updateAppointmentSchema,
   deleteAppointmentSchema,
   getMyFutureAppointmentsSchema,
 } from "../schemas"
-import { AppointmentPresenter, ErrorPresenter } from "../presenters"
-import type { ToolSet } from "./types"
+import { AppointmentPresenter } from "../presenters"
+import { defineTool } from "./defineTool"
+import { resolveCustomerId } from "./tool-helpers"
+import type { ToolContext, ToolSet } from "./types"
 
 /**
  * Cria as tools de agendamento
  */
-export function createAppointmentTools(
-  container: Container,
-  salonId: string,
-  clientPhone: string
-): ToolSet {
+export function createAppointmentTools(ctx: ToolContext): ToolSet {
   return {
-    addAppointment: {
+    addAppointment: defineTool(ctx, {
       description:
         "Cria um novo agendamento. REQUER professionalId e serviceId (obtidos via getServices e getProfessionals/checkAvailability) e date em formato ISO 8601. SEMPRE chame checkAvailability ANTES para confirmar disponibilidade.",
       inputSchema: createAppointmentSchema,
-      execute: async (input) => {
-        try {
-          // Primeiro identifica o cliente
-          const identifyUseCase = container.resolve<IdentifyCustomerUseCase>(
-            TOKENS.IdentifyCustomerUseCase
-          )
-          const identifyResult = await identifyUseCase.execute({
-            phone: clientPhone,
+      handler: async (input, { container, salonId }) => {
+        const customerId = await resolveCustomerId(ctx)
+
+        const result = await container
+          .resolve<CreateAppointmentUseCase>(TOKENS.CreateAppointmentUseCase)
+          .execute({
             salonId,
-          })
-
-          if (!isOk(identifyResult) || !identifyResult.data.id) {
-            return ErrorPresenter.format(
-              new Error("Cliente não identificado. Forneça o nome primeiro.")
-            )
-          }
-
-          const createUseCase = container.resolve<CreateAppointmentUseCase>(
-            TOKENS.CreateAppointmentUseCase
-          )
-
-          const result = await createUseCase.execute({
-            salonId,
-            customerId: identifyResult.data.id,
+            customerId,
             professionalId: input.professionalId,
             serviceId: input.serviceId,
             startsAt: ensureIsoWithTimezone(input.date),
             notes: input.notes,
           })
 
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return AppointmentPresenter.toJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
+        return AppointmentPresenter.toJSON(unwrap(result))
       },
-    },
+    }),
 
-    updateAppointment: {
+    updateAppointment: defineTool(ctx, {
       description:
         "Reagenda um agendamento existente. REQUER appointmentId (obtido via getMyFutureAppointments). Chame checkAvailability ANTES para confirmar o novo horário.",
       inputSchema: updateAppointmentSchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<UpdateAppointmentUseCase>(
-            TOKENS.UpdateAppointmentUseCase
-          )
-
-          const result = await useCase.execute({
+      handler: async (input, { container }) => {
+        const result = await container
+          .resolve<UpdateAppointmentUseCase>(TOKENS.UpdateAppointmentUseCase)
+          .execute({
             appointmentId: input.appointmentId,
             professionalId: input.professionalId,
             serviceId: input.serviceId,
@@ -89,70 +60,43 @@ export function createAppointmentTools(
             notes: input.notes,
           })
 
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return AppointmentPresenter.toJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
+        return AppointmentPresenter.toJSON(unwrap(result))
       },
-    },
+    }),
 
-    removeAppointment: {
+    removeAppointment: defineTool(ctx, {
       description:
         "Cancela um agendamento. REQUER appointmentId (obtido via getMyFutureAppointments). Chame getMyFutureAppointments ANTES para obter o ID correto.",
       inputSchema: deleteAppointmentSchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<DeleteAppointmentUseCase>(
-            TOKENS.DeleteAppointmentUseCase
-          )
+      handler: async (input, { container }) => {
+        const result = await container
+          .resolve<DeleteAppointmentUseCase>(TOKENS.DeleteAppointmentUseCase)
+          .execute(input.appointmentId)
 
-          const result = await useCase.execute(input.appointmentId)
-
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return {
-            success: true,
-            appointmentId: result.data.appointmentId,
-            message: result.data.message,
-          }
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
+        const data = unwrap(result)
+        return {
+          success: true,
+          appointmentId: data.appointmentId,
+          message: data.message,
         }
       },
-    },
+    }),
 
-    getMyFutureAppointments: {
+    getMyFutureAppointments: defineTool(ctx, {
       description:
         "Lista agendamentos futuros do cliente. OBRIGATÓRIO chamar ANTES de updateAppointment ou removeAppointment. Retorna IDs internos necessários para reagendar/cancelar. Não precisa de parâmetros.",
       inputSchema: getMyFutureAppointmentsSchema,
-      execute: async (input) => {
-        try {
-          const useCase = container.resolve<GetUpcomingAppointmentsUseCase>(
-            TOKENS.GetUpcomingAppointmentsUseCase
-          )
-
-          // O cliente é resolvido pelo use case via phone (closure ou override do input).
-          const result = await useCase.execute({
+      handler: async (input, { container, salonId, clientPhone }) => {
+        const result = await container
+          .resolve<GetUpcomingAppointmentsUseCase>(TOKENS.GetUpcomingAppointmentsUseCase)
+          .execute({
             salonId,
             customerId: undefined,
             phone: input.phone || clientPhone,
           })
 
-          if (!isOk(result)) {
-            return ErrorPresenter.format(result.error)
-          }
-
-          return AppointmentPresenter.listToJSON(result.data)
-        } catch (error) {
-          return ErrorPresenter.toJSON(error as Error)
-        }
+        return AppointmentPresenter.listToJSON(unwrap(result))
       },
-    },
+    }),
   }
 }
