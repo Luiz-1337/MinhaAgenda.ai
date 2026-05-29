@@ -4,6 +4,7 @@ import { IDS, makeFakeJob } from "../helpers/fixtures"
 // Mock de módulos específicos do worker (além dos já mockados no setup)
 vi.mock("@/lib/services/ai/generate-response.service", () => ({
   generateAIResponse: vi.fn(),
+  checkIfNewCustomer: vi.fn().mockResolvedValue(false),
 }))
 
 vi.mock("@/lib/services/chat.service", () => ({
@@ -117,7 +118,10 @@ describe("processMessage", () => {
   })
 
   it("message coalescing: pula quando mensagem mais nova existe", async () => {
-    const mockRedis = { get: vi.fn().mockResolvedValue("newer-msg-id"), set: vi.fn() }
+    // Sentinel no formato atual "<timestampMs>:<messageId>" com timestamp mais novo
+    // que o receivedAt do job e messageId diferente -> dispara coalescing pre-lock.
+    const newerTs = Date.now() + 60_000
+    const mockRedis = { get: vi.fn().mockResolvedValue(`${newerTs}:newer-msg-id`), set: vi.fn() }
     vi.mocked(getRedisClient).mockReturnValue(mockRedis as any)
 
     const job = makeFakeJob()
@@ -154,7 +158,8 @@ describe("processMessage", () => {
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.stringContaining("temporariamente indisponível"),
-      IDS.salonId
+      IDS.salonId,
+      { agentId: IDS.agentId }
     )
   })
 
@@ -203,9 +208,11 @@ describe("processMessage", () => {
   })
 
   it("mensagem de mídia: responde com template sem chamar AI", async () => {
+    // Imagens/áudio agora vão para a IA (vision/transcrição). O caminho de template
+    // sem IA permanece apenas para vídeo/documento.
     const job = makeFakeJob({
       hasMedia: true,
-      mediaType: "image",
+      mediaType: "document",
     })
 
     const result = await processMessage(job as any)
@@ -214,8 +221,9 @@ describe("processMessage", () => {
     expect(generateAIResponse).not.toHaveBeenCalled()
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       expect.any(String),
-      expect.stringContaining("imagem"),
-      IDS.salonId
+      expect.stringContaining("apenas mensagens de texto"),
+      IDS.salonId,
+      { agentId: IDS.agentId }
     )
   })
 
