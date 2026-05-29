@@ -33,25 +33,22 @@ export function formatPhone(phone: string): string {
     return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 6)}-${withoutCountry.slice(6)}`
   }
 
+  // Internacional (não-BR): exibe em E.164 simples (+DDI...).
+  if (normalized.length >= 8) {
+    return `+${normalized}`
+  }
+
   // Se não conseguir formatar, retorna como está
   return phone
 }
 
 /**
- * Valida se um telefone brasileiro é válido
+ * Valida um telefone brasileiro (com ou sem DDI 55): 10 (fixo) ou 11 (celular)
+ * dígitos sem país, DDD 11-99, celular começando com 9.
  */
-export function isValidPhone(phone: string): boolean {
-  const normalized = normalizePhone(phone)
-
-  // Deve ter entre 10 e 13 dígitos (com ou sem código do país)
-  if (normalized.length < 10 || normalized.length > 13) {
-    return false
-  }
-
+function isValidBrazilianPhone(digits: string): boolean {
   // Remove código do país se presente
-  const withoutCountry = normalized.startsWith("55")
-    ? normalized.slice(2)
-    : normalized
+  const withoutCountry = digits.startsWith("55") ? digits.slice(2) : digits
 
   // Deve ter 10 (fixo) ou 11 (celular) dígitos
   if (withoutCountry.length !== 10 && withoutCountry.length !== 11) {
@@ -73,7 +70,38 @@ export function isValidPhone(phone: string): boolean {
 }
 
 /**
- * Extrai o DDD de um telefone
+ * Valida se um telefone é aceitável (brasileiro OU internacional).
+ *
+ * Estratégia BR-first para zero regressão no caso brasileiro (maioria do
+ * tráfego): primeiro aplica a regra brasileira; se não casar, aceita qualquer
+ * número internacional no formato E.164 (8-15 dígitos, sem zero à esquerda).
+ *
+ * O telefone do cliente já vem do WhatsApp (entregável e confiável), então não
+ * fazemos validação rigorosa por país — apenas barramos lixo óbvio.
+ */
+export function isValidPhone(phone: string): boolean {
+  const digits = normalizePhone(phone)
+
+  if (!digits) {
+    return false
+  }
+
+  // Caminho BR preservado (regra original).
+  if (isValidBrazilianPhone(digits)) {
+    return true
+  }
+
+  // Fallback internacional: E.164 tem de 8 a 15 dígitos e não começa com 0.
+  if (digits.length >= 8 && digits.length <= 15 && !digits.startsWith("0")) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Extrai o DDD de um telefone.
+ * BR-only: assume DDI 55 e DDD de 2 dígitos. Sem callers externos hoje.
  */
 export function extractDDD(phone: string): string | null {
   const normalized = normalizePhone(phone)
@@ -89,7 +117,8 @@ export function extractDDD(phone: string): string | null {
 }
 
 /**
- * Verifica se dois telefones são iguais (ignorando formatação)
+ * Verifica se dois telefones são iguais (ignorando formatação).
+ * BR-only: faz strip de "55" para comparação. Sem callers externos hoje.
  */
 export function phonesAreEqual(phone1: string, phone2: string): boolean {
   const n1 = normalizePhone(phone1)
@@ -103,7 +132,8 @@ export function phonesAreEqual(phone1: string, phone2: string): boolean {
 }
 
 /**
- * Adiciona o código do país se não estiver presente
+ * Adiciona o código do país se não estiver presente.
+ * BR-only: assume DDI 55. Sem callers externos hoje.
  */
 export function addCountryCode(phone: string): string {
   const normalized = normalizePhone(phone)
