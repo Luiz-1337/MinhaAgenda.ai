@@ -19,6 +19,10 @@ import {
   enforceAgendaAvailabilityPolicy,
   resolveFriendlyAvailabilityErrorMessage,
 } from "./availability-message-policy";
+import {
+  LEAKED_ERROR_FALLBACK_MESSAGE,
+  shouldScrubAsLeak,
+} from "./assistant-output-guards";
 import type { ResponsesRunnerInputMessage, ResponsesRunnerStep } from "./openai-responses-runner.service";
 import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
@@ -125,7 +129,7 @@ export async function generateAIResponse(
       throw new AIGenerationError("No active agent found", { retryable: false });
     }
 
-    const agentModel = agentInfo.model || "gpt-5-mini";
+    const agentModel = agentInfo.model || "gpt-5.4-mini-2026-03-17";
     const modelName = mapModelToOpenAI(agentModel);
 
     if (AI_DEBUG) {
@@ -280,7 +284,12 @@ export async function generateAIResponse(
     // Gerar resumo de tool calls para persistir no histórico
     const toolSummary = buildToolSummary(steps);
     // Limpar tool context e dados sensíveis do texto enviado ao WhatsApp
-    const finalText = sanitizeAssistantText(stripToolContext(rawText));
+    const strippedText = stripToolContext(rawText);
+    if (shouldScrubAsLeak(strippedText)) {
+      // Não logamos o payload — pode conter texto interno/erro. Apenas o flag.
+      contextLogger.warn("Blocked leaked internal/error text from reaching the client");
+    }
+    const finalText = sanitizeAssistantText(strippedText);
     timer.mark("sanitized");
 
     // 10. Validar resposta final
@@ -781,6 +790,12 @@ function stripToolContext(text: string): string {
  */
 function sanitizeAssistantText(text: string): string {
   if (!text || !text.trim()) return "";
+
+  // Defesa em profundidade: se o texto parece JSON de erro vazado ou uma
+  // instrução interna ecoada pelo modelo, não enviar nada disso ao cliente.
+  if (shouldScrubAsLeak(text)) {
+    return LEAKED_ERROR_FALLBACK_MESSAGE;
+  }
 
   const sanitized = text
     .replace(SENSITIVE_ID_REGEX, "")

@@ -3,6 +3,7 @@ import * as z4 from "zod/v4"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import type { ToolSetDefinition } from "./tools/tool-definition"
 import { getOpenAIClient } from "./openai-client"
+import { describeSchemaValidationError } from "./assistant-output-guards"
 
 export interface ResponsesRunnerInputMessage {
   role: string
@@ -321,9 +322,12 @@ export async function runOpenAIResponses(
         const validatedArgs = toolDef.inputSchema.parse(parsedArgs)
         preparedCalls.push({ toolName, callId, toolDef, validatedArgs })
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Schema validation failed"
-        const toolErrorResult = { error: true, message: errorMessage }
-        stepToolResults.push({ toolName, isError: true, result: toolErrorResult, error: { message: errorMessage } })
+        // NUNCA devolver o ZodError cru: seu `.message` é o array de issues
+        // (`[{"code":...,"path":...,"message":...}]`), que o modelo já repassou
+        // verbatim ao cliente. Convertemos para uma instrução interna acionável.
+        const instruction = describeSchemaValidationError(toolName, error)
+        const toolErrorResult = { error: true, message: instruction }
+        stepToolResults.push({ toolName, isError: true, result: toolErrorResult, error: { message: instruction } })
         functionOutputs.push({ type: "function_call_output", call_id: callId, output: toOutputString(toolErrorResult) })
       }
     }

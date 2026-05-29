@@ -9,6 +9,10 @@ export const AVAILABILITY_TECHNICAL_FALLBACK_MESSAGE =
 const TECHNICAL_PATTERNS = [
   "tool not found",
   "invalid argument",
+  // Instrução interna emitida pelo runner em falha de validação de schema
+  // (ver describeSchemaValidationError). Classificada como técnica para que o
+  // cliente receba o fallback amigável, nunca a instrução interna.
+  "argumento invalido",
   "invalid json",
   "execution failed",
   "failed to",
