@@ -20,6 +20,18 @@ export const conversation: Conversation = {
         tools: {
           required: ["checkAvailability"],
           forbidden: ["addAppointment", "updateAppointment", "removeAppointment"],
+          args: {
+            // Root-cause check: o modelo deve converter "próxima sexta às 10h"
+            // para ISO 8601 (data + hora com segundos), não passar texto natural.
+            // O fuso é opcional aqui — o schema aceita com/sem TZ e o handler
+            // normaliza via ensureIsoWithTimezone.
+            checkAvailability: {
+              mustHaveKeys: ["date"],
+              matches: {
+                date: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+              },
+            },
+          },
         },
         text: {
           maxSentences: 4,

@@ -224,7 +224,7 @@ function formatCustomerInfoText(
 /**
  * Formata data e hora atual
  */
-function formatDateTime(): { formattedDate: string; formattedTime: string } {
+function formatDateTime(): { formattedDate: string; formattedTime: string; isoDate: string } {
   const now = new Date()
 
   const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -244,7 +244,17 @@ function formatDateTime(): { formattedDate: string; formattedTime: string } {
   })
   const formattedTime = timeFormatter.format(now)
 
-  return { formattedDate, formattedTime }
+  // Âncora ISO (YYYY-MM-DD) no fuso de Brasília. en-CA já formata como YYYY-MM-DD.
+  // Dá ao modelo uma referência legível por máquina para converter datas
+  // relativas ("amanhã", "sexta que vem") em ISO 8601 antes de chamar as tools.
+  const isoDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now)
+
+  return { formattedDate, formattedTime, isoDate }
 }
 
 export class SystemPromptBuilder {
@@ -266,7 +276,7 @@ export class SystemPromptBuilder {
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
-    const { formattedDate, formattedTime } = formatDateTime()
+    const { formattedDate, formattedTime, isoDate } = formatDateTime()
     const preferencesText = formatPreferencesText(preferences)
     const knowledgeContextText = formatKnowledgeContextText(knowledgeContext)
     const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer, noShowRisk)
@@ -355,7 +365,8 @@ ${paymentStepMulti}`
 Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmados.
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
-Use como referência absoluta para "amanhã", "sábado que vem", etc.${customerInfoText}${trinksProfileText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
+Hoje em ISO: ${isoDate} (fuso -03:00). Use HOJE como referência absoluta para datas relativas ("amanhã", "sexta que vem", "dia 30").
+DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${trinksProfileText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
 ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
 - Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
@@ -369,6 +380,7 @@ ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
 
 REGRAS DE TOOLS:
 - NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool.
+- Se o cliente pedir algo que NÃO está nos serviços disponíveis ou que você não pode confirmar via tool (ex.: cursos, treinamentos, produtos não listados), diga que não oferecemos isso ou que vai verificar com a equipe. NUNCA invente serviços, datas, valores, vagas ou processos que as tools não retornaram.
 - IDs são internos. NUNCA mencione IDs, UUIDs ou códigos técnicos ao cliente.
 - Chame UMA tool de cada vez, na ordem correta.
 - NUNCA chame addAppointment sem checkAvailability antes.
