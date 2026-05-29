@@ -55,7 +55,7 @@ export class ProcessChatMessageUseCase {
     await this.saveUserMessage()
 
     const agentInfo = await getActiveAgentInfo(this.salonId)
-    const agentModel = agentInfo?.model || 'gpt-5-mini'
+    const agentModel = agentInfo?.model || 'gpt-5.4-mini-2026-03-17'
     const modelName = mapModelToOpenAI(agentModel)
 
     const response = await runOpenAIResponses({

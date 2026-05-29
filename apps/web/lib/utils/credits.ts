@@ -4,15 +4,15 @@
 
 /**
  * Tabela de pesos por modelo
- * gpt-5-mini é a base (peso 1.0)
+ * gpt-5.4-mini-2026-03-17 é a base (peso 1.0)
  */
 const MODEL_WEIGHTS: Record<string, number> = {
-  "gpt-5-mini": 0.5,
+  "gpt-5.4-mini-2026-03-17": 0.5,
 } as const
 
 /**
  * Retorna o peso do modelo especificado
- * @param model Nome do modelo (ex: "gpt-5-mini")
+ * @param model Nome do modelo (ex: "gpt-5.4-mini-2026-03-17")
  * @returns Peso do modelo (padrão: 1.0 se não encontrado)
  */
 export function getModelWeight(model: string | null | undefined): number {

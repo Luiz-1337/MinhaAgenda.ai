@@ -8,8 +8,8 @@ export const RAG_CONSTANTS = {
 } as const
 
 export const AI_MODEL_CONSTANTS = {
-  DEFAULT_MODEL: "gpt-5-mini",
-  DEFAULT_FULL_MODEL: "gpt-5-mini",
+  DEFAULT_MODEL: "gpt-5.4-mini-2026-03-17",
+  DEFAULT_FULL_MODEL: "gpt-5.4-mini-2026-03-17",
 } as const
 
 export const SALON_CONSTANTS = {

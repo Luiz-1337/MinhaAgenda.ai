@@ -316,7 +316,7 @@ async function main() {
     for (const agentData of agentsData) {
       const [{ id }] = await tx`
         INSERT INTO agents (salon_id, name, system_prompt, model, tone, is_active)
-        VALUES (${salonId}, ${agentData.name}, ${agentData.systemPrompt}, 'gpt-5-mini', ${agentData.tone}, ${agentData.isActive})
+        VALUES (${salonId}, ${agentData.name}, ${agentData.systemPrompt}, 'gpt-5.4-mini-2026-03-17', ${agentData.tone}, ${agentData.isActive})
         RETURNING id
       `
       agentIds.push({ id, name: agentData.name })
@@ -446,7 +446,7 @@ async function main() {
       const credits = Math.floor(Math.random() * 300) + 50
       await tx`
         INSERT INTO ai_usage_stats (salon_id, date, model, credits)
-        VALUES (${salonId}, ${date.toISOString().split('T')[0]}::date, 'gpt-5-mini', ${credits})
+        VALUES (${salonId}, ${date.toISOString().split('T')[0]}::date, 'gpt-5.4-mini-2026-03-17', ${credits})
         ON CONFLICT (salon_id, date, model) DO UPDATE SET credits = excluded.credits
       `
     }

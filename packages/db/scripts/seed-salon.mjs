@@ -572,7 +572,7 @@ async function main() {
     // ============================================================================
     console.log('📊 Criando estatísticas de IA...')
 
-    const models = ['gpt-5-mini', 'gpt-4o', 'gpt-4.1']
+    const models = ['gpt-5.4-mini-2026-03-17', 'gpt-4o', 'gpt-4.1']
 
     // Estatísticas dos últimos 30 dias
     for (let i = 0; i < 30; i++) {

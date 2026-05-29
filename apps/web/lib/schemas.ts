@@ -87,7 +87,7 @@ export type AgentConfigSchema = z.infer<typeof agentConfigSchema>
 
 // Schema para criação/edição de agentes
 export const agentModelEnum = z.enum([
-  "gpt-5-mini"
+  "gpt-5.4-mini-2026-03-17"
 ])
 
 export const agentSchema = z.object({

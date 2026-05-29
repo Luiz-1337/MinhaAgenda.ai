@@ -32,7 +32,7 @@ export default async function EditAgentPage({
           id: agent.id,
           name: agent.name,
           systemPrompt: agent.systemPrompt,
-          model: agent.model as "gpt-5-mini",
+          model: agent.model as "gpt-5.4-mini-2026-03-17",
           tone: agent.tone,
           isActive: agent.isActive,
         }}
