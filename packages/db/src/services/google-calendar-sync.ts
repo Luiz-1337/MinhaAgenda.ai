@@ -271,6 +271,41 @@ export async function setupWatchChannelsForSalon(salonId: string): Promise<numbe
 const FULL_SYNC_BACKFILL_PAST_MS = 90 * 24 * 60 * 60 * 1000
 const FULL_SYNC_BACKFILL_FUTURE_MS = 365 * 24 * 60 * 60 * 1000
 
+// Tentativas para o events.list. Erros transitorios (429/5xx) sao re-tentados
+// com backoff exponencial para o backfill nao abortar no meio da paginacao.
+const LIST_RETRY_MAX_ATTEMPTS = 4
+
+/**
+ * events.list com retry exponencial para erros transitorios (429 / 5xx).
+ * 410 (syncToken expirado) e demais 4xx sao re-lancados de imediato porque
+ * tem tratamento proprio no chamador (full re-sync no 410).
+ */
+async function listEventsWithRetry(
+  calendar: calendar_v3.Calendar,
+  params: calendar_v3.Params$Resource$Events$List
+): Promise<calendar_v3.Schema$Events> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= LIST_RETRY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await calendar.events.list(params)
+      return response.data
+    } catch (error) {
+      const code =
+        (error as { code?: number })?.code ??
+        (error as { response?: { status?: number } })?.response?.status
+      const isTransient = code === 429 || (typeof code === 'number' && code >= 500 && code < 600)
+      if (!isTransient || attempt === LIST_RETRY_MAX_ATTEMPTS) {
+        throw error
+      }
+      lastError = error
+      const backoffMs = 1000 * 2 ** (attempt - 1) // 1s, 2s, 4s
+      logger.warn('events.list transitorio — re-tentando', { attempt, code, backoffMs })
+      await new Promise((resolve) => setTimeout(resolve, backoffMs))
+    }
+  }
+  throw lastError
+}
+
 /**
  * Performs a full sync used on first connection / reconnection.
  *
@@ -308,7 +343,7 @@ async function performFullSync(
     let nextSyncToken: string | undefined
 
     do {
-      const response = await calendar.events.list({
+      const data = await listEventsWithRetry(calendar, {
         calendarId,
         pageToken,
         maxResults: 250,
@@ -317,7 +352,7 @@ async function performFullSync(
         timeMax,
       })
 
-      const events = response.data.items || []
+      const events = data.items || []
       for (const event of events) {
         try {
           const result = await reconcileGoogleEvent(event, salonId, professionalId)
@@ -334,8 +369,8 @@ async function performFullSync(
         }
       }
 
-      pageToken = response.data.nextPageToken || undefined
-      nextSyncToken = response.data.nextSyncToken || undefined
+      pageToken = data.nextPageToken || undefined
+      nextSyncToken = data.nextSyncToken || undefined
     } while (pageToken)
 
     if (nextSyncToken) {
@@ -418,11 +453,10 @@ export async function performIncrementalSync(channelId: string): Promise<{
       let responseData: calendar_v3.Schema$Events
 
       try {
-        const response = await calendar.events.list({
+        responseData = await listEventsWithRetry(calendar, {
           ...listParams,
           pageToken,
         })
-        responseData = response.data
       } catch (error: unknown) {
         // 410 GONE: syncToken expired, need full re-sync
         const errObj = error as { code?: number }
@@ -643,6 +677,72 @@ export async function pollAllChannels(): Promise<{
   }
 
   return { total, processed, errors: syncErrors }
+}
+
+/**
+ * Rede de seguranca: re-executa o full sync para qualquer integracao Google
+ * ativa cujo backfill inicial nunca terminou (`initialSyncDone = false`) — por
+ * exemplo, quando o disparo fire-and-forget no connect morreu no meio.
+ *
+ * Idempotente: `reconcileGoogleEvent`/`createBlockedTimeService` deduplicam por
+ * `googleEventId`, e `performFullSync` marca `initialSyncDone = true` ao concluir.
+ * Reusa os canais existentes (sem teardown) e so cria canal se ainda nao houver.
+ */
+export async function completeIncompleteInitialSyncs(): Promise<{
+  attempted: number
+  completed: number
+}> {
+  const pending = await db.query.salonIntegrations.findMany({
+    where: and(
+      eq(salonIntegrations.provider, 'google'),
+      eq(salonIntegrations.isActive, true),
+      eq(salonIntegrations.initialSyncDone, false)
+    ),
+    columns: { salonId: true },
+  })
+
+  let attempted = 0
+  let completed = 0
+
+  for (const integration of pending) {
+    attempted++
+    try {
+      const channels = await db.query.googleCalendarSyncChannels.findMany({
+        where: eq(googleCalendarSyncChannels.salonId, integration.salonId),
+      })
+
+      if (channels.length === 0) {
+        // Sem canal ainda: cria canais + backfill (setup ja chama performFullSync).
+        await setupWatchChannelsForSalon(integration.salonId)
+      } else {
+        // Canais existem: so re-roda o backfill (sem teardown) para nao perder push.
+        for (const channel of channels) {
+          await performFullSync(
+            integration.salonId,
+            channel.calendarId,
+            channel.channelId,
+            channel.professionalId
+          )
+        }
+      }
+
+      const after = await db.query.salonIntegrations.findFirst({
+        where: and(
+          eq(salonIntegrations.salonId, integration.salonId),
+          eq(salonIntegrations.provider, 'google')
+        ),
+        columns: { initialSyncDone: true },
+      })
+      if (after?.initialSyncDone) completed++
+    } catch (error) {
+      logger.error('Failed to complete initial sync', { salonId: integration.salonId, error })
+    }
+  }
+
+  if (attempted > 0) {
+    logger.info('Initial sync completion run', { attempted, completed })
+  }
+  return { attempted, completed }
 }
 
 // ============================================================================

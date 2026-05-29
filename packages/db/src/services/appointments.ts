@@ -6,6 +6,7 @@ import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
 import { processVacantSlot } from "./slot-filler.service"
+import { getGoogleFreeBusyForProfessional } from "./google-calendar"
 import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } from "../domain/constants"
 
 /**
@@ -137,6 +138,29 @@ export async function createAppointmentService(input: {
 
   if (!withinWork) {
     return { success: false, error: "Horário fora do expediente do profissional" }
+  }
+
+  // Trava de conflito com o Google Calendar (FreeBusy ao vivo).
+  // Fecha o gap em que um evento criado direto no Google ainda não foi
+  // sincronizado como linha local. Fail-open: só bloqueia se o Google
+  // responder explicitamente que o horário está ocupado; ausência de
+  // integração ([]) ou instabilidade do Google (exceção) NÃO trava o cliente.
+  // Pulado quando o próprio agendamento vem de um sync do Google.
+  if (!input.skipExternalSync) {
+    try {
+      const googleBusy = await getGoogleFreeBusyForProfessional(salonId, professionalId, startUtc, endUtc)
+      const overlapsGoogle = googleBusy.some(
+        (b) => b.start.getTime() < endUtc.getTime() && b.end.getTime() > startUtc.getTime()
+      )
+      if (overlapsGoogle) {
+        return { success: false, error: "Horário indisponível (conflito com Google Calendar)" }
+      }
+    } catch (error) {
+      console.warn(
+        "[createAppointmentService] FreeBusy do Google indisponível — seguindo sem checagem (fail-open):",
+        error
+      )
+    }
   }
 
   // TRANSAÇÃO: Advisory lock + verificação de conflito + inserção atômica
