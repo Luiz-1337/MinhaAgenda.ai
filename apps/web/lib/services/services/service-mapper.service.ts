@@ -20,6 +20,7 @@ const upsertServiceSchema = z.object({
   isActive: z.boolean().default(true),
   averageCycleDays: z.number().int().positive().nullable().optional(),
   professionalIds: z.array(z.string().uuid()).default([]),
+  specialistProfessionalIds: z.array(z.string().uuid()).default([]),
 }).refine(
   (data) => {
     // Se for preço fixo, o preço deve ser positivo

@@ -150,16 +150,19 @@ export class ServiceRepository {
    */
   static async associateProfessionals(
     serviceId: string,
-    professionalIds: string[]
+    professionalIds: string[],
+    specialistIds: string[] = []
   ): Promise<void> {
     if (professionalIds.length === 0) {
       return
     }
 
+    const specialistSet = new Set(specialistIds)
     await db.insert(professionalServices).values(
       professionalIds.map((professionalId) => ({
         professionalId,
         serviceId,
+        isSpecialist: specialistSet.has(professionalId),
       }))
     )
   }
@@ -174,6 +177,23 @@ export class ServiceRepository {
     })
 
     return links.map((link) => link.professionalId)
+  }
+
+  /**
+   * Busca os profissionais vinculados a um serviço com a flag de especialista.
+   */
+  static async findLinkedProfessionals(
+    serviceId: string
+  ): Promise<{ professionalId: string; isSpecialist: boolean }[]> {
+    const links = await db.query.professionalServices.findMany({
+      where: eq(professionalServices.serviceId, serviceId),
+      columns: { professionalId: true, isSpecialist: true },
+    })
+
+    return links.map((link) => ({
+      professionalId: link.professionalId,
+      isSpecialist: link.isSpecialist,
+    }))
   }
 
   /**

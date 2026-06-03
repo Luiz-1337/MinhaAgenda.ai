@@ -30,6 +30,8 @@ export interface UpsertServiceInput {
   isActive: boolean
   averageCycleDays?: number | null
   professionalIds: string[]
+  /** Subconjunto de professionalIds marcados como especialistas no serviço. */
+  specialistProfessionalIds: string[]
 }
 
 export interface ServicePayload {

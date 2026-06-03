@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save, ArrowLeftRight } from "lucide-react"
+import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save, ArrowLeftRight, Star } from "lucide-react"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { useForm } from "react-hook-form"
@@ -34,6 +34,7 @@ const serviceSchema = z.object({
   isActive: z.boolean().default(true),
   averageCycleDays: z.number().int().positive("Informe um número de dias maior que zero").nullable().optional(),
   professionalIds: z.array(z.string()).default([]),
+  specialistProfessionalIds: z.array(z.string()).default([]),
 }).refine(
   (data) => {
     if (data.priceType === "fixed") {
@@ -78,7 +79,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   const form = useForm<ServiceForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(serviceSchema as any),
-    defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [] },
+    defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] },
   })
 
   useEffect(() => {
@@ -140,7 +141,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   function openCreate() {
     setEditing(null)
-    form.reset({ name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [] })
+    form.reset({ name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] })
     setOpen(true)
   }
 
@@ -149,12 +150,14 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
     // Carregar profissionais vinculados ao serviço
     let linkedProfessionalIds: string[] = []
+    let linkedSpecialistIds: string[] = []
     try {
       const linked = await getServiceLinkedProfessionals(service.id, salonId)
       if ("error" in linked) {
         console.error("Erro ao carregar profissionais vinculados:", linked.error)
       } else {
-        linkedProfessionalIds = linked.data || []
+        linkedProfessionalIds = linked.data?.professionalIds || []
+        linkedSpecialistIds = linked.data?.specialistIds || []
       }
     } catch (error) {
       console.error("Erro ao carregar profissionais vinculados:", error)
@@ -172,6 +175,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       isActive: service.is_active,
       averageCycleDays: service.average_cycle_days ?? null,
       professionalIds: linkedProfessionalIds,
+      specialistProfessionalIds: linkedSpecialistIds,
     })
     setOpen(true)
   }
@@ -187,6 +191,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
         ...values,
         salonId,
         professionalIds: values.professionalIds || [],
+        specialistProfessionalIds: values.specialistProfessionalIds || [],
         priceType: values.priceType,
         priceMin: values.priceType === "range" ? values.priceMin : undefined,
         priceMax: values.priceType === "range" ? values.priceMax : undefined,
@@ -464,6 +469,9 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Profissionais Habilitados
                   </label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Marque a estrela para definir o especialista do serviço — a IA oferece esse profissional primeiro, mas pode agendar com outro habilitado se o cliente pedir.
+                  </p>
                   <div className="border border-border rounded-md bg-card">
                     {(() => {
                       const activeProfessionals = professionals.filter((p) => p.is_active)
@@ -495,7 +503,9 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                           <div className="max-h-48 overflow-y-auto p-3 space-y-2">
                             {activeProfessionals.map((professional) => {
                               const professionalIds = form.watch("professionalIds") || []
+                              const specialistIds = form.watch("specialistProfessionalIds") || []
                               const isChecked = professionalIds.includes(professional.id)
+                              const isSpecialist = specialistIds.includes(professional.id)
                               return (
                                 <div key={professional.id} className="flex items-center gap-2">
                                   <Checkbox
@@ -510,15 +520,56 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                                           "professionalIds",
                                           currentIds.filter((id) => id !== professional.id)
                                         )
+                                        // Ao desmarcar, remove também da lista de especialistas
+                                        const currentSpecialists = form.getValues("specialistProfessionalIds") || []
+                                        form.setValue(
+                                          "specialistProfessionalIds",
+                                          currentSpecialists.filter((id) => id !== professional.id)
+                                        )
                                       }
                                     }}
                                   />
                                   <Label
                                     htmlFor={`professional-${professional.id}`}
-                                    className="text-sm text-foreground cursor-pointer font-normal"
+                                    className="text-sm text-foreground cursor-pointer font-normal flex-1"
                                   >
                                     {professional.name}
                                   </Label>
+                                  {isChecked && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const currentSpecialists = form.getValues("specialistProfessionalIds") || []
+                                        if (currentSpecialists.includes(professional.id)) {
+                                          form.setValue(
+                                            "specialistProfessionalIds",
+                                            currentSpecialists.filter((id) => id !== professional.id)
+                                          )
+                                        } else {
+                                          form.setValue("specialistProfessionalIds", [
+                                            ...currentSpecialists,
+                                            professional.id,
+                                          ])
+                                        }
+                                      }}
+                                      title={
+                                        isSpecialist
+                                          ? "Especialista neste serviço (a IA oferece primeiro)"
+                                          : "Marcar como especialista neste serviço"
+                                      }
+                                      className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors ${
+                                        isSpecialist
+                                          ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950"
+                                          : "text-muted-foreground hover:bg-muted"
+                                      }`}
+                                    >
+                                      <Star
+                                        size={12}
+                                        className={isSpecialist ? "fill-amber-500 text-amber-500" : ""}
+                                      />
+                                      Especialista
+                                    </button>
+                                  )}
                                 </div>
                               )
                             })}

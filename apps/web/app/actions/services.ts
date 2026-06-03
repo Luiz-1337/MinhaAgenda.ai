@@ -100,16 +100,22 @@ export async function deleteService(id: string, salonId: string): Promise<Action
 export async function getServiceLinkedProfessionals(
   serviceId: string,
   salonId: string
-): Promise<ActionResult<string[]>> {
+): Promise<ActionResult<{ professionalIds: string[]; specialistIds: string[] }>> {
   try {
     const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
     if ("error" in authResult) {
       return authResult
     }
 
-    const professionalIds = await ServiceRepository.findLinkedProfessionalIds(serviceId)
+    const linked = await ServiceRepository.findLinkedProfessionals(serviceId)
 
-    return { success: true, data: professionalIds }
+    return {
+      success: true,
+      data: {
+        professionalIds: linked.map((l) => l.professionalId),
+        specialistIds: linked.filter((l) => l.isSpecialist).map((l) => l.professionalId),
+      },
+    }
   } catch (error) {
     const errorMessage =
       error instanceof Error

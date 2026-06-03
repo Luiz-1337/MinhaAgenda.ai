@@ -54,7 +54,12 @@ export class ServiceUseCase {
       )
 
       if (validProfessionalIds.length > 0) {
-        await ServiceRepository.associateProfessionals(serviceId, validProfessionalIds)
+        // Especialistas: apenas os que também estão entre os profissionais válidos
+        const validSet = new Set(validProfessionalIds)
+        const specialistIds = (parsed.data.specialistProfessionalIds ?? []).filter((id) =>
+          validSet.has(id)
+        )
+        await ServiceRepository.associateProfessionals(serviceId, validProfessionalIds, specialistIds)
       }
     }
 
