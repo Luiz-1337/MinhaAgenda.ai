@@ -5,6 +5,12 @@ import { usePathname, useRouter } from "next/navigation"
 import { useSalonAuth, useSalon } from "@/contexts/salon-context"
 import { toast } from "sonner"
 
+/**
+ * Duração da janela de trial (em dias) liberada para salões com status TRIAL.
+ * Após esse prazo o acesso é bloqueado até a assinatura ser ativada.
+ */
+const TRIAL_DURATION_DAYS = 7
+
 export function RouteGuard() {
   const pathname = usePathname()
   const router = useRouter()
@@ -22,14 +28,28 @@ export function RouteGuard() {
 
     if (!section) return // Root /salon-id usually redirects to dashboard
 
-    // Guard de assinatura: redireciona para /expired se não está pago
+    // Guard de assinatura: bloqueia o acesso (exceto /expired e /billing) quando o
+    // salão não está pago. TRIAL é liberado por uma janela de TRIAL_DURATION_DAYS dias.
     const allowedWhenExpired = ['expired', 'billing']
     const status = activeSalon.subscriptionStatus
-    if (
-      status &&
-      ['CANCELED', 'PAST_DUE', 'TRIAL'].includes(status) &&
-      !allowedWhenExpired.includes(section)
-    ) {
+
+    const isTrialActive = (): boolean => {
+      if (status !== 'TRIAL') return false
+      const changedAt = activeSalon.subscriptionStatusChangedAt
+      // Sem data registrada: trata como recém-criado (fail-open, não tranca o usuário)
+      if (!changedAt) return true
+      const start = new Date(changedAt).getTime()
+      if (Number.isNaN(start)) return true
+      const expiresAt = start + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000
+      return Date.now() < expiresAt
+    }
+
+    const needsActiveSubscription =
+      status === 'CANCELED' ||
+      status === 'PAST_DUE' ||
+      (status === 'TRIAL' && !isTrialActive())
+
+    if (needsActiveSubscription && !allowedWhenExpired.includes(section)) {
       router.replace(`/${activeSalon.id}/expired`)
       return
     }

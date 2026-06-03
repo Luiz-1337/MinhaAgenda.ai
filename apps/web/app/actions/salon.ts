@@ -55,6 +55,7 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
       tier: profiles.tier,
       ownerId: salons.ownerId,
       subscriptionStatus: salons.subscriptionStatus,
+      subscriptionStatusChangedAt: salons.subscriptionStatusChangedAt,
       professionalRole: professionals.role
     })
     .from(salons)
@@ -81,6 +82,7 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     whatsapp: s.whatsapp,
     planTier: s.tier as 'SOLO' | 'PRO' | 'ENTERPRISE',
     subscriptionStatus: s.subscriptionStatus as 'ACTIVE' | 'PAID' | 'PAST_DUE' | 'CANCELED' | 'TRIAL',
+    subscriptionStatusChangedAt: s.subscriptionStatusChangedAt,
     // Prioridade: Se é dono -> MANAGER, senão usa a role do profissional (se for OWNER vira MANAGER), senão STAFF
     role: (s.ownerId === user.id || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
   }))

@@ -5,7 +5,8 @@ import { CreditCard, CheckCircle2, Loader2, ArrowRight, ArrowLeft } from "lucide
 import { useOnboardingStore } from "@/lib/stores/onboarding-store"
 
 interface StepPaymentProps {
-  onComplete: () => void
+  /** Cria a conta de fato. Retorna true só em caso de sucesso. */
+  onComplete: () => Promise<boolean>
   onBack: () => void
 }
 
@@ -60,18 +61,20 @@ export function StepPayment({ onComplete, onBack }: StepPaymentProps) {
 
   const handleFinish = async () => {
     setIsProcessing(true)
-    
-    // Simular processamento de pagamento
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    
-    setIsProcessing(false)
+
+    // Simular processamento de pagamento (modo de teste)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    // Cria a conta de fato. Só mostra a tela de sucesso se realmente deu certo —
+    // caso contrário volta ao formulário (o erro já foi exibido via toast).
+    const ok = await onComplete()
+    if (!ok) {
+      setIsProcessing(false)
+      return
+    }
+
     setIsComplete(true)
-    
-    // Aguardar um pouco antes de redirecionar
-    // Não limpar o store aqui - será limpo após sucesso no handleStep5Complete
-    setTimeout(() => {
-      onComplete()
-    }, 1500)
+    // O redirecionamento é feito dentro de onComplete (handleStep5Complete).
   }
 
   if (isComplete) {

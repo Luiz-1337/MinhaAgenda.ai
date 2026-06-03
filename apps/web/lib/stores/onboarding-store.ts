@@ -1,5 +1,9 @@
-// Store simples usando sessionStorage (limpa automaticamente quando a aba é fechada)
-// Para instalar Zustand: pnpm add zustand
+// Store do fluxo de cadastro (/register).
+// Usa Zustand com persistência em sessionStorage (limpa quando a aba é fechada).
+// `skipHydration` + rehydrate manual evita mismatch de hidratação SSR no Next.js.
+
+import { create } from "zustand"
+import { persist, createJSONStorage } from "zustand/middleware"
 
 export interface OnboardingData {
   // Step 1: Account
@@ -16,12 +20,12 @@ export interface OnboardingData {
   billingState?: string
   billingCountry?: string
   billingAddressComplement?: string
-  
+
   // Step 2: Legal
   documentType?: 'CPF' | 'CNPJ'
   document?: string
   documentNumber?: string
-  
+
   // Step 3: Salon Details
   address?: string
   salonPhone?: string
@@ -33,69 +37,48 @@ export interface OnboardingData {
     parking?: boolean
     late_tolerance_minutes?: number
   }
-  
+
   // Step 4: Payment
   plan?: 'SOLO' | 'PRO' | 'ENTERPRISE'
-  
+
   // Internal
   userId?: string
   salonId?: string
 }
 
-const STORAGE_KEY = 'onboarding-storage'
+interface OnboardingState {
+  data: OnboardingData
+  currentStep: number
+  /** true após o rehydrate do sessionStorage concluir (usado para evitar flash/mismatch) */
+  hasHydrated: boolean
+  setData: (newData: Partial<OnboardingData>) => void
+  setStep: (step: number) => void
+  reset: () => void
+  setHasHydrated: (value: boolean) => void
+}
 
-function getStorage(): { data: OnboardingData; currentStep: number } {
-  if (typeof window === 'undefined') {
-    return { data: {}, currentStep: 1 }
-  }
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      return JSON.parse(stored)
+export const useOnboardingStore = create<OnboardingState>()(
+  persist(
+    (set) => ({
+      data: {},
+      currentStep: 1,
+      hasHydrated: false,
+      setData: (newData) =>
+        set((state) => ({ data: { ...state.data, ...newData } })),
+      setStep: (step) => set({ currentStep: step }),
+      reset: () => set({ data: {}, currentStep: 1 }),
+      setHasHydrated: (value) => set({ hasHydrated: value }),
+    }),
+    {
+      name: "onboarding-storage",
+      storage: createJSONStorage(() => sessionStorage),
+      // Hidrata manualmente no cliente (ver useEffect em register/page.tsx)
+      skipHydration: true,
+      // Persiste apenas os dados do fluxo, nunca a flag de hidratação
+      partialize: (state) => ({ data: state.data, currentStep: state.currentStep }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
-  } catch {
-    // Ignore
-  }
-  return { data: {}, currentStep: 1 }
-}
-
-function setStorage(data: OnboardingData, currentStep: number) {
-  if (typeof window === 'undefined') return
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data, currentStep }))
-  } catch {
-    // Ignore
-  }
-}
-
-export function useOnboardingStore() {
-  const storage = getStorage()
-  
-  return {
-    data: storage.data,
-    currentStep: storage.currentStep,
-    setData: (newData: Partial<OnboardingData>) => {
-      const current = getStorage()
-      const updated = { ...current.data, ...newData }
-      setStorage(updated, current.currentStep)
-      // Trigger re-render (simples, pode ser melhorado com eventos)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('onboarding-storage'))
-      }
-    },
-    setStep: (step: number) => {
-      const current = getStorage()
-      setStorage(current.data, step)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('onboarding-storage'))
-      }
-    },
-    reset: () => {
-      if (typeof window === 'undefined') return
-      sessionStorage.removeItem(STORAGE_KEY)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('onboarding-storage'))
-      }
-    },
-  }
-}
+  )
+)

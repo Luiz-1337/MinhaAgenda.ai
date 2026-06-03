@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useOnboardingStore } from "@/lib/stores/onboarding-store"
 import { Stepper } from "@/components/onboarding/stepper"
@@ -11,7 +11,7 @@ import { StepPlan } from "@/components/onboarding/step-plan"
 import { StepPayment } from "@/components/onboarding/step-payment"
 import { completeOnboardingWithPayment } from "@/app/actions/onboarding"
 import { toast } from "sonner"
-import { Bot, AlertCircle, ArrowRight } from "lucide-react"
+import { Bot, AlertCircle, ArrowRight, Loader2 } from "lucide-react"
 
 const STEPS = [
   { label: "Credenciais", description: "E-mail e senha" },
@@ -24,60 +24,29 @@ const STEPS = [
 export default function RegisterPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const store = useOnboardingStore()
-  const [data, setDataState] = useState(store.data)
-  const [currentStep, setStepState] = useState(store.currentStep)
 
-  // Sincronizar com sessionStorage
+  const data = useOnboardingStore((s) => s.data)
+  const currentStep = useOnboardingStore((s) => s.currentStep)
+  const setData = useOnboardingStore((s) => s.setData)
+  const setStep = useOnboardingStore((s) => s.setStep)
+  const hasHydrated = useOnboardingStore((s) => s.hasHydrated)
+
+  // Rehydrata o sessionStorage apenas no cliente (evita mismatch de hidratação SSR)
   useEffect(() => {
-    const handleStorage = () => {
-      const updated = useOnboardingStore()
-      setDataState(updated.data)
-      setStepState(updated.currentStep)
-    }
-
-    window.addEventListener('onboarding-storage', handleStorage)
-
-    // Limpar storage quando a aba for fechada (pagehide é mais confiável que beforeunload)
-    const handlePageHide = () => {
-      store.reset()
-    }
-
-    window.addEventListener('pagehide', handlePageHide)
-
-    return () => {
-      window.removeEventListener('onboarding-storage', handleStorage)
-      window.removeEventListener('pagehide', handlePageHide)
-    }
-  }, [store])
-
-  const setData = (newData: Partial<typeof data>) => {
-    store.setData(newData)
-    setDataState({ ...data, ...newData })
-  }
-
-  const setStep = (step: number) => {
-    store.setStep(step)
-    setStepState(step)
-  }
-
-  const reset = () => {
-    store.reset()
-    setDataState({})
-    setStepState(1)
-  }
+    useOnboardingStore.persist.rehydrate()
+  }, [])
 
   const rawPlan = searchParams.get('plan')
   const VALID_PLANS = ['SOLO', 'PRO', 'ENTERPRISE']
   const isValidPlan = rawPlan && VALID_PLANS.includes(rawPlan.toUpperCase())
   const initialPlan = isValidPlan ? (rawPlan!.toUpperCase() as 'SOLO' | 'PRO' | 'ENTERPRISE') : undefined
 
-  // Inicializar plan no store se veio pela URL
+  // Inicializar plan no store se veio pela URL (depois da hidratação)
   useEffect(() => {
-    if (initialPlan && !data.plan) {
+    if (hasHydrated && initialPlan && !data.plan) {
       setData({ plan: initialPlan })
     }
-  }, [initialPlan, data.plan, setData])
+  }, [hasHydrated, initialPlan, data.plan, setData])
 
   // Se plano inválido na URL
   if (rawPlan && !isValidPlan) {
@@ -105,45 +74,35 @@ export default function RegisterPage() {
     )
   }
 
-  // Step 1: Apenas validar credenciais (salvar no store, não criar usuário ainda)
-  const handleStep1Next = async () => {
-    // Apenas avançar - validação feita pelo StepCredentials
-    setStep(2)
+  // Aguarda o sessionStorage hidratar para não renderizar o passo errado
+  if (!hasHydrated) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-6 h-6 animate-spin text-accent" />
+      </div>
+    )
   }
 
-  // Step 2: Preencher dados pessoais (apenas salva no store)
-  const handleStep2Next = async () => {
-    // Apenas avançar - validação feita pelo StepAccount
-    setStep(3)
-  }
+  // Steps 1-4: apenas avançam (validação é feita dentro de cada Step)
+  const handleStep1Next = () => setStep(2)
+  const handleStep2Next = () => setStep(3)
+  const handleStep3Next = () => setStep(4)
+  const handleStep4Next = () => setStep(5)
 
-  // Step 3: Preencher dados do salão (apenas salva no store)
-  const handleStep3Next = async () => {
-    // Apenas avançar - validação feita pelo StepSalon
-    setStep(4)
-  }
+  // Step 5: finalizar — cria tudo de uma vez após o pagamento (simulado) confirmado.
+  // Retorna true só quando a conta foi realmente criada (o StepPayment depende disso
+  // para não ficar preso na tela de sucesso).
+  const handleStep5Complete = async (): Promise<boolean> => {
+    // Lê direto do store para garantir que os dados não estão stale
+    const storeData = useOnboardingStore.getState().data
 
-  // Step 4: Selecionar plano (apenas valida, não cria nada ainda)
-  const handleStep4Next = async () => {
-    // Apenas avançar - validação feita pelo StepPlan
-    setStep(5)
-  }
-
-  // Step 5: Finalizar onboarding - criar tudo de uma vez após pagamento confirmado
-  const handleStep5Complete = async () => {
-    // Ler dados diretamente do store (sessionStorage) para garantir que não estão stale
-    const currentStore = useOnboardingStore()
-    const storeData = currentStore.data
-
-    // Validar todos os dados obrigatórios
     if (!storeData.email || !storeData.password || !storeData.salonName || !storeData.firstName || !storeData.lastName || !storeData.phone ||
       !storeData.billingAddress || !storeData.billingPostalCode || !storeData.billingCity || !storeData.billingState ||
       !storeData.documentType || !storeData.document || !storeData.plan) {
       toast.error("Dados incompletos. Por favor, preencha todos os campos obrigatórios.")
-      return
+      return false
     }
 
-    // Criar tudo de uma vez: usuário, perfil, salão e marcar onboarding como completo
     const result = await completeOnboardingWithPayment({
       email: storeData.email,
       password: storeData.password,
@@ -170,15 +129,21 @@ export default function RegisterPage() {
 
     if ('error' in result) {
       toast.error(result.error)
-      return
+      return false
     }
 
     if (result.success && result.data) {
-      toast.success("Conta criada com sucesso! Redirecionando para pagamento...")
-      reset()
-      // Redirecionar para a página de pagamento (expired tem os botões de checkout)
-      router.push(`/${result.data.salonId}/expired`)
+      toast.success("Conta criada com sucesso! Redirecionando...")
+      // Limpa o sessionStorage sem mexer no estado em memória (evita piscar o
+      // passo 1 enquanto o dashboard carrega).
+      useOnboardingStore.persist.clearStorage()
+      // Novo salão entra em TRIAL — vai direto para o dashboard (o RouteGuard
+      // libera o trial por prazo; o checkout fica disponível em Faturamento).
+      router.push(`/${result.data.salonId}/dashboard`)
+      return true
     }
+
+    return false
   }
 
   const handleBack = () => {

@@ -26,4 +26,6 @@ export interface SalonListItem {
   planTier: PlanTier
   role: ProfessionalRole
   subscriptionStatus: SubscriptionStatus
+  /** Quando o status mudou pela última vez — base para o cálculo da janela de trial */
+  subscriptionStatusChangedAt?: string | Date | null
 }
