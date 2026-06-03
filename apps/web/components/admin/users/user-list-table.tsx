@@ -68,7 +68,7 @@ export function UserListTable({ users }: UserListTableProps) {
                 <BulkActionsBar selectedIds={[...selected]} onDone={clearSelection} />
             )}
 
-            <div className="rounded-md border">
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -100,7 +100,7 @@ export function UserListTable({ users }: UserListTableProps) {
                                 <TableCell className="font-medium">{user.fullName || "Sem nome"}</TableCell>
                                 <TableCell>{user.email}</TableCell>
                                 <TableCell>
-                                    <Badge variant={user.systemRole === "admin" ? "default" : "secondary"}>
+                                    <Badge variant={user.systemRole === "admin" ? "default" : "outline"}>
                                         {user.systemRole === "admin" ? "Admin" : "Usuário"}
                                     </Badge>
                                 </TableCell>

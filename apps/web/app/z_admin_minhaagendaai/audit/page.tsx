@@ -96,7 +96,7 @@ export default async function AuditPage({
                 </Button>
             </form>
 
-            <div className="rounded-md border">
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -117,7 +117,7 @@ export default async function AuditPage({
                                 </TableCell>
                                 <TableCell className="text-sm">{log.adminEmail}</TableCell>
                                 <TableCell>
-                                    <Badge variant="secondary">{actionLabel(log.action)}</Badge>
+                                    <Badge variant="outline">{actionLabel(log.action)}</Badge>
                                 </TableCell>
                                 <TableCell className="text-sm">
                                     {log.targetLabel ? (
