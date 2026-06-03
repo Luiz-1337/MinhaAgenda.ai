@@ -180,16 +180,21 @@ const createUserSchema = z.object({
 export async function adminCreateUser(data: z.infer<typeof createUserSchema>) {
     try {
         const auth = await requireAdmin()
-        if ("error" in auth) return { error: auth.error }
+        if ("error" in auth) {
+            console.warn("[adminCreateUser] requireAdmin bloqueou:", auth.error)
+            return { error: auth.error }
+        }
         const { admin } = auth
 
         const supabaseAdmin = createAdminClient()
         if (!supabaseAdmin) {
-            return { error: "Admin client não configurado" }
+            console.error("[adminCreateUser] SUPABASE_SERVICE_ROLE_KEY ausente no servidor — createAdminClient() retornou null. Preencha no .env e reinicie o pnpm dev.")
+            return { error: "Admin client não configurado: defina SUPABASE_SERVICE_ROLE_KEY e reinicie o servidor." }
         }
 
         const validation = createUserSchema.safeParse(data)
         if (!validation.success) {
+            console.warn("[adminCreateUser] dados inválidos:", JSON.stringify(validation.error.flatten().fieldErrors))
             return { error: "Dados inválidos" }
         }
 
@@ -204,6 +209,7 @@ export async function adminCreateUser(data: z.infer<typeof createUserSchema>) {
         })
 
         if (authError) {
+            console.error("[adminCreateUser] Supabase Auth createUser falhou:", authError.message)
             return { error: authError.message }
         }
         if (!authUser.user) {
