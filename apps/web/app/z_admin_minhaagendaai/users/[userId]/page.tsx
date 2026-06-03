@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { CreditLimitEditor } from "@/components/admin/users/credit-limit-editor"
+import { CreditControlPanel } from "@/components/admin/users/credit-control-panel"
 import { AiRetentionToggle } from "@/components/admin/salons/ai-retention-toggle"
 
 export const dynamic = 'force-dynamic'
@@ -24,7 +24,7 @@ export default async function UserDetailsPage({
     params: Promise<{ userId: string }>
 }) {
     const { userId } = await params
-    const { user, tokens, error } = await getUserDetails(userId)
+    const { user, credits, error } = await getUserDetails(userId)
 
     if (error || !user) {
         if (error === "Usuário não encontrado") return notFound()
@@ -48,24 +48,7 @@ export default async function UserDetailsPage({
                 <h1 className="text-3xl font-bold">Detalhes do Usuário</h1>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-                <UsageStats plan={user.tier} tokens={tokens ?? 0} />
-
-                {salon && (
-                    <CreditLimitEditor
-                        salonId={salon.id}
-                        currentLimit={currentLimit}
-                        defaultLimit={defaultLimit}
-                    />
-                )}
-
-                {salon && (
-                    <AiRetentionToggle
-                        salonId={salon.id}
-                        initialEnabled={salon.aiRetentionEnabled ?? false}
-                    />
-                )}
-            </div>
+            <UsageStats plan={user.tier} credits={credits ?? null} />
 
             <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-6">
@@ -73,7 +56,22 @@ export default async function UserDetailsPage({
                     <AdminResetPasswordForm userId={user.id} />
                 </div>
                 <div className="space-y-6">
-                    <PaymentHistory payments={user.payments as any[] || []} />
+                    {salon && (
+                        <CreditControlPanel
+                            salonId={salon.id}
+                            currentLimit={currentLimit}
+                            defaultLimit={defaultLimit}
+                            extraCredits={salon.extraCredits ?? 0}
+                            credits={credits ?? null}
+                        />
+                    )}
+                    {salon && (
+                        <AiRetentionToggle
+                            salonId={salon.id}
+                            initialEnabled={salon.aiRetentionEnabled ?? false}
+                        />
+                    )}
+                    <PaymentHistory payments={(user.payments as any[]) || []} />
                 </div>
             </div>
         </div>

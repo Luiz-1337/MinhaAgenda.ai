@@ -1,30 +1,53 @@
 import { getUsersList } from "@/app/actions/admin/users"
 import { UserListTable } from "@/components/admin/users/user-list-table"
 import { UserCreateDialog } from "@/components/admin/users/user-create-dialog"
-import { Input } from "@/components/ui/input"
+import { UsersToolbar } from "@/components/admin/users/users-toolbar"
 import { Button } from "@/components/ui/button"
-import { Search, ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
 
 export const dynamic = 'force-dynamic'
 
-function buildPageHref(page: number, search: string) {
-    const params = new URLSearchParams()
-    params.set("page", String(page))
-    if (search) params.set("search", search)
-    return `?${params.toString()}`
+function buildPageHref(page: number, params: Record<string, string | undefined>) {
+    const sp = new URLSearchParams()
+    sp.set("page", String(page))
+    for (const [key, value] of Object.entries(params)) {
+        if (value) sp.set(key, value)
+    }
+    return `?${sp.toString()}`
 }
 
 export default async function UsersPage({
     searchParams,
 }: {
-    searchParams: Promise<{ page?: string; search?: string }>
+    searchParams: Promise<{
+        page?: string
+        search?: string
+        role?: string
+        plan?: string
+        sort?: string
+        dir?: string
+    }>
 }) {
-    const { page: pageParam, search: searchParam } = await searchParams
-    const page = Number(pageParam) || 1
-    const search = searchParam || ""
+    const sp = await searchParams
+    const page = Number(sp.page) || 1
+    const search = sp.search || ""
+    const role = sp.role === "admin" || sp.role === "user" ? sp.role : undefined
+    const plan =
+        sp.plan === "SOLO" || sp.plan === "PRO" || sp.plan === "ENTERPRISE" ? sp.plan : undefined
+    const sort =
+        sp.sort === "fullName" || sp.sort === "email" ? sp.sort : "createdAt"
+    const dir = sp.dir === "asc" ? "asc" : "desc"
 
-    const { users, pagination, error } = await getUsersList(page, 10, search)
+    const { users, pagination, error } = await getUsersList({
+        page,
+        limit: 10,
+        search,
+        role,
+        plan,
+        sortBy: sort,
+        sortDir: dir,
+    })
 
     if (error) {
         return <div>Erro ao carregar usuários: {error}</div>
@@ -35,6 +58,8 @@ export default async function UsersPage({
     const hasPrev = currentPage > 1
     const hasNext = currentPage < totalPages
 
+    const filterParams = { search, role, plan, sort, dir }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -42,20 +67,7 @@ export default async function UsersPage({
                 <UserCreateDialog />
             </div>
 
-            <div className="flex items-center gap-2">
-                <form className="flex-1 flex items-center gap-2">
-                    <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            name="search"
-                            placeholder="Buscar por nome, email ou telefone..."
-                            className="pl-9"
-                            defaultValue={search}
-                        />
-                    </div>
-                    <Button type="submit">Buscar</Button>
-                </form>
-            </div>
+            <UsersToolbar search={search} role={role} plan={plan} sort={sort} dir={dir} />
 
             <UserListTable users={users || []} />
 
@@ -68,7 +80,7 @@ export default async function UsersPage({
                 </div>
 
                 {hasPrev ? (
-                    <Link href={buildPageHref(currentPage - 1, search)}>
+                    <Link href={buildPageHref(currentPage - 1, filterParams)}>
                         <Button variant="outline" size="sm">
                             <ChevronLeft className="h-4 w-4 mr-1" />
                             Anterior
@@ -82,7 +94,7 @@ export default async function UsersPage({
                 )}
 
                 {hasNext ? (
-                    <Link href={buildPageHref(currentPage + 1, search)}>
+                    <Link href={buildPageHref(currentPage + 1, filterParams)}>
                         <Button variant="outline" size="sm">
                             Próxima
                             <ChevronRight className="h-4 w-4 ml-1" />

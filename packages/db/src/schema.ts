@@ -740,6 +740,32 @@ export const systemPromptTemplates = pgTable(
 
 
 // ============================================================================
+// TABLES - Admin Audit
+// ============================================================================
+// Registra toda ação administrativa feita no painel /z_admin_minhaagendaai
+// (criar/editar/excluir usuário, trocar senha, ajustar créditos, etc).
+// adminEmail é um snapshot — preservado mesmo se o admin for removido depois.
+export const adminAuditLogs = pgTable(
+  'admin_audit_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    adminId: uuid('admin_id').references(() => profiles.id, { onDelete: 'set null' }),
+    adminEmail: text('admin_email').notNull(),
+    action: text('action').notNull(), // ex: 'user.create', 'credits.grant', 'user.bulk_delete'
+    targetType: text('target_type'), // 'user' | 'salon'
+    targetId: uuid('target_id'),
+    targetLabel: text('target_label'), // email/nome do alvo (snapshot para exibição)
+    details: jsonb('details'), // payload livre: { before, after, amount, ... }
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('admin_audit_logs_created_at_idx').on(table.createdAt),
+    index('admin_audit_logs_target_idx').on(table.targetId),
+    index('admin_audit_logs_action_idx').on(table.action)
+  ]
+)
+
+// ============================================================================
 // RELATIONS
 // ============================================================================
 export const profilesRelations = relations(profiles, ({ many, one }) => ({

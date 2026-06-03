@@ -1,7 +1,14 @@
+import * as dotenv from 'dotenv'
 import postgres from 'postgres'
 
-const connectionString = 'postgresql://postgres.egrfxtrkcasiuypkxilr:n5c+RcNxT*!puv6@aws-0-us-west-2.pooler.supabase.com:6543/postgres'
-const sql = postgres(connectionString, { ssl: 'require' })
+const env = dotenv.config({ path: '../../.env' })
+const url = (env.parsed && env.parsed.DATABASE_URL) ? env.parsed.DATABASE_URL : process.env.DATABASE_URL
+if (!url) {
+  console.error('DATABASE_URL not set')
+  process.exit(1)
+}
+
+const sql = postgres(url, { prepare: false, ssl: 'require' })
 
 const usersToCreate = [
   { email: 'owner@teste.com', role: 'OWNER', name: 'Owner User' },

@@ -16,6 +16,7 @@ import {
     LogOut,
     Menu,
     Shield,
+    ScrollText,
 } from "lucide-react"
 import { createBrowserClient } from "@supabase/ssr"
 import { toast } from "sonner"
@@ -33,6 +34,7 @@ const menuGroups = [
             { href: "/z_admin_minhaagendaai/users", label: "Usuários", icon: Users },
             { href: "/z_admin_minhaagendaai/plans", label: "Planos", icon: CreditCard },
             { href: "/z_admin_minhaagendaai/tokens", label: "Tokens", icon: Coins },
+            { href: "/z_admin_minhaagendaai/audit", label: "Auditoria", icon: ScrollText },
         ]
     },
 ] as const
