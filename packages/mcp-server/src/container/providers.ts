@@ -232,7 +232,8 @@ export function registerProviders(container: Container): void {
     container.resolve(TOKENS.SalonRepository),
     container.resolve(TOKENS.ServiceRepository),
     container.resolve(TOKENS.CalendarService),
-    container.resolve(TOKENS.ExternalScheduler)
+    container.resolve(TOKENS.ExternalScheduler),
+    container.resolve(TOKENS.ProfessionalRepository)
   ))
 
   container.singleton(TOKENS.GetAvailableSlotsUseCase, () => new GetAvailableSlotsUseCase(

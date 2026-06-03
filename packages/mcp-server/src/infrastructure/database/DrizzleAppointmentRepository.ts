@@ -1,4 +1,4 @@
-import { db, appointments, customers, and, eq, gte, lte, ne, or } from "@repo/db"
+import { db, appointments, customers, and, eq, gte, inArray, lte, ne, or, domainServices } from "@repo/db"
 import { IAppointmentRepository } from "../../domain/repositories"
 import { Appointment } from "../../domain/entities"
 import { AppointmentMapper } from "../mappers"
@@ -68,6 +68,43 @@ export class DrizzleAppointmentRepository implements IAppointmentRepository {
     const rows = await db.query.appointments.findMany({
       where: and(
         eq(appointments.professionalId, professionalId),
+        gte(appointments.date, dayStart),
+        lte(appointments.date, dayEnd),
+        ne(appointments.status, "cancelled")
+      ),
+      orderBy: (appointments, { asc }) => [asc(appointments.date)],
+    })
+
+    return rows.map((row) =>
+      AppointmentMapper.toDomain({
+        id: row.id,
+        salonId: row.salonId,
+        clientId: row.clientId,
+        professionalId: row.professionalId,
+        serviceId: row.serviceId,
+        date: row.date,
+        endTime: row.endTime,
+        status: row.status,
+        googleEventId: row.googleEventId,
+        trinksEventId: row.trinksEventId,
+        notes: row.notes,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      })
+    )
+  }
+
+  async findByPersonAndDate(professionalId: string, date: Date): Promise<Appointment[]> {
+    // Resolve todas as linhas da mesma pessoa (cross-salão) a partir do person_key.
+    const personProfessionalIds = await domainServices.getPersonProfessionalIds(professionalId)
+    if (personProfessionalIds.length === 0) return []
+
+    const dayStart = startOfDay(date)
+    const dayEnd = endOfDay(date)
+
+    const rows = await db.query.appointments.findMany({
+      where: and(
+        inArray(appointments.professionalId, personProfessionalIds),
         gte(appointments.date, dayStart),
         lte(appointments.date, dayEnd),
         ne(appointments.status, "cancelled")

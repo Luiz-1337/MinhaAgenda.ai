@@ -6,11 +6,11 @@ import { isoDateTimeSchema, uuidSchema, uuidOptionalSchema } from "./common.sche
  */
 export const checkAvailabilitySchema = z.object({
   professionalId: uuidOptionalSchema.describe(
-    "ID do profissional (opcional - se não fornecido, retorna de todos)"
+    "ID do profissional. OPCIONAL: omita quando o cliente não tiver preferência — o sistema retorna os horários de quem faz o serviço, com os especialistas primeiro."
   ),
   date: isoDateTimeSchema.describe("Data para verificar disponibilidade"),
   serviceId: uuidOptionalSchema.describe(
-    "ID do serviço (para calcular duração)"
+    "ID do serviço. Fortemente recomendado quando não há professionalId: define a duração e restringe aos profissionais que realizam o serviço."
   ),
   serviceDuration: z
     .number()

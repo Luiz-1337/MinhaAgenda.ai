@@ -6,6 +6,7 @@ export interface TimeSlotDTO {
   available: boolean
   professionalId?: string
   professionalName?: string
+  isSpecialist?: boolean
 }
 
 /**

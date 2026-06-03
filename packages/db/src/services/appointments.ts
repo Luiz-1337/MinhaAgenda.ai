@@ -1,9 +1,10 @@
-import { and, eq, gt, lt, ne, sql } from "drizzle-orm"
+import { and, eq, gt, inArray, lt, ne, sql } from "drizzle-orm"
 import { z } from "zod"
 
 import { db, appointments, availability, professionals, professionalServices, services, customers } from "../index"
 import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
+import { getPersonProfessionalIdsByKey } from "./person"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
 import { processVacantSlot } from "./slot-filler.service"
 import { getGoogleFreeBusyForProfessional } from "./google-calendar"
@@ -75,7 +76,7 @@ export async function createAppointmentService(input: {
     }),
     db.query.professionals.findFirst({
       where: eq(professionals.id, professionalId),
-      columns: { id: true, salonId: true, isActive: true },
+      columns: { id: true, salonId: true, isActive: true, personKey: true },
     }),
   ])
 
@@ -163,18 +164,27 @@ export async function createAppointmentService(input: {
     }
   }
 
+  // Resolve todas as linhas de profissional da MESMA pessoa (cross-salão) para
+  // travar e checar conflito por pessoa — impede double-booking de quem atende
+  // em mais de um salão (inclusive com o dia dividido entre salões).
+  const personProfessionalIds = await getPersonProfessionalIdsByKey(
+    professional.personKey,
+    professionalId
+  )
+  const personLockKey = professional.personKey ?? professionalId
+
   // TRANSAÇÃO: Advisory lock + verificação de conflito + inserção atômica
   // O advisory lock garante que apenas uma transação por vez pode criar/modificar
-  // agendamentos para o mesmo profissional, prevenindo race conditions
+  // agendamentos para a mesma PESSOA, prevenindo race conditions entre salões
   try {
     const result = await db.transaction(async (tx) => {
-      // Advisory lock no profissional — previne criações concorrentes
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${professionalId}))`)
+      // Advisory lock na pessoa — previne criações concorrentes (em qualquer salão)
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${personLockKey}))`)
 
-      // Verifica conflitos com agendamentos existentes (dentro da transação)
+      // Verifica conflitos com agendamentos existentes da pessoa (dentro da transação)
       const overlappingAppointment = await tx.query.appointments.findFirst({
         where: and(
-          eq(appointments.professionalId, professionalId),
+          inArray(appointments.professionalId, personProfessionalIds),
           ne(appointments.status, 'cancelled'),
           lt(appointments.date, endUtc),
           gt(appointments.endTime, startUtc)
@@ -303,7 +313,7 @@ export async function updateAppointmentService(input: {
   // Valida o profissional
   const professional = await db.query.professionals.findFirst({
     where: eq(professionals.id, finalProfessionalId),
-    columns: { id: true, salonId: true, isActive: true },
+    columns: { id: true, salonId: true, isActive: true, personKey: true },
   })
 
   if (!professional || professional.salonId !== existingAppointment.salonId || !professional.isActive) {
@@ -377,6 +387,13 @@ export async function updateAppointmentService(input: {
     }
   }
 
+  // Resolve as linhas da mesma pessoa (cross-salão) para lock/conflito por pessoa.
+  const personProfessionalIds = await getPersonProfessionalIdsByKey(
+    professional.personKey,
+    finalProfessionalId
+  )
+  const personLockKey = professional.personKey ?? finalProfessionalId
+
   // TRANSAÇÃO: Advisory lock + verificação de conflito + atualização atômica
   try {
     await db.transaction(async (tx) => {
@@ -385,12 +402,12 @@ export async function updateAppointmentService(input: {
         finalProfessionalId !== existingAppointment.professionalId
 
       if (needsConflictCheck) {
-        // Advisory lock no profissional — previne modificações concorrentes
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${finalProfessionalId}))`)
+        // Advisory lock na pessoa — previne modificações concorrentes (em qualquer salão)
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${personLockKey}))`)
 
         const overlappingAppointment = await tx.query.appointments.findFirst({
           where: and(
-            eq(appointments.professionalId, finalProfessionalId),
+            inArray(appointments.professionalId, personProfessionalIds),
             ne(appointments.id, parse.data.appointmentId),
             ne(appointments.status, 'cancelled'),
             lt(appointments.date, endUtc),

@@ -109,14 +109,60 @@ export class AvailabilityPresenter {
    * Formata para JSON
    */
   static toJSON(dto: AvailabilityDTO): Record<string, unknown> {
+    const available = dto.slots.filter((s) => s.available)
+    const hasAttribution = available.some((s) => s.professionalName)
+
+    // Modo agregado (sem profissional fixo): agrupa por profissional, especialistas
+    // primeiro. Apenas NOMES, nunca IDs — a IA escolhe pelo nome.
+    if (hasAttribution) {
+      const byPro = new Map<
+        string,
+        { professional: string; isSpecialist: boolean; slots: string[] }
+      >()
+      for (const s of available) {
+        const name = s.professionalName ?? "Profissional"
+        const entry = byPro.get(name) ?? { professional: name, isSpecialist: false, slots: [] }
+        entry.slots.push(s.time)
+        if (s.isSpecialist) entry.isSpecialist = true
+        byPro.set(name, entry)
+      }
+
+      const options = Array.from(byPro.values())
+        .map((o) => ({ ...o, slots: [...new Set(o.slots)].sort() }))
+        .sort((a, b) => Number(b.isSpecialist) - Number(a.isSpecialist))
+
+      // "Mais cedo" preferindo especialistas; se nenhum especialista tem horário,
+      // cai para o mais cedo geral.
+      const specialistPool = options.filter((o) => o.isSpecialist && o.slots.length > 0)
+      const pool = specialistPool.length > 0 ? specialistPool : options.filter((o) => o.slots.length > 0)
+      let earliest: { professional: string; time: string; isSpecialist: boolean } | undefined
+      for (const o of pool) {
+        const t = o.slots[0]
+        if (!earliest || t < earliest.time) {
+          earliest = { professional: o.professional, time: t, isSpecialist: o.isSpecialist }
+        }
+      }
+
+      return {
+        date: dto.dateISO,
+        mode: "byProfessional",
+        options,
+        earliest,
+        totalAvailable: available.length,
+        message: dto.message,
+        _instrucao:
+          "Prefira o ESPECIALISTA (isSpecialist=true) e ofereça 2-3 horários. " +
+          "Se o cliente pedir outro profissional capaz, use os horários dele. NUNCA mostre IDs.",
+      }
+    }
+
+    // Modo simples (profissional fixo ou horário do salão).
     return {
       date: dto.dateISO,
       professional: dto.professional,
-      slots: dto.slots
-        .filter((s) => s.available)
-        .map((s) => ({
-          time: s.time,
-        })),
+      slots: available.map((s) => ({
+        time: s.time,
+      })),
       totalAvailable: dto.totalAvailable,
       message: dto.message,
       _instrucao: "Apresente apenas 2-3 horários ao cliente. NUNCA mostre IDs.",

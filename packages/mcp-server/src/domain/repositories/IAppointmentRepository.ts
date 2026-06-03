@@ -20,6 +20,14 @@ export interface IAppointmentRepository {
   findByProfessionalAndDate(professionalId: string, date: Date): Promise<Appointment[]>
 
   /**
+   * Busca agendamentos de uma PESSOA em uma data: resolve internamente todas as
+   * linhas de profissional do mesmo person_key (cruzando salões) e retorna seus
+   * agendamentos. Usado para marcar como ocupado os horários em que a pessoa já
+   * atende em outro salão.
+   */
+  findByPersonAndDate(professionalId: string, date: Date): Promise<Appointment[]>
+
+  /**
    * Busca agendamentos futuros de um cliente
    */
   findUpcoming(customerId: string, salonId: string): Promise<Appointment[]>

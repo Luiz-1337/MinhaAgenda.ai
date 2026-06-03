@@ -7,6 +7,7 @@ import { TimeSlot } from "../../../domain/entities"
 import {
   IAppointmentRepository,
   IAvailabilityRepository,
+  IProfessionalRepository,
   ISalonRepository,
   IServiceRepository,
 } from "../../../domain/repositories"
@@ -20,7 +21,8 @@ export class CheckAvailabilityUseCase {
     private salonRepo: ISalonRepository,
     private serviceRepo: IServiceRepository,
     private calendarService?: ICalendarService,
-    private externalScheduler?: IExternalScheduler
+    private externalScheduler?: IExternalScheduler,
+    private professionalRepo?: IProfessionalRepository
   ) { }
 
   async execute(
@@ -37,118 +39,186 @@ export class CheckAvailabilityUseCase {
       }
     }
 
-    // Gerar slots base a partir das regras de disponibilidade
-    let baseSlots: TimeSlot[] = []
-
+    // CASO 1: profissional específico — calcula os slots desse profissional, já
+    // subtraindo o que ele tem ocupado em QUALQUER salão (cross-salão).
     if (input.professionalId) {
-      baseSlots = await this.availabilityRepo.generateSlots(
+      const slots = await this.computeProfessionalSlots(
         input.professionalId,
+        input.salonId,
         date,
-        serviceDuration
+        serviceDuration,
+        { fallbackToSalonHours: true }
+      )
+      return ok(this.buildDTO(date, slots, serviceDuration, { professionalId: input.professionalId }))
+    }
+
+    // CASO 2: sem profissional, mas com serviço — agrega os horários de quem FAZ o
+    // serviço (especialistas primeiro), atribuindo o profissional a cada horário.
+    if (input.serviceId && this.professionalRepo) {
+      const capable = await this.professionalRepo.findByServiceWithSpecialist(
+        input.serviceId,
+        input.salonId
+      )
+
+      if (capable.length > 0) {
+        // Especialistas primeiro (os demais capazes seguem como opção).
+        const ordered = [...capable].sort(
+          (a, b) => Number(b.isSpecialist) - Number(a.isSpecialist)
+        )
+
+        const meta = new Map<string, { name: string; isSpecialist: boolean }>()
+        const perProSlots = await Promise.all(
+          ordered.map(async ({ professional, isSpecialist }) => {
+            meta.set(professional.id, { name: professional.name, isSpecialist })
+            return this.computeProfessionalSlots(
+              professional.id,
+              input.salonId,
+              date,
+              serviceDuration,
+              { fallbackToSalonHours: false }
+            )
+          })
+        )
+
+        return ok(this.buildDTO(date, perProSlots.flat(), serviceDuration, { meta }))
+      }
+    }
+
+    // CASO 3: fallback — sem profissional e sem serviço (ou ninguém faz o serviço):
+    // usa o horário de funcionamento do salão, sem subtrair ocupação (comportamento antigo).
+    const salonSlots = await this.generateSalonHoursSlots(date, input.salonId, serviceDuration)
+    return ok(this.buildDTO(date, salonSlots, serviceDuration, {}))
+  }
+
+  /**
+   * Calcula os slots de UM profissional: gera a partir das regras de trabalho,
+   * subtrai os agendamentos da PESSOA (cross-salão) e o free/busy do Google/Trinks.
+   * Não filtra horários passados — isso é feito em {@link buildDTO}.
+   */
+  private async computeProfessionalSlots(
+    professionalId: string,
+    salonId: string,
+    date: Date,
+    serviceDuration: number,
+    opts: { fallbackToSalonHours: boolean }
+  ): Promise<TimeSlot[]> {
+    let baseSlots = await this.availabilityRepo.generateSlots(professionalId, date, serviceDuration)
+
+    if (baseSlots.length === 0 && opts.fallbackToSalonHours) {
+      baseSlots = await this.generateSalonHoursSlots(date, salonId, serviceDuration, professionalId)
+    }
+
+    if (baseSlots.length === 0) {
+      return baseSlots
+    }
+
+    // Marca como ocupado o que a PESSOA já tem agendado em qualquer salão (cross-salão).
+    const personAppointments = await this.appointmentRepo.findByPersonAndDate(professionalId, date)
+    for (const appointment of personAppointments) {
+      for (const slot of baseSlots) {
+        if (
+          slot.overlaps(
+            new TimeSlot({ start: appointment.startsAt, end: appointment.endsAt, available: false })
+          )
+        ) {
+          slot.markUnavailable()
+        }
+      }
+    }
+
+    // Free/busy externo (Google Calendar e Trinks) — fail-open
+    const { startOfDay, endOfDay } = await import("../../../shared/utils/date.utils")
+    const dayStart = startOfDay(date)
+    const dayEnd = endOfDay(date)
+    const externalFetches: Promise<void>[] = []
+
+    if (this.calendarService) {
+      externalFetches.push(
+        (async () => {
+          try {
+            const isConfigured = await this.calendarService!.isConfigured(salonId)
+            if (isConfigured) {
+              const busyPeriods = await this.calendarService!.getFreeBusy(professionalId, dayStart, dayEnd)
+              for (const busy of busyPeriods) {
+                for (const slot of baseSlots) {
+                  if (slot.dateRange.overlaps(busy)) {
+                    slot.markUnavailable()
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.warn("[AVAILABILITY] Erro ao buscar Google Calendar FreeBusy:", error)
+          }
+        })()
       )
     }
 
-    // Se não tem slots do profissional ou não especificou profissional, usa horário do salão
-    if (baseSlots.length === 0) {
-      const salon = await this.salonRepo.findById(input.salonId)
-      if (salon) {
-        const dayOfWeek = getDayOfWeek(date)
-        const workHours = salon.getWorkingHoursForDay(dayOfWeek)
-
-        if (workHours) {
-          baseSlots = this.generateSlotsFromWorkHours(
-            date,
-            workHours.start,
-            workHours.end,
-            serviceDuration,
-            input.professionalId
-          )
-        }
-      }
-    }
-
-    // Buscar agendamentos existentes para marcar como ocupados
-    if (input.professionalId) {
-      const appointments = await this.appointmentRepo.findByProfessionalAndDate(input.professionalId, date)
-
-      // Marcar slots ocupados por agendamentos
-      for (const appointment of appointments) {
-        for (const slot of baseSlots) {
-          if (slot.overlaps(new TimeSlot({
-            start: appointment.startsAt,
-            end: appointment.endsAt,
-            available: false,
-          }))) {
-            slot.markUnavailable()
+    if (this.externalScheduler) {
+      externalFetches.push(
+        (async () => {
+          try {
+            const isConfigured = await this.externalScheduler!.isConfigured(salonId)
+            if (isConfigured) {
+              const busySlots = await this.externalScheduler!.getBusySlots(professionalId, dayStart, dayEnd)
+              for (const busy of busySlots) {
+                for (const slot of baseSlots) {
+                  if (slot.overlaps(busy)) {
+                    slot.markUnavailable()
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.warn("[AVAILABILITY] Erro ao buscar Trinks:", error)
           }
-        }
-      }
+        })()
+      )
     }
 
-    // Buscar FreeBusy do Google Calendar e Trinks em PARALELO (se configurados)
-    if (input.professionalId) {
-      const { startOfDay, endOfDay } = await import("../../../shared/utils/date.utils")
-      const dayStart = startOfDay(date)
-      const dayEnd = endOfDay(date)
+    await Promise.all(externalFetches)
 
-      const externalFetches: Promise<void>[] = []
+    return baseSlots
+  }
 
-      if (this.calendarService) {
-        externalFetches.push(
-          (async () => {
-            try {
-              const isConfigured = await this.calendarService!.isConfigured(input.salonId)
-              if (isConfigured) {
-                const busyPeriods = await this.calendarService!.getFreeBusy(
-                  input.professionalId!,
-                  dayStart,
-                  dayEnd
-                )
-                for (const busy of busyPeriods) {
-                  for (const slot of baseSlots) {
-                    if (slot.dateRange.overlaps(busy)) {
-                      slot.markUnavailable()
-                    }
-                  }
-                }
-              }
-            } catch (error) {
-              console.warn("[AVAILABILITY] Erro ao buscar Google Calendar FreeBusy:", error)
-            }
-          })()
-        )
-      }
+  /**
+   * Gera slots a partir do horário de funcionamento do salão (sem subtrair ocupação).
+   */
+  private async generateSalonHoursSlots(
+    date: Date,
+    salonId: string,
+    serviceDuration: number,
+    professionalId?: string
+  ): Promise<TimeSlot[]> {
+    const salon = await this.salonRepo.findById(salonId)
+    if (!salon) return []
 
-      if (this.externalScheduler) {
-        externalFetches.push(
-          (async () => {
-            try {
-              const isConfigured = await this.externalScheduler!.isConfigured(input.salonId)
-              if (isConfigured) {
-                const busySlots = await this.externalScheduler!.getBusySlots(
-                  input.professionalId!,
-                  dayStart,
-                  dayEnd
-                )
-                for (const busy of busySlots) {
-                  for (const slot of baseSlots) {
-                    if (slot.overlaps(busy)) {
-                      slot.markUnavailable()
-                    }
-                  }
-                }
-              }
-            } catch (error) {
-              console.warn("[AVAILABILITY] Erro ao buscar Trinks:", error)
-            }
-          })()
-        )
-      }
+    const dayOfWeek = getDayOfWeek(date)
+    const workHours = salon.getWorkingHoursForDay(dayOfWeek)
+    if (!workHours) return []
 
-      await Promise.all(externalFetches)
+    return this.generateSlotsFromWorkHours(
+      date,
+      workHours.start,
+      workHours.end,
+      serviceDuration,
+      professionalId
+    )
+  }
+
+  /**
+   * Converte TimeSlots em DTOs, filtrando horários passados (se for hoje) e anexando
+   * a atribuição de profissional (nome/especialista) quando disponível.
+   */
+  private buildDTO(
+    date: Date,
+    baseSlots: TimeSlot[],
+    serviceDuration: number,
+    attribution: {
+      professionalId?: string
+      meta?: Map<string, { name: string; isSpecialist: boolean }>
     }
-
-    // Filtrar slots que já passaram (se for hoje)
+  ): AvailabilityDTO {
     const now = new Date()
     const nowBrazil = toBrazilDate(now)
     const dateBrazil = toBrazilDate(date)
@@ -157,32 +227,34 @@ export class CheckAvailabilityUseCase {
       dateBrazil.getMonth() === nowBrazil.getMonth() &&
       dateBrazil.getDate() === nowBrazil.getDate()
 
-    // Converter para DTOs
-    const slotDTOs: TimeSlotDTO[] = baseSlots.map((slot) => {
-      // Se for hoje e o slot já passou, marca como indisponível
-      // Usa nowBrazil (ajustado) para comparar no mesmo espaço de tempo que slot.start
+    const slots: TimeSlotDTO[] = baseSlots.map((slot) => {
+      // Se for hoje e o slot já passou, marca como indisponível.
+      // Usa nowBrazil (ajustado) para comparar no mesmo espaço de tempo que slot.start.
       const isPast = isToday && slot.start <= nowBrazil
+      const m = slot.professionalId ? attribution.meta?.get(slot.professionalId) : undefined
       return {
         time: slot.formatStartTime(),
         available: !isPast && slot.available && slot.canFit(serviceDuration),
         professionalId: slot.professionalId,
+        professionalName: m?.name,
+        isSpecialist: m?.isSpecialist,
       }
     })
 
-    const totalAvailable = slotDTOs.filter((s) => s.available).length
+    const totalAvailable = slots.filter((s) => s.available).length
     const message =
       totalAvailable === 0
         ? "Não há horários disponíveis nesta data"
         : `${totalAvailable} horário(s) disponível(is)`
 
-    return ok({
+    return {
       date: formatDate(date),
       dateISO: date.toISOString(),
-      professionalId: input.professionalId,
-      slots: slotDTOs,
+      professionalId: attribution.professionalId,
+      slots,
       totalAvailable,
       message,
-    })
+    }
   }
 
   /**

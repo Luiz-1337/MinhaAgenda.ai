@@ -8,12 +8,15 @@ import { DateRange } from "../../../../src/domain/value-objects"
 import {
   mockAppointmentRepo,
   mockAvailabilityRepo,
+  mockProfessionalRepo,
   mockSalonRepo,
   mockServiceRepo,
   mockCalendarService,
   mockExternalScheduler,
 } from "../../../helpers/repository.mock"
 import { IDS } from "../../../helpers/fixtures"
+import { Professional } from "../../../../src/domain/entities/Professional"
+import { AvailabilityPresenter } from "../../../../src/presentation/presenters/AvailabilityPresenter"
 
 function makeSlots(count: number, baseDate = "2026-06-15"): TimeSlot[] {
   const slots: TimeSlot[] = []
@@ -156,7 +159,7 @@ describe("CheckAvailabilityUseCase", () => {
       endsAt: new Date("2026-06-15T10:00:00Z"),
       status: "confirmed",
     })
-    appointmentRepo.findByProfessionalAndDate.mockResolvedValue([conflictingAppointment])
+    appointmentRepo.findByPersonAndDate.mockResolvedValue([conflictingAppointment])
 
     const result = await useCase.execute({
       salonId: IDS.salonId,
@@ -290,7 +293,7 @@ describe("CheckAvailabilityUseCase", () => {
       date: "2026-06-15T12:00:00Z",
     })
 
-    expect(appointmentRepo.findByProfessionalAndDate).not.toHaveBeenCalled()
+    expect(appointmentRepo.findByPersonAndDate).not.toHaveBeenCalled()
     expect(calendarService.isConfigured).not.toHaveBeenCalled()
   })
 
@@ -316,5 +319,80 @@ describe("CheckAvailabilityUseCase", () => {
       expect(result.data.slots.length).toBe(0)
       expect(result.data.totalAvailable).toBe(0)
     }
+  })
+
+  it("agrega horários por profissional (especialistas primeiro) quando não há professionalId", async () => {
+    const professionalRepo = mockProfessionalRepo()
+    const ana = Professional.create({
+      id: "11111111-1111-1111-1111-111111111111",
+      salonId: IDS.salonId,
+      name: "Ana",
+      isActive: true,
+      services: [IDS.serviceId],
+    })
+    const bruno = Professional.create({
+      id: "22222222-2222-2222-2222-222222222222",
+      salonId: IDS.salonId,
+      name: "Bruno",
+      isActive: true,
+      services: [IDS.serviceId],
+    })
+    // Retorna fora de ordem de propósito: a ordenação por especialista é responsabilidade do use case/presenter.
+    professionalRepo.findByServiceWithSpecialist.mockResolvedValue([
+      { professional: bruno, isSpecialist: false },
+      { professional: ana, isSpecialist: true },
+    ])
+    serviceRepo.findById.mockResolvedValue(makeService())
+
+    const slotFor = (profId: string, hour: number) =>
+      new TimeSlot({
+        start: new Date(`2026-06-15T${String(hour).padStart(2, "0")}:00:00Z`),
+        end: new Date(`2026-06-15T${String(hour + 1).padStart(2, "0")}:00:00Z`),
+        available: true,
+        professionalId: profId,
+      })
+
+    availabilityRepo.generateSlots.mockImplementation(async (profId: string) => {
+      if (profId === ana.id) return [slotFor(ana.id, 9)]
+      if (profId === bruno.id) return [slotFor(bruno.id, 10)]
+      return []
+    })
+
+    const aggregatingUseCase = new CheckAvailabilityUseCase(
+      appointmentRepo as any,
+      availabilityRepo as any,
+      salonRepo as any,
+      serviceRepo as any,
+      calendarService as any,
+      externalScheduler as any,
+      professionalRepo as any
+    )
+
+    const result = await aggregatingUseCase.execute({
+      salonId: IDS.salonId,
+      date: "2026-06-15T12:00:00Z",
+      serviceId: IDS.serviceId,
+    })
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+
+    // Cada slot é atribuído ao profissional certo, com a flag de especialista.
+    const anaSlot = result.data.slots.find((s) => s.professionalName === "Ana")
+    const brunoSlot = result.data.slots.find((s) => s.professionalName === "Bruno")
+    expect(anaSlot?.isSpecialist).toBe(true)
+    expect(brunoSlot?.isSpecialist).toBe(false)
+
+    // O presenter agrupa por profissional, especialista primeiro, sem expor IDs.
+    const json = AvailabilityPresenter.toJSON(result.data) as {
+      mode: string
+      options: Array<{ professional: string; isSpecialist: boolean; slots: string[] }>
+      earliest?: { professional: string; isSpecialist: boolean }
+    }
+    expect(json.mode).toBe("byProfessional")
+    expect(json.options[0].professional).toBe("Ana")
+    expect(json.options[0].isSpecialist).toBe(true)
+    expect(json.earliest?.professional).toBe("Ana")
+    expect(JSON.stringify(json)).not.toContain(ana.id)
   })
 })

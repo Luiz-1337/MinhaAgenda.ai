@@ -13,6 +13,7 @@ export function mockAppointmentRepo(): Record<keyof IAppointmentRepository, Retu
     findById: vi.fn().mockResolvedValue(null),
     findByCustomer: vi.fn().mockResolvedValue([]),
     findByProfessionalAndDate: vi.fn().mockResolvedValue([]),
+    findByPersonAndDate: vi.fn().mockResolvedValue([]),
     findUpcoming: vi.fn().mockResolvedValue([]),
     findUpcomingByPhone: vi.fn().mockResolvedValue([]),
     findConflicting: vi.fn().mockResolvedValue([]),
@@ -53,6 +54,7 @@ export function mockProfessionalRepo(): Record<keyof IProfessionalRepository, Re
     findBySalon: vi.fn().mockResolvedValue([]),
     findAvailable: vi.fn().mockResolvedValue([]),
     findByService: vi.fn().mockResolvedValue([]),
+    findByServiceWithSpecialist: vi.fn().mockResolvedValue([]),
     save: vi.fn().mockResolvedValue(undefined),
     update: vi.fn().mockResolvedValue(undefined),
   }
