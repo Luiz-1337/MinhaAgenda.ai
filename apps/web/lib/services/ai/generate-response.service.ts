@@ -732,12 +732,22 @@ function summarizeToolResult(toolName: string, result: unknown): string {
         .join(", ");
     }
 
-    // Disponibilidade: horários
-    if ((toolName === "checkAvailability" || toolName === "getAvailableSlots") && data.slots) {
-      const available = Array.isArray(data.slots)
-        ? data.slots.filter((s: any) => s.available !== false).map((s: any) => s.time || s).join(",")
-        : JSON.stringify(data.slots).substring(0, 200);
-      return `horarios: ${available}`;
+    // Disponibilidade: horários (formato simples OU agregado por profissional)
+    if (toolName === "checkAvailability" || toolName === "getAvailableSlots") {
+      if (Array.isArray(data.options)) {
+        const byPro = data.options
+          .slice(0, 5)
+          .map((o: any) => `${o.professional}${o.isSpecialist ? "*" : ""}: ${(o.slots || []).slice(0, 6).join(",")}`)
+          .join(" | ");
+        const earliest = data.earliest ? ` (mais cedo: ${data.earliest.professional} ${data.earliest.time})` : "";
+        return `horarios por profissional: ${byPro}${earliest}`;
+      }
+      if (data.slots) {
+        const available = Array.isArray(data.slots)
+          ? data.slots.filter((s: any) => s.available !== false).map((s: any) => s.time || s).join(",")
+          : JSON.stringify(data.slots).substring(0, 200);
+        return `horarios: ${available}`;
+      }
     }
 
     // Agendamentos futuros

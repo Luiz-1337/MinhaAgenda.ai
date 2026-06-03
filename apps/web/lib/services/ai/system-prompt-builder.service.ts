@@ -354,8 +354,8 @@ ${paymentStepSolo}`
       : `FLUXO DE AGENDAMENTO (siga na ordem):
 1. Saudação → Cumprimente pelo nome (se disponível). Pergunte como pode ajudar.
 2. Cliente pergunta serviços/preços → Chame getServices. Apresente nome e preço de forma natural. Pergunte qual deseja.
-3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?"
-4a. Cliente informou APENAS data (sem horário) → Chame checkAvailability (inclua serviceId obtido no passo 2). Ofereça 2-3 horários disponíveis.
+3. Cliente escolheu serviço → Pergunte "Para qual dia gostaria de agendar?". Se o cliente NÃO indicou um profissional, prefira o ESPECIALISTA do serviço (use getProfessionals com o serviceId para saber quem é); só fale de nomes se o cliente perguntar.
+4a. Cliente informou APENAS data (sem horário) → Chame checkAvailability com o serviceId. Se o cliente não tem preferência de profissional, NÃO envie professionalId — o sistema retorna quem faz o serviço, especialistas primeiro (o campo "earliest" traz o horário mais cedo). Ofereça 2-3 horários priorizando o especialista. Se o cliente pedir outro profissional que faça o serviço, use os horários dele.
 4b. Cliente informou DATA + HORÁRIO na mesma mensagem (ex: "quinta às 10h") → Chame checkAvailability com aquela data/horário específico.
     - Se o horário pedido estiver disponível: NÃO liste outros horários nem pergunte "qual prefere". Siga DIRETO para o passo 5.
     - Se indisponível: informe brevemente e ofereça 1-2 alternativas próximas (manhã/tarde do mesmo dia).

@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod"
-import { db, appointments, professionals, professionalServices, and, eq } from "@repo/db"
+import { db, professionals, professionalServices, and, eq, domainServices } from "@repo/db"
 import { FuzzySearchService } from "../fuzzy-search.service"
 import type { ToolDefinition } from "./tool-definition"
 
@@ -66,45 +66,24 @@ export class AppointmentToolFactory {
           professionalId = pros[0].id
         }
 
-        const appointmentDate = new Date(`${date}T${time}`)
-        if (isNaN(appointmentDate.getTime())) {
-          throw new Error("Data ou hora inválida.")
-        }
+        // Delega ao serviço centralizado: valida expediente e capacidade,
+        // aplica advisory lock + checagem de conflito (inclusive cross-salão)
+        // e dispara o sync externo (Google/Trinks) de forma fire-and-forget.
+        const result = await domainServices.createAppointmentService({
+          salonId,
+          professionalId,
+          clientId,
+          serviceId: service.id,
+          date: `${date}T${time}`,
+        })
 
-        const endTime = new Date(appointmentDate.getTime() + service.duration * 60 * 1000)
-
-        const [appointment] = await db
-          .insert(appointments)
-          .values({
-            salonId,
-            clientId,
-            professionalId,
-            serviceId: service.id,
-            date: appointmentDate,
-            endTime: endTime,
-            status: "pending",
-          })
-          .returning({ id: appointments.id })
-
-        // Sincroniza com Google Calendar (não bloqueia se falhar)
-        try {
-          const { createGoogleEvent } = await import("@/lib/google")
-          await createGoogleEvent(appointment.id)
-        } catch {
-          // Silenciosamente falha - nosso banco é a fonte da verdade
-        }
-
-        // Sincroniza com Trinks (não bloqueia se falhar)
-        try {
-          const { createTrinksAppointment } = await import("@repo/db")
-          await createTrinksAppointment(appointment.id, salonId)
-        } catch {
-          // Silenciosamente falha - nosso banco é a fonte da verdade
+        if (!result.success) {
+          throw new Error(result.error)
         }
 
         return {
           success: true,
-          appointmentId: appointment.id,
+          appointmentId: result.data.appointmentId,
           details: {
             service: service.name,
             date: date,
