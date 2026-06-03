@@ -52,7 +52,7 @@ export function createCatalogTools(ctx: ToolContext): ToolSet {
 
     getProfessionals: defineTool(ctx, {
       description:
-        "Lista profissionais do salão e seus serviços. Retorna professionalId necessário para checkAvailability e addAppointment. Use quando o cliente perguntar sobre profissionais ou para obter o ID de um profissional específico.",
+        "Lista profissionais do salão e seus serviços. Retorna professionalId necessário para checkAvailability e addAppointment. Informe serviceId para ver só quem REALIZA o serviço, com os especialistas marcados (isSpecialist) e listados primeiro. Use quando o cliente perguntar sobre profissionais ou para obter o ID de um profissional.",
       inputSchema: getProfessionalsSchema,
       handler: async (input, { container, salonId }) => {
         const result = await container
@@ -60,6 +60,7 @@ export function createCatalogTools(ctx: ToolContext): ToolSet {
           .execute({
             salonId,
             includeInactive: input.includeInactive,
+            serviceId: input.serviceId,
           })
 
         return CatalogPresenter.professionalsToJSON(unwrap(result))

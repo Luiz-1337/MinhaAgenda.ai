@@ -51,6 +51,7 @@ export interface ProfessionalDTO {
   isActive: boolean
   services: string[] // nomes dos serviços
   serviceIds: string[] // IDs dos serviços
+  isSpecialist?: boolean // preenchido quando filtrado por serviceId
 }
 
 /**

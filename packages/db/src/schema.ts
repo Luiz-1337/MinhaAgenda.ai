@@ -186,6 +186,11 @@ export const professionals = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     userId: uuid('user_id').references(() => profiles.id),
+    // Identidade de pessoa compartilhada entre salões (mesma pessoa física = mesmo personKey,
+    // inclusive entre contas diferentes). Usado para unir livre/ocupado e travar o booking
+    // por pessoa, evitando double-booking de um profissional que atende em mais de um salão.
+    // Null = pessoa isolada (fallback para o próprio professionalId).
+    personKey: uuid('person_key'),
     role: professionalRoleEnum('role').default('STAFF').notNull(),
     name: text('name').notNull(),
     email: text('email').notNull(),
@@ -198,7 +203,8 @@ export const professionals = pgTable(
   },
   (table) => [
     index('professionals_salon_idx').on(table.salonId),
-    index('professionals_user_idx').on(table.userId)
+    index('professionals_user_idx').on(table.userId),
+    index('professionals_person_key_idx').on(table.personKey)
   ]
 )
 
@@ -208,10 +214,15 @@ export const professionalServices = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }).notNull(),
     serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }).notNull(),
+    // A presença da linha = profissional EXECUTA o serviço (capability).
+    // isSpecialist = preferência: a IA oferece o especialista primeiro, mas pode
+    // agendar com outro profissional capaz se o cliente pedir.
+    isSpecialist: boolean('is_specialist').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
-    uniqueIndex('pro_service_unique').on(table.professionalId, table.serviceId)
+    uniqueIndex('pro_service_unique').on(table.professionalId, table.serviceId),
+    index('pro_service_specialist_idx').on(table.serviceId, table.isSpecialist)
   ]
 )
 

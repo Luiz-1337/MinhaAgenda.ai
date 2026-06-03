@@ -124,15 +124,22 @@ export class CatalogPresenter {
    * Formata profissionais para JSON
    */
   static professionalsToJSON(dto: ProfessionalListDTO): Record<string, unknown> {
+    const professionals = [...dto.professionals].sort(
+      (a, b) => Number(b.isSpecialist ?? false) - Number(a.isSpecialist ?? false)
+    )
+
     return {
-      professionals: dto.professionals.map((p) => ({
+      professionals: professionals.map((p) => ({
         id: p.id,
         name: p.name,
         services: p.services,
+        ...(p.isSpecialist !== undefined ? { isSpecialist: p.isSpecialist } : {}),
       })),
       total: dto.total,
       message: dto.message,
-      _instrucao: "Os IDs são para uso interno das tools. NUNCA mostre IDs ao cliente.",
+      _instrucao:
+        "Os IDs são para uso interno das tools. NUNCA mostre IDs ao cliente. " +
+        "Quando isSpecialist=true, prefira esse profissional para o serviço (mas pode agendar com outro da lista se o cliente pedir).",
     }
   }
 }

@@ -132,15 +132,30 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
   }
 
   async findByService(serviceId: string, salonId: string): Promise<Professional[]> {
-    // Busca profissionais que realizam o serviço
+    const list = await this.findByServiceWithSpecialist(serviceId, salonId)
+    return list.map((item) => item.professional)
+  }
+
+  /**
+   * Como findByService, mas também informa se cada profissional é ESPECIALISTA
+   * no serviço (professional_services.is_specialist). Usado para a IA preferir
+   * o especialista, mantendo os demais profissionais capazes como opção.
+   */
+  async findByServiceWithSpecialist(
+    serviceId: string,
+    salonId: string
+  ): Promise<Array<{ professional: Professional; isSpecialist: boolean }>> {
     const profServices = await db.query.professionalServices.findMany({
       where: eq(professionalServices.serviceId, serviceId),
     })
 
-    const professionalIds = profServices.map((ps) => ps.professionalId)
-
-    if (professionalIds.length === 0) {
+    if (profServices.length === 0) {
       return []
+    }
+
+    const specialistByProId = new Map<string, boolean>()
+    for (const ps of profServices) {
+      specialistByProId.set(ps.professionalId, ps.isSpecialist)
     }
 
     const rows = await db.query.professionals.findMany({
@@ -150,27 +165,27 @@ export class DrizzleProfessionalRepository implements IProfessionalRepository {
       ),
     })
 
-    // Filtra apenas os que realizam o serviço
-    const filteredRows = rows.filter((r) => professionalIds.includes(r.id))
-
-    return filteredRows.map((row) =>
-      ProfessionalMapper.toDomain(
-        {
-          id: row.id,
-          salonId: row.salonId,
-          userId: row.userId,
-          name: row.name,
-          email: row.email,
-          phone: row.phone,
-          role: row.role,
-          isActive: row.isActive,
-          googleCalendarId: row.googleCalendarId,
-          commissionRate: row.commissionRate ? parseFloat(row.commissionRate) : null,
-          createdAt: row.createdAt,
-        },
-        [serviceId] // Sabemos que ele faz pelo menos este serviço
-      )
-    )
+    return rows
+      .filter((r) => specialistByProId.has(r.id))
+      .map((row) => ({
+        professional: ProfessionalMapper.toDomain(
+          {
+            id: row.id,
+            salonId: row.salonId,
+            userId: row.userId,
+            name: row.name,
+            email: row.email,
+            phone: row.phone,
+            role: row.role,
+            isActive: row.isActive,
+            googleCalendarId: row.googleCalendarId,
+            commissionRate: row.commissionRate ? parseFloat(row.commissionRate) : null,
+            createdAt: row.createdAt,
+          },
+          [serviceId] // Sabemos que ele faz pelo menos este serviço
+        ),
+        isSpecialist: specialistByProId.get(row.id) ?? false,
+      }))
   }
 
   async save(professional: Professional): Promise<void> {

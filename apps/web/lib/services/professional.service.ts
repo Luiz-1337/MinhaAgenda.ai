@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { db, professionals, salons, profiles, eq, and, sql } from "@repo/db"
 import { canAddProfessional } from "@/lib/utils/permissions"
 import type { UpsertProfessionalInput } from "@/lib/types/professional"
@@ -91,6 +92,9 @@ export class ProfessionalService {
     const payload = {
       salonId,
       userId: data.userId || null,
+      // Toda nova linha recebe uma identidade de pessoa: a resolvida pelo chamador
+      // (mesma pessoa entre unidades do mesmo owner) ou uma nova.
+      personKey: data.personKey ?? randomUUID(),
       name: normalizeString(data.name),
       email: normalizeEmail(data.email),
       phone: emptyStringToNull(data.phone),
@@ -208,6 +212,7 @@ export class ProfessionalService {
       .values({
         salonId,
         userId: ownerId,
+        personKey: randomUUID(),
         name: normalizeString(professionalName),
         email: normalizeEmail(ownerProfile.email),
         phone: emptyStringToNull(ownerProfile.phone),

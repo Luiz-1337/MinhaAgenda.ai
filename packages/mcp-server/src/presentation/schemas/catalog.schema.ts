@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { uuidOptionalSchema } from "./common.schema"
 
 /**
  * Schema para buscar serviços
@@ -35,6 +36,9 @@ export const getProfessionalsSchema = z.object({
     .default(false)
     .optional()
     .describe("Incluir profissionais inativos"),
+  serviceId: uuidOptionalSchema.describe(
+    "Opcional. Se informado, retorna só quem REALIZA o serviço, marcando os especialistas (isSpecialist)."
+  ),
 })
 
 export type GetProfessionalsInput = z.infer<typeof getProfessionalsSchema>

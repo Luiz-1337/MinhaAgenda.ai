@@ -1,9 +1,10 @@
 "use server"
 
+import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionalServices, appointments, profiles, professionals, eq, and } from "@repo/db"
+import { db, salons, professionalServices, appointments, profiles, professionals, eq, and, isNotNull } from "@repo/db"
 import { formatZodError } from "@/lib/services/validation.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import type { ProfessionalRow, UpsertProfessionalInput } from "@/lib/types/professional"
@@ -106,6 +107,41 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
 }
 
 /**
+ * Resolve o personKey para um novo profissional: reaproveita o da mesma pessoa
+ * (mesmo e-mail) já cadastrada em OUTRA unidade do MESMO owner; caso contrário,
+ * gera um novo. Mantém o vínculo de agenda entre unidades sem cruzar contas.
+ */
+async function resolveOrCreatePersonKey(salonId: string, email: string): Promise<string> {
+  const owner = await db
+    .select({ ownerId: salons.ownerId })
+    .from(salons)
+    .where(eq(salons.id, salonId))
+    .limit(1)
+
+  const ownerId = owner[0]?.ownerId
+  if (ownerId) {
+    const existing = await db
+      .select({ personKey: professionals.personKey })
+      .from(professionals)
+      .innerJoin(salons, eq(professionals.salonId, salons.id))
+      .where(
+        and(
+          eq(salons.ownerId, ownerId),
+          eq(professionals.email, email),
+          isNotNull(professionals.personKey)
+        )
+      )
+      .limit(1)
+
+    if (existing[0]?.personKey) {
+      return existing[0].personKey
+    }
+  }
+
+  return randomUUID()
+}
+
+/**
  * Cria ou atualiza um profissional
  */
 export async function upsertProfessional(
@@ -185,7 +221,9 @@ export async function upsertProfessional(
       // A lógica do ProfessionalService.updateProfessional usa userId se fornecido.
       await ProfessionalService.updateProfessional(parsed.data.id, input.salonId, dataWithUserId)
     } else {
-      await ProfessionalService.createProfessional(input.salonId, dataWithUserId)
+      // Mesma pessoa entre unidades do mesmo owner compartilha personKey (vínculo de agenda cross-salão).
+      const personKey = await resolveOrCreatePersonKey(input.salonId, normalizeEmail(parsed.data.email))
+      await ProfessionalService.createProfessional(input.salonId, { ...dataWithUserId, personKey })
     }
 
     revalidatePath("/dashboard/team")

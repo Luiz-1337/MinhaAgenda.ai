@@ -1,5 +1,6 @@
 export * from "./appointments"
 export * from "./availability"
+export * from "./person"
 export * from "./google-calendar"
 export * from "./google-calendar-sync"
 export * from "./integration-sync"

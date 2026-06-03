@@ -30,6 +30,14 @@ export interface IProfessionalRepository {
   findByService(serviceId: string, salonId: string): Promise<Professional[]>
 
   /**
+   * Como findByService, mas informa se cada profissional é especialista no serviço.
+   */
+  findByServiceWithSpecialist(
+    serviceId: string,
+    salonId: string
+  ): Promise<Array<{ professional: Professional; isSpecialist: boolean }>>
+
+  /**
    * Salva um profissional
    */
   save(professional: Professional): Promise<void>

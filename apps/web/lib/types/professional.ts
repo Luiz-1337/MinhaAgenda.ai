@@ -24,6 +24,7 @@ export interface UpsertProfessionalInput {
   id?: string
   salonId?: string // Link to salon if creating new
   userId?: string // Link to existing user if available
+  personKey?: string | null // Identidade de pessoa compartilhada entre salões
   name: string
   email: string
   phone?: string
