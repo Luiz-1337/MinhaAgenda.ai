@@ -235,8 +235,25 @@ export async function getOrCreateInstance(
       columns: { evolutionInstanceName: true },
     });
     if (salonRecheck?.evolutionInstanceName) {
-      const status = await getInstanceStatus(salonRecheck.evolutionInstanceName);
-      return { instanceName: salonRecheck.evolutionInstanceName, status };
+      try {
+        const status = await getInstanceStatus(salonRecheck.evolutionInstanceName);
+        return { instanceName: salonRecheck.evolutionInstanceName, status };
+      } catch (error) {
+        // Instância referenciada no banco não existe mais na Evolution API (404):
+        // limpa a referência órfã e segue o fluxo para recriar do zero.
+        if (error instanceof EvolutionAPIError && error.statusCode === 404) {
+          logger.info(
+            { instanceName: salonRecheck.evolutionInstanceName, salonId },
+            'Recheck: instance not found in Evolution API (404), clearing stale ref and recreating'
+          );
+          await db
+            .update(salons)
+            .set({ evolutionInstanceName: null, updatedAt: new Date() })
+            .where(eq(salons.id, salonId));
+        } else {
+          throw error;
+        }
+      }
     }
 
     // Create new instance
@@ -385,8 +402,25 @@ export async function getOrCreateAgentInstance(
       columns: { evolutionInstanceName: true },
     });
     if (agentRecheck?.evolutionInstanceName) {
-      const status = await getInstanceStatus(agentRecheck.evolutionInstanceName);
-      return { instanceName: agentRecheck.evolutionInstanceName, status };
+      try {
+        const status = await getInstanceStatus(agentRecheck.evolutionInstanceName);
+        return { instanceName: agentRecheck.evolutionInstanceName, status };
+      } catch (error) {
+        // Instância referenciada no banco não existe mais na Evolution API (404):
+        // limpa a referência órfã e segue o fluxo para recriar do zero.
+        if (error instanceof EvolutionAPIError && error.statusCode === 404) {
+          logger.info(
+            { instanceName: agentRecheck.evolutionInstanceName, agentId },
+            'Recheck: agent instance not found in Evolution API (404), clearing stale ref and recreating'
+          );
+          await db
+            .update(agents)
+            .set({ evolutionInstanceName: null, updatedAt: new Date() })
+            .where(eq(agents.id, agentId));
+        } else {
+          throw error;
+        }
+      }
     }
 
     const instanceName = `agent-${agentId}`;
