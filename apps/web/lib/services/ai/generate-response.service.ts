@@ -30,13 +30,26 @@ import { findRelevantContext, generateQueryEmbedding } from "./rag-context.servi
 import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
-import { db, customers, customerTrinksProfile, profiles, appointments, professionals, eq, and } from "@repo/db";
+import { db, customers, customerTrinksProfile, profiles, appointments, professionals, salons, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 import type { ProcessedMedia } from "./media-processor.service";
 import type { TrinksProfileSnapshot } from "./system-prompt-builder.service";
 import { enqueueTrinksProfileSync } from "../../queues/trinks-sync-queue";
 
 const TRINKS_PROFILE_STALE_HOURS = 24;
+
+/** Salão tem classificação de Kanban por IA ligada? (gate da tool setChatKanbanColumn) */
+async function isAiKanbanEnabled(salonId: string): Promise<boolean> {
+  try {
+    const row = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { aiKanbanClassificationEnabled: true },
+    });
+    return !!row?.aiKanbanClassificationEnabled;
+  } catch {
+    return false;
+  }
+}
 
 // Debug verboso controlado por env var (desligado em produção)
 const AI_DEBUG = process.env.AI_DEBUG === 'true';
@@ -112,7 +125,7 @@ export async function generateAIResponse(
     // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
     const embeddingPromise = generateQueryEmbedding(userMessage);
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
@@ -121,8 +134,15 @@ export async function generateAIResponse(
       fetchSoloProfessionalInfo(salonId),
       embeddingPromise.catch(() => null),
       fetchTrinksProfile(salonId, customerId, clientPhone, contextLogger),
+      isAiKanbanEnabled(salonId),
     ]);
     timer.mark("context_loaded");
+
+    // Kanban por IA desativado no salão → remove a tool para a IA não chamá-la e falhar.
+    // (O erro de uma tool de bastidor sequestraria a resposta ao cliente — ver handleToolErrors.)
+    if (!kanbanEnabled) {
+      delete (mcpTools as Record<string, unknown>).setChatKanbanColumn;
+    }
 
     if (!agentInfo) {
       contextLogger.error("No active agent found for salon");
@@ -557,18 +577,30 @@ async function fetchSoloProfessionalInfo(
   return null;
 }
 
+/** Tools de bastidor: se falharem, NÃO devem virar mensagem ao cliente. */
+const INTERNAL_TOOL_NAMES = new Set<string>([
+  "setChatKanbanColumn",
+  "saveCustomerPreference",
+  "qualifyLead",
+]);
+
 /**
  * Trata erros de tools e retorna mensagem apropriada
  * NÃO faz segunda chamada à AI - usa templates pré-definidos
  */
 function handleToolErrors(steps: unknown[], contextLogger: Logger): string | null {
-  const errors = extractToolErrors(steps);
-  if (errors.length === 0) return null;
+  const allErrors = extractToolErrors(steps);
+  if (allErrors.length === 0) return null;
 
   contextLogger.warn(
-    { errorCount: errors.length, tools: errors.map((e) => e.toolName) },
+    { errorCount: allErrors.length, tools: allErrors.map((e) => e.toolName) },
     "Tool errors detected"
   );
+
+  // Erros de tools internas não devem sequestrar a resposta real ao cliente
+  // (ex: setChatKanbanColumn falha → cliente recebia "dificuldade técnica").
+  const errors = allErrors.filter((e) => !INTERNAL_TOOL_NAMES.has(e.toolName));
+  if (errors.length === 0) return null;
 
   const errorTypes = [...new Set(errors.map((e) => e.toolName))];
 
@@ -720,7 +752,7 @@ function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getServices" && Array.isArray(data.services)) {
       return data.services
         .slice(0, 10)
-        .map((s: any) => `${s.name}(id:${s.serviceId},R$${s.price},${s.duration}min)`)
+        .map((s: any) => `${s.name}(id:${s.id},R$${s.price},${s.duration}min)`)
         .join(", ");
     }
 
@@ -728,7 +760,7 @@ function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getProfessionals" && Array.isArray(data.professionals)) {
       return data.professionals
         .slice(0, 10)
-        .map((p: any) => `${p.name}(id:${p.professionalId})`)
+        .map((p: any) => `${p.name}(id:${p.id})`)
         .join(", ");
     }
 
@@ -754,7 +786,7 @@ function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getMyFutureAppointments" && Array.isArray(data.appointments)) {
       return data.appointments
         .slice(0, 5)
-        .map((a: any) => `${a.service}(id:${a.appointmentId},${a.date},${a.professional})`)
+        .map((a: any) => `${a.service}(id:${a.id},${a.startsAt},${a.professional})`)
         .join(", ");
     }
 
