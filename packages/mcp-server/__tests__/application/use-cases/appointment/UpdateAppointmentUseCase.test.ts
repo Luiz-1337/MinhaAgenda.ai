@@ -74,6 +74,7 @@ describe("UpdateAppointmentUseCase", () => {
 
     const result = await useCase.execute({
       appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
       notes: "Nova nota",
     })
 
@@ -89,12 +90,35 @@ describe("UpdateAppointmentUseCase", () => {
 
     const result = await useCase.execute({
       appointmentId: "inexistente",
+      salonId: IDS.salonId,
     })
 
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.error.code).toBe("APPOINTMENT_NOT_FOUND")
     }
+  })
+
+  it("bloqueia atualização cross-salon e não vaza dados do cliente (C1)", async () => {
+    const OTHER_SALON = "99999999-9999-4999-8999-999999999999"
+    // Agendamento pertence a OUTRO salão; atacante usa o salão do seu contexto.
+    appointmentRepo.findById.mockResolvedValue(
+      makeFutureAppointment({ salonId: OTHER_SALON })
+    )
+
+    const result = await useCase.execute({
+      appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
+      notes: "tentando alterar agendamento alheio",
+    })
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe("APPOINTMENT_NOT_FOUND")
+    }
+    // Não executa a atualização nem carrega dados do cliente de outro salão.
+    expect(domainServices.updateAppointmentService).not.toHaveBeenCalled()
+    expect(customerRepo.findById).not.toHaveBeenCalled()
   })
 
   it("retorna erro quando agendamento não pode ser modificado (passado)", async () => {
@@ -112,6 +136,7 @@ describe("UpdateAppointmentUseCase", () => {
 
     const result = await useCase.execute({
       appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
       notes: "tentar atualizar",
     })
 
@@ -128,6 +153,7 @@ describe("UpdateAppointmentUseCase", () => {
 
     const result = await useCase.execute({
       appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
     })
 
     expect(result.success).toBe(false)
@@ -138,6 +164,7 @@ describe("UpdateAppointmentUseCase", () => {
 
     const result = await useCase.execute({
       appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
       // notes não fornecido
     })
 
@@ -169,6 +196,7 @@ describe("UpdateAppointmentUseCase", () => {
 
     const result = await useCase.execute({
       appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
       startsAt: "2026-06-20T10:00:00-03:00",
     })
 

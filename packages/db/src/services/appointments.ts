@@ -5,6 +5,7 @@ import { db, appointments, availability, professionals, professionalServices, se
 import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
 import { getPersonProfessionalIdsByKey } from "./person"
+import { needsConflictCheck, isPastBooking } from "./appointment-rules"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
 import { processVacantSlot } from "./slot-filler.service"
 import { getGoogleFreeBusyForProfessional } from "./google-calendar"
@@ -101,6 +102,11 @@ export async function createAppointmentService(input: {
     return { success: false, error: parseResult.error }
   }
   const { utcDate: startUtc, brazilComponents } = parseResult
+
+  // Bloqueia criação de agendamento no passado (bug C3).
+  if (isPastBooking(startUtc)) {
+    return { success: false, error: "Não é possível agendar em um horário que já passou" }
+  }
 
   // Calcula horário de término
   const endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
@@ -250,6 +256,7 @@ export async function createAppointmentService(input: {
  */
 export async function updateAppointmentService(input: {
   appointmentId: string
+  salonId?: string
   professionalId?: string
   serviceId?: string
   date?: string | Date
@@ -258,6 +265,7 @@ export async function updateAppointmentService(input: {
 }): Promise<ActionResult<{ appointmentId: string }>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
+    salonId: z.string().uuid().optional(),
     professionalId: z.string().uuid().optional(),
     serviceId: z.string().uuid().optional(),
     date: z.union([
@@ -272,9 +280,12 @@ export async function updateAppointmentService(input: {
     return { success: false, error: formatZodError(parse.error) }
   }
 
-  // Busca agendamento existente
+  // Busca agendamento existente — quando salonId é fornecido, restringe ao salão
+  // do contexto (isolamento multi-tenant, bug C1: defesa em profundidade).
   const existingAppointment = await db.query.appointments.findFirst({
-    where: eq(appointments.id, parse.data.appointmentId),
+    where: parse.data.salonId
+      ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+      : eq(appointments.id, parse.data.appointmentId),
     columns: {
       id: true,
       salonId: true,
@@ -345,6 +356,11 @@ export async function updateAppointmentService(input: {
     startUtc = parseResult.utcDate
     brazilComponents = parseResult.brazilComponents
     endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
+
+    // Bloqueia reagendamento para o passado (bug C3).
+    if (isPastBooking(startUtc)) {
+      return { success: false, error: "Não é possível reagendar para um horário que já passou" }
+    }
   } else if (finalServiceId !== existingAppointment.serviceId) {
     // Se date não mudou mas serviceId mudou, recalcula endTime
     endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
@@ -397,11 +413,16 @@ export async function updateAppointmentService(input: {
   // TRANSAÇÃO: Advisory lock + verificação de conflito + atualização atômica
   try {
     await db.transaction(async (tx) => {
-      // Verifica conflitos se data ou profissional mudou
-      const needsConflictCheck = parse.data.date !== undefined ||
-        finalProfessionalId !== existingAppointment.professionalId
+      // Verifica conflitos se a data, o profissional OU o serviço mudou.
+      // Incluir a mudança de serviço é essencial: a nova duração altera o
+      // horário de término e pode invadir o próximo agendamento (bug C2).
+      const needsCheck = needsConflictCheck({
+        dateChanged: parse.data.date !== undefined,
+        professionalChanged: finalProfessionalId !== existingAppointment.professionalId,
+        serviceChanged: finalServiceId !== existingAppointment.serviceId,
+      })
 
-      if (needsConflictCheck) {
+      if (needsCheck) {
         // Advisory lock na pessoa — previne modificações concorrentes (em qualquer salão)
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${personLockKey}))`)
 
@@ -432,7 +453,11 @@ export async function updateAppointmentService(input: {
           syncSource: input.skipExternalSync ? 'google' : 'app',
           updatedAt: new Date(),
         })
-        .where(eq(appointments.id, parse.data.appointmentId))
+        .where(
+          parse.data.salonId
+            ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+            : eq(appointments.id, parse.data.appointmentId)
+        )
     })
 
     // Fire-and-forget: Sync updates to external calendars
@@ -463,10 +488,12 @@ export async function updateAppointmentService(input: {
  */
 export async function deleteAppointmentService(input: {
   appointmentId: string
+  salonId?: string
   skipExternalSync?: boolean
 }): Promise<ActionResult<void>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
+    salonId: z.string().uuid().optional(),
   })
 
   const parse = schema.safeParse(input)
@@ -474,9 +501,12 @@ export async function deleteAppointmentService(input: {
     return { success: false, error: formatZodError(parse.error) }
   }
 
-  // Verifica se o agendamento existe
+  // Verifica se o agendamento existe — quando salonId é fornecido, restringe ao
+  // salão do contexto (isolamento multi-tenant, bug C1: defesa em profundidade).
   const existingAppointment = await db.query.appointments.findFirst({
-    where: eq(appointments.id, parse.data.appointmentId),
+    where: parse.data.salonId
+      ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+      : eq(appointments.id, parse.data.appointmentId),
     columns: { id: true, salonId: true, professionalId: true, serviceId: true, date: true },
   })
 
@@ -487,8 +517,12 @@ export async function deleteAppointmentService(input: {
   // Fire-and-forget: Sync deletion to external calendars BEFORE deleting from DB
   fireAndForgetDelete(parse.data.appointmentId, existingAppointment.salonId, input.skipExternalSync)
 
-  // Deleta o agendamento
-  await db.delete(appointments).where(eq(appointments.id, parse.data.appointmentId))
+  // Deleta o agendamento (escopado ao salão quando fornecido)
+  await db.delete(appointments).where(
+    parse.data.salonId
+      ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+      : eq(appointments.id, parse.data.appointmentId)
+  )
 
   // Tenta preencher a vaga (não trava o processo)
   processVacantSlot({

@@ -42,7 +42,10 @@ export class UpdateAppointmentUseCase {
   ): Promise<Result<AppointmentDTO, DomainError>> {
     // 1. Buscar agendamento existente para validações iniciais
     const appointment = await this.appointmentRepo.findById(input.appointmentId)
-    if (!appointment) {
+    // Isolamento multi-tenant (bug C1): só prossegue se o agendamento pertencer
+    // ao salão do contexto. Tratar "de outro salão" como "não encontrado" evita
+    // vazar a existência do agendamento e carregar dados do cliente alheio.
+    if (!appointment || appointment.salonId !== input.salonId) {
       return fail(new AppointmentNotFoundError(input.appointmentId))
     }
 
@@ -68,6 +71,7 @@ export class UpdateAppointmentUseCase {
     //    - Converte timezone corretamente (Brasília → UTC)
     const result = await domainServices.updateAppointmentService({
       appointmentId: input.appointmentId,
+      salonId: input.salonId,
       professionalId: input.professionalId,
       serviceId: input.serviceId,
       date: input.startsAt,

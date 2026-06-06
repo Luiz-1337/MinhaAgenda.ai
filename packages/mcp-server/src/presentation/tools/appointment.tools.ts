@@ -1,6 +1,6 @@
 import { TOKENS } from "../../container"
 import { unwrap } from "../../shared/types"
-import { ensureIsoWithTimezone } from "../../shared/utils/date.utils"
+import { ensureIsoWithTimezone } from "../../shared/utils"
 import {
   CreateAppointmentUseCase,
   UpdateAppointmentUseCase,
@@ -49,11 +49,12 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
       description:
         "Reagenda um agendamento existente. REQUER appointmentId (obtido via getMyFutureAppointments). Chame checkAvailability ANTES para confirmar o novo horário.",
       inputSchema: updateAppointmentSchema,
-      handler: async (input, { container }) => {
+      handler: async (input, { container, salonId }) => {
         const result = await container
           .resolve<UpdateAppointmentUseCase>(TOKENS.UpdateAppointmentUseCase)
           .execute({
             appointmentId: input.appointmentId,
+            salonId,
             professionalId: input.professionalId,
             serviceId: input.serviceId,
             startsAt: input.date ? ensureIsoWithTimezone(input.date) : undefined,
@@ -68,10 +69,10 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
       description:
         "Cancela um agendamento. REQUER appointmentId (obtido via getMyFutureAppointments). Chame getMyFutureAppointments ANTES para obter o ID correto.",
       inputSchema: deleteAppointmentSchema,
-      handler: async (input, { container }) => {
+      handler: async (input, { container, salonId }) => {
         const result = await container
           .resolve<DeleteAppointmentUseCase>(TOKENS.DeleteAppointmentUseCase)
-          .execute(input.appointmentId)
+          .execute(input.appointmentId, salonId)
 
         const data = unwrap(result)
         return {

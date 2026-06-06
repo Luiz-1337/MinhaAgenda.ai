@@ -134,6 +134,7 @@ describe("appointment.tools", () => {
 
     expect(updateExecute).toHaveBeenCalledWith({
       appointmentId: IDS.appointmentId,
+      salonId,
       professionalId: undefined,
       serviceId: undefined,
       startsAt: "2026-04-10T09:30:00-03:00",
@@ -156,6 +157,7 @@ describe("appointment.tools", () => {
 
     expect(updateExecute).toHaveBeenCalledWith({
       appointmentId: IDS.appointmentId,
+      salonId,
       professionalId: undefined,
       serviceId: undefined,
       startsAt: undefined,
@@ -294,6 +296,7 @@ describe("appointment.tools", () => {
     expect(listedId).toBe(appointmentId)
     expect(updateExecute).toHaveBeenCalledWith({
       appointmentId,
+      salonId,
       professionalId: undefined,
       serviceId: undefined,
       startsAt: "2026-04-10T09:00:00-03:00",

@@ -24,17 +24,20 @@ export class DeleteAppointmentUseCase {
   constructor(private appointmentRepo: IAppointmentRepository) {}
 
   async execute(
-    appointmentId: string
+    appointmentId: string,
+    salonId: string
   ): Promise<Result<DeleteAppointmentResult, DomainError>> {
     const appointment = await this.appointmentRepo.findById(appointmentId)
-    if (!appointment) {
+    // Isolamento multi-tenant (bug C1): só prossegue se o agendamento pertencer
+    // ao salão do contexto. "De outro salão" é tratado como "não encontrado".
+    if (!appointment || appointment.salonId !== salonId) {
       return fail(new AppointmentNotFoundError(appointmentId))
     }
     if (appointment.isPast()) {
       return fail(new PastAppointmentError("Não é possível cancelar um agendamento passado"))
     }
 
-    const result = await domainServices.deleteAppointmentService({ appointmentId })
+    const result = await domainServices.deleteAppointmentService({ appointmentId, salonId })
     if (!result.success) {
       return fail(new AppointmentNotFoundError(result.error))
     }
