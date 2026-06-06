@@ -203,4 +203,34 @@ describe("UpdateAppointmentUseCase", () => {
     expect(result.success).toBe(false)
   })
 
+  it("propaga o erro de domínio correto quando o serviço falha, sem mascarar como NOT_FOUND (bug A2)", async () => {
+    appointmentRepo.findById.mockResolvedValue(makeFutureAppointment())
+    customerRepo.findById.mockResolvedValue(
+      Customer.create({ id: IDS.customerId, salonId: IDS.salonId, phone: "5511999999999", name: "Cliente" })
+    )
+    professionalRepo.findById.mockResolvedValue(
+      Professional.create({ id: IDS.professionalId, salonId: IDS.salonId, name: "João", isActive: true, services: [IDS.serviceId] })
+    )
+    serviceRepo.findById.mockResolvedValue(
+      Service.create({ id: IDS.serviceId, salonId: IDS.salonId, name: "Corte", duration: 60, price: 50, isActive: true })
+    )
+    ;(domainServices.updateAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: false,
+      error: "Profissional não executa este serviço",
+      code: "PROFESSIONAL_CANNOT_PERFORM_SERVICE",
+    })
+
+    const result = await useCase.execute({
+      appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
+      serviceId: IDS.serviceId,
+    })
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe("PROFESSIONAL_CANNOT_PERFORM_SERVICE")
+      expect(result.error.code).not.toBe("APPOINTMENT_NOT_FOUND")
+    }
+  })
+
 })

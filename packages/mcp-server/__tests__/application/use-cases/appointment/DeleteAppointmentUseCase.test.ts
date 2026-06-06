@@ -112,6 +112,7 @@ describe("DeleteAppointmentUseCase", () => {
     ;(domainServices.deleteAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
       error: "Agendamento não encontrado",
+      code: "APPOINTMENT_NOT_FOUND",
     })
 
     const result = await useCase.execute(IDS.appointmentId, IDS.salonId)

@@ -2,6 +2,7 @@ import { Result, ok, fail } from "../../../shared/types"
 import { DomainError } from "../../../domain/errors"
 import { AppointmentNotFoundError, PastAppointmentError } from "../../../domain/errors"
 import { IAppointmentRepository } from "../../../domain/repositories"
+import { mapServiceError } from "./appointment-error.mapper"
 import { domainServices } from "@repo/db"
 
 export interface DeleteAppointmentResult {
@@ -39,7 +40,8 @@ export class DeleteAppointmentUseCase {
 
     const result = await domainServices.deleteAppointmentService({ appointmentId, salonId })
     if (!result.success) {
-      return fail(new AppointmentNotFoundError(result.error))
+      // Mapeia o código do serviço para o erro de domínio correto (bug A2).
+      return fail(mapServiceError(result.code, result.error))
     }
 
     return ok({

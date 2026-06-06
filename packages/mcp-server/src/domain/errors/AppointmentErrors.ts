@@ -101,3 +101,18 @@ export class ProfessionalNotAvailableError extends DomainError {
     super(message)
   }
 }
+
+/**
+ * Erro genérico de uma operação de agendamento que falhou por uma regra de
+ * negócio sem código dedicado (ex.: agendamento cancelado, serviço/profissional
+ * inválido). O código NÃO está no mapa de mensagens amigáveis do ErrorPresenter
+ * de propósito: assim a mensagem REAL do serviço é repassada à IA, em vez de ser
+ * mascarada como "agendamento não encontrado" (bug A2).
+ */
+export class AppointmentOperationError extends DomainError {
+  readonly code = "APPOINTMENT_OPERATION_FAILED"
+
+  constructor(message = "Não foi possível concluir a operação no agendamento") {
+    super(message)
+  }
+}

@@ -12,6 +12,7 @@ import {
   IServiceRepository,
 } from "../../../domain/repositories"
 import { AppointmentDTO, UpdateAppointmentDTO } from "../../dtos"
+import { mapServiceError } from "./appointment-error.mapper"
 import { domainServices } from "@repo/db"
 
 /**
@@ -56,7 +57,7 @@ export class UpdateAppointmentUseCase {
 
     // 3. Buscar dados atuais para retornar no DTO
     const [customer, currentProfessional, currentService] = await Promise.all([
-      this.customerRepo.findById(appointment.customerId),
+      this.customerRepo.findById(appointment.customerId, input.salonId),
       this.professionalRepo.findById(input.professionalId || appointment.professionalId),
       this.serviceRepo.findById(input.serviceId || appointment.serviceId),
     ])
@@ -79,7 +80,9 @@ export class UpdateAppointmentUseCase {
     })
 
     if (!result.success) {
-      return fail(new AppointmentNotFoundError(result.error))
+      // Mapeia o código do serviço para o erro de domínio correto (bug A2):
+      // antes, qualquer falha virava "agendamento não encontrado".
+      return fail(mapServiceError(result.code, result.error))
     }
 
     // 5. Calcula os horários para o DTO

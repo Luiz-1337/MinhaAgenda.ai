@@ -17,7 +17,7 @@ import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } f
  */
 export type ActionResult<T = void> =
   | { success: true; data: T }
-  | { success: false; error: string }
+  | { success: false; error: string; code?: string }
 
 /**
  * Cria um novo agendamento no sistema.
@@ -170,13 +170,10 @@ export async function createAppointmentService(input: {
     }
   }
 
-  // Resolve todas as linhas de profissional da MESMA pessoa (cross-salão) para
-  // travar e checar conflito por pessoa — impede double-booking de quem atende
-  // em mais de um salão (inclusive com o dia dividido entre salões).
-  const personProfessionalIds = await getPersonProfessionalIdsByKey(
-    professional.personKey,
-    professionalId
-  )
+  // Chave de lock por PESSOA (cross-salão). A LISTA de profissionais da pessoa é
+  // resolvida DENTRO da transação, após o lock (ver abaixo), para fechar a janela
+  // TOCTOU em que um profissional recém-criado com o mesmo person_key escaparia
+  // da checagem de conflito (bug A1).
   const personLockKey = professional.personKey ?? professionalId
 
   // TRANSAÇÃO: Advisory lock + verificação de conflito + inserção atômica
@@ -186,6 +183,12 @@ export async function createAppointmentService(input: {
     const result = await db.transaction(async (tx) => {
       // Advisory lock na pessoa — previne criações concorrentes (em qualquer salão)
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${personLockKey}))`)
+
+      // Resolve as linhas de profissional da mesma pessoa JÁ sob o lock (bug A1).
+      const personProfessionalIds = await getPersonProfessionalIdsByKey(
+        professional.personKey,
+        professionalId
+      )
 
       // Verifica conflitos com agendamentos existentes da pessoa (dentro da transação)
       const overlappingAppointment = await tx.query.appointments.findFirst({
@@ -299,11 +302,11 @@ export async function updateAppointmentService(input: {
   })
 
   if (!existingAppointment) {
-    return { success: false, error: "Agendamento não encontrado" }
+    return { success: false, error: "Agendamento não encontrado", code: "APPOINTMENT_NOT_FOUND" }
   }
 
   if (existingAppointment.status === "cancelled") {
-    return { success: false, error: "Não é possível atualizar um agendamento cancelado" }
+    return { success: false, error: "Não é possível atualizar um agendamento cancelado", code: "APPOINTMENT_CANCELLED" }
   }
 
   // Determina os valores finais (usa novos se fornecidos, senão mantém os existentes)
@@ -338,7 +341,7 @@ export async function updateAppointmentService(input: {
       columns: { id: true },
     })
     if (!proService) {
-      return { success: false, error: "Profissional não executa este serviço" }
+      return { success: false, error: "Profissional não executa este serviço", code: "PROFESSIONAL_CANNOT_PERFORM_SERVICE" }
     }
   }
 
@@ -359,7 +362,7 @@ export async function updateAppointmentService(input: {
 
     // Bloqueia reagendamento para o passado (bug C3).
     if (isPastBooking(startUtc)) {
-      return { success: false, error: "Não é possível reagendar para um horário que já passou" }
+      return { success: false, error: "Não é possível reagendar para um horário que já passou", code: "PAST_APPOINTMENT" }
     }
   } else if (finalServiceId !== existingAppointment.serviceId) {
     // Se date não mudou mas serviceId mudou, recalcula endTime
@@ -386,7 +389,7 @@ export async function updateAppointmentService(input: {
     const workSpans = proDayRules.filter((r) => !r.isBreak)
 
     if (workSpans.length === 0) {
-      return { success: false, error: "Profissional não possui horários cadastrados neste dia" }
+      return { success: false, error: "Profissional não possui horários cadastrados neste dia", code: "PROFESSIONAL_NOT_AVAILABLE" }
     }
 
     const withinWork = workSpans.some((span) => {
@@ -399,15 +402,12 @@ export async function updateAppointmentService(input: {
     })
 
     if (!withinWork) {
-      return { success: false, error: "Horário fora do expediente do profissional" }
+      return { success: false, error: "Horário fora do expediente do profissional", code: "PROFESSIONAL_NOT_AVAILABLE" }
     }
   }
 
-  // Resolve as linhas da mesma pessoa (cross-salão) para lock/conflito por pessoa.
-  const personProfessionalIds = await getPersonProfessionalIdsByKey(
-    professional.personKey,
-    finalProfessionalId
-  )
+  // Chave de lock por PESSOA (cross-salão). A LISTA de profissionais da pessoa é
+  // resolvida DENTRO da transação, após o lock, para fechar a janela TOCTOU (bug A1).
   const personLockKey = professional.personKey ?? finalProfessionalId
 
   // TRANSAÇÃO: Advisory lock + verificação de conflito + atualização atômica
@@ -425,6 +425,12 @@ export async function updateAppointmentService(input: {
       if (needsCheck) {
         // Advisory lock na pessoa — previne modificações concorrentes (em qualquer salão)
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${personLockKey}))`)
+
+        // Resolve as linhas da mesma pessoa JÁ sob o lock (TOCTOU, bug A1).
+        const personProfessionalIds = await getPersonProfessionalIdsByKey(
+          professional.personKey,
+          finalProfessionalId
+        )
 
         const overlappingAppointment = await tx.query.appointments.findFirst({
           where: and(
@@ -466,7 +472,7 @@ export async function updateAppointmentService(input: {
     return { success: true, data: { appointmentId: parse.data.appointmentId } }
   } catch (error) {
     if (error instanceof Error && error.message === "Horário indisponível (conflito de agenda)") {
-      return { success: false, error: error.message }
+      return { success: false, error: error.message, code: "APPOINTMENT_CONFLICT" }
     }
     throw error
   }
@@ -511,7 +517,7 @@ export async function deleteAppointmentService(input: {
   })
 
   if (!existingAppointment) {
-    return { success: false, error: "Agendamento não encontrado" }
+    return { success: false, error: "Agendamento não encontrado", code: "APPOINTMENT_NOT_FOUND" }
   }
 
   // Fire-and-forget: Sync deletion to external calendars BEFORE deleting from DB

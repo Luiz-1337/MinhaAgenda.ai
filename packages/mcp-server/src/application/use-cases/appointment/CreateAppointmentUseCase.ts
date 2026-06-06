@@ -40,7 +40,7 @@ export class CreateAppointmentUseCase {
   ): Promise<Result<AppointmentDTO, DomainError>> {
     // 1. Validar que cliente, profissional e serviço existem (em paralelo)
     const [customer, professional, service] = await Promise.all([
-      this.customerRepo.findById(input.customerId),
+      this.customerRepo.findById(input.customerId, input.salonId),
       this.professionalRepo.findById(input.professionalId),
       this.serviceRepo.findById(input.serviceId),
     ])
