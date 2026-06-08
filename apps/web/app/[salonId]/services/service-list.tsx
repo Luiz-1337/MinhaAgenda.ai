@@ -89,6 +89,9 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null)
+  // Segundo passo: serviço com agendamentos vinculados (exige confirmação extra)
+  const [forceDeleteOpen, setForceDeleteOpen] = useState(false)
+  const [forceDeleteMsg, setForceDeleteMsg] = useState("")
   const [newStartTime, setNewStartTime] = useState("")
 
   const form = useForm<ServiceForm>({
@@ -247,31 +250,66 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     setDeleteConfirmOpen(true)
   }
 
+  async function reloadServices() {
+    if (!salonId) return
+    try {
+      const again = await getServices(salonId)
+      if ("error" in again) {
+        console.error("Erro ao recarregar serviços:", again.error)
+      } else {
+        setList(again.data || [])
+      }
+    } catch (error) {
+      console.error("Erro ao recarregar serviços:", error)
+    }
+  }
+
   async function onDelete() {
     if (!salonId || !serviceToDelete) {
       toast.error("Selecione um salão")
       return
     }
 
+    const target = serviceToDelete
     setDeleteConfirmOpen(false)
     startTransition(async () => {
-      const res = await deleteService(serviceToDelete.id, salonId)
+      const res = await deleteService(target.id, salonId)
       if ("error" in res) {
+        // Serviço com agendamentos: pede confirmação extra antes de apagar tudo.
+        if (res.code === "HAS_APPOINTMENTS") {
+          setForceDeleteMsg(res.error)
+          setForceDeleteOpen(true)
+          return
+        }
         toast.error(res.error)
+        setServiceToDelete(null)
         return
       }
       toast.success("Serviço removido")
       setServiceToDelete(null)
-      try {
-        const again = await getServices(salonId)
-        if ("error" in again) {
-          console.error("Erro ao recarregar serviços:", again.error)
-        } else {
-          setList(again.data || [])
-        }
-      } catch (error) {
-        console.error("Erro ao recarregar serviços:", error)
+      await reloadServices()
+    })
+  }
+
+  // Confirmação extra: apaga o serviço E seus agendamentos vinculados.
+  async function onForceDelete() {
+    if (!salonId || !serviceToDelete) {
+      toast.error("Selecione um salão")
+      return
+    }
+
+    const target = serviceToDelete
+    setForceDeleteOpen(false)
+    startTransition(async () => {
+      const res = await deleteService(target.id, salonId, true)
+      if ("error" in res) {
+        toast.error(res.error)
+        setServiceToDelete(null)
+        return
       }
+      toast.success("Serviço e agendamentos removidos")
+      setServiceToDelete(null)
+      await reloadServices()
     })
   }
 
@@ -923,6 +961,20 @@ export default function ServiceList({ salonId }: ServiceListProps) {
         title="Confirmar Exclusão"
         description={`Tem certeza que deseja remover o serviço "${serviceToDelete?.name}"? Esta ação não pode ser desfeita. O serviço será removido permanentemente.`}
         confirmText="Remover"
+        type="danger"
+      />
+
+      {/* Confirmação extra: serviço possui agendamentos vinculados */}
+      <ConfirmModal
+        open={forceDeleteOpen}
+        onClose={() => {
+          setForceDeleteOpen(false)
+          setServiceToDelete(null)
+        }}
+        onConfirm={onForceDelete}
+        title="Serviço possui agendamentos"
+        description={forceDeleteMsg}
+        confirmText="Excluir mesmo assim"
         type="danger"
       />
     </div>

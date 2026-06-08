@@ -67,14 +67,42 @@ export class ServiceUseCase {
   }
 
   /**
-   * Remove um serviço
+   * Remove um serviço.
+   *
+   * Se o serviço tiver agendamentos vinculados, por padrão NÃO apaga: retorna
+   * um aviso com `code: "HAS_APPOINTMENTS"` para a UI confirmar. Com
+   * `options.force`, apaga o serviço E seus agendamentos atomicamente.
    */
-  static async delete(id: string, salonId: string): Promise<ActionResult> {
-    // Remove associações primeiro
-    await ServiceRepository.removeProfessionalAssociations(id)
+  static async delete(
+    id: string,
+    salonId: string,
+    options: { force?: boolean } = {}
+  ): Promise<ActionResult> {
+    // Confirma que o serviço pertence ao salão antes de qualquer remoção
+    // (evita apagar agendamentos de um serviço de outro salão).
+    const existing = await ServiceRepository.findById(id, salonId)
+    if (!existing) {
+      return { success: true, data: undefined } // idempotente: nada a remover
+    }
 
-    // Remove serviço
-    await ServiceRepository.delete(id, salonId)
+    const appointmentCount = await ServiceRepository.countAppointments(id, salonId)
+
+    // Tem agendamentos e não foi confirmado: avisa em vez de apagar.
+    if (appointmentCount > 0 && !options.force) {
+      return {
+        error: `O serviço "${existing.name}" possui ${appointmentCount} agendamento(s) vinculado(s). Excluí-lo também removerá esses agendamentos permanentemente. Deseja excluir mesmo assim?`,
+        code: "HAS_APPOINTMENTS",
+      }
+    }
+
+    if (appointmentCount > 0) {
+      // Confirmado: remove agendamentos + serviço atomicamente.
+      await ServiceRepository.deleteWithAppointments(id, salonId)
+    } else {
+      // Sem agendamentos: caminho simples (associações caem por CASCADE).
+      await ServiceRepository.removeProfessionalAssociations(id)
+      await ServiceRepository.delete(id, salonId)
+    }
 
     return { success: true, data: undefined }
   }

@@ -73,14 +73,18 @@ export async function upsertService(
 /**
  * Remove um serviço definitivamente (hard delete)
  */
-export async function deleteService(id: string, salonId: string): Promise<ActionResult> {
+export async function deleteService(
+  id: string,
+  salonId: string,
+  force = false
+): Promise<ActionResult> {
   try {
     const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
     if ("error" in authResult) {
       return authResult
     }
 
-    const result = await ServiceUseCase.delete(id, salonId)
+    const result = await ServiceUseCase.delete(id, salonId, { force })
 
     if (!("error" in result)) {
       revalidatePath("/dashboard/services")

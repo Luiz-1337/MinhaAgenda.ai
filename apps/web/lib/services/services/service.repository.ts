@@ -2,7 +2,7 @@
  * Repository para serviços (INFRASTRUCTURE LAYER)
  */
 
-import { db, services, professionalServices, professionals, profiles, salons, and, asc, eq, inArray } from "@repo/db"
+import { db, services, professionalServices, professionals, profiles, salons, appointments, and, asc, eq, inArray } from "@repo/db"
 import type { ServiceRow } from "@/lib/types/service"
 
 import type { PriceType } from "@/lib/types/service"
@@ -156,6 +156,33 @@ export class ServiceRepository {
     await db
       .delete(services)
       .where(and(eq(services.id, id), eq(services.salonId, salonId)))
+  }
+
+  /**
+   * Conta os agendamentos vinculados a um serviço (escopo do salão).
+   */
+  static async countAppointments(serviceId: string, salonId: string): Promise<number> {
+    const rows = await db.query.appointments.findMany({
+      where: and(eq(appointments.serviceId, serviceId), eq(appointments.salonId, salonId)),
+      columns: { id: true },
+    })
+    return rows.length
+  }
+
+  /**
+   * Remove o serviço E seus agendamentos atomicamente. Necessário porque a FK
+   * appointments→services é RESTRICT (NO ACTION); as demais dependências
+   * (professional_services, waiting_list) caem por CASCADE ao apagar o serviço.
+   */
+  static async deleteWithAppointments(serviceId: string, salonId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(appointments)
+        .where(and(eq(appointments.serviceId, serviceId), eq(appointments.salonId, salonId)))
+      await tx
+        .delete(services)
+        .where(and(eq(services.id, serviceId), eq(services.salonId, salonId)))
+    })
   }
 
   /**
