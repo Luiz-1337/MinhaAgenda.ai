@@ -57,6 +57,8 @@ export class DrizzleServiceRepository implements IServiceRepository {
     if (!includeInactive) {
       conditions.push(eq(services.isActive, true))
     }
+    // Placeholders internos (ex.: "Bloqueio de Horário") nunca entram no catálogo.
+    conditions.push(eq(services.isSystem, false))
 
     const rows = await db.query.services.findMany({
       where: and(...conditions),

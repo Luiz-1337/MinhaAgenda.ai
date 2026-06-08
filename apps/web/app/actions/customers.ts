@@ -58,7 +58,8 @@ export async function getSalonCustomers(salonId: string): Promise<ActionResult<C
         updatedAt: customers.updatedAt,
       })
       .from(customers)
-      .where(eq(customers.salonId, salonId))
+      // Exclui placeholders internos (ex.: contato "Google Calendar" da sync).
+      .where(and(eq(customers.salonId, salonId), eq(customers.isSystem, false)))
       .orderBy(desc(customers.updatedAt))
 
     const mappedCustomers = customersList.map((customer) => ({

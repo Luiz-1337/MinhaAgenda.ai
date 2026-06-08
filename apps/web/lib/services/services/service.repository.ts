@@ -29,7 +29,8 @@ export class ServiceRepository {
    */
   static async findBySalonId(salonId: string): Promise<ServiceRow[]> {
     const rows = await db.query.services.findMany({
-      where: eq(services.salonId, salonId),
+      // Exclui placeholders internos (ex.: "Bloqueio de Horário" da sync do Google).
+      where: and(eq(services.salonId, salonId), eq(services.isSystem, false)),
       columns: {
         id: true,
         salonId: true,

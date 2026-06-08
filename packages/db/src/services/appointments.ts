@@ -616,7 +616,9 @@ export async function createBlockedTimeService(input: {
       name: GOOGLE_BLOCKED_TIME_SERVICE_NAME,
       duration: durationMinutes,
       price: '0',
-      isActive: true,
+      // Placeholder interno: não agendável e oculto de clientes/dono (ver isSystem).
+      isActive: false,
+      isSystem: true,
     }).returning({ id: services.id })
     blockedService = created
   }
@@ -635,6 +637,8 @@ export async function createBlockedTimeService(input: {
       salonId,
       name: 'Google Calendar',
       phone: GOOGLE_CALENDAR_PLACEHOLDER_PHONE,
+      // Placeholder interno: oculto do CRM e de segmentações de marketing.
+      isSystem: true,
     }).returning({ id: customers.id })
     placeholderCustomer = created
   }

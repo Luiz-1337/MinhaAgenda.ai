@@ -39,7 +39,13 @@ export class ServicesToolFactory {
             allowedStartTimes: services.allowedStartTimes,
           })
           .from(services)
-          .where(and(eq(services.salonId, salonId), eq(services.isActive, true)))
+          .where(
+            and(
+              eq(services.salonId, salonId),
+              eq(services.isActive, true),
+              eq(services.isSystem, false)
+            )
+          )
 
         const fmtBRL = (v: string | number) =>
           new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v))

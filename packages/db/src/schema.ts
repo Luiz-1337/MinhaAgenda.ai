@@ -159,6 +159,10 @@ export const services = pgTable(
     // assim permite agendar (não inventa preço). Independente de priceType.
     priceOnRequest: boolean('price_on_request').default(false).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
+    // Placeholder interno criado por integrações (ex.: "Bloqueio de Horário" da
+    // sync do Google Calendar). Itens is_system=true são internos: NUNCA aparecem
+    // nos catálogos do cliente nem na tela de serviços do dono, e não são agendáveis.
+    isSystem: boolean('is_system').default(false).notNull(),
     averageCycleDays: integer('average_cycle_days'),
     // Restrições de agenda POR SERVIÇO (null/vazio = sem restrição → comportamento atual):
     // - allowedWeekdays: dias da semana permitidos, 0=Domingo..6=Sábado (convenção getDay()).
@@ -474,6 +478,10 @@ export const customers = pgTable(
     optedOutAt: timestamp('opted_out_at'),
     optOutReason: text('opt_out_reason'),
     optOutSource: text('opt_out_source'), // 'keyword' | 'manual' | 'admin'
+    // Placeholder interno criado por integrações (ex.: o contato "Google Calendar"
+    // que recebe os bloqueios da sync). is_system=true => não aparece no CRM nem
+    // entra em segmentações de marketing.
+    isSystem: boolean('is_system').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },

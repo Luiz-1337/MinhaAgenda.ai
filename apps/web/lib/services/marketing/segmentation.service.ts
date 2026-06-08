@@ -36,7 +36,8 @@ export class SegmentationService {
     // Filtros avançados (última visita, serviços) serão adicionados depois
 
     const allCustomers = await db.query.customers.findMany({
-      where: eq(customers.salonId, salonId),
+      // Exclui placeholders internos (ex.: contato "Google Calendar") de campanhas.
+      where: and(eq(customers.salonId, salonId), eq(customers.isSystem, false)),
       columns: {
         id: true,
         name: true,
