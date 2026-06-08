@@ -6,6 +6,10 @@ import {
     profiles,
     salons,
     professionals,
+    appointments,
+    campaigns,
+    campaignRecipients,
+    leads,
     aiUsageStats,
     eq,
     and,
@@ -609,18 +613,41 @@ async function deleteUserInternal(
         return { error: "Usuário não encontrado" }
     }
 
-    // 1) Apaga o auth user primeiro. Se falhar aqui, o DB ainda está íntegro.
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
-    if (authError) {
-        return { error: `Falha ao remover do Auth: ${authError.message}` }
-    }
-
-    // 2) Apaga o DB em transação, respeitando FKs sem cascade.
+    // 1) Apaga o DB PRIMEIRO, em transação. Ordem: filhos NO ACTION antes do salão.
+    //    appointments, campaigns e leads referenciam salons SEM cascade (NO ACTION) e
+    //    travariam o delete do salão; removemos antes (campaign_recipients cai por
+    //    cascade de campaigns). Só então o salão cai por cascade (customers, services,
+    //    professionals, chats, etc.).
     await db.transaction(async (tx) => {
+        const owned = await tx
+            .select({ id: salons.id })
+            .from(salons)
+            .where(eq(salons.ownerId, userId))
+        const salonIds = owned.map((s) => s.id)
+
+        if (salonIds.length > 0) {
+            await tx.delete(appointments).where(inArray(appointments.salonId, salonIds))
+            await tx.delete(campaigns).where(inArray(campaigns.salonId, salonIds))
+            await tx.delete(leads).where(inArray(leads.salonId, salonIds))
+        }
+
+        // Solta vínculos NO ACTION -> profiles em OUTROS salões (senão travam o delete
+        // do profile): o usuário pode ser profissional, lead ou destinatário alhures.
         await tx.update(professionals).set({ userId: null }).where(eq(professionals.userId, userId))
+        await tx.update(leads).set({ profileId: null }).where(eq(leads.profileId, userId))
+        await tx.update(campaignRecipients).set({ profileId: null }).where(eq(campaignRecipients.profileId, userId))
+
         await tx.delete(salons).where(eq(salons.ownerId, userId))
         await tx.delete(profiles).where(eq(profiles.id, userId))
     })
+
+    // 2) Só APÓS o commit do banco, remove do Auth. Se falhar aqui, sobra um usuário
+    //    órfão apenas no Auth (sem dados) — recuperável. O inverso (Auth removido e DB
+    //    intacto) deixaria login quebrado com dados pendurados, que é pior.
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    if (authError) {
+        return { error: `Dados removidos do banco, mas falha ao remover do Auth (remova manualmente o usuário ${userId}): ${authError.message}` }
+    }
 
     return { success: true }
 }
