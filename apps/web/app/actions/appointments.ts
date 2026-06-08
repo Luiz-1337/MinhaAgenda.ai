@@ -28,11 +28,11 @@ export interface AppointmentsResult {
 
 /**
  * Busca agendamentos e profissionais de um salão em um intervalo de datas.
- * 
+ *
  * **Validações:**
  * - Verifica autenticação do usuário
  * - Verifica se o usuário é dono do salão OU profissional vinculado
- * 
+ *
  * **Conversão de Timezone:**
  * - As datas são armazenadas em UTC no banco
  * - São convertidas para horário de Brasília antes de retornar no formato esperado pelo frontend
@@ -83,11 +83,43 @@ export async function getAppointments(
     // Garante que salões SOLO tenham profissional criado automaticamente
     await ProfessionalService.ensureSoloProfessional(salonId)
 
-    // Busca paralela de profissionais e agendamentos
-    const [professionalsList, appointmentsList] = await Promise.all([
+    // No plano SOLO o agendamento é do cabeleireiro, não do salão: a agenda dele
+    // junta todos os salões em que atende (via personKey). Nos demais planos a
+    // agenda continua sendo do salão (escopo por salonId).
+    const [isSolo, professionalsList] = await Promise.all([
+      SalonPlanService.isSoloPlan(salonId),
       getSalonProfessionals(salonId),
-      getAppointmentsByRange({ salonId, startDate: rangeStart, endDate: rangeEnd })
     ])
+
+    // Profissional "home" da pessoa neste salão (no SOLO, o próprio dono).
+    const homePro =
+      professionalsList.find((p) => p.userId === salon.ownerId) ?? professionalsList[0] ?? null
+
+    let appointmentsList: AppointmentDTO[]
+    if (isSolo && homePro) {
+      // Resolve todas as linhas (uma por salão) da mesma pessoa pelo personKey
+      // e busca os agendamentos por pessoa, em qualquer salão.
+      const personProfessionalIds = await sharedServices.getPersonProfessionalIds(homePro.id)
+      const personAppointments = await getAppointmentsByRange({
+        professionalIds: personProfessionalIds,
+        startDate: rangeStart,
+        endDate: rangeEnd,
+      })
+      // A agenda é de coluna única e filtra por professionalId no front. Como as
+      // linhas de outros salões têm professionalId diferente, normalizamos para o
+      // profissional "home" para que TODOS os atendimentos da pessoa apareçam.
+      appointmentsList = personAppointments.map((a) => ({
+        ...a,
+        professionalId: homePro.id,
+        professionalName: homePro.name,
+      }))
+    } else {
+      appointmentsList = await getAppointmentsByRange({
+        salonId,
+        startDate: rangeStart,
+        endDate: rangeEnd,
+      })
+    }
 
     // Se for STAFF, filtrar agendamentos? O prompt diz "filtrar e mostrar apenas a coluna dele".
     // Mas a Action retorna TUDO e o Frontend filtra, ou a Action já filtra?
@@ -142,6 +174,8 @@ export async function createAppointment(input: {
   serviceId: string
   date: string | Date
   notes?: string
+  /** Reserva manual pode furar a regra de dia/horário do serviço (após confirmação). */
+  allowServiceRuleOverride?: boolean
 }): Promise<ActionResult<{ appointmentId: string }>> {
   const supabase = await createClient()
   const {
@@ -208,10 +242,12 @@ export async function createAppointment(input: {
   const result = await sharedServices.createAppointmentService({
     ...input,
     professionalId: finalProfessionalId,
+    allowServiceRuleOverride: input.allowServiceRuleOverride,
   })
 
   if (!result.success) {
-    return { error: result.error }
+    // Propaga o code para a UI poder oferecer "marcar mesmo assim" em violação de regra.
+    return result.code ? { error: result.error, code: result.code } : { error: result.error }
   }
 
   return { success: true, data: result.data }

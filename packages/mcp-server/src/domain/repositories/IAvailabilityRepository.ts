@@ -50,12 +50,15 @@ export interface IAvailabilityRepository {
   ): Promise<ScheduleOverride[]>
 
   /**
-   * Gera slots disponíveis para um profissional em uma data
+   * Gera slots disponíveis para um profissional em uma data.
+   * `serviceConfig` (opcional) aplica as regras de agenda do serviço: dias
+   * permitidos e horários de início específicos. Ausente => grade contínua.
    */
   generateSlots(
     professionalId: string,
     date: Date,
-    slotDuration: number
+    slotDuration: number,
+    serviceConfig?: { allowedWeekdays?: number[] | null; allowedStartTimes?: string[] | null }
   ): Promise<TimeSlot[]>
 
   /**

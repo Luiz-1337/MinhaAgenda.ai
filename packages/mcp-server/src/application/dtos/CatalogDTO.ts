@@ -5,10 +5,13 @@ export interface ServiceDTO {
   id: string
   name: string
   description?: string | null
-  duration: number // em minutos
-  durationFormatted: string // ex: "1h30min"
+  duration: number // em minutos (duração de bloqueio / piso)
+  durationFormatted: string // ex: "1h30min" ou faixa "6h a 7h"
   price: number
-  priceFormatted: string // ex: "R$ 50,00"
+  priceFormatted: string // ex: "R$ 50,00", "R$ 600,00 - R$ 800,00" ou "Sob avaliação"
+  priceOnRequest?: boolean // "Sob Avaliação"
+  allowedWeekdays?: number[] | null // dias permitidos (0=Dom..6=Sáb); null = todos
+  allowedStartTimes?: string[] | null // horários de início "HH:mm"; null = grade contínua
   isActive: boolean
 }
 

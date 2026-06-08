@@ -72,6 +72,19 @@ export {
   type ParseDateResult
 } from './utils/date-parsing.utils'
 
+// Re-export per-service schedule utilities (regras de agenda por serviço)
+export {
+  normalizeTime,
+  timeToMinutes,
+  minutesToTime,
+  parseAllowedWeekdays,
+  parseAllowedStartTimes,
+  isWeekdayAllowed,
+  isStartTimeAllowed,
+  getBlockingDuration,
+  formatWeekdaysPtBr
+} from './utils/service-schedule.utils'
+
 // Re-export infrastructure
 export { logger, LoggerFactory, StructuredLogger, type ILogger, type LogLevel } from './infrastructure/logger'
 export { AppointmentRepository } from './infrastructure/repositories/appointment-repository'

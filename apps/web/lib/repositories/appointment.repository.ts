@@ -1,4 +1,4 @@
-import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, desc } from "@repo/db"
+import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, desc, inArray } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
 
 // ============================================================================
@@ -70,18 +70,38 @@ export async function getSalonProfessionals(salonId: string): Promise<Profession
 }
 
 /**
- * Busca agendamentos de um salão em um intervalo de datas.
- * @param params Objeto contendo salonId, startDate e endDate
+ * Busca agendamentos em um intervalo de datas.
+ *
+ * Escopo (mutuamente exclusivo; `professionalIds` tem precedência):
+ * - `professionalIds`: agenda DA PESSOA — junta todos os agendamentos desses
+ *   profissionais, em qualquer salão. Usado no plano SOLO, onde o agendamento é
+ *   do cabeleireiro e não do salão (todas as linhas da pessoa via personKey).
+ * - `salonId`: agenda DO SALÃO — comportamento padrão (PRO/ENTERPRISE).
+ *
+ * @param params Objeto contendo salonId OU professionalIds, mais startDate e endDate
  */
 export async function getAppointmentsByRange({
   salonId,
+  professionalIds,
   startDate,
   endDate,
 }: {
-  salonId: string
+  salonId?: string
+  professionalIds?: string[]
   startDate: Date
   endDate: Date
 }): Promise<AppointmentDTO[]> {
+  const scopeCondition =
+    professionalIds && professionalIds.length > 0
+      ? inArray(appointments.professionalId, professionalIds)
+      : salonId
+        ? eq(appointments.salonId, salonId)
+        : null
+
+  if (!scopeCondition) {
+    throw new Error("getAppointmentsByRange requer salonId ou professionalIds")
+  }
+
   try {
     const result = await db
       .select({
@@ -104,7 +124,7 @@ export async function getAppointmentsByRange({
       .innerJoin(services, eq(appointments.serviceId, services.id))
       .where(
         and(
-          eq(appointments.salonId, salonId),
+          scopeCondition,
           // A lógica original usava: lte(date, rangeEnd) E gte(endTime, rangeStart)
           // Isso captura qualquer agendamento que tenha intersecção com o intervalo.
           lte(appointments.date, endDate),

@@ -20,6 +20,7 @@ export function createAvailabilityTool(
     salonId: string
     serviceDuration: number
     professionalId: string
+    serviceId?: string
   }) => Promise<string[]>
 ) {
   return AvailabilityToolFactory.create(salonId, getAvailableSlotsFn)

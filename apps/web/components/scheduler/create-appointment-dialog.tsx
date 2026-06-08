@@ -125,14 +125,30 @@ export function CreateAppointmentDialog({
     const isoDate = dateTimeString
 
     startTransition(async () => {
-      const result = await createAppointment({
-        salonId,
-        professionalId,
-        clientId,
-        serviceId,
-        date: isoDate,
-        notes: notes.trim() || undefined,
-      })
+      const submit = (allowServiceRuleOverride: boolean) =>
+        createAppointment({
+          salonId,
+          professionalId,
+          clientId,
+          serviceId,
+          date: isoDate,
+          notes: notes.trim() || undefined,
+          allowServiceRuleOverride,
+        })
+
+      let result = await submit(false)
+
+      // O serviço só atende em certos dias/horários: a equipe pode furar a regra
+      // (a IA não pode). Pergunta antes de forçar; conflito de agenda segue bloqueado.
+      if ("error" in result && result.code === "service_rule_violation") {
+        const confirmOverride = window.confirm(
+          `${result.error}\n\nDeseja agendar mesmo assim neste horário?`
+        )
+        if (!confirmOverride) {
+          return
+        }
+        result = await submit(true)
+      }
 
       if ("error" in result) {
         toast.error(result.error)

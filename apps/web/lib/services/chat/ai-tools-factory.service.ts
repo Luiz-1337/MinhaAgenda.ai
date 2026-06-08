@@ -22,6 +22,7 @@ export class AIToolsFactory {
         salonId: params.salonId,
         serviceDuration: params.serviceDuration,
         professionalId: params.professionalId,
+        serviceId: params.serviceId,
       })
     })
 

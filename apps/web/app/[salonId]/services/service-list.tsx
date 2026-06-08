@@ -27,16 +27,22 @@ const serviceSchema = z.object({
   name: z.string().min(2, "Informe o nome"),
   description: z.string().optional().or(z.literal("")),
   duration: z.number().int().positive("Duração deve ser positiva"),
+  durationMax: z.number().int().positive("Duração máxima deve ser positiva").nullable().optional(),
   price: z.number().nonnegative("Preço deve ser positivo"),
   priceType: priceTypeSchema.default("fixed"),
   priceMin: z.number().positive("Preço mínimo deve ser positivo").optional(),
   priceMax: z.number().positive("Preço máximo deve ser positivo").optional(),
+  priceOnRequest: z.boolean().default(false),
+  allowedWeekdays: z.array(z.number().int().min(0).max(6)).default([]),
+  allowedStartTimes: z.array(z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/)).default([]),
   isActive: z.boolean().default(true),
   averageCycleDays: z.number().int().positive("Informe um número de dias maior que zero").nullable().optional(),
   professionalIds: z.array(z.string()).default([]),
   specialistProfessionalIds: z.array(z.string()).default([]),
 }).refine(
   (data) => {
+    // "Sob avaliação" dispensa preço.
+    if (data.priceOnRequest) return true
     if (data.priceType === "fixed") {
       return data.price > 0
     }
@@ -55,8 +61,16 @@ const serviceSchema = z.object({
     message: "Para preço fixo, informe um valor positivo. Para range, o preço mínimo deve ser menor ou igual ao máximo.",
     path: ["price"],
   }
+).refine(
+  (data) => data.durationMax == null || data.durationMax >= data.duration,
+  {
+    message: "A duração máxima deve ser maior ou igual à duração.",
+    path: ["durationMax"],
+  }
 )
 type ServiceForm = z.infer<typeof serviceSchema>
+
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] as const
 
 interface ServiceListProps {
   salonId: string
@@ -75,11 +89,12 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [newStartTime, setNewStartTime] = useState("")
 
   const form = useForm<ServiceForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(serviceSchema as any),
-    defaultValues: { name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] },
+    defaultValues: { name: "", description: "", duration: 60, durationMax: null, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, priceOnRequest: false, allowedWeekdays: [], allowedStartTimes: [], isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] },
   })
 
   useEffect(() => {
@@ -141,7 +156,8 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
   function openCreate() {
     setEditing(null)
-    form.reset({ name: "", description: "", duration: 60, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] })
+    setNewStartTime("")
+    form.reset({ name: "", description: "", duration: 60, durationMax: null, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, priceOnRequest: false, allowedWeekdays: [], allowedStartTimes: [], isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] })
     setOpen(true)
   }
 
@@ -163,15 +179,20 @@ export default function ServiceList({ salonId }: ServiceListProps) {
       console.error("Erro ao carregar profissionais vinculados:", error)
     }
 
+    setNewStartTime("")
     form.reset({
       id: service.id,
       name: service.name,
       description: service.description || "",
       duration: service.duration,
+      durationMax: service.duration_max ?? null,
       price: parseFloat(service.price),
       priceType: service.price_type || "fixed",
       priceMin: service.price_min ? parseFloat(service.price_min) : undefined,
       priceMax: service.price_max ? parseFloat(service.price_max) : undefined,
+      priceOnRequest: service.price_on_request ?? false,
+      allowedWeekdays: service.allowed_weekdays ?? [],
+      allowedStartTimes: service.allowed_start_times ?? [],
       isActive: service.is_active,
       averageCycleDays: service.average_cycle_days ?? null,
       professionalIds: linkedProfessionalIds,
@@ -195,6 +216,10 @@ export default function ServiceList({ salonId }: ServiceListProps) {
         priceType: values.priceType,
         priceMin: values.priceType === "range" ? values.priceMin : undefined,
         priceMax: values.priceType === "range" ? values.priceMax : undefined,
+        priceOnRequest: values.priceOnRequest ?? false,
+        durationMax: values.durationMax ?? null,
+        allowedWeekdays: values.allowedWeekdays ?? [],
+        allowedStartTimes: values.allowedStartTimes ?? [],
         averageCycleDays: values.averageCycleDays ?? null,
       })
       if ("error" in res) {
@@ -265,12 +290,20 @@ export default function ServiceList({ salonId }: ServiceListProps) {
   }
 
   function formatServicePrice(service: ServiceRow): string {
+    if (service.price_on_request) return "Sob avaliação"
     if (service.price_type === "range" && service.price_min && service.price_max) {
       const min = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(service.price_min))
       const max = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parseFloat(service.price_max))
       return `${min} - ${max}`
     }
     return formatPrice(service.price)
+  }
+
+  function formatServiceDuration(service: ServiceRow): string {
+    if (service.duration_max && service.duration_max > service.duration) {
+      return `${formatDuration(service.duration)} a ${formatDuration(service.duration_max)}`
+    }
+    return formatDuration(service.duration)
   }
 
   return (
@@ -345,20 +378,65 @@ export default function ServiceList({ salonId }: ServiceListProps) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Duração (min) <span className="text-red-600 dark:text-red-400">*</span>
-                </label>
-                <div className="relative group">
-                  <Clock size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
-                  <input
-                    type="number"
-                    placeholder="30 min"
-                    {...form.register("duration", { valueAsNumber: true })}
-                    className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
-                  />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Duração (min) <span className="text-red-600 dark:text-red-400">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (form.watch("durationMax") != null) {
+                        form.setValue("durationMax", null)
+                      } else {
+                        form.setValue("durationMax", form.getValues("duration") || 0)
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-foreground bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                  >
+                    <ArrowLeftRight size={12} />
+                    {form.watch("durationMax") != null ? "Usar duração única" : "Usar faixa de duração"}
+                  </button>
                 </div>
+                {form.watch("durationMax") != null ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="relative group">
+                      <Clock size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
+                      <input
+                        type="number"
+                        placeholder="Mínimo (min)"
+                        {...form.register("duration", { valueAsNumber: true })}
+                        className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
+                      />
+                    </div>
+                    <div className="relative group">
+                      <Clock size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
+                      <input
+                        type="number"
+                        placeholder="Máximo (min)"
+                        {...form.register("durationMax", { setValueAs: (v) => (v === "" || v === null || v === undefined ? null : Number(v)) })}
+                        className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative group">
+                    <Clock size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
+                    <input
+                      type="number"
+                      placeholder="30 min"
+                      {...form.register("duration", { valueAsNumber: true })}
+                      className="w-full bg-card border border-border rounded-xl pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
+                    />
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Em faixa (ex.: &quot;6h a 7h&quot;), a agenda reserva o maior tempo para não encavalar.
+                </p>
                 {form.formState.errors.duration && (
                   <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.duration.message}</p>
+                )}
+                {form.formState.errors.durationMax && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.durationMax.message}</p>
                 )}
               </div>
 
@@ -385,33 +463,44 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                 )}
               </div>
 
-              {/* Preço - Toggle entre fixo e range */}
+              {/* Preço - fixo / faixa / sob avaliação */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Preço (R$) <span className="text-red-600 dark:text-red-400">*</span>
+                    Preço (R$){!form.watch("priceOnRequest") && <span className="text-red-600 dark:text-red-400"> *</span>}
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const currentType = form.watch("priceType")
-                      const newType = currentType === "fixed" ? "range" : "fixed"
-                      form.setValue("priceType", newType)
-                      if (newType === "fixed") {
-                        form.setValue("priceMin", undefined)
-                        form.setValue("priceMax", undefined)
-                      } else {
-                        form.setValue("price", 0)
-                      }
-                    }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-foreground bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-                  >
-                    <ArrowLeftRight size={12} />
-                    {form.watch("priceType") === "fixed" ? "Usar faixa de preço" : "Usar preço fixo"}
-                  </button>
+                  {!form.watch("priceOnRequest") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentType = form.watch("priceType")
+                        const newType = currentType === "fixed" ? "range" : "fixed"
+                        form.setValue("priceType", newType)
+                        if (newType === "fixed") {
+                          form.setValue("priceMin", undefined)
+                          form.setValue("priceMax", undefined)
+                        } else {
+                          form.setValue("price", 0)
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-foreground bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                    >
+                      <ArrowLeftRight size={12} />
+                      {form.watch("priceType") === "fixed" ? "Usar faixa de preço" : "Usar preço fixo"}
+                    </button>
+                  )}
                 </div>
 
-                {form.watch("priceType") === "fixed" ? (
+                <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <Switch {...form.register("priceOnRequest")} checked={form.watch("priceOnRequest")} />
+                  <span>Sob avaliação (valor definido no atendimento)</span>
+                </Label>
+
+                {form.watch("priceOnRequest") ? (
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    A IA informa que o valor é &quot;sob avaliação&quot; (sem inventar preço) e ainda assim permite agendar.
+                  </p>
+                ) : form.watch("priceType") === "fixed" ? (
                   <div className="relative group">
                     <DollarSign size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
                     <input
@@ -454,6 +543,85 @@ export default function ServiceList({ salonId }: ServiceListProps) {
                 )}
                 {form.formState.errors.priceMax && (
                   <p className="text-xs text-red-600 dark:text-red-400 mt-1">{form.formState.errors.priceMax.message}</p>
+                )}
+              </div>
+
+              {/* Disponibilidade do serviço: dias e horários de início específicos */}
+              <div className="space-y-3 border-t border-border pt-4">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dias de atendimento</label>
+                  <p className="text-[11px] text-muted-foreground">Em quais dias este serviço é realizado. Vazio = todos os dias.</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAY_LABELS.map((label, day) => {
+                    const days = form.watch("allowedWeekdays") || []
+                    const active = days.includes(day)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          const current = form.getValues("allowedWeekdays") || []
+                          if (current.includes(day)) {
+                            form.setValue("allowedWeekdays", current.filter((d) => d !== day))
+                          } else {
+                            form.setValue("allowedWeekdays", [...current, day].sort((a, b) => a - b))
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${active ? "bg-accent text-accent-foreground border-accent" : "bg-card text-muted-foreground border-border hover:bg-muted"}`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Horários de início específicos</label>
+                  <p className="text-[11px] text-muted-foreground">Se informado, o serviço só pode começar nesses horários. Vazio = horários contínuos.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={newStartTime}
+                    onChange={(e) => setNewStartTime(e.target.value)}
+                    className="bg-card border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(newStartTime)) return
+                      const current = form.getValues("allowedStartTimes") || []
+                      if (!current.includes(newStartTime)) {
+                        form.setValue("allowedStartTimes", [...current, newStartTime].sort())
+                      }
+                      setNewStartTime("")
+                    }}
+                    className="h-9 text-xs border-border hover:bg-muted"
+                  >
+                    <Plus size={14} /> Adicionar
+                  </Button>
+                </div>
+                {(form.watch("allowedStartTimes") || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(form.watch("allowedStartTimes") || []).map((time) => (
+                      <span key={time} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-muted text-xs font-medium text-foreground border border-border">
+                        {time}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = form.getValues("allowedStartTimes") || []
+                            form.setValue("allowedStartTimes", current.filter((t) => t !== time))
+                          }}
+                          className="text-muted-foreground hover:text-red-500 dark:hover:text-red-400"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -712,7 +880,7 @@ export default function ServiceList({ salonId }: ServiceListProps) {
 
                 <div className="md:col-span-1 text-foreground font-medium text-xs flex items-center gap-1">
                   <Clock size={12} className="text-muted-foreground" />
-                  {formatDuration(service.duration)}
+                  {formatServiceDuration(service)}
                 </div>
 
                 <div className="md:col-span-1 text-foreground font-mono text-xs font-medium flex items-center gap-1">

@@ -23,10 +23,13 @@ export class GetServicesUseCase {
       id: service.id,
       name: service.name,
       description: service.description,
-      duration: service.durationMinutes,
-      durationFormatted: service.formatDuration(),
+      duration: service.blockingDurationMinutes,
+      durationFormatted: service.formatDurationLabel(),
       price: service.priceAmount,
       priceFormatted: service.formatPrice(),
+      priceOnRequest: service.priceOnRequest,
+      allowedWeekdays: service.allowedWeekdays,
+      allowedStartTimes: service.allowedStartTimes,
       isActive: service.isActive,
     }))
 

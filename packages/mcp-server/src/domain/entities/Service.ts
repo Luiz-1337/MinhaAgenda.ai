@@ -6,10 +6,14 @@ export interface ServiceProps {
   name: string
   description?: string | null
   duration: number // em minutos
+  durationMax?: number | null // teto da faixa de duração (min)
   price: number
   priceType?: string
   priceMin?: number | null
   priceMax?: number | null
+  priceOnRequest?: boolean // "Sob Avaliação"
+  allowedWeekdays?: number[] | null // dias permitidos (0=Dom..6=Sáb); null = todos
+  allowedStartTimes?: string[] | null // horários de início "HH:mm"; null = grade contínua
   isActive: boolean
   createdAt?: Date
   updatedAt?: Date
@@ -24,10 +28,14 @@ export class Service {
   private _name: string
   private _description?: string | null
   private _duration: Duration
+  private _durationMax?: number | null
   private _price: Money
   private _priceType: string
   private _priceMin?: Money | null
   private _priceMax?: Money | null
+  private _priceOnRequest: boolean
+  private _allowedWeekdays?: number[] | null
+  private _allowedStartTimes?: string[] | null
   private _isActive: boolean
   readonly createdAt: Date
   private _updatedAt: Date
@@ -38,10 +46,14 @@ export class Service {
     this._name = props.name
     this._description = props.description
     this._duration = Duration.fromMinutes(props.duration)
+    this._durationMax = props.durationMax ?? null
     this._price = new Money(props.price)
     this._priceType = props.priceType ?? "fixed"
     this._priceMin = props.priceMin ? new Money(props.priceMin) : null
     this._priceMax = props.priceMax ? new Money(props.priceMax) : null
+    this._priceOnRequest = props.priceOnRequest ?? false
+    this._allowedWeekdays = props.allowedWeekdays ?? null
+    this._allowedStartTimes = props.allowedStartTimes ?? null
     this._isActive = props.isActive
     this.createdAt = props.createdAt ?? new Date()
     this._updatedAt = props.updatedAt ?? new Date()
@@ -76,6 +88,36 @@ export class Service {
 
   get durationMinutes(): number {
     return this._duration.toMinutes()
+  }
+
+  get durationMaxMinutes(): number | null {
+    return this._durationMax ?? null
+  }
+
+  /** Duração que a agenda RESERVA: o MAIOR da faixa (duration_max ?? duration). */
+  get blockingDurationMinutes(): number {
+    const max = this._durationMax
+    return typeof max === "number" && max > this.durationMinutes ? max : this.durationMinutes
+  }
+
+  get priceOnRequest(): boolean {
+    return this._priceOnRequest
+  }
+
+  get allowedWeekdays(): number[] | null {
+    return this._allowedWeekdays ?? null
+  }
+
+  get allowedStartTimes(): string[] | null {
+    return this._allowedStartTimes ?? null
+  }
+
+  /** Config de agenda por serviço, para o gerador de slots. */
+  getScheduleConfig(): { allowedWeekdays: number[] | null; allowedStartTimes: string[] | null } {
+    return {
+      allowedWeekdays: this._allowedWeekdays ?? null,
+      allowedStartTimes: this._allowedStartTimes ?? null,
+    }
   }
 
   get price(): Money {
@@ -124,6 +166,9 @@ export class Service {
    * Formata o preço para exibição
    */
   formatPrice(): string {
+    if (this._priceOnRequest) {
+      return "Sob avaliação"
+    }
     if (this.hasVariablePrice() && this._priceMin && this._priceMax) {
       return `${this._priceMin.format()} - ${this._priceMax.format()}`
     }
@@ -134,6 +179,16 @@ export class Service {
    * Formata a duração para exibição
    */
   formatDuration(): string {
+    return this._duration.format()
+  }
+
+  /**
+   * Duração para exibição, em faixa quando houver durationMax (ex.: "6h a 7h").
+   */
+  formatDurationLabel(): string {
+    if (typeof this._durationMax === "number" && this._durationMax > this.durationMinutes) {
+      return `${this._duration.format()} a ${Duration.fromMinutes(this._durationMax).format()}`
+    }
     return this._duration.format()
   }
 
@@ -187,10 +242,14 @@ export class Service {
       name: this._name,
       description: this._description,
       duration: this._duration.toMinutes(),
+      durationMax: this._durationMax ?? null,
       price: this._price.amount,
       priceType: this._priceType,
       priceMin: this._priceMin?.amount ?? null,
       priceMax: this._priceMax?.amount ?? null,
+      priceOnRequest: this._priceOnRequest,
+      allowedWeekdays: this._allowedWeekdays ?? null,
+      allowedStartTimes: this._allowedStartTimes ?? null,
       isActive: this._isActive,
       createdAt: this.createdAt,
       updatedAt: this._updatedAt,

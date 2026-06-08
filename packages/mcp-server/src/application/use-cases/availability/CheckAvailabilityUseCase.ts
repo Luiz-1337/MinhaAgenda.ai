@@ -1,3 +1,4 @@
+import { isWeekdayAllowed, timeToMinutes } from "@repo/db"
 import { Result, ok, fail } from "../../../shared/types"
 import { formatDate, getDayOfWeek, toBrazilDate, toBrazilTime } from "../../../shared/utils/date.utils"
 import { SLOT_DURATION } from "../../../shared/constants"
@@ -13,6 +14,9 @@ import {
 } from "../../../domain/repositories"
 import { ICalendarService, IExternalScheduler } from "../../ports"
 import { AvailabilityDTO, CheckAvailabilityDTO, TimeSlotDTO } from "../../dtos"
+
+/** Regras de agenda do serviço (dias permitidos / horários de início específicos). */
+type ServiceScheduleConfig = { allowedWeekdays?: number[] | null; allowedStartTimes?: string[] | null }
 
 export class CheckAvailabilityUseCase {
   constructor(
@@ -30,12 +34,15 @@ export class CheckAvailabilityUseCase {
   ): Promise<Result<AvailabilityDTO, DomainError>> {
     const date = new Date(input.date)
 
-    // Determinar duração do serviço
+    // Determinar duração do serviço e as regras de agenda do serviço (dias/horários)
     let serviceDuration = input.serviceDuration ?? SLOT_DURATION
+    let serviceConfig: ServiceScheduleConfig | undefined
     if (input.serviceId) {
       const service = await this.serviceRepo.findById(input.serviceId)
       if (service) {
-        serviceDuration = service.durationMinutes
+        // Reserva o MAIOR tempo da faixa, alinhado com a validação de booking.
+        serviceDuration = service.blockingDurationMinutes
+        serviceConfig = service.getScheduleConfig()
       }
     }
 
@@ -47,7 +54,8 @@ export class CheckAvailabilityUseCase {
         input.salonId,
         date,
         serviceDuration,
-        { fallbackToSalonHours: true }
+        { fallbackToSalonHours: true },
+        serviceConfig
       )
       return ok(this.buildDTO(date, slots, serviceDuration, { professionalId: input.professionalId }))
     }
@@ -75,7 +83,8 @@ export class CheckAvailabilityUseCase {
               input.salonId,
               date,
               serviceDuration,
-              { fallbackToSalonHours: false }
+              { fallbackToSalonHours: false },
+              serviceConfig
             )
           })
         )
@@ -86,7 +95,13 @@ export class CheckAvailabilityUseCase {
 
     // CASO 3: fallback — sem profissional e sem serviço (ou ninguém faz o serviço):
     // usa o horário de funcionamento do salão, sem subtrair ocupação (comportamento antigo).
-    const salonSlots = await this.generateSalonHoursSlots(date, input.salonId, serviceDuration)
+    const salonSlots = await this.generateSalonHoursSlots(
+      date,
+      input.salonId,
+      serviceDuration,
+      undefined,
+      serviceConfig
+    )
     return ok(this.buildDTO(date, salonSlots, serviceDuration, {}))
   }
 
@@ -100,12 +115,13 @@ export class CheckAvailabilityUseCase {
     salonId: string,
     date: Date,
     serviceDuration: number,
-    opts: { fallbackToSalonHours: boolean }
+    opts: { fallbackToSalonHours: boolean },
+    serviceConfig?: ServiceScheduleConfig
   ): Promise<TimeSlot[]> {
-    let baseSlots = await this.availabilityRepo.generateSlots(professionalId, date, serviceDuration)
+    let baseSlots = await this.availabilityRepo.generateSlots(professionalId, date, serviceDuration, serviceConfig)
 
     if (baseSlots.length === 0 && opts.fallbackToSalonHours) {
-      baseSlots = await this.generateSalonHoursSlots(date, salonId, serviceDuration, professionalId)
+      baseSlots = await this.generateSalonHoursSlots(date, salonId, serviceDuration, professionalId, serviceConfig)
     }
 
     if (baseSlots.length === 0) {
@@ -188,12 +204,19 @@ export class CheckAvailabilityUseCase {
     date: Date,
     salonId: string,
     serviceDuration: number,
-    professionalId?: string
+    professionalId?: string,
+    serviceConfig?: ServiceScheduleConfig
   ): Promise<TimeSlot[]> {
     const salon = await this.salonRepo.findById(salonId)
     if (!salon) return []
 
     const dayOfWeek = getDayOfWeek(date)
+
+    // Serviço não atendido neste dia da semana → sem horários.
+    if (serviceConfig && !isWeekdayAllowed(serviceConfig.allowedWeekdays, dayOfWeek)) {
+      return []
+    }
+
     const workHours = salon.getWorkingHoursForDay(dayOfWeek)
     if (!workHours) return []
 
@@ -202,7 +225,8 @@ export class CheckAvailabilityUseCase {
       workHours.start,
       workHours.end,
       serviceDuration,
-      professionalId
+      professionalId,
+      serviceConfig
     )
   }
 
@@ -266,7 +290,8 @@ export class CheckAvailabilityUseCase {
     startTime: string,
     endTime: string,
     slotDuration: number,
-    professionalId?: string
+    professionalId?: string,
+    serviceConfig?: ServiceScheduleConfig
   ): TimeSlot[] {
     const slots: TimeSlot[] = []
 
@@ -276,17 +301,12 @@ export class CheckAvailabilityUseCase {
     const baseMonth = brazilDate.getMonth()
     const baseDay = brazilDate.getDate()
 
-    const [startHour, startMin] = startTime.split(":").map(Number)
-    const [endHour, endMin] = endTime.split(":").map(Number)
+    const startMinutes = timeToMinutes(startTime)
+    const endMinutes = timeToMinutes(endTime)
 
-    const startMinutes = startHour * 60 + startMin
-    const endMinutes = endHour * 60 + endMin
-
-    for (let minutes = startMinutes; minutes + slotDuration <= endMinutes; minutes += slotDuration) {
+    const buildSlot = (minutes: number): TimeSlot => {
       const slotHour = Math.floor(minutes / 60)
       const slotMin = minutes % 60
-
-      // Cria horário em Brasília e converte para UTC
       const slotStartBrazil = new Date(baseYear, baseMonth, baseDay, slotHour, slotMin, 0, 0)
       const slotStart = toBrazilTime(slotStartBrazil)
 
@@ -296,14 +316,29 @@ export class CheckAvailabilityUseCase {
       const slotEndBrazil = new Date(baseYear, baseMonth, baseDay, endHourSlot, endMinSlot, 0, 0)
       const slotEnd = toBrazilTime(slotEndBrazil)
 
-      slots.push(
-        new TimeSlot({
-          start: slotStart,
-          end: slotEnd,
-          available: true,
-          professionalId,
-        })
-      )
+      return new TimeSlot({ start: slotStart, end: slotEnd, available: true, professionalId })
+    }
+
+    // Modo horários específicos por serviço: só os horários listados que cabem na janela.
+    const discreteStartTimes =
+      serviceConfig?.allowedStartTimes && serviceConfig.allowedStartTimes.length > 0
+        ? serviceConfig.allowedStartTimes
+        : null
+
+    if (discreteStartTimes) {
+      const seen = new Set<number>()
+      for (const time of discreteStartTimes) {
+        const minutes = timeToMinutes(time)
+        if (seen.has(minutes)) continue
+        if (minutes < startMinutes || minutes + slotDuration > endMinutes) continue
+        seen.add(minutes)
+        slots.push(buildSlot(minutes))
+      }
+      return slots
+    }
+
+    for (let minutes = startMinutes; minutes + slotDuration <= endMinutes; minutes += slotDuration) {
+      slots.push(buildSlot(minutes))
     }
 
     return slots

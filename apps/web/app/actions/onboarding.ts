@@ -7,6 +7,7 @@ import type { ActionResult } from "@/lib/types/common"
 import { formatAuthError } from "@/lib/services/error.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import { seedDefaultKanbanColumns } from "@/lib/services/salon.service"
+import { ProfessionalService } from "@/lib/services/professional.service"
 
 interface OnboardingStep1Data {
   salonName: string
@@ -173,9 +174,15 @@ export async function completeOnboardingWithPayment(
 
       // Criar profissional automaticamente se for plano SOLO
       if (data.plan === 'SOLO') {
+        // Identidade de pessoa (personKey): reaproveita caso o cabeleireiro já atue
+        // em outro salão, unificando a agenda entre as unidades. Antes ficava null,
+        // o que deixava a pessoa desvinculada (multi-salão não funcionava no SOLO).
+        const personKey = await ProfessionalService.resolvePersonKey(data.email, userId)
+
         const [newProfessional] = await tx.insert(professionals).values({
           salonId: newSalon.id,
           userId: userId,
+          personKey,
           name: normalizeString(fullName),
           email: normalizeEmail(data.email),
           phone: emptyStringToNull(data.phone),

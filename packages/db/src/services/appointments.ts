@@ -4,6 +4,14 @@ import { z } from "zod"
 import { db, appointments, availability, professionals, professionalServices, services, customers } from "../index"
 import { formatZodError } from "../utils/validation.utils"
 import { parseBrazilianDateTime, createBrazilDateTimeFromComponents, type DateComponents } from "../utils/date-parsing.utils"
+import {
+  getBlockingDuration,
+  parseAllowedWeekdays,
+  parseAllowedStartTimes,
+  isWeekdayAllowed,
+  isStartTimeAllowed,
+  formatWeekdaysPtBr,
+} from "../utils/service-schedule.utils"
 import { getPersonProfessionalIdsByKey } from "./person"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
 import { processVacantSlot } from "./slot-filler.service"
@@ -16,7 +24,7 @@ import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } f
  */
 export type ActionResult<T = void> =
   | { success: true; data: T }
-  | { success: false; error: string }
+  | { success: false; error: string; code?: string }
 
 /**
  * Cria um novo agendamento no sistema.
@@ -49,6 +57,12 @@ export async function createAppointmentService(input: {
   date: string | Date
   notes?: string
   skipExternalSync?: boolean
+  /**
+   * Permite furar as regras de DIA/HORÁRIO específico do serviço (apenas a reserva
+   * manual da equipe usa isso, após confirmação). A IA NUNCA passa este flag.
+   * Não afeta as travas de conflito de agenda / expediente, que seguem valendo.
+   */
+  allowServiceRuleOverride?: boolean
 }): Promise<ActionResult<{ appointmentId: string }>> {
   const schema = z.object({
     salonId: z.string().uuid(),
@@ -72,7 +86,15 @@ export async function createAppointmentService(input: {
   const [service, professional] = await Promise.all([
     db.query.services.findFirst({
       where: eq(services.id, serviceId),
-      columns: { id: true, salonId: true, duration: true, isActive: true },
+      columns: {
+        id: true,
+        salonId: true,
+        duration: true,
+        durationMax: true,
+        allowedWeekdays: true,
+        allowedStartTimes: true,
+        isActive: true,
+      },
     }),
     db.query.professionals.findFirst({
       where: eq(professionals.id, professionalId),
@@ -102,8 +124,9 @@ export async function createAppointmentService(input: {
   }
   const { utcDate: startUtc, brazilComponents } = parseResult
 
-  // Calcula horário de término
-  const endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
+  // Calcula horário de término — reserva o MAIOR tempo da faixa (duration_max ?? duration).
+  const blockingMinutes = getBlockingDuration(service.duration, service.durationMax)
+  const endUtc = new Date(startUtc.getTime() + blockingMinutes * 60 * 1000)
 
   // Cria um Date com os componentes para validações (getDay, etc)
   const requestedStartBrazil = new Date(
@@ -115,6 +138,30 @@ export async function createAppointmentService(input: {
     brazilComponents.second
   )
   const dayOfWeek = requestedStartBrazil.getDay()
+
+  // Regras de agenda POR SERVIÇO (dias permitidos / horários de início específicos).
+  // A IA nunca passa allowServiceRuleOverride; a reserva manual pode furar (após
+  // confirmação). Conflito de agenda e expediente continuam valendo mesmo no override.
+  if (!input.allowServiceRuleOverride) {
+    const allowedWeekdays = parseAllowedWeekdays(service.allowedWeekdays)
+    if (!isWeekdayAllowed(allowedWeekdays, dayOfWeek)) {
+      return {
+        success: false,
+        code: 'service_rule_violation',
+        error: `Este serviço só é realizado em: ${formatWeekdaysPtBr(allowedWeekdays!)}.`,
+      }
+    }
+
+    const allowedStartTimes = parseAllowedStartTimes(service.allowedStartTimes)
+    const requestedTime = `${String(brazilComponents.hour).padStart(2, '0')}:${String(brazilComponents.minute).padStart(2, '0')}`
+    if (!isStartTimeAllowed(allowedStartTimes, requestedTime)) {
+      return {
+        success: false,
+        code: 'service_rule_violation',
+        error: `Para este serviço, os horários de início disponíveis são: ${allowedStartTimes!.join(', ')}.`,
+      }
+    }
+  }
 
   // Valida se o horário está dentro do expediente do profissional
   const proDayRules = await db
@@ -255,6 +302,8 @@ export async function updateAppointmentService(input: {
   date?: string | Date
   notes?: string
   skipExternalSync?: boolean
+  /** Ver createAppointmentService: permite furar regra de dia/horário (só reserva manual). */
+  allowServiceRuleOverride?: boolean
 }): Promise<ActionResult<{ appointmentId: string }>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
@@ -300,15 +349,26 @@ export async function updateAppointmentService(input: {
   const finalServiceId = parse.data.serviceId || existingAppointment.serviceId
   const finalNotes = parse.data.notes !== undefined ? parse.data.notes : existingAppointment.notes
 
-  // Busca serviço para obter duração
+  // Busca serviço para obter duração e regras de agenda
   const service = await db.query.services.findFirst({
     where: eq(services.id, finalServiceId),
-    columns: { id: true, salonId: true, duration: true, isActive: true },
+    columns: {
+      id: true,
+      salonId: true,
+      duration: true,
+      durationMax: true,
+      allowedWeekdays: true,
+      allowedStartTimes: true,
+      isActive: true,
+    },
   })
 
   if (!service || service.salonId !== existingAppointment.salonId || !service.isActive) {
     return { success: false, error: "Serviço inválido ou inativo" }
   }
+
+  // Reserva o MAIOR tempo da faixa (duration_max ?? duration).
+  const blockingMinutes = getBlockingDuration(service.duration, service.durationMax)
 
   // Valida o profissional
   const professional = await db.query.professionals.findFirst({
@@ -344,10 +404,10 @@ export async function updateAppointmentService(input: {
     }
     startUtc = parseResult.utcDate
     brazilComponents = parseResult.brazilComponents
-    endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
+    endUtc = new Date(startUtc.getTime() + blockingMinutes * 60 * 1000)
   } else if (finalServiceId !== existingAppointment.serviceId) {
     // Se date não mudou mas serviceId mudou, recalcula endTime
-    endUtc = new Date(startUtc.getTime() + service.duration * 60 * 1000)
+    endUtc = new Date(startUtc.getTime() + blockingMinutes * 60 * 1000)
   }
 
   // Se date foi fornecido, valida horário dentro do expediente
@@ -361,6 +421,28 @@ export async function updateAppointmentService(input: {
       brazilComponents.second
     )
     const dayOfWeek = requestedStartBrazil.getDay()
+
+    // Regras de agenda POR SERVIÇO (mesma lógica do create). Override só na reserva manual.
+    if (!input.allowServiceRuleOverride) {
+      const allowedWeekdays = parseAllowedWeekdays(service.allowedWeekdays)
+      if (!isWeekdayAllowed(allowedWeekdays, dayOfWeek)) {
+        return {
+          success: false,
+          code: 'service_rule_violation',
+          error: `Este serviço só é realizado em: ${formatWeekdaysPtBr(allowedWeekdays!)}.`,
+        }
+      }
+
+      const allowedStartTimes = parseAllowedStartTimes(service.allowedStartTimes)
+      const requestedTime = `${String(brazilComponents.hour).padStart(2, '0')}:${String(brazilComponents.minute).padStart(2, '0')}`
+      if (!isStartTimeAllowed(allowedStartTimes, requestedTime)) {
+        return {
+          success: false,
+          code: 'service_rule_violation',
+          error: `Para este serviço, os horários de início disponíveis são: ${allowedStartTimes!.join(', ')}.`,
+        }
+      }
+    }
 
     const proDayRules = await db
       .select({ startTime: availability.startTime, endTime: availability.endTime, isBreak: availability.isBreak })

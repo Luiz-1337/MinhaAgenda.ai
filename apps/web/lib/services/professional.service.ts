@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto"
-import { db, professionals, salons, profiles, eq, and, sql } from "@repo/db"
+import { db, professionals, salons, profiles, eq, and, sql, isNotNull } from "@repo/db"
 import { canAddProfessional } from "@/lib/utils/permissions"
 import type { UpsertProfessionalInput } from "@/lib/types/professional"
 import type { PlanTier } from "@/lib/types/salon"
@@ -16,6 +16,46 @@ export class ProfessionalService {
       .where(and(eq(professionals.salonId, salonId), eq(professionals.isActive, true)))
 
     return result?.count ?? 0
+  }
+
+  /**
+   * Resolve a identidade de pessoa (personKey) usada para vincular a MESMA pessoa
+   * entre salões e contas diferentes (multi-salão).
+   *
+   * Procura um personKey já existente — primeiro pela conta (userId), depois pelo
+   * e-mail — em QUALQUER salão, sem filtrar por dono. Só gera um novo quando a
+   * pessoa ainda não aparece em nenhum salão. Isso é o que faz a agenda do
+   * cabeleireiro (plano SOLO) se unificar entre todos os salões em que ele atende.
+   */
+  static async resolvePersonKey(email: string, userId?: string | null): Promise<string> {
+    // 1. Mesma conta (userId) — vínculo mais forte, vale entre quaisquer salões/contas.
+    if (userId) {
+      const [byUser] = await db
+        .select({ personKey: professionals.personKey })
+        .from(professionals)
+        .where(and(eq(professionals.userId, userId), isNotNull(professionals.personKey)))
+        .limit(1)
+
+      if (byUser?.personKey) {
+        return byUser.personKey
+      }
+    }
+
+    // 2. Mesma pessoa por e-mail (profissional sem conta vinculada) — também cross-salão.
+    const normalizedEmail = normalizeEmail(email)
+    if (normalizedEmail) {
+      const [byEmail] = await db
+        .select({ personKey: professionals.personKey })
+        .from(professionals)
+        .where(and(eq(professionals.email, normalizedEmail), isNotNull(professionals.personKey)))
+        .limit(1)
+
+      if (byEmail?.personKey) {
+        return byEmail.personKey
+      }
+    }
+
+    return randomUUID()
   }
 
   /**
@@ -206,13 +246,17 @@ export class ProfessionalService {
         ? `${ownerProfile.firstName} ${ownerProfile.lastName}`.trim()
         : ownerProfile.firstName || ownerProfile.lastName || 'Profissional')
 
-    // 6. Cria o profissional automaticamente
+    // 6. Cria o profissional automaticamente.
+    // Reaproveita a identidade de pessoa (personKey) caso o owner já atue em outro
+    // salão, unificando a agenda entre as unidades. Só gera nova se ele ainda não existir.
+    const personKey = await this.resolvePersonKey(ownerProfile.email, ownerId)
+
     const [newProfessional] = await db
       .insert(professionals)
       .values({
         salonId,
         userId: ownerId,
-        personKey: randomUUID(),
+        personKey,
         name: normalizeString(professionalName),
         email: normalizeEmail(ownerProfile.email),
         phone: emptyStringToNull(ownerProfile.phone),

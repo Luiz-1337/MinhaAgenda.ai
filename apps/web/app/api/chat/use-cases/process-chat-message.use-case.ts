@@ -120,6 +120,7 @@ export class ProcessChatMessageUseCase {
           salonId: params.salonId,
           serviceDuration: params.serviceDuration,
           professionalId: params.professionalId,
+          serviceId: params.serviceId,
         })
       }),
       bookAppointment: createBookAppointmentTool(this.salonId, this.clientId),

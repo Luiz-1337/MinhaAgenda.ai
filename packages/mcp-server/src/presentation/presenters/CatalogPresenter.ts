@@ -1,3 +1,4 @@
+import { formatWeekdaysPtBr } from "@repo/db"
 import {
   ServiceListDTO,
   ProductListDTO,
@@ -96,10 +97,20 @@ export class CatalogPresenter {
         durationFormatted: s.durationFormatted,
         price: s.price,
         priceFormatted: s.priceFormatted,
+        ...(s.priceOnRequest ? { precoSobAvaliacao: true } : {}),
+        ...(s.allowedWeekdays && s.allowedWeekdays.length > 0
+          ? { diasAtendimento: formatWeekdaysPtBr(s.allowedWeekdays) }
+          : {}),
+        ...(s.allowedStartTimes && s.allowedStartTimes.length > 0
+          ? { horariosDeInicio: s.allowedStartTimes }
+          : {}),
       })),
       total: dto.total,
       message: dto.message,
-      _instrucao: "Os IDs são para uso interno das tools (ex: addAppointment, checkAvailability). NUNCA mostre IDs ao cliente. Informe apenas nome, preço e duração.",
+      _instrucao:
+        "Os IDs são para uso interno das tools (ex: addAppointment, checkAvailability). NUNCA mostre IDs ao cliente. " +
+        "Informe nome, preço e duração. Se precoSobAvaliacao=true, diga que o valor é sob avaliação (não invente preço) e ainda assim ofereça agendar. " +
+        "Se houver diasAtendimento/horariosDeInicio, o serviço só pode ser agendado nesses dias/horários — use checkAvailability, que já respeita isso.",
     }
   }
 

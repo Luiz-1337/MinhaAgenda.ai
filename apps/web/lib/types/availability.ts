@@ -27,6 +27,8 @@ export interface GetAvailableSlotsInput {
   salonId: string
   serviceDuration: number
   professionalId: string
+  /** Quando informado, aplica as regras de agenda do serviço (dias/horários/faixa). */
+  serviceId?: string
 }
 
 export interface TimeSlot {

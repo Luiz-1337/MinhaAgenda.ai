@@ -10,11 +10,13 @@ export async function getAvailableSlots({
   salonId,
   serviceDuration,
   professionalId,
+  serviceId,
 }: GetAvailableSlotsInput): Promise<string[]> {
   return domainServices.getAvailableSlots({
     date,
     salonId,
     serviceDuration,
     professionalId,
+    serviceId,
   })
 }

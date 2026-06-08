@@ -11,10 +11,14 @@ export interface ServicePayload {
   name: string
   description: string | null
   duration: number
+  durationMax: number | null
   price: string
   priceType: PriceType
   priceMin: string | null
   priceMax: string | null
+  priceOnRequest: boolean
+  allowedWeekdays: number[] | null
+  allowedStartTimes: string[] | null
   isActive: boolean
   averageCycleDays: number | null
 }
@@ -32,10 +36,14 @@ export class ServiceRepository {
         name: true,
         description: true,
         duration: true,
+        durationMax: true,
         price: true,
         priceType: true,
         priceMin: true,
         priceMax: true,
+        priceOnRequest: true,
+        allowedWeekdays: true,
+        allowedStartTimes: true,
         isActive: true,
         averageCycleDays: true,
       },
@@ -48,10 +56,14 @@ export class ServiceRepository {
       name: row.name,
       description: row.description ?? null,
       duration: row.duration,
+      duration_max: row.durationMax ?? null,
       price: row.price ?? "0",
       price_type: (row.priceType ?? "fixed") as PriceType,
       price_min: row.priceMin ?? null,
       price_max: row.priceMax ?? null,
+      price_on_request: row.priceOnRequest ?? false,
+      allowed_weekdays: Array.isArray(row.allowedWeekdays) ? (row.allowedWeekdays as number[]) : null,
+      allowed_start_times: Array.isArray(row.allowedStartTimes) ? (row.allowedStartTimes as string[]) : null,
       is_active: row.isActive,
       average_cycle_days: row.averageCycleDays ?? null,
     }))
@@ -71,10 +83,14 @@ export class ServiceRepository {
         name: true,
         description: true,
         duration: true,
+        durationMax: true,
         price: true,
         priceType: true,
         priceMin: true,
         priceMax: true,
+        priceOnRequest: true,
+        allowedWeekdays: true,
+        allowedStartTimes: true,
         isActive: true,
         averageCycleDays: true,
       },
@@ -90,10 +106,14 @@ export class ServiceRepository {
       name: service.name,
       description: service.description ?? null,
       duration: service.duration,
+      duration_max: service.durationMax ?? null,
       price: service.price ?? "0",
       price_type: (service.priceType ?? "fixed") as PriceType,
       price_min: service.priceMin ?? null,
       price_max: service.priceMax ?? null,
+      price_on_request: service.priceOnRequest ?? false,
+      allowed_weekdays: Array.isArray(service.allowedWeekdays) ? (service.allowedWeekdays as number[]) : null,
+      allowed_start_times: Array.isArray(service.allowedStartTimes) ? (service.allowedStartTimes as string[]) : null,
       is_active: service.isActive,
       average_cycle_days: service.averageCycleDays ?? null,
     }

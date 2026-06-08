@@ -1,4 +1,4 @@
-import { db, availability, scheduleOverrides, and, eq, gte, lte } from "@repo/db"
+import { db, availability, scheduleOverrides, and, eq, gte, lte, isWeekdayAllowed, timeToMinutes } from "@repo/db"
 import {
   IAvailabilityRepository,
   AvailabilityRule,
@@ -120,10 +120,17 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
   async generateSlots(
     professionalId: string,
     date: Date,
-    slotDuration: number = SLOT_DURATION
+    slotDuration: number = SLOT_DURATION,
+    serviceConfig?: { allowedWeekdays?: number[] | null; allowedStartTimes?: string[] | null }
   ): Promise<TimeSlot[]> {
     // Usar dia da semana em Brasília (não UTC)
     const dayOfWeek = getDayOfWeek(date)
+
+    // Serviço não atendido neste dia da semana → sem horários.
+    if (serviceConfig && !isWeekdayAllowed(serviceConfig.allowedWeekdays, dayOfWeek)) {
+      return []
+    }
+
     const rules = await this.findByProfessionalAndDay(professionalId, dayOfWeek)
 
     // Filtra regras de trabalho (não break)
@@ -134,51 +141,74 @@ export class DrizzleAvailabilityRepository implements IAvailabilityRepository {
       return []
     }
 
-    const slots: TimeSlot[] = []
     // Pega a data no timezone de Brasília para extrair ano/mês/dia corretos
     const brazilDate = toBrazilDate(date)
     const baseYear = brazilDate.getFullYear()
     const baseMonth = brazilDate.getMonth()
     const baseDay = brazilDate.getDate()
 
-    for (const rule of workRules) {
-      const [startHour, startMin] = rule.startTime.split(":").map(Number)
-      const [endHour, endMin] = rule.endTime.split(":").map(Number)
+    const isInBreak = (minutes: number): boolean =>
+      breakRules.some((br) => {
+        const [brStartH, brStartM] = br.startTime.split(":").map(Number)
+        const [brEndH, brEndM] = br.endTime.split(":").map(Number)
+        const breakStart = brStartH * 60 + brStartM
+        const breakEnd = brEndH * 60 + brEndM
+        return minutes >= breakStart && minutes < breakEnd
+      })
 
-      const startMinutes = startHour * 60 + startMin
-      const endMinutes = endHour * 60 + endMin
+    // Constrói um TimeSlot a partir do minuto inicial (Brasília → UTC).
+    const buildSlot = (minutes: number): TimeSlot => {
+      const slotHour = Math.floor(minutes / 60)
+      const slotMin = minutes % 60
+      const slotStartBrazil = new Date(baseYear, baseMonth, baseDay, slotHour, slotMin, 0, 0)
+      const slotStart = toBrazilTime(slotStartBrazil)
 
-      for (let minutes = startMinutes; minutes + slotDuration <= endMinutes; minutes += slotDuration) {
-        const slotHour = Math.floor(minutes / 60)
-        const slotMin = minutes % 60
+      const endMinutesTotal = minutes + slotDuration
+      const endHourSlot = Math.floor(endMinutesTotal / 60)
+      const endMinSlot = endMinutesTotal % 60
+      const slotEndBrazil = new Date(baseYear, baseMonth, baseDay, endHourSlot, endMinSlot, 0, 0)
+      const slotEnd = toBrazilTime(slotEndBrazil)
 
-        // Cria horário em Brasília e converte para UTC
-        const slotStartBrazil = new Date(baseYear, baseMonth, baseDay, slotHour, slotMin, 0, 0)
-        const slotStart = toBrazilTime(slotStartBrazil)
+      return new TimeSlot({
+        start: slotStart,
+        end: slotEnd,
+        available: !isInBreak(minutes),
+        professionalId,
+      })
+    }
 
-        const endMinutesTotal = minutes + slotDuration
-        const endHourSlot = Math.floor(endMinutesTotal / 60)
-        const endMinSlot = endMinutesTotal % 60
-        const slotEndBrazil = new Date(baseYear, baseMonth, baseDay, endHourSlot, endMinSlot, 0, 0)
-        const slotEnd = toBrazilTime(slotEndBrazil)
+    // Modo horários específicos por serviço: oferece SOMENTE os horários listados
+    // que cabem inteiramente em alguma janela de trabalho.
+    const discreteStartTimes =
+      serviceConfig?.allowedStartTimes && serviceConfig.allowedStartTimes.length > 0
+        ? serviceConfig.allowedStartTimes
+        : null
 
-        // Verifica se está em intervalo de pausa
-        const isInBreak = breakRules.some((br) => {
-          const [brStartH, brStartM] = br.startTime.split(":").map(Number)
-          const [brEndH, brEndM] = br.endTime.split(":").map(Number)
-          const breakStart = brStartH * 60 + brStartM
-          const breakEnd = brEndH * 60 + brEndM
-          return minutes >= breakStart && minutes < breakEnd
+    if (discreteStartTimes) {
+      const slots: TimeSlot[] = []
+      const seen = new Set<number>()
+      for (const time of discreteStartTimes) {
+        const minutes = timeToMinutes(time)
+        if (seen.has(minutes)) continue
+        const fits = workRules.some((rule) => {
+          const startMinutes = timeToMinutes(rule.startTime)
+          const endMinutes = timeToMinutes(rule.endTime)
+          return minutes >= startMinutes && minutes + slotDuration <= endMinutes
         })
+        if (!fits) continue
+        seen.add(minutes)
+        slots.push(buildSlot(minutes))
+      }
+      return slots
+    }
 
-        slots.push(
-          new TimeSlot({
-            start: slotStart,
-            end: slotEnd,
-            available: !isInBreak,
-            professionalId,
-          })
-        )
+    // Grade contínua (comportamento atual).
+    const slots: TimeSlot[] = []
+    for (const rule of workRules) {
+      const startMinutes = timeToMinutes(rule.startTime)
+      const endMinutes = timeToMinutes(rule.endTime)
+      for (let minutes = startMinutes; minutes + slotDuration <= endMinutes; minutes += slotDuration) {
+        slots.push(buildSlot(minutes))
       }
     }
 

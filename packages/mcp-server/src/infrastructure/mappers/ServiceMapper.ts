@@ -1,3 +1,4 @@
+import { parseAllowedWeekdays, parseAllowedStartTimes } from "@repo/db"
 import { Service, ServiceProps } from "../../domain/entities"
 
 /**
@@ -9,10 +10,14 @@ export interface ServiceRow {
   name: string
   description?: string | null
   duration: number
+  durationMax?: number | null
   price: string | number // Pode vir como string do Decimal
   priceType?: string
   priceMin?: string | number | null
   priceMax?: string | number | null
+  priceOnRequest?: boolean
+  allowedWeekdays?: unknown // jsonb
+  allowedStartTimes?: unknown // jsonb
   isActive: boolean
   createdAt?: Date
   updatedAt?: Date
@@ -32,10 +37,14 @@ export class ServiceMapper {
       name: row.name,
       description: row.description,
       duration: row.duration,
+      durationMax: row.durationMax ?? null,
       price: typeof row.price === "string" ? parseFloat(row.price) : row.price,
       priceType: row.priceType,
       priceMin: row.priceMin ? (typeof row.priceMin === "string" ? parseFloat(row.priceMin) : row.priceMin) : null,
       priceMax: row.priceMax ? (typeof row.priceMax === "string" ? parseFloat(row.priceMax) : row.priceMax) : null,
+      priceOnRequest: row.priceOnRequest ?? false,
+      allowedWeekdays: parseAllowedWeekdays(row.allowedWeekdays),
+      allowedStartTimes: parseAllowedStartTimes(row.allowedStartTimes),
       isActive: row.isActive,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -54,10 +63,14 @@ export class ServiceMapper {
       name: props.name,
       description: props.description,
       duration: props.duration,
+      durationMax: props.durationMax ?? null,
       price: props.price,
       priceType: props.priceType,
       priceMin: props.priceMin,
       priceMax: props.priceMax,
+      priceOnRequest: props.priceOnRequest ?? false,
+      allowedWeekdays: props.allowedWeekdays ?? null,
+      allowedStartTimes: props.allowedStartTimes ?? null,
       isActive: props.isActive,
       createdAt: props.createdAt,
       updatedAt: props.updatedAt,

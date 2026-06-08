@@ -155,8 +155,20 @@ export const services = pgTable(
     priceType: text('price_type').default('fixed').notNull(), // 'fixed' | 'range'
     priceMin: numeric('price_min', { precision: 10, scale: 2 }),
     priceMax: numeric('price_max', { precision: 10, scale: 2 }),
+    // Preço "Sob Avaliação": a IA informa que o valor depende de avaliação e mesmo
+    // assim permite agendar (não inventa preço). Independente de priceType.
+    priceOnRequest: boolean('price_on_request').default(false).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
     averageCycleDays: integer('average_cycle_days'),
+    // Restrições de agenda POR SERVIÇO (null/vazio = sem restrição → comportamento atual):
+    // - allowedWeekdays: dias da semana permitidos, 0=Domingo..6=Sábado (convenção getDay()).
+    // - allowedStartTimes: horários de início discretos "HH:mm" (horário de Brasília).
+    //   Quando setado, os slots oferecidos/validados são SOMENTE esses horários.
+    // - durationMax: teto da faixa de duração (min). A agenda reserva o MAIOR tempo
+    //   (durationMax ?? duration); `duration` permanece como piso/exibição.
+    allowedWeekdays: jsonb('allowed_weekdays'),
+    allowedStartTimes: jsonb('allowed_start_times'),
+    durationMax: integer('duration_max'),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [

@@ -2,9 +2,9 @@
  * Tipos comuns e compartilhados em toda a aplicação
  */
 
-export type ActionResult<T = void> = 
+export type ActionResult<T = void> =
   | { success: true; data?: T }
-  | { error: string }
+  | { error: string; code?: string }
 
 export type ActionState = { error?: string }
 

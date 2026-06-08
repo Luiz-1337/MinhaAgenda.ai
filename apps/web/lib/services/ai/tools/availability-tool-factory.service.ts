@@ -17,6 +17,7 @@ export class AvailabilityToolFactory {
       salonId: string
       serviceDuration: number
       professionalId: string
+      serviceId?: string
     }) => Promise<string[]>
   ): ToolDefinition {
     const paramsSchema = z.object({
@@ -45,6 +46,7 @@ export class AvailabilityToolFactory {
           salonId,
           serviceDuration: service.duration,
           professionalId: professional.id,
+          serviceId: service.id,
         })
 
         return {

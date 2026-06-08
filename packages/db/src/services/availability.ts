@@ -1,9 +1,15 @@
 import { and, eq, gt, inArray, lt, ne } from "drizzle-orm"
 
-import { appointments, availability, db, profiles, professionals, salons } from "../index"
+import { appointments, availability, db, profiles, professionals, salons, services } from "../index"
 import { getPersonProfessionalIds } from "./person"
 import { MINUTE_IN_MS, parseTimeInDay } from "../utils/time.utils"
 import { fromBrazilTime, getBrazilNow, toBrazilTime } from "../utils/timezone.utils"
+import {
+  getBlockingDuration,
+  parseAllowedWeekdays,
+  parseAllowedStartTimes,
+  isWeekdayAllowed,
+} from "../utils/service-schedule.utils"
 
 /**
  * Parâmetros para busca de horários disponíveis.
@@ -13,6 +19,12 @@ export interface GetAvailableSlotsInput {
   salonId: string
   serviceDuration: number
   professionalId: string
+  /**
+   * Opcional. Quando informado, aplica as regras de agenda do serviço:
+   * dias permitidos, horários de início específicos e duração de bloqueio (faixa).
+   * Ausente => comportamento atual (grade contínua, sem restrição por dia).
+   */
+  serviceId?: string
 }
 
 /**
@@ -40,8 +52,26 @@ export async function getAvailableSlots({
   salonId,
   serviceDuration,
   professionalId,
+  serviceId,
 }: GetAvailableSlotsInput): Promise<string[]> {
   validateInputs(salonId, serviceDuration, professionalId)
+
+  // Regras de agenda POR SERVIÇO (opcional). Sem serviceId => comportamento atual.
+  let allowedWeekdays: number[] | null = null
+  let discreteStartTimes: string[] | null = null
+  let effectiveDuration = serviceDuration
+  if (serviceId) {
+    const svc = await db.query.services.findFirst({
+      where: eq(services.id, serviceId),
+      columns: { duration: true, durationMax: true, allowedWeekdays: true, allowedStartTimes: true },
+    })
+    if (svc) {
+      allowedWeekdays = parseAllowedWeekdays(svc.allowedWeekdays)
+      discreteStartTimes = parseAllowedStartTimes(svc.allowedStartTimes)
+      // Reserva o MAIOR tempo da faixa, alinhado com a validação de booking.
+      effectiveDuration = getBlockingDuration(svc.duration, svc.durationMax)
+    }
+  }
 
   // Normaliza a data e assume que está em horário de Brasília
   // IMPORTANTE: Precisamos calcular o dayOfWeek no timezone de Brasília, não no timezone do servidor
@@ -53,6 +83,11 @@ export async function getAvailableSlots({
   // Como targetDateBrazil já está no timezone de Brasília (via toZonedTime), getDay() deve funcionar
   // Mas para garantir, vamos usar uma abordagem mais explícita
   const dayOfWeek = targetDateBrazil.getDay() // 0 = domingo, 6 = sábado
+
+  // Serviço não atendido neste dia da semana → sem horários.
+  if (!isWeekdayAllowed(allowedWeekdays, dayOfWeek)) {
+    return []
+  }
 
   // Busca horários de trabalho do profissional para este dia da semana
   const allAvailabilityForProfessional = await db
@@ -141,9 +176,10 @@ export async function getAvailableSlots({
     const slots = generateAvailableSlots(
       periodStartUtc,
       periodEndUtc,
-      serviceDuration,
+      effectiveDuration,
       busySlots,
-      isToday ? toBrazilTime(nowBrazil) : null
+      isToday ? toBrazilTime(nowBrazil) : null,
+      { targetDateBrazil, discreteStartTimes }
     )
 
     allAvailableSlots.push(...slots)
@@ -265,13 +301,37 @@ function generateAvailableSlots(
   periodEnd: Date,
   serviceDuration: number,
   busySlots: Array<{ start: Date; end: Date }>,
-  now: Date | null = null
+  now: Date | null = null,
+  options?: { targetDateBrazil?: Date; discreteStartTimes?: string[] | null }
 ): string[] {
   const durationMs = serviceDuration * MINUTE_IN_MS
   const periodStartMs = periodStart.getTime()
   const periodEndMs = periodEnd.getTime()
   const availableSlots: string[] = []
   const nowMs = now ? now.getTime() : null
+
+  // Modo horários específicos: oferece SOMENTE os horários da lista, ainda exigindo
+  // caber na janela de trabalho, evitar passado, e não conflitar com agendamentos.
+  const discreteStartTimes = options?.discreteStartTimes
+  if (discreteStartTimes && discreteStartTimes.length > 0 && options?.targetDateBrazil) {
+    for (const time of discreteStartTimes) {
+      const startBrazil = parseTimeInDay(options.targetDateBrazil, time)
+      if (!startBrazil) continue
+      const slotStart = toBrazilTime(startBrazil).getTime()
+      const slotEnd = slotStart + durationMs
+
+      // Precisa caber inteiramente dentro do período de trabalho
+      if (slotStart < periodStartMs || slotEnd > periodEndMs) continue
+      // Filtra slots no passado se for hoje
+      if (nowMs !== null && slotEnd <= nowMs) continue
+
+      const hasOverlap = busySlots.some(
+        ({ start, end }) => slotStart < end.getTime() && slotEnd > start.getTime()
+      )
+      if (!hasOverlap) availableSlots.push(time)
+    }
+    return availableSlots
+  }
 
   // Gera slots em intervalos de 15 minutos (ou pode ser configurável)
   const slotInterval = 15 * MINUTE_IN_MS
