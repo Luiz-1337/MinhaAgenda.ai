@@ -34,11 +34,11 @@ export interface UpsertServiceInput {
   priceMin?: number
   priceMax?: number
   /** "Sob Avaliação": informa que o valor depende de avaliação. */
-  priceOnRequest?: boolean
+  priceOnRequest: boolean
   /** Dias permitidos (0=Dom..6=Sáb). Vazio = todos os dias. */
-  allowedWeekdays?: number[]
+  allowedWeekdays: number[]
   /** Horários de início "HH:mm". Vazio = grade contínua. */
-  allowedStartTimes?: string[]
+  allowedStartTimes: string[]
   isActive: boolean
   averageCycleDays?: number | null
   professionalIds: string[]
