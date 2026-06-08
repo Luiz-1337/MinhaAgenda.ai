@@ -13,6 +13,7 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
+    "replay": "dotenv -e ../../.env -- tsx __tests__/replay/cli.ts",
     "eval": "dotenv -e ../../.env -- vitest --config vitest.eval.config.ts run",
     "eval:watch": "dotenv -e ../../.env -- vitest --config vitest.eval.config.ts",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",

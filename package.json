@@ -12,6 +12,7 @@
     "db:seed": "pnpm --filter @repo/db run seed",
     "db:clean:solo": "pnpm --filter @repo/db run clean:solo",
     "db:seed:solo:complete": "pnpm --filter @repo/db run seed:solo:complete",
+    "db:seed:cris": "pnpm --filter @repo/db run seed:cris",
     "db:migrate:manual": "pnpm --filter @repo/db run migrate:manual",
     "db:migrate:manual:002": "pnpm --filter @repo/db run migrate:manual:002",
     "db:migrate:manual:003": "pnpm --filter @repo/db run migrate:manual:003",
@@ -32,7 +33,8 @@
     "diagnose:google": "dotenv -e ./.env -- tsx scripts/diagnose-google-integration.ts",
     "diagnose:evolution": "dotenv -e ./.env -- tsx scripts/diagnose-evolution-api.ts",
     "check:integration": "dotenv -e ./.env -- tsx scripts/check-google-integration.ts",
-    "worker:start": "dotenv -e ./.env -- tsx apps/web/workers/message-processor.ts"
+    "worker:start": "dotenv -e ./.env -- tsx apps/web/workers/message-processor.ts",
+    "replay": "pnpm --filter web replay --"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.26.0",
