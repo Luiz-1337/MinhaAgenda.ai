@@ -30,7 +30,7 @@ export function createSalonTools(ctx: ToolContext): ToolSet {
   return {
     getSalonInfo: defineTool(ctx, {
       description:
-        "Retorna informações do salão: nome, endereço, horários de funcionamento, política de cancelamento.",
+        "Retorna informações GERAIS do salão: nome, endereço, telefone, política de cancelamento e horário geral de funcionamento. NÃO use para saber em quais DIAS ou HORÁRIOS um SERVIÇO específico é oferecido — cada serviço tem suas próprias regras de agenda; para isso use getServices (diasAtendimento/horariosDeInicio) ou checkAvailability.",
       inputSchema: getSalonInfoSchema,
       handler: async (_input, { container, salonId }) => {
         const result = await container

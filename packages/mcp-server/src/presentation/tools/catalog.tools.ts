@@ -21,7 +21,7 @@ export function createCatalogTools(ctx: ToolContext): ToolSet {
   return {
     getServices: defineTool(ctx, {
       description:
-        "Lista todos os serviços do salão com nomes, preços e durações. Chame ANTES de informar preços ao cliente. Retorna serviceId necessário para checkAvailability e addAppointment. Não precisa de parâmetros.",
+        "Lista todos os serviços do salão com nomes, preços, durações e as REGRAS DE AGENDA de cada serviço (em quais dias da semana e horários ele é oferecido: diasAtendimento/horariosDeInicio). Use também quando o cliente perguntar em QUE DIAS ou HORÁRIOS um serviço é feito (ex.: 'que dias vocês cortam?'). Chame ANTES de informar preços ao cliente. Retorna serviceId necessário para checkAvailability e addAppointment. Não precisa de parâmetros.",
       inputSchema: getServicesSchema,
       handler: async (input, { container, salonId }) => {
         const result = await container
