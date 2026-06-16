@@ -67,6 +67,12 @@ export interface ConversationContext {
   customerName: string | null
   /** Marks the customer as new (affects greeting wording in the prompt). */
   isNewCustomer: boolean
+  /**
+   * Agendamentos futuros a semear no banco ANTES da conversa, para exercitar
+   * remarcar/cancelar. Cada item vira 1 agendamento daqui a `inDays` dias usando
+   * o professionalId/serviceId do ambiente de eval. Limpos no cleanup.
+   */
+  seedAppointments?: { inDays: number }[]
 }
 
 export interface Conversation {

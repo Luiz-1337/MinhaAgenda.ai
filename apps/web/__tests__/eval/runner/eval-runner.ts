@@ -127,7 +127,11 @@ export async function runConversation(
 ): Promise<ConversationResult> {
   const env = loadEvalEnv()
   const start = Date.now()
-  const seed = await prepareConversationContext(env, conversation.context.customerName)
+  const seed = await prepareConversationContext(
+    env,
+    conversation.context.customerName,
+    conversation.context.seedAppointments
+  )
 
   const turnResults: TurnResult[] = []
   try {
