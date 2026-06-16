@@ -281,7 +281,7 @@ async function main() {
             // Injeção de contexto (igual ao webhook)
             if (args.salonId == null || args.salonId === "") args.salonId = salonId
             if (t.name === "createAppointment" && (args.phone == null || args.phone === "")) args.phone = clientPhone
-            if (t.name === "getMyFutureAppointments" && (args.phone == null || args.phone === "")) args.phone = clientPhone
+            // getMyFutureAppointments NÃO recebe telefone: o servidor usa o clientPhone da sessão.
             if (t.name === "saveCustomerPreference" && (args.customerId == null || args.customerId === "") && customerId)
               args.customerId = customerId
             if (t.name === "qualifyLead" && (args.phoneNumber == null || args.phoneNumber === "")) args.phoneNumber = clientPhone

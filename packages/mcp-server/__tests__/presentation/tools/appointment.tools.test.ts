@@ -263,6 +263,20 @@ describe("appointment.tools", () => {
     })
   })
 
+  it("getMyFutureAppointments IGNORA telefone informado e usa sempre o clientPhone da sessão", async () => {
+    const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
+
+    upcomingExecute.mockResolvedValueOnce(okResult(makeAppointmentListDTO()))
+    // Mesmo que a IA tente passar um telefone, ele NÃO deve ser usado (anti-mismatch + regra "nunca peça telefone").
+    await tools.getMyFutureAppointments.execute({ phone: "5500000000000" } as never)
+
+    expect(upcomingExecute).toHaveBeenCalledWith({
+      salonId,
+      customerId: undefined,
+      phone: clientPhone,
+    })
+  })
+
   it("simula fluxo real: listar futuros -> reagendar -> cancelar", async () => {
     const appointmentId = IDS.appointmentId2
     const tools = createAppointmentTools({ container: containerController.container as any, salonId, clientPhone })
