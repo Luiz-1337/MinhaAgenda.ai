@@ -28,6 +28,19 @@ export interface TrinksProfileSnapshot {
   syncedAt: Date
 }
 
+/**
+ * Snapshot mínimo de um agendamento futuro injetado no prompt para que o agente
+ * SEMPRE saiba os agendamentos em aberto do cliente (mesmo em dias diferentes) e
+ * possa remarcar/cancelar sem pedir telefone nem re-localizar via tool.
+ */
+export interface UpcomingAppointmentSnapshot {
+  id: string
+  serviceName: string
+  professionalName: string
+  /** Data/hora já formatada para leitura (ex.: "12/06/2026 às 16:30"). */
+  startsAt: string
+}
+
 const TIMEZONE = "America/Sao_Paulo"
 
 /**
@@ -183,6 +196,30 @@ function qualitativeTier(totalSpent: number, visits: number, vipScore: number): 
 }
 
 /**
+ * Formata a lista de agendamentos futuros do cliente como bloco privado.
+ *
+ * - `null`/`undefined` → bloco ausente (não foi possível carregar): NÃO afirmamos
+ *   nada sobre agendamentos, o agente recorre a getMyFutureAppointments se precisar.
+ * - `[]` → afirmamos explicitamente que não há agendamentos futuros.
+ * - itens → lista numerada com IDs internos (uso interno; nunca exibir ao cliente).
+ */
+export function formatUpcomingAppointmentsText(
+  appointments?: UpcomingAppointmentSnapshot[] | null
+): string {
+  if (appointments == null) return ""
+
+  if (appointments.length === 0) {
+    return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE: nenhum no momento.\n- Se o cliente pedir para remarcar ou cancelar, informe gentilmente que não há agendamentos futuros e ofereça agendar um novo. NUNCA peça telefone.`
+  }
+
+  const lines = appointments
+    .slice(0, 10)
+    .map((a, i) => `${i + 1}. ${a.serviceName} com ${a.professionalName} — ${a.startsAt} [id interno: ${a.id}]`)
+
+  return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE (contexto privado — atualizado a cada mensagem):\n${lines.join("\n")}\n- Use estes dados para remarcar/cancelar. Os IDs são INTERNOS: use-os em updateAppointment/removeAppointment, mas NUNCA mostre ao cliente.\n- NUNCA peça telefone nem identificação para localizar agendamentos — o cliente já está identificado pelo WhatsApp.`
+}
+
+/**
  * Formata informações do cliente em texto
  */
 function formatCustomerInfoText(
@@ -205,8 +242,7 @@ function formatCustomerInfoText(
       const nameHint = cleanedName.length >= 2 ? ` (WhatsApp: "${customerName}")` : ""
       return `\n\nINFORMAÇÃO DO CLIENTE:
 - Nome precisa ser confirmado${nameHint}. customerId: ${customerId}
-- Pergunte o nome UMA VEZ na saudação inicial. Quando informar, chame updateCustomerName.
-- NUNCA peça telefone — você já tem o número do WhatsApp.${noShowWarning}`
+- Pergunte o nome UMA VEZ na saudação inicial. Quando informar, chame updateCustomerName.${noShowWarning}`
     } else {
       return `\n\nINFORMAÇÃO DO CLIENTE:
 - Nome: ${customerName}
@@ -272,7 +308,8 @@ export class SystemPromptBuilder {
     existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
     noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
     soloProfessional?: { id: string; name: string } | null,
-    trinksProfile?: TrinksProfileSnapshot | null
+    trinksProfile?: TrinksProfileSnapshot | null,
+    upcomingAppointments?: UpcomingAppointmentSnapshot[] | null
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
@@ -281,6 +318,7 @@ export class SystemPromptBuilder {
     const knowledgeContextText = formatKnowledgeContextText(knowledgeContext)
     const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer, noShowRisk)
     const trinksProfileText = formatTrinksProfileText(trinksProfile)
+    const upcomingAppointmentsText = formatUpcomingAppointmentsText(upcomingAppointments)
 
     // Query única para settings do salão (removida duplicação)
     const salonInfo = await db.query.salons.findFirst({
@@ -327,8 +365,8 @@ NÃO chame se a categoria não mudou — evite mover o chat repetidamente na mes
       ? `5. Cliente escolheu horário → Apresente a taxa de confirmação:
    "Para garantir seu horário, trabalhamos com uma taxa de confirmação de R$ ${advancePayment.amount!.toFixed(2)}. Esse valor é totalmente abatido no dia do seu atendimento."
    Informe a chave Pix: ${advancePayment.pix_key}${advancePayment.pix_name ? ` (${advancePayment.pix_name})` : ""}.
-   Peça o comprovante de pagamento.
-   REGRA OBRIGATÓRIA: NUNCA chame addAppointment antes de o cliente enviar o comprovante de pagamento.
+   Peça o comprovante (print/imagem do Pix).
+   REGRA OBRIGATÓRIA: só chame addAppointment DEPOIS que o cliente ENVIAR o comprovante (imagem/print do Pix). Uma promessa como "vou pagar" ou "já paguei" sem o comprovante anexado NÃO conta. Você não valida o pagamento — apenas registra o agendamento após o envio; a equipe confere depois.
 6. Cliente enviou comprovante → Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
       : `5. Cliente escolheu horário → Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
 
@@ -336,8 +374,8 @@ NÃO chame se a categoria não mudou — evite mover o chat repetidamente na mes
       ? `5. Cliente escolheu horário → Apresente a taxa de confirmação:
    "Para garantir seu horário, trabalhamos com uma taxa de confirmação de R$ ${advancePayment.amount!.toFixed(2)}. Esse valor é totalmente abatido no dia do seu atendimento."
    Informe a chave Pix: ${advancePayment.pix_key}${advancePayment.pix_name ? ` (${advancePayment.pix_name})` : ""}.
-   Peça o comprovante de pagamento.
-   REGRA OBRIGATÓRIA: NUNCA chame addAppointment antes de o cliente enviar o comprovante de pagamento.
+   Peça o comprovante (print/imagem do Pix).
+   REGRA OBRIGATÓRIA: só chame addAppointment DEPOIS que o cliente ENVIAR o comprovante (imagem/print do Pix). Uma promessa como "vou pagar" ou "já paguei" sem o comprovante anexado NÃO conta. Você não valida o pagamento — apenas registra o agendamento após o envio; a equipe confere depois.
 6. Cliente enviou comprovante → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
       : `5. Cliente escolheu horário → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
 
@@ -366,12 +404,12 @@ Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmad
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
 Hoje em ISO: ${isoDate} (fuso -03:00). Use HOJE como referência absoluta para datas relativas ("amanhã", "sexta que vem", "dia 30").
-DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${trinksProfileText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
+DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
 ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
 - Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
 - Faça UMA pergunta por vez. NUNCA acumule várias perguntas na mesma mensagem.
-- NUNCA peça telefone — você já tem o número do WhatsApp do cliente.
+- NUNCA peça telefone, CPF ou "confirmação de identidade" — o cliente já está identificado pelo número do WhatsApp, inclusive para remarcar/cancelar.
 - NUNCA re-confirme informações que o cliente já disse. Se ele disse "16h", não pergunte "confirma 16h?".
 - NUNCA anuncie tool calls antes de executá-las. Proibido dizer "vou checar", "vou verificar", "um momento", "aguarde", "deixa eu ver", "ok?" como pergunta. Execute a tool silenciosamente e responda com o RESULTADO.
 - Se o cliente já deu serviço + data + horário, vá direto para a próxima etapa do fluxo (checkAvailability com o horário específico → addAppointment ou pagamento).
@@ -386,7 +424,7 @@ REGRAS DE TOOLS:
 - Chame UMA tool de cada vez, na ordem correta.
 - NUNCA chame addAppointment sem checkAvailability antes.
 - NUNCA chame checkAvailability sem o cliente ter informado uma DATA.
-- NUNCA chame updateAppointment ou removeAppointment sem getMyFutureAppointments antes.
+- Para remarcar/cancelar, use o ID interno do bloco AGENDAMENTOS FUTUROS (atualizado a cada mensagem). Se esse bloco não existir, chame getMyFutureAppointments antes — ele NÃO pede telefone, identifica o cliente pelo WhatsApp.
 - Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.
 
 MEMÓRIA DE CONTEXTO:
@@ -397,14 +435,14 @@ Mensagens anteriores podem conter blocos ---TOOL_CONTEXT--- com dados de tools j
 ${bookingFlow}
 
 REAGENDAMENTO:
-1. Chame getMyFutureAppointments. Mostre agendamentos numerados (sem IDs).
-2. Cliente escolheu → Pergunte nova data.
-3. Chame checkAvailability → Ofereça horários.
-4. Chame updateAppointment → Confirme.
+1. Identifique o agendamento no bloco AGENDAMENTOS FUTUROS: se houver 1, é esse; se houver vários, liste numerados (sem IDs) e pergunte qual; se o bloco não existir, chame getMyFutureAppointments. NUNCA peça telefone nem identificação.
+2. Pergunte a nova data/horário.
+3. Chame checkAvailability para confirmar o novo horário.
+4. Chame updateAppointment com o ID interno do agendamento escolhido → Confirme.
 
 CANCELAMENTO:
-1. Chame getMyFutureAppointments. Mostre agendamentos numerados (sem IDs).
-2. Cliente confirmou → Chame removeAppointment → Confirme.
+1. Identifique o agendamento no bloco AGENDAMENTOS FUTUROS (1 → é esse; vários → liste numerados e pergunte qual; sem bloco → chame getMyFutureAppointments). NUNCA peça telefone nem identificação.
+2. Cliente confirmou → Chame removeAppointment com o ID interno → Confirme.
 
 A agenda SEMPRE existe. NUNCA diga que está inacessível.${kanbanClassificationText}
 
@@ -423,7 +461,8 @@ export async function createSalonAssistantPrompt(
   agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
   noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
   soloProfessional?: { id: string; name: string } | null,
-  trinksProfile?: TrinksProfileSnapshot | null
+  trinksProfile?: TrinksProfileSnapshot | null,
+  upcomingAppointments?: UpcomingAppointmentSnapshot[] | null
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -435,6 +474,7 @@ export async function createSalonAssistantPrompt(
     agentInfo,
     noShowRisk,
     soloProfessional,
-    trinksProfile
+    trinksProfile,
+    upcomingAppointments
   )
 }
