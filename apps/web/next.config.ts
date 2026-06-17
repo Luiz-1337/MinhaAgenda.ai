@@ -13,12 +13,9 @@ const nextConfig: NextConfig = {
     // Pacotes pesados usados apenas em API routes / server-side
     "googleapis",
     "google-auth-library",
-    "@aws-sdk/client-s3",
     "stripe",
     "pdf-parse",
-    "ngrok",
     "qrcode",
-    "nodemailer",
   ],
   images: {
     formats: ["image/avif", "image/webp"],

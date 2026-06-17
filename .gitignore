@@ -2,6 +2,9 @@
 node_modules/
 .pnp
 .pnp.*
+
+# npm lockfiles — este monorepo usa pnpm (packageManager). Nunca versionar npm/yarn locks.
+**/package-lock.json
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
