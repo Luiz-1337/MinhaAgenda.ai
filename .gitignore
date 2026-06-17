@@ -40,6 +40,9 @@ yarn-error.log*
 *.swo
 *~
 
+# Claude Code — config local de maquina (NUNCA versionar; pode conter segredos)
+**/settings.local.json
+
 # Vercel
 .vercel
 
