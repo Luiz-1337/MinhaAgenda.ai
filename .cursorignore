@@ -3,7 +3,7 @@
 **/.next
 **/.expo
 **/dist
-**/buildw
+**/build
 **/.git
 
 # Arquivos de Lock (Gigantes e confundem a IA)

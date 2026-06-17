@@ -55,8 +55,6 @@ next-env.d.ts
 
 # Project specific
 Tutoriais/
-.agent/
-*.MD
 
 # Replay harness — dados reais de clientes (transcripts) e relatórios gerados
 apps/web/__tests__/replay/reports/
