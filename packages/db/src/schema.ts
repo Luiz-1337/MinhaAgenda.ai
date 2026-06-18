@@ -427,19 +427,29 @@ export const chats = pgTable(
   ]
 )
 
-export const messages = pgTable('messages', {
-  id: uuid('id').defaultRandom().primaryKey().notNull(),
-  chatId: uuid('chat_id').references(() => chats.id, { onDelete: 'cascade' }).notNull(),
-  role: chatMessageRoleEnum('role').notNull(),
-  content: text('content'),
-  toolCalls: jsonb('tool_calls'),
-  requiresResponse: boolean('requires_response').default(false).notNull(),
-  inputTokens: integer('input_tokens'),
-  outputTokens: integer('output_tokens'),
-  model: text('model'),
-  totalTokens: integer('total_tokens'),
-  createdAt: timestamp('created_at').defaultNow().notNull()
-})
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    chatId: uuid('chat_id').references(() => chats.id, { onDelete: 'cascade' }).notNull(),
+    role: chatMessageRoleEnum('role').notNull(),
+    content: text('content'),
+    toolCalls: jsonb('tool_calls'),
+    requiresResponse: boolean('requires_response').default(false).notNull(),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    model: text('model'),
+    totalTokens: integer('total_tokens'),
+    // Outbound delivery tracking (ver migration 0040). NULL para mensagens recebidas.
+    // providerMessageId = key.id da Evolution; correlaciona o evento messages.update.
+    providerMessageId: text('provider_message_id'),
+    // 'sent' | 'retrying' | 'delivered' | 'failed' | 'undelivered'
+    deliveryStatus: text('delivery_status'),
+    deliveryAttempts: integer('delivery_attempts').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [index('messages_provider_message_id_idx').on(table.providerMessageId)]
+)
 
 // chatMessages removed (obsolete)
 
@@ -782,6 +792,29 @@ export const adminAuditLogs = pgTable(
     index('admin_audit_logs_created_at_idx').on(table.createdAt),
     index('admin_audit_logs_target_idx').on(table.targetId),
     index('admin_audit_logs_action_idx').on(table.action)
+  ]
+)
+
+// Alertas operacionais exibidos no próprio sistema (ver migration 0041).
+// scope 'global' = ops (worker caído, backlog da fila); 'salon' = salão específico
+// (sem créditos, instância desconectada, resposta não entregue).
+export const systemAlerts = pgTable(
+  'system_alerts',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    scope: text('scope').notNull(), // 'global' | 'salon'
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // ex: 'worker_down', 'out_of_credits', 'delivery_undelivered'
+    severity: text('severity').notNull(), // 'critical' | 'warning'
+    title: text('title').notNull(),
+    detail: jsonb('detail'),
+    status: text('status').default('open').notNull(), // 'open' | 'resolved'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    resolvedAt: timestamp('resolved_at')
+  },
+  (table) => [
+    index('system_alerts_scope_status_idx').on(table.scope, table.status, table.createdAt),
+    index('system_alerts_salon_status_idx').on(table.salonId, table.status)
   ]
 )
 

@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, CreditCard, Activity, Coins } from "lucide-react"
+import { Users, CreditCard, Activity, Coins, AlertTriangle } from "lucide-react"
 import { db, profiles, salons, aiUsageStats, sql, inArray, gte } from "@repo/db"
+import { listOpenAlerts } from "@/lib/services/alerts/alert.service"
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,7 @@ async function loadDashboardMetrics() {
 
 export default async function AdminDashboardPage() {
     const { totalUsers, activePlans, tokens30d } = await loadDashboardMetrics()
+    const globalAlerts = await listOpenAlerts({ salonId: null, limit: 50 }).catch(() => [])
 
     return (
         <div className="space-y-6">
@@ -75,14 +77,44 @@ export default async function AdminDashboardPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Status do Sistema</CardTitle>
-                        <Activity className="h-4 w-4 text-green-500" />
+                        {globalAlerts.length > 0
+                            ? <AlertTriangle className="h-4 w-4 text-red-500" />
+                            : <Activity className="h-4 w-4 text-green-500" />}
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">Online</div>
-                        <p className="text-xs text-muted-foreground">Todos os serviços operando</p>
+                        <div className="text-2xl font-bold">
+                            {globalAlerts.length > 0 ? `${globalAlerts.length} alerta(s)` : "Online"}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            {globalAlerts.length > 0 ? "Requer atenção" : "Todos os serviços operando"}
+                        </p>
                     </CardContent>
                 </Card>
             </div>
+
+            {globalAlerts.length > 0 && (
+                <Card className="mt-6 border-red-500/30">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                            Alertas operacionais abertos
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        {globalAlerts.map((a) => (
+                            <div key={a.id} className="flex items-start gap-2 border-b border-border pb-2 last:border-0 last:pb-0">
+                                <span className={`mt-1.5 h-2 w-2 rounded-full flex-shrink-0 ${a.severity === "critical" ? "bg-red-500" : "bg-amber-500"}`} />
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm">{a.title}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {a.type} · {new Date(a.createdAt).toLocaleString("pt-BR")}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
 
             <Card className="mt-6">
                 <CardHeader>

@@ -26,6 +26,8 @@ export interface ChatMessage {
   from: "cliente" | "agente"
   text: string
   time: string
+  /** Status de entrega (só para mensagens do agente): 'sent'|'retrying'|'delivered'|'failed'|'undelivered'. */
+  deliveryStatus?: string | null
 }
 
 /**
@@ -234,6 +236,7 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[] | {
         from: (msg.role === "user" ? "cliente" : "agente") as "cliente" | "agente",
         text: msg.content || "",
         time: formatMessageTime(msg.createdAt),
+        deliveryStatus: msg.role === "assistant" ? msg.deliveryStatus : undefined,
       }))
 
     return chatMessagesList

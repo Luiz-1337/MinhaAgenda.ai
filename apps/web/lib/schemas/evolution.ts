@@ -169,6 +169,54 @@ const QRCodeUpdatedDataSchema = z.object({
 });
 
 /**
+ * WhatsApp message ack status (Baileys WAMessageStatus).
+ * É o que vem no evento messages.update quando o status de entrega muda.
+ */
+export const MessageAckStatus = {
+  ERROR: 0,
+  PENDING: 1,
+  SERVER_ACK: 2,
+  DELIVERY_ACK: 3,
+  READ: 4,
+  PLAYED: 5,
+} as const;
+
+/**
+ * Normaliza o status do ack para número.
+ * A Evolution geralmente envia número, mas algumas builds enviam string ('ERROR').
+ */
+export function normalizeAckStatus(raw: unknown): number | null {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw === 'string') {
+    const upper = raw.toUpperCase();
+    if (upper in MessageAckStatus) {
+      return MessageAckStatus[upper as keyof typeof MessageAckStatus];
+    }
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * MESSAGES_UPDATE event data schema.
+ * Carrega o status de entrega de uma mensagem já enviada (status:0 = ERROR).
+ */
+const MessageUpdateInnerSchema = z.object({
+  status: z.union([z.number(), z.string()]).optional(),
+  messageStubType: z.number().optional(),
+  messageStubParameters: z.array(z.string()).optional(),
+});
+
+export const MessagesUpdateDataSchema = z.object({
+  key: MessageKeySchema,
+  update: MessageUpdateInnerSchema.optional(),
+  // Algumas builds colocam o status no nível raiz em vez de dentro de `update`.
+  status: z.union([z.number(), z.string()]).optional(),
+  messageId: z.string().optional(),
+});
+
+/**
  * Schema permissivo para o payload raw da Evolution API (aceita v1 e v2)
  */
 const EvolutionWebhookRawSchema = z.object({
@@ -241,6 +289,15 @@ export type QRCodeUpdatedEvent = {
   event: 'qrcode.updated';
   instance: string;
   data: z.infer<typeof QRCodeUpdatedDataSchema>;
+};
+
+/**
+ * Type for messages.update event
+ */
+export type MessagesUpdateEvent = {
+  event: 'messages.update';
+  instance: string;
+  data: z.infer<typeof MessagesUpdateDataSchema>;
 };
 
 export type AddressingMode = "lid" | "jid";

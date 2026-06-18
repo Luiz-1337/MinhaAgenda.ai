@@ -36,6 +36,7 @@ export async function register() {
         // Import dinâmico para evitar problemas com Edge Runtime
         const { createMessageWorker } = await import("./workers/message-processor");
         const { createTrinksProfileSyncWorker } = await import("./workers/trinks-profile-sync.worker");
+        const { createDeliveryRetryWorker } = await import("./workers/delivery-retry.worker");
 
         // Evita criar múltiplos workers durante hot reload
         const globalAny = global as any;
@@ -49,6 +50,13 @@ export async function register() {
                 globalAny._trinksProfileWorker = createTrinksProfileSyncWorker();
             } catch (err) {
                 logger.error({ err }, "Failed to start Trinks profile sync worker");
+            }
+        }
+        if (!globalAny._deliveryRetryWorker) {
+            try {
+                globalAny._deliveryRetryWorker = createDeliveryRetryWorker();
+            } catch (err) {
+                logger.error({ err }, "Failed to start delivery-retry worker");
             }
         }
     }

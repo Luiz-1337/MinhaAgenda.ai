@@ -618,6 +618,12 @@ export default function ChatClient({ salonId }: { salonId: string }) {
                         >
                           {msg.time}
                         </span>
+                        {!isClient && (msg.deliveryStatus === "failed" || msg.deliveryStatus === "undelivered") && (
+                          <span className="text-[10px] font-medium mt-0.5 block text-red-500">não entregue</span>
+                        )}
+                        {!isClient && msg.deliveryStatus === "retrying" && (
+                          <span className="text-[10px] font-medium mt-0.5 block text-amber-500">reenviando…</span>
+                        )}
                       </div>
                     </div>
                   </div>

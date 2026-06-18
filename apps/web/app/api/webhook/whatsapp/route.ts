@@ -17,11 +17,17 @@ import {
   hasMedia,
   extractMediaUrl,
   mapConnectionState,
+  MessagesUpdateDataSchema,
+  MessageAckStatus,
+  normalizeAckStatus,
 } from '@/lib/schemas/evolution';
 import { logger, createContextLogger, hashPhone, createRequestContext, getDuration, getReplicaId } from '@/lib/infra/logger';
 import { StageTimer } from '@/lib/infra/stage-timer';
-import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping } from '@/lib/infra/redis';
+import { isMessageProcessed, markMessageProcessed, resolveLidToPhone, storeLidMapping, getSentMessageContext, deleteSentMessageContext } from '@/lib/infra/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
+import { enqueueDeliveryRetry } from '@/lib/queues/delivery-retry-queue';
+import { WhatsAppMetrics } from '@/lib/infra/metrics';
+import { recordAlert } from '@/lib/services/alerts/alert.service';
 import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
@@ -86,6 +92,15 @@ export async function POST(req: NextRequest) {
             'Schema validation failed'
           );
           WebhookMetrics.error('schema_validation');
+          // Payload malformado: re-tentar não ajuda (mantém 200), mas precisa ficar
+          // visível — uma mudança de formato da Evolution dropa mensagens em silêncio.
+          void recordAlert({
+            scope: 'global',
+            type: 'webhook_schema_validation',
+            severity: 'warning',
+            title: 'Payload do webhook falhou na validação de schema',
+            detail: { rawEvent: (rawPayload as any)?.event },
+          });
           continue;
         }
 
@@ -100,6 +115,9 @@ export async function POST(req: NextRequest) {
           case 'messages.upsert':
             await handleMessageUpsert(data as any, payloadLogger, ctx);
             break;
+          case 'messages.update':
+            await handleMessageUpdate(data as any, payloadLogger, ctx);
+            break;
           case 'connection.update':
             await handleConnectionUpdate(data as any, payloadLogger, ctx);
             break;
@@ -110,7 +128,19 @@ export async function POST(req: NextRequest) {
             payloadLogger.debug({ event: data.event }, 'Ignoring unknown event');
         }
       } catch (payloadError) {
-        reqLogger.warn({ err: payloadError, rawPayload }, 'Error processing webhook payload');
+        // Falha transitória (timeout de DB/Redis, enqueue, etc.) ao processar um
+        // evento. NÃO engolir com 200 — re-lança para o catch externo retornar 500
+        // e a Evolution RE-TENTAR. A idempotência (jobId=messageId + dedup) garante
+        // que o reprocessamento não duplica.
+        reqLogger.error({ err: payloadError, rawEvent: (rawPayload as any)?.event }, 'Transient error processing webhook payload — will signal retry');
+        void recordAlert({
+          scope: 'global',
+          type: 'webhook_processing_error',
+          severity: 'critical',
+          title: 'Erro transitório ao processar evento do webhook (sinalizando retry)',
+          detail: { rawEvent: (rawPayload as any)?.event, error: payloadError instanceof Error ? payloadError.message : String(payloadError) },
+        });
+        throw payloadError;
       }
     }
 
@@ -315,6 +345,14 @@ async function handleMessageUpsert(
     if (!salon) {
       reqLogger.error({ instanceName }, 'No salon or agent found for instance');
       WebhookMetrics.error('salon_not_found');
+      // Instância órfã (ref no banco aponta p/ instância inexistente). Visível em vez de mudo.
+      void recordAlert({
+        scope: 'global',
+        type: 'instance_not_mapped',
+        severity: 'critical',
+        title: `Instância sem salão/agente: ${instanceName}`,
+        detail: { instanceName },
+      });
       return NextResponse.json({ status: 'ok' }, { status: 200 });
     }
 
@@ -334,6 +372,24 @@ async function handleMessageUpsert(
 
     if (!activeAgent) {
       reqLogger.error({ salonId }, 'No active agent for salon');
+      WebhookMetrics.error('no_active_agent');
+      // Persiste a mensagem (recuperável/visível no painel) + alerta o salão, em vez
+      // de descartar mudo. Best-effort: nunca lança (não queremos 500/retry aqui — um
+      // retry não torna o agente ativo). A IA não responde até reativarem o agente.
+      try {
+        const chat = await withTimeout(findOrCreateChat(clientPhone, salonId), DB_TIMEOUT, 'findOrCreateChat');
+        await withTimeout(saveMessage(chat.id, 'user', extractMessageContent(messageData)), DB_TIMEOUT, 'saveMessage');
+      } catch (persistErr) {
+        reqLogger.warn({ err: persistErr }, 'Failed to persist inbound message on no-active-agent path');
+      }
+      void recordAlert({
+        scope: 'salon',
+        salonId,
+        type: 'no_active_agent',
+        severity: 'critical',
+        title: 'Mensagem recebida mas nenhum agente está ativo — cliente sem resposta',
+        detail: { instanceName },
+      });
       return NextResponse.json({ status: 'ok' }, { status: 200 });
     }
 
@@ -370,18 +426,7 @@ async function handleMessageUpsert(
   const mediaType = detectMediaType(messageData);
   const mediaUrl = extractMediaUrl(messageData);
 
-  // 8. MARCAR COMO PROCESSADO ANTES de enfileirar (idempotência atômica)
-  // Se o markMessageProcessed ou enqueue falhar depois, a mensagem não será reprocessada
-  // evitando duplicação. É preferível perder uma mensagem rara a processar em dobro.
-  await withTimeout(
-    markMessageProcessed(messageId),
-    REDIS_TIMEOUT,
-    'markMessageProcessed'
-  );
-
-  timer.mark('marked_processed');
-
-  // 9. SALVAR MENSAGEM RAW NO BANCO (com timeout)
+  // 8. SALVAR MENSAGEM RAW NO BANCO (com timeout)
   await withTimeout(
     saveMessage(chat.id, 'user', messageContent),
     DB_TIMEOUT,
@@ -391,7 +436,12 @@ async function handleMessageUpsert(
 
   timer.mark('message_saved');
 
-  // 10. ENFILEIRAR PROCESSAMENTO (com timeout)
+  // 9. ENFILEIRAR PROCESSAMENTO (com timeout)
+  // Enfileira ANTES de marcar processado. A idempotência é garantida por
+  // jobId=messageId (BullMQ colapsa duplicatas) + o dedup do topo. Se enqueue
+  // falhar, NÃO marcamos processado e o erro sobe -> 500 -> Evolution re-tenta.
+  // Antes a ordem era invertida e um crash entre marcar e enfileirar perdia a
+  // mensagem para sempre (dedup bloqueava o retry).
   await withTimeout(
     enqueueMessage({
       messageId,
@@ -420,6 +470,15 @@ async function handleMessageUpsert(
 
   timer.mark('enqueued');
 
+  // 10. MARCAR COMO PROCESSADO (somente após enqueue durável bem-sucedido)
+  await withTimeout(
+    markMessageProcessed(messageId),
+    REDIS_TIMEOUT,
+    'markMessageProcessed'
+  );
+
+  timer.mark('marked_processed');
+
   const duration = getDuration(ctx);
 
   // Registra métricas de sucesso
@@ -429,6 +488,106 @@ async function handleMessageUpsert(
   // Emite log agregado com breakdown por stage (busque por messageId para ver end-to-end)
   timer.flush(reqLogger, { outcome: 'enqueued', salonId, chatId: chat.id });
 
+  return NextResponse.json({ status: 'ok' }, { status: 200 });
+}
+
+/**
+ * Handler para evento messages.update (status de entrega de uma mensagem ENVIADA).
+ *
+ * Só nos interessam mensagens nossas (fromMe:true):
+ * - status:0 (ERROR)  -> a entrega falhou silenciosamente; dispara a escala de
+ *   reenvio (reenvia -> reinicia -> reenvia -> manual) via fila dedicada.
+ * - status>=2 (entregue/lido) -> marca como entregue e para de rastrear.
+ *
+ * O webhook só valida e enfileira (maxDuration 10s); a escala roda no worker.
+ */
+async function handleMessageUpdate(
+  data: any,
+  reqLogger: ReturnType<typeof createContextLogger>,
+  ctx: ReturnType<typeof createRequestContext>
+) {
+  const instanceName = data.instance;
+  const parsed = MessagesUpdateDataSchema.safeParse(data.data);
+  if (!parsed.success) {
+    reqLogger.debug({ errors: parsed.error.issues }, 'messages.update payload not parseable, ignoring');
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  const upd = parsed.data;
+  // Só mensagens enviadas por nós carregam status de entrega que nos interessa.
+  if (!upd.key.fromMe) {
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  const messageId = upd.key.id;
+  const status = normalizeAckStatus(upd.update?.status ?? upd.status);
+
+  // SUCESSO: entregue/lido -> marca entregue e para de rastrear.
+  if (status !== null && status >= MessageAckStatus.SERVER_ACK) {
+    const sent = await withTimeout(getSentMessageContext(messageId, instanceName), REDIS_TIMEOUT, 'getSentMessageContext').catch(() => null);
+    if (sent) {
+      await withTimeout(deleteSentMessageContext(messageId, instanceName), REDIS_TIMEOUT, 'deleteSentMessageContext').catch(() => {});
+      if (sent.rootMessageId) {
+        await withTimeout(
+          db.update(messages).set({ deliveryStatus: 'delivered' }).where(eq(messages.providerMessageId, sent.rootMessageId)),
+          DB_TIMEOUT,
+          'markDelivered'
+        ).catch((err) => reqLogger.warn({ err }, 'Failed to mark message delivered'));
+      }
+      if (sent.attempt > 1) {
+        // A entrega só funcionou depois de um reenvio -> recuperação bem-sucedida.
+        WhatsAppMetrics.deliveryRecovered({ instanceName, attempts: sent.attempt });
+      }
+    }
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  // FALHA: status:0 (ERROR) -> dispara a escala.
+  if (status === MessageAckStatus.ERROR) {
+    const sent = await withTimeout(getSentMessageContext(messageId, instanceName), REDIS_TIMEOUT, 'getSentMessageContext').catch(() => null);
+    if (!sent) {
+      // Não é uma mensagem rastreada (ou já tratada/expirada) — ignora.
+      reqLogger.debug({ messageId }, 'status:0 for untracked/expired message — ignoring');
+      return NextResponse.json({ status: 'ok' }, { status: 200 });
+    }
+
+    WhatsAppMetrics.deliveryFailed({ instanceName, ladderStep: sent.attempt });
+
+    if (sent.rootMessageId) {
+      await withTimeout(
+        db.update(messages).set({ deliveryStatus: 'failed', deliveryAttempts: sent.attempt }).where(eq(messages.providerMessageId, sent.rootMessageId)),
+        DB_TIMEOUT,
+        'markFailed'
+      ).catch((err) => reqLogger.warn({ err }, 'Failed to mark message failed'));
+    }
+
+    await withTimeout(
+      enqueueDeliveryRetry({
+        failedMessageId: messageId,
+        rootMessageId: sent.rootMessageId,
+        chatId: sent.chatId,
+        salonId: sent.salonId,
+        agentId: sent.agentId,
+        instanceName,
+        recipientJid: sent.sendTo,
+        originalText: sent.text,
+        attempt: sent.attempt,
+      }),
+      REDIS_TIMEOUT,
+      'enqueueDeliveryRetry'
+    ).catch((err) => reqLogger.error({ err }, 'Failed to enqueue delivery retry'));
+
+    // Consome o contexto: o job já carrega tudo, e isso dedup-a um status:0 duplicado.
+    await withTimeout(deleteSentMessageContext(messageId, instanceName), REDIS_TIMEOUT, 'deleteSentMessageContext').catch(() => {});
+
+    reqLogger.info(
+      { messageId, ladderStep: sent.attempt, chatId: sent.chatId },
+      'Outbound delivery failed (status:0) — escalation enqueued'
+    );
+    return NextResponse.json({ status: 'ok' }, { status: 200 });
+  }
+
+  // PENDING (1) ou status desconhecido — ignora.
   return NextResponse.json({ status: 'ok' }, { status: 200 });
 }
 

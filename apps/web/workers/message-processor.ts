@@ -3,8 +3,10 @@
  */
 
 import { Worker, Job, DelayedError } from "bullmq";
-import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient } from "../lib/infra/redis";
-import { MessageJobData, MessageJobResult, parseLatestJobSentinel } from "../lib/queues/message-queue";
+import { createRedisClientForBullMQ, acquireLock, releaseLock, getRedisClient, storeSentMessageContext, markReplied, isReplied } from "../lib/infra/redis";
+import { MessageJobData, MessageJobResult, parseLatestJobSentinel, getQueueEvents } from "../lib/queues/message-queue";
+import { recordAlert } from "../lib/services/alerts/alert.service";
+import { enqueueDeliveryRetry } from "../lib/queues/delivery-retry-queue";
 import { logger, createContextLogger, getReplicaId } from "../lib/infra/logger";
 import { StageTimer } from "../lib/infra/stage-timer";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
@@ -40,6 +42,32 @@ const AI_TIMEOUT_MS = 90000;
 const CONCURRENCY = 10;
 const SESSION_RECOVERY_LOCK_TTL_MS = 10 * 60 * 1000;
 
+// Liveness do worker: enquanto o processo está vivo, refresca uma chave no Redis.
+// Se ela expirar (sem refresh), o /health e o cron health-watch detectam que o
+// worker (ponto único na Railway) caiu. TTL > 2x o intervalo para tolerar atrasos.
+const WORKER_HEARTBEAT_KEY = "worker:heartbeat";
+const WORKER_HEARTBEAT_INTERVAL_MS = 10_000;
+const WORKER_HEARTBEAT_TTL_S = 30;
+
+function startWorkerHeartbeat(): NodeJS.Timeout {
+  const write = async () => {
+    try {
+      await getRedisClient().set(
+        WORKER_HEARTBEAT_KEY,
+        JSON.stringify({ replica: getReplicaId(), at: new Date().toISOString() }),
+        "EX",
+        WORKER_HEARTBEAT_TTL_S
+      );
+    } catch (err) {
+      logger.warn({ err }, "Failed to write worker heartbeat");
+    }
+  };
+  void write();
+  const timer = setInterval(write, WORKER_HEARTBEAT_INTERVAL_MS);
+  timer.unref?.();
+  return timer;
+}
+
 async function triggerSessionRecovery(
   instanceName: string,
   jobLogger: ReturnType<typeof createContextLogger>
@@ -68,6 +96,71 @@ async function triggerSessionRecovery(
     );
   }
   // Keep lock until TTL expires to avoid recovery loops.
+}
+
+/**
+ * Envia uma resposta da IA e registra o contexto de entrega no Redis para que,
+ * se a entrega falhar depois (evento messages.update status:0), a escala de
+ * reenvio consiga reconstruir o que reenviar.
+ *
+ * Retorna o messageId da Evolution para persistir como providerMessageId na
+ * linha da mensagem (permite o painel mostrar "não entregue").
+ */
+async function deliverReply(opts: {
+  sendTo: string;
+  text: string;
+  salonId: string;
+  agentId: string;
+  chatId: string;
+  instanceName: string;
+}): Promise<string | undefined> {
+  const result = await sendWhatsAppMessage(opts.sendTo, opts.text, opts.salonId, {
+    agentId: opts.agentId,
+  });
+  const messageId = result?.messageId;
+  // Tracking is best-effort: a missing messageId just disables delivery-retry for
+  // this one reply — it must never break the send/save pipeline.
+  if (messageId) {
+    try {
+      await storeSentMessageContext(
+        messageId,
+        {
+          chatId: opts.chatId,
+          salonId: opts.salonId,
+          agentId: opts.agentId,
+          sendTo: opts.sendTo,
+          text: opts.text,
+          attempt: 1,
+          rootMessageId: messageId,
+        },
+        opts.instanceName
+      );
+      // Watchdog por prazo: se em ~90s não houver confirmação de entrega (nem
+      // status:0 que dispara a escada), alerta. Remove a dependência de a
+      // Evolution emitir o ack — sem auto-reenvio (evita envio duplicado).
+      await enqueueDeliveryRetry(
+        {
+          failedMessageId: messageId,
+          rootMessageId: messageId,
+          chatId: opts.chatId,
+          salonId: opts.salonId,
+          agentId: opts.agentId,
+          instanceName: opts.instanceName,
+          recipientJid: opts.sendTo,
+          originalText: opts.text,
+          attempt: 1,
+          watchdog: true,
+        },
+        { delayMs: 90_000, idSuffix: "watchdog" }
+      );
+    } catch (err) {
+      logger.warn(
+        { err, chatId: opts.chatId },
+        "Failed to store sent message context (delivery retry disabled for this message)"
+      );
+    }
+  }
+  return messageId;
 }
 
 /**
@@ -187,7 +280,7 @@ async function processMessage(
           } else {
             jobLogger.warn({ err: result.error.message }, "RecordCustomerOptOutUseCase failed");
           }
-          await sendWhatsAppMessage(sendTo, OPT_OUT_CONFIRMATION_MESSAGE, salonId, { agentId });
+          await deliverReply({ sendTo, text: OPT_OUT_CONFIRMATION_MESSAGE, salonId, agentId, chatId, instanceName });
         } catch (err) {
           jobLogger.error({ err }, "Failed to process hard opt-out");
         }
@@ -205,7 +298,7 @@ async function processMessage(
           const repo = mcpContainer.resolve<IRetentionRepository>(MCP_TOKENS.RetentionRepository);
           const cleared = await repo.clearOptOut(salonId, clientPhone);
           if (cleared) {
-            await sendWhatsAppMessage(sendTo, OPT_IN_CONFIRMATION_MESSAGE, salonId, { agentId });
+            await deliverReply({ sendTo, text: OPT_IN_CONFIRMATION_MESSAGE, salonId, agentId, chatId, instanceName });
             jobLogger.info({}, "Customer opt-in restored");
             timer.flush(jobLogger, { outcome: "opt_in", queueWaitMs });
             return {
@@ -327,6 +420,14 @@ async function processMessage(
       };
     }
 
+    // Idempotência de resposta: se ESTE job já foi respondido (re-execução por
+    // stalled/retry do BullMQ após um envio bem-sucedido), não gerar/enviar de novo.
+    if (await isReplied(messageId)) {
+      jobLogger.info("Inbound message already replied — skipping to avoid double-send");
+      timer.flush(jobLogger, { outcome: "already_replied", queueWaitMs });
+      return { status: "success", chatId, messageId, duration: Date.now() - startTime };
+    }
+
     const chatRecord = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
       columns: { isManual: true },
@@ -400,8 +501,44 @@ async function processMessage(
       throw new Error(`Credits check failed: ${creditsResult.error}`);
     }
 
+    // Aviso "soft" (não bloqueia): créditos abaixo de 5% do total.
+    if (creditsResult.total > 0 && creditsResult.remaining > 0 && creditsResult.remaining < creditsResult.total * 0.05) {
+      void recordAlert({
+        scope: "salon",
+        salonId,
+        type: "credits_low",
+        severity: "warning",
+        title: "Créditos quase no fim (menos de 5% restante)",
+        detail: { remaining: creditsResult.remaining, total: creditsResult.total },
+        throttleSeconds: 6 * 60 * 60,
+      });
+    }
+
     if (creditsResult.remaining <= 0) {
       jobLogger.info({ salonId, total: creditsResult.total, used: creditsResult.used }, "Salon out of credits, skipping AI processing");
+      // Avisa o cliente (throttled 24h por chat) em vez de silêncio total, e alerta o salão.
+      try {
+        const redis = getRedisClient();
+        const notified = await redis.set(`credits:blocked:${salonId}:${sendTo}`, "1", "EX", 60 * 60 * 24, "NX");
+        if (notified !== null) {
+          await sendWhatsAppMessage(
+            sendTo,
+            "Olá! No momento nosso atendimento automatizado está temporariamente indisponível. Em breve retornaremos. Obrigado pela compreensão!",
+            salonId,
+            { agentId }
+          );
+        }
+      } catch (err) {
+        jobLogger.warn({ err }, "Failed to send out-of-credits notice to client");
+      }
+      void recordAlert({
+        scope: "salon",
+        salonId,
+        type: "out_of_credits",
+        severity: "critical",
+        title: "Salão sem créditos — IA pausada, clientes sem resposta automática",
+        detail: { total: creditsResult.total, used: creditsResult.used },
+      });
       timer.flush(jobLogger, { outcome: "out_of_credits", queueWaitMs });
       return {
         status: "out_of_credits",
@@ -457,7 +594,8 @@ async function processMessage(
         );
         timer.mark("ai_response_generated");
 
-        await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+        const providerMessageId = await deliverReply({ sendTo, text: response.text, salonId, agentId, chatId, instanceName });
+        await markReplied(messageId);
         timer.mark("whatsapp_sent");
 
         const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
@@ -468,6 +606,8 @@ async function processMessage(
           totalTokens: response.usage?.totalTokens,
           model: response.model,
           toolSummary: response.toolSummary,
+          providerMessageId,
+          deliveryStatus: "sent",
         });
 
         if (response.usage?.totalTokens && response.usage.totalTokens > 0) {
@@ -544,7 +684,8 @@ async function processMessage(
         );
         timer.mark("ai_response_generated");
 
-        await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+        const providerMessageId = await deliverReply({ sendTo, text: response.text, salonId, agentId, chatId, instanceName });
+        await markReplied(messageId);
         timer.mark("whatsapp_sent");
 
         const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
@@ -555,6 +696,8 @@ async function processMessage(
           totalTokens: response.usage?.totalTokens,
           model: response.model,
           toolSummary: response.toolSummary,
+          providerMessageId,
+          deliveryStatus: "sent",
         });
 
         if (response.usage?.totalTokens && response.usage.totalTokens > 0) {
@@ -616,7 +759,8 @@ async function processMessage(
     );
     timer.mark("ai_response_generated");
 
-    await sendWhatsAppMessage(sendTo, response.text, salonId, { agentId });
+    const providerMessageId = await deliverReply({ sendTo, text: response.text, salonId, agentId, chatId, instanceName });
+    await markReplied(messageId);
     timer.mark("whatsapp_sent");
 
     const requiresResponse = domainServices.analyzeMessageRequiresResponse(response.text);
@@ -628,6 +772,8 @@ async function processMessage(
       model: response.model,
       requiresResponse,
       toolSummary: response.toolSummary,
+      providerMessageId,
+      deliveryStatus: "sent",
     });
 
     // Debita os tokens usados do saldo mensal do salão
@@ -764,6 +910,41 @@ async function processMessage(
       throw error; // retryable — BullMQ retentar com backoff
     }
 
+    // Tentativas esgotadas para QUALQUER outro erro (timeout, AIGenerationError, etc.):
+    // não deixar o cliente sem nada. Envia fallback, passa o chat pro manual e alerta.
+    if (currentAttempt >= maxAttempts) {
+      const fallback =
+        error instanceof WhatsAppError
+          ? getUserFriendlyMessage(error)
+          : "Desculpe, tive uma instabilidade técnica agora. Já avisei a equipe e em breve retornamos. 🙏";
+      try {
+        await sendWhatsAppMessage(sendTo, fallback, salonId, { agentId });
+        await saveMessage(chatId, "assistant", fallback);
+      } catch (sendError) {
+        jobLogger.error({ err: sendError }, "Failed to send terminal fallback to client");
+      }
+      try {
+        await db.update(chats).set({ isManual: true, updatedAt: new Date() }).where(eq(chats.id, chatId));
+      } catch (flipErr) {
+        jobLogger.error({ err: flipErr }, "Failed to flip chat to manual after exhaustion");
+      }
+      void recordAlert({
+        scope: "salon",
+        salonId,
+        type: "ai_processing_exhausted",
+        severity: "critical",
+        title: "Falha ao gerar/enviar resposta após todas as tentativas — chat em manual",
+        detail: { chatId, error: error instanceof Error ? error.message : String(error) },
+      });
+      return {
+        status: "error",
+        chatId,
+        messageId,
+        duration,
+        error: error instanceof Error ? error.message : "exhausted",
+      };
+    }
+
     throw error;
   } finally {
     if (lockId) {
@@ -833,15 +1014,42 @@ export function createMessageWorker(): Worker<MessageJobData, MessageJobResult> 
       },
       "Job failed"
     );
+    // Alerta operacional (throttled) — um job esgotado = um cliente sem resposta.
+    void recordAlert({
+      scope: "global",
+      type: "queue_job_failed",
+      severity: "critical",
+      title: "Job de mensagem falhou após todas as tentativas",
+      detail: { jobId: job?.id, messageId: job?.data.messageId, error: error.message, attempts: job?.attemptsMade },
+    });
   });
 
   worker.on("stalled", (jobId) => {
     logger.warn({ jobId }, "Job stalled");
+    void recordAlert({
+      scope: "global",
+      type: "job_stalled",
+      severity: "warning",
+      title: "Job de mensagem travou (stalled)",
+      detail: { jobId },
+    });
   });
 
   worker.on("error", (error) => {
     logger.error({ err: error }, "Worker error");
+    void recordAlert({
+      scope: "global",
+      type: "worker_error",
+      severity: "critical",
+      title: "Erro no worker de mensagens",
+      detail: { error: error.message },
+    });
   });
+
+  // Liveness + observabilidade da fila (QueueEvents estava definido mas nunca iniciado).
+  const heartbeat = startWorkerHeartbeat();
+  worker.on("closing", () => clearInterval(heartbeat));
+  getQueueEvents();
 
   logger.info({ queue: QUEUE_NAME, concurrency: CONCURRENCY }, "Message worker started");
 
@@ -856,6 +1064,7 @@ if (require.main === module) {
   // Also start the Trinks profile sync worker in the same process — same Redis
   // connection, lower concurrency, no impact on message-processing throughput.
   let trinksWorker: { close(): Promise<void> } | null = null;
+  let deliveryRetryWorker: { close(): Promise<void> } | null = null;
   (async () => {
     try {
       const { createTrinksProfileSyncWorker } = await import("./trinks-profile-sync.worker");
@@ -863,12 +1072,19 @@ if (require.main === module) {
     } catch (err) {
       logger.error({ err }, "Failed to start Trinks profile sync worker");
     }
+    try {
+      const { createDeliveryRetryWorker } = await import("./delivery-retry.worker");
+      deliveryRetryWorker = createDeliveryRetryWorker();
+    } catch (err) {
+      logger.error({ err }, "Failed to start delivery-retry worker");
+    }
   })();
 
   const shutdown = async () => {
     logger.info("Shutting down workers...");
     await worker.close();
     if (trinksWorker) await trinksWorker.close();
+    if (deliveryRetryWorker) await deliveryRetryWorker.close();
     process.exit(0);
   };
 

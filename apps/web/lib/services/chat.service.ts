@@ -243,6 +243,10 @@ export async function saveMessage(
     model?: string
     requiresResponse?: boolean
     toolSummary?: string
+    /** key.id da Evolution para correlacionar o evento messages.update de entrega. */
+    providerMessageId?: string
+    /** Estado de entrega inicial ('sent' para respostas que acabaram de sair). */
+    deliveryStatus?: string
   }
 ): Promise<void> {
   // Append tool summary ao content para que o histórico tenha contexto de tools
@@ -259,6 +263,8 @@ export async function saveMessage(
     outputTokens: options?.outputTokens ?? null,
     totalTokens: options?.totalTokens ?? null,
     model: options?.model ?? null,
+    providerMessageId: options?.providerMessageId ?? null,
+    deliveryStatus: options?.deliveryStatus ?? null,
   })
 
   if (role === "assistant") {
