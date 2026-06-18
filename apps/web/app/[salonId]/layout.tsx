@@ -6,6 +6,7 @@ import { SidebarNav, MobileSidebar } from "@/components/dashboard/sidebar"
 import { UserNav } from "@/components/dashboard/user-nav"
 import { SalonSelector } from "@/components/dashboard/salon-selector"
 import { RouteGuard } from "@/components/auth/route-guard"
+import { AlertsBell } from "@/components/dashboard/alerts-bell"
 import { Bot } from 'lucide-react'
 
 export default async function SalonLayout({
@@ -78,6 +79,7 @@ export default async function SalonLayout({
             </div>
 
             <div className="flex items-center gap-4">
+              <AlertsBell salonId={salonId} />
               <UserNav userName={userName} />
             </div>
           </header>

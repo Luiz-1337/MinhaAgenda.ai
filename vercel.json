@@ -23,6 +23,18 @@
     {
       "path": "/api/cron/trinks-sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/health-watch",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-unanswered",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-webhooks",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

@@ -12,7 +12,7 @@ vi.mock("@/lib/services/chat.service", () => ({
 }))
 
 vi.mock("@/lib/services/evolution/evolution-message.service", () => ({
-  sendWhatsAppMessage: vi.fn().mockResolvedValue(undefined),
+  sendWhatsAppMessage: vi.fn().mockResolvedValue({ messageId: "evo-msg-id" }),
   isSessionError: vi.fn().mockReturnValue(false),
   getSessionErrorReason: vi.fn().mockReturnValue(null),
   WhatsAppMessageError: class WhatsAppMessageError extends Error {
@@ -55,7 +55,7 @@ import { processMessage } from "@/workers/message-processor"
 import { generateAIResponse } from "@/lib/services/ai/generate-response.service"
 import { sendWhatsAppMessage } from "@/lib/services/evolution/evolution-message.service"
 import { saveMessage } from "@/lib/services/chat.service"
-import { acquireLock, releaseLock, getRedisClient } from "@/lib/infra/redis"
+import { acquireLock, releaseLock, getRedisClient, isReplied } from "@/lib/infra/redis"
 import { db, domainServices } from "@repo/db"
 import { getSalonRemainingCredits, debitSalonCredits } from "@/lib/services/credits.service"
 
@@ -132,6 +132,18 @@ describe("processMessage", () => {
     expect(generateAIResponse).not.toHaveBeenCalled()
   })
 
+  it("idempotência de envio: pula se a mensagem já foi respondida (re-run de job)", async () => {
+    vi.mocked(isReplied).mockResolvedValueOnce(true)
+
+    const job = makeFakeJob()
+
+    const result = await processMessage(job as any)
+
+    expect(result.status).toBe("success")
+    expect(generateAIResponse).not.toHaveBeenCalled()
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled()
+  })
+
   it("manual mode: não processa AI quando chat está em modo manual", async () => {
     vi.mocked(db.query.chats.findFirst).mockResolvedValue({ isManual: true } as any)
 
@@ -192,7 +204,7 @@ describe("processMessage", () => {
     expect(result.status).toBe("success")
   })
 
-  it("sem créditos: retorna out_of_credits", async () => {
+  it("sem créditos: retorna out_of_credits E avisa o cliente (não fica em silêncio)", async () => {
     vi.mocked(getSalonRemainingCredits).mockResolvedValue({
       remaining: 0,
       total: 1000000,
@@ -205,6 +217,25 @@ describe("processMessage", () => {
 
     expect(result.status).toBe("out_of_credits")
     expect(generateAIResponse).not.toHaveBeenCalled()
+    // Novo: avisa o cliente em vez de silêncio total
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("temporariamente indisponível"),
+      IDS.salonId,
+      { agentId: IDS.agentId }
+    )
+  })
+
+  it("erro esgotado: envia fallback ao cliente + manual em vez de falhar calado", async () => {
+    vi.mocked(generateAIResponse).mockRejectedValue(new Error("AI explodiu"))
+    // attemptsMade=2 -> currentAttempt=3 == maxAttempts(3) => esgotado
+    const job = makeFakeJob({}, { attemptsMade: 2 })
+
+    const result = await processMessage(job as any)
+
+    expect(result.status).toBe("error")
+    // Em vez de throw silencioso, manda algo ao cliente
+    expect(sendWhatsAppMessage).toHaveBeenCalled()
   })
 
   it("mensagem de mídia: responde com template sem chamar AI", async () => {

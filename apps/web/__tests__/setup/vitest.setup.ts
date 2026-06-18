@@ -101,6 +101,11 @@ vi.mock("@/lib/infra/redis", () => ({
   resolveLidToPhone: vi.fn(),
   setManualLidMapping: vi.fn(),
   removeLidMapping: vi.fn(),
+  storeSentMessageContext: vi.fn().mockResolvedValue(undefined),
+  getSentMessageContext: vi.fn().mockResolvedValue(null),
+  deleteSentMessageContext: vi.fn().mockResolvedValue(undefined),
+  markReplied: vi.fn().mockResolvedValue(undefined),
+  isReplied: vi.fn().mockResolvedValue(false),
 }))
 
 beforeAll(() => {

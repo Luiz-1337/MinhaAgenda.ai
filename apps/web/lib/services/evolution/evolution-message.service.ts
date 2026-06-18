@@ -10,7 +10,7 @@
 
 import { db, salons, agents, and, eq } from '@repo/db';
 import { getEvolutionClient, evolutionCircuitBreaker, EvolutionAPIError } from './evolution-api.service';
-import { resolveEvolutionInstance } from './evolution-instance.service';
+import { resolveEvolutionInstance, getInstanceStatus } from './evolution-instance.service';
 import { CircuitOpenError } from '../../infra/circuit-breaker';
 import { logger, hashPhone } from '../../infra/logger';
 
@@ -122,6 +122,25 @@ interface SendMessageResponse {
 }
 
 /**
+ * Confirma que a instância está conectada antes de enviar.
+ *
+ * O `connectionStatus` no banco só é atualizado pelos webhooks connection.update
+ * e pode estar DEFASADO (ex.: evento perdido após uma reconexão). Se o banco
+ * disser "desconectado", confere AO VIVO via getInstanceStatus antes de bloquear,
+ * para não travar respostas legítimas quando a instância está de fato no ar.
+ */
+async function ensureConnected(instance: { instanceName: string; connectionStatus: string | null }): Promise<void> {
+  if (instance.connectionStatus === 'connected') return;
+  const liveStatus = await getInstanceStatus(instance.instanceName).catch(() => null);
+  if (liveStatus !== 'connected') {
+    throw new WhatsAppMessageError(
+      'WhatsApp not connected. Please scan QR code first.',
+      true // RETRYABLE: connection may recover within retry window
+    );
+  }
+}
+
+/**
  * Send WhatsApp message via Evolution API
  *
  * PROTECTED BY CIRCUIT BREAKER:
@@ -145,12 +164,7 @@ export async function sendWhatsAppMessage(
   // Resolve Evolution instance (agent-level for PRO/Enterprise, salon-level for SOLO)
   const instance = await resolveEvolutionInstance(salonId, options?.agentId);
 
-  if (instance.connectionStatus !== 'connected') {
-    throw new WhatsAppMessageError(
-      'WhatsApp not connected. Please scan QR code first.',
-      true // RETRYABLE: connection may recover within retry window
-    );
-  }
+  await ensureConnected(instance);
 
   const evolutionInstanceName = instance.instanceName;
 
@@ -288,12 +302,7 @@ export async function sendWithTypingIndicator(
   options?: SendMessageOptions
 ): Promise<{ messageId: string }> {
   const instance = await resolveEvolutionInstance(salonId, options?.agentId);
-  if (instance.connectionStatus !== 'connected') {
-    throw new WhatsAppMessageError(
-      'WhatsApp not connected. Please scan QR code first.',
-      true
-    );
-  }
+  await ensureConnected(instance);
 
   const toNumber = normalizePhoneNumber(to);
   const evolutionInstanceName = instance.instanceName;

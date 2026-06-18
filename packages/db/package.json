@@ -25,6 +25,8 @@
     "migrate:manual:009": "node scripts/migrate_009.mjs",
     "migrate:manual:038": "node scripts/migrate_038.mjs",
     "migrate:manual:039": "node scripts/migrate_039.mjs",
+    "migrate:manual:040": "node scripts/migrate_040.mjs",
+    "migrate:manual:041": "node scripts/migrate_041.mjs",
     "migrate:signup-function": "node scripts/migrate_003_signup_function.mjs",
     "check:rag": "node scripts/check-rag-setup.mjs",
     "reset": "node scripts/reset.mjs",

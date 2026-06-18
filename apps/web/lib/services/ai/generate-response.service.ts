@@ -11,6 +11,7 @@
 import { createMCPTools } from "@repo/mcp-server/tools/vercel-ai";
 import { NIL_UUID } from "@repo/mcp-server";
 import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
+import { normalizeWhatsappFormatting } from "./whatsapp-format";
 import { getActiveAgentInfo } from "./agent-info.service";
 import { mapModelToOpenAI } from "./model-mapper.service";
 import { runOpenAIResponses } from "./openai-responses-runner.service";
@@ -839,7 +840,7 @@ function sanitizeAssistantText(text: string): string {
     return LEAKED_ERROR_FALLBACK_MESSAGE;
   }
 
-  const sanitized = text
+  const sanitized = normalizeWhatsappFormatting(text)
     .replace(SENSITIVE_ID_REGEX, "")
     .replace(UUID_REGEX, "")
     .replace(/\(\s*\)/g, "")

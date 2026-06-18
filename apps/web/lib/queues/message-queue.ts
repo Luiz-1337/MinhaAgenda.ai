@@ -9,7 +9,7 @@
  */
 
 import { Queue, QueueEvents, Job } from "bullmq";
-import { getRedisClient } from "../infra/redis";
+import { getRedisClient, createRedisClientForBullMQ } from "../infra/redis";
 import { logger } from "../infra/logger";
 
 /**
@@ -159,7 +159,10 @@ export function getQueueEvents(): QueueEvents {
     return queueEvents;
   }
 
-  const connection = getRedisClient();
+  // QueueEvents usa leituras BLOCKING — exige maxRetriesPerRequest:null (igual ao
+  // Worker), senão o BullMQ lança no startup. Por isso NÃO usa o getRedisClient()
+  // padrão (que tem maxRetriesPerRequest:3).
+  const connection = createRedisClientForBullMQ();
   queueEvents = new QueueEvents(QUEUE_NAME, { connection });
 
   // Log de eventos importantes

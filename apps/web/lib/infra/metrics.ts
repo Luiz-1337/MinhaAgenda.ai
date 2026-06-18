@@ -281,4 +281,38 @@ export const WhatsAppMetrics = {
       replica: params.replica || getReplicaId(),
       ...(params.instanceName ? { instanceName: params.instanceName } : {}),
     }),
+
+  // Uma resposta enviada voltou com status:0 (ERROR) — entrega falhou.
+  deliveryFailed: (params: { instanceName?: string; ladderStep: number; replica?: string }) =>
+    incrementCounter("whatsapp.delivery_failed_total", 1, {
+      replica: params.replica || getReplicaId(),
+      ladderStep: String(params.ladderStep),
+      ...(params.instanceName ? { instanceName: params.instanceName } : {}),
+    }),
+
+  // Um degrau da escala de reenvio foi executado (reenvio simples ou pós-reinício).
+  deliveryRetry: (params: { instanceName?: string; ladderStep: number; viaRestart: boolean; replica?: string }) =>
+    incrementCounter("whatsapp.delivery_retry_total", 1, {
+      replica: params.replica || getReplicaId(),
+      ladderStep: String(params.ladderStep),
+      viaRestart: String(params.viaRestart),
+      ...(params.instanceName ? { instanceName: params.instanceName } : {}),
+    }),
+
+  // Um reenvio acabou sendo entregue (recuperação bem-sucedida).
+  deliveryRecovered: (params: { instanceName?: string; attempts: number; replica?: string }) =>
+    incrementCounter("whatsapp.delivery_recovered_total", 1, {
+      replica: params.replica || getReplicaId(),
+      attempts: String(params.attempts),
+      ...(params.instanceName ? { instanceName: params.instanceName } : {}),
+    }),
+
+  // A escala esgotou — chat entregue ao controle manual (mensagem não entregue).
+  deliveryGaveUp: (params: { instanceName?: string; attempts: number; reason: string; replica?: string }) =>
+    incrementCounter("whatsapp.delivery_gave_up_total", 1, {
+      replica: params.replica || getReplicaId(),
+      attempts: String(params.attempts),
+      reason: params.reason,
+      ...(params.instanceName ? { instanceName: params.instanceName } : {}),
+    }),
 };

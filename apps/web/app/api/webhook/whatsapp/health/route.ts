@@ -28,6 +28,7 @@ interface HealthStatus {
     redis: HealthCheck;
     queue: HealthCheck;
     database: HealthCheck;
+    worker: HealthCheck;
   };
   circuitBreakers?: Record<string, unknown>;
   metrics?: Record<string, unknown>;
@@ -56,17 +57,28 @@ export async function GET(req: NextRequest): Promise<NextResponse<HealthStatus>>
     checkRedis(),
     checkQueue(),
     checkDatabase(),
+    checkWorker(),
   ]);
 
-  const [redisCheck, queueCheck, dbCheck] = checks;
+  const [redisCheck, queueCheck, dbCheck, workerCheck] = checks;
 
   // Determina status geral
   let overallStatus: "healthy" | "degraded" | "unhealthy" = "healthy";
 
-  // Database e Redis são críticos
-  if (redisCheck.status === "fail" || queueCheck.status === "fail" || dbCheck.status === "fail") {
+  // Database, Redis, fila e worker são críticos
+  if (
+    redisCheck.status === "fail" ||
+    queueCheck.status === "fail" ||
+    dbCheck.status === "fail" ||
+    workerCheck.status === "fail"
+  ) {
     overallStatus = "unhealthy";
-  } else if (redisCheck.status === "warn" || queueCheck.status === "warn" || dbCheck.status === "warn") {
+  } else if (
+    redisCheck.status === "warn" ||
+    queueCheck.status === "warn" ||
+    dbCheck.status === "warn" ||
+    workerCheck.status === "warn"
+  ) {
     overallStatus = "degraded";
   }
 
@@ -78,6 +90,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<HealthStatus>>
       redis: redisCheck,
       queue: queueCheck,
       database: dbCheck,
+      worker: workerCheck,
     },
   };
 
@@ -210,6 +223,49 @@ async function checkQueue(): Promise<HealthCheck> {
       latencyMs,
       details: stats,
     };
+  } catch (error) {
+    return {
+      status: "fail",
+      latencyMs: Date.now() - start,
+      message: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Verifica se o worker está vivo (heartbeat fresco no Redis).
+ * A chave "worker:heartbeat" é refrescada pelo message-processor a cada 10s
+ * com TTL de 30s; se sumiu, o worker dedicado (Railway) provavelmente caiu.
+ */
+async function checkWorker(): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const redis = getRedisClient();
+    const raw = await Promise.race([
+      redis.get("worker:heartbeat"),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Worker heartbeat read timeout")), 2000)
+      ),
+    ]);
+
+    const latencyMs = Date.now() - start;
+
+    if (!raw) {
+      return {
+        status: "fail",
+        latencyMs,
+        message: "No fresh worker heartbeat — message worker is likely down",
+      };
+    }
+
+    let details: Record<string, unknown> | undefined;
+    try {
+      details = JSON.parse(raw);
+    } catch {
+      details = undefined;
+    }
+
+    return { status: "pass", latencyMs, details };
   } catch (error) {
     return {
       status: "fail",

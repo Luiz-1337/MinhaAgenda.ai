@@ -95,6 +95,8 @@ const KEYS = {
   LOCK: "lock:",
   RATE_LIMIT: "rate:",
   LID_MAPPING: "lid:mapping:",
+  SENT_MESSAGE: "message:sent:",
+  REPLIED_MESSAGE: "message:replied:",
 } as const;
 
 /**
@@ -121,6 +123,22 @@ export async function markMessageProcessed(
   const client = getRedisClient();
   const key = `${KEYS.PROCESSED_MESSAGE}${messageId}`;
   await client.setex(key, ttl, new Date().toISOString());
+}
+
+/**
+ * Idempotência de RESPOSTA: marca que já respondemos a uma mensagem de entrada.
+ * Evita resposta dupla quando o MESMO job é re-executado (retry/stalled do BullMQ)
+ * após já ter enviado ao cliente. Chaveado pelo messageId da mensagem de ENTRADA.
+ */
+export async function markReplied(messageId: string, ttl = 86400): Promise<void> {
+  const client = getRedisClient();
+  await client.set(`${KEYS.REPLIED_MESSAGE}${messageId}`, new Date().toISOString(), "EX", ttl);
+}
+
+export async function isReplied(messageId: string): Promise<boolean> {
+  const client = getRedisClient();
+  const exists = await client.exists(`${KEYS.REPLIED_MESSAGE}${messageId}`);
+  return exists === 1;
 }
 
 /**
@@ -395,4 +413,80 @@ export async function removeLidMapping(
   const key = `${KEYS.LID_MAPPING}${instanceName}:${lid}`;
   await client.del(key);
   logger.info({ lid: hashPhone(lid), instanceName }, "LID mapping removed");
+}
+
+// ===== SENT MESSAGE CONTEXT (correlação de falha de entrega de saída) =====
+
+/**
+ * TTL do contexto de mensagem enviada: 24h.
+ * Cobre toda a escala de reenvio (incluindo o reinício de ~40s da instância) com
+ * folga, e limita o uso de memória do Redis.
+ */
+const SENT_MESSAGE_CONTEXT_TTL = 60 * 60 * 24; // 24h em segundos
+
+/**
+ * Contexto guardado no momento do envio de uma resposta, para que o evento
+ * assíncrono messages.update (status:0) consiga reconstruir o que reenviar.
+ */
+export interface SentMessageContext {
+  chatId: string;
+  salonId: string;
+  agentId: string;
+  /** JID de destino do reenvio (alvo original da resposta — pode ser @lid). */
+  sendTo: string;
+  /** Texto a reenviar. */
+  text: string;
+  /** Nº da tentativa: 1 = envio original, 2 = 1º reenvio, 3 = reenvio pós-reinício. */
+  attempt: number;
+  /** key.id do envio ORIGINAL (a mensagem que tem linha no banco). */
+  rootMessageId: string | null;
+}
+
+/**
+ * Armazena o contexto de uma mensagem enviada, indexado pelo messageId da Evolution.
+ * @param messageId - key.id retornado pela Evolution ao enviar
+ * @param ctx - contexto necessário para reenviar/escalar
+ * @param instanceName - nome da instância Evolution (namespacing)
+ */
+export async function storeSentMessageContext(
+  messageId: string,
+  ctx: SentMessageContext,
+  instanceName: string
+): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.SENT_MESSAGE}${instanceName}:${messageId}`;
+  await client.set(key, JSON.stringify(ctx), "EX", SENT_MESSAGE_CONTEXT_TTL);
+  logger.debug({ messageId, to: hashPhone(ctx.sendTo), attempt: ctx.attempt, instanceName }, "Sent message context stored");
+}
+
+/**
+ * Recupera o contexto de uma mensagem enviada a partir do messageId.
+ * @returns o contexto ou null se não existir / JSON inválido
+ */
+export async function getSentMessageContext(
+  messageId: string,
+  instanceName: string
+): Promise<SentMessageContext | null> {
+  const client = getRedisClient();
+  const key = `${KEYS.SENT_MESSAGE}${instanceName}:${messageId}`;
+  const raw = await client.get(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as SentMessageContext;
+  } catch {
+    logger.warn({ messageId, instanceName }, "Sent message context has invalid JSON");
+    return null;
+  }
+}
+
+/**
+ * Remove o contexto de uma mensagem enviada (após consumir / entrega confirmada).
+ */
+export async function deleteSentMessageContext(
+  messageId: string,
+  instanceName: string
+): Promise<void> {
+  const client = getRedisClient();
+  const key = `${KEYS.SENT_MESSAGE}${instanceName}:${messageId}`;
+  await client.del(key);
 }

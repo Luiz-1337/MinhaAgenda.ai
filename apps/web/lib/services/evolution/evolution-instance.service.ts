@@ -84,6 +84,7 @@ interface ConnectionStateResponse {
 const WEBHOOK_EVENTS = [
   'CONNECTION_UPDATE',
   'MESSAGES_UPSERT',
+  'MESSAGES_UPDATE', // status de entrega das nossas respostas (status:0 = falhou)
   'QRCODE_UPDATED',
 ] as const;
 
@@ -158,6 +159,34 @@ export async function setInstanceWebhook(instanceName: string): Promise<void> {
     'Failed to set Evolution API webhook after all retries'
   );
   throw lastError;
+}
+
+/** Config de webhook esperada (URL + eventos), para reconciliação/comparação. */
+export function getExpectedWebhookConfig(): { url: string; events: string[] } {
+  const baseUrl = getWebhookBaseUrl();
+  return { url: baseUrl ? `${baseUrl}/api/webhook/whatsapp` : '', events: [...WEBHOOK_EVENTS] };
+}
+
+/**
+ * Lê a config de webhook atual de uma instância na Evolution (GET /webhook/find).
+ * Tolerante a formatos ({ webhook: {...} } ou objeto direto). Retorna null em erro.
+ */
+export async function getInstanceWebhook(
+  instanceName: string
+): Promise<{ url: string | null; events: string[]; enabled: boolean } | null> {
+  const client = getEvolutionClient();
+  try {
+    const res = await client.get<any>(`/webhook/find/${instanceName}`);
+    const w = (res && typeof res === 'object' && 'webhook' in res ? (res as any).webhook : res) ?? {};
+    return {
+      url: typeof w.url === 'string' ? w.url : null,
+      events: Array.isArray(w.events) ? w.events : [],
+      enabled: w.enabled ?? false,
+    };
+  } catch (error) {
+    logger.warn({ err: error, instanceName }, 'Failed to fetch instance webhook config');
+    return null;
+  }
 }
 
 const INSTANCE_LOCK_TTL_MS = 15000; // 15s lock para criação de instância
