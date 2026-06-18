@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { CreditsBadge } from "@/components/dashboard/credits-badge"
-import { LogOut, Bell, Sun, Moon, Settings } from "lucide-react"
+import { LogOut, Sun, Moon, Settings } from "lucide-react"
 import Link from "next/link"
 import { useTheme } from "next-themes"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
@@ -73,11 +73,7 @@ export function UserNav({ userName }: { userName: string }) {
       {/* Credits Badge */}
       <CreditsBadge />
 
-      {/* Notifications */}
-      <button className="relative p-1.5 rounded-md hover:bg-sidebar-accent/50 text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors">
-        <Bell size={16} />
-        <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-brand-blue rounded-full"></span>
-      </button>
+      {/* Notificações: o sino funcional vive no header (AlertsBell). */}
 
       {/* User Menu */}
       <DropdownMenu>
