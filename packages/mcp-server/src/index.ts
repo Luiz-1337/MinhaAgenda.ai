@@ -65,8 +65,8 @@ export {
 // Presenters para formatação
 export * from "./presentation/presenters"
 
-// DTOs
-export * from "./application/dtos"
+// DTOs (type-only — interfaces apagadas em runtime; export type * evita ReferenceError no Turbopack)
+export type * from "./application/dtos"
 
 // Domain services / ports
 export * from "./domain/services"
