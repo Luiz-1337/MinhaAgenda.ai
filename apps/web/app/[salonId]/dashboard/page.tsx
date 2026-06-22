@@ -1,5 +1,7 @@
+import { after } from "next/server"
 import { getDashboardStats, initializeDashboardData } from "@/app/actions/dashboard"
-import DashboardContent from "./dashboard-content"
+import SoloDashboardContent from "./solo-dashboard-content"
+import ProDashboardContent from "./pro-dashboard-content"
 
 export default async function DashboardHomePage({
   params,
@@ -8,12 +10,12 @@ export default async function DashboardHomePage({
 }) {
   const { salonId } = await params
 
-  // Busca dados em paralelo
   const statsResult = await getDashboardStats(salonId)
 
-  // Inicializa dados em background (não bloqueia renderização)
-  initializeDashboardData(salonId).catch(console.error)
-  
+  // Sincronização de uso roda APÓS a resposta (rastreada pelo runtime),
+  // em vez de um promise solto competindo com o fim do render.
+  after(() => initializeDashboardData(salonId).catch(console.error))
+
   if ("error" in statsResult) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -22,6 +24,10 @@ export default async function DashboardHomePage({
     )
   }
 
-  return <DashboardContent stats={statsResult} salonId={salonId} />
+  // Decisão de plano feita no servidor (planTier já vem do RSC).
+  return statsResult.planTier === "SOLO" ? (
+    <SoloDashboardContent stats={statsResult} salonId={salonId} />
+  ) : (
+    <ProDashboardContent stats={statsResult} />
+  )
 }
-

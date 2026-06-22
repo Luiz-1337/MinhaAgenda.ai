@@ -38,10 +38,15 @@ export function AlertsBell({ salonId }: { salonId: string }) {
     setCoords({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
   }, [])
 
-  // Reposiciona enquanto aberto (scroll/resize) e fecha em Escape.
+  // Calcula a posição no clique (não no effect, p/ evitar setState síncrono em effect).
+  const handleToggle = () => {
+    if (!open) updatePosition()
+    setOpen((o) => !o)
+  }
+
+  // Enquanto aberto: reposiciona em scroll/resize (callbacks) e fecha em Escape.
   useEffect(() => {
     if (!open) return
-    updatePosition()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false)
     }
@@ -71,7 +76,7 @@ export function AlertsBell({ salonId }: { salonId: string }) {
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggle}
         className="relative p-1.5 rounded-md hover:bg-muted transition-colors"
         aria-label={`Alertas${count > 0 ? ` (${count})` : ""}`}
         aria-expanded={open}
