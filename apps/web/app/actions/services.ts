@@ -129,5 +129,3 @@ export async function getServiceLinkedProfessionals(
   }
 }
 
-// Re-export types
-export type { UpsertServiceInput }
