@@ -228,4 +228,24 @@ describe("date.utils", () => {
       expect(result).toMatch(/^\d{2}\/\d{2}\/\d{4} às \d{2}:\d{2}$/)
     })
   })
+
+  // Regressão do bug C4: a conversão para o horário de Brasília deve usar o banco
+  // de timezones (Intl), produzindo o valor CORRETO independentemente do fuso da
+  // máquina que roda os testes. (Brasil não adota horário de verão desde 2019,
+  // então abril é sempre UTC-3.) A implementação manual antiga falhava fora de
+  // Brasília — estes testes travam o valor exato, não só o formato.
+  describe("conversão de timezone (Brasília, machine-independent)", () => {
+    it("formatTime converte UTC para o horário de Brasília (UTC-3)", () => {
+      expect(formatTime(new Date("2026-04-01T14:30:00Z"))).toBe("11:30")
+    })
+
+    it("formatDate respeita a virada de dia no fuso de Brasília", () => {
+      // 02:00 UTC = 23:00 do dia anterior em Brasília
+      expect(formatDate(new Date("2026-04-01T02:00:00Z"))).toBe("31/03/2026")
+    })
+
+    it("formatDateTime combina data e hora já convertidas para Brasília", () => {
+      expect(formatDateTime(new Date("2026-04-01T02:00:00Z"))).toBe("31/03/2026 às 23:00")
+    })
+  })
 })

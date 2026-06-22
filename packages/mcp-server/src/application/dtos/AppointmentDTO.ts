@@ -34,6 +34,7 @@ export interface CreateAppointmentDTO {
  */
 export interface UpdateAppointmentDTO {
   appointmentId: string
+  salonId: string // salão do contexto — usado para isolamento multi-tenant
   professionalId?: string
   serviceId?: string
   startsAt?: string // ISO datetime

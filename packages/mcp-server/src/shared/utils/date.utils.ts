@@ -13,7 +13,6 @@ import {
   ISO_DATE_ONLY,
 } from "../constants"
 import {
-  fromBrazilTime,
   toBrazilTime,
   getBrazilNow,
   BRAZIL_TIMEZONE,
@@ -236,15 +235,36 @@ export function getDayOfWeekName(dayOfWeek: number): string {
  * Usado internamente para extrair hora/dia/etc corretos.
  */
 function toBrazilDate(date: Date): Date {
-  // Calcula o offset de Brasília (-3h = -180min)
-  // toZonedTime retorna um Date cujos métodos getHours(), getDay(), etc.
-  // refletem o horário de Brasília
-  const utcTime = date.getTime()
-  const brazilOffset = -3 * 60 // -180 minutos
-  const localOffset = date.getTimezoneOffset() // offset local em minutos (positivo para oeste)
-  // Ajusta: UTC + brazilOffset(em ms) + localOffset(em ms) para compensar
-  const brazilTime = new Date(utcTime + (brazilOffset + localOffset) * 60 * 1000)
-  return brazilTime
+  // Converte um instante UTC em um Date cujos getters LOCAIS (getHours, getDate,
+  // getDay, ...) refletem o horário de Brasília — de forma INDEPENDENTE do fuso
+  // da máquina, usando a base de timezones do ICU via Intl.
+  //
+  // A implementação anterior somava `getTimezoneOffset()` manualmente, o que só
+  // produzia o resultado correto quando o servidor rodava fisicamente em
+  // Brasília; em qualquer outro fuso (ou sob horário de verão) a hora/dia saíam
+  // errados (bug C4).
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BRAZIL_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date)
+
+  const get = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? "0")
+
+  return new Date(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second")
+  )
 }
 
 // Re-export para uso externo

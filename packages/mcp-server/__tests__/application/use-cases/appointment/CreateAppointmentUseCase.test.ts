@@ -100,7 +100,8 @@ describe("CreateAppointmentUseCase", () => {
 
     await useCase.execute(baseInput)
 
-    expect(customerRepo.findById).toHaveBeenCalledWith(IDS.customerId)
+    // Cliente é buscado já escopado ao salão do contexto (bug A3).
+    expect(customerRepo.findById).toHaveBeenCalledWith(IDS.customerId, IDS.salonId)
     expect(professionalRepo.findById).toHaveBeenCalledWith(IDS.professionalId)
     expect(serviceRepo.findById).toHaveBeenCalledWith(IDS.serviceId)
   })

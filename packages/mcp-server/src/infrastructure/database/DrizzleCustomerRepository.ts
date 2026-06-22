@@ -14,9 +14,13 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
   private idCache = new InMemoryCache<Customer | null>(CACHE_TTL)
   private phoneCache = new InMemoryCache<Customer | null>(CACHE_TTL)
 
-  async findById(id: string): Promise<Customer | null> {
+  async findById(id: string, salonId?: string): Promise<Customer | null> {
     const cached = this.idCache.get(id)
-    if (cached !== undefined) return cached
+    if (cached !== undefined) {
+      // Isolamento multi-tenant (bug A3): se um salonId foi informado, só devolve
+      // o cliente em cache caso ele pertença a esse salão.
+      return salonId && cached && cached.salonId !== salonId ? null : cached
+    }
 
     const row = await db.query.customers.findFirst({
       where: eq(customers.id, id),
@@ -40,7 +44,8 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
     })
 
     this.idCache.set(id, customer)
-    return customer
+    // Isolamento multi-tenant (bug A3): defesa em profundidade.
+    return salonId && customer.salonId !== salonId ? null : customer
   }
 
   async findByPhone(phone: string, salonId: string): Promise<Customer | null> {

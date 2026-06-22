@@ -42,16 +42,18 @@ describe("DeleteAppointmentUseCase", () => {
       data: undefined,
     })
 
-    const result = await useCase.execute(IDS.appointmentId)
+    const result = await useCase.execute(IDS.appointmentId, IDS.salonId)
 
     expect(result.success).toBe(true)
     if (result.success) {
       expect(result.data.appointmentId).toBe(IDS.appointmentId)
       expect(result.data.message).toContain("cancelado")
     }
-    // Delega ao serviço centralizado (hard delete), sem soft delete local.
+    // Delega ao serviço centralizado (hard delete), sem soft delete local,
+    // propagando o salonId do contexto para isolamento multi-tenant.
     expect(domainServices.deleteAppointmentService).toHaveBeenCalledWith({
       appointmentId: IDS.appointmentId,
+      salonId: IDS.salonId,
     })
     expect(appointmentRepo.save).not.toHaveBeenCalled()
   })
@@ -59,7 +61,22 @@ describe("DeleteAppointmentUseCase", () => {
   it("retorna erro quando agendamento não encontrado", async () => {
     appointmentRepo.findById.mockResolvedValue(null)
 
-    const result = await useCase.execute("inexistente")
+    const result = await useCase.execute("inexistente", IDS.salonId)
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.code).toBe("APPOINTMENT_NOT_FOUND")
+    }
+    expect(domainServices.deleteAppointmentService).not.toHaveBeenCalled()
+  })
+
+  it("bloqueia cancelamento cross-salon (C1)", async () => {
+    const OTHER_SALON = "99999999-9999-4999-8999-999999999999"
+    appointmentRepo.findById.mockResolvedValue(
+      makeFutureAppointment({ salonId: OTHER_SALON })
+    )
+
+    const result = await useCase.execute(IDS.appointmentId, IDS.salonId)
 
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -81,7 +98,7 @@ describe("DeleteAppointmentUseCase", () => {
     })
     appointmentRepo.findById.mockResolvedValue(pastAppointment)
 
-    const result = await useCase.execute(IDS.appointmentId)
+    const result = await useCase.execute(IDS.appointmentId, IDS.salonId)
 
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -95,9 +112,10 @@ describe("DeleteAppointmentUseCase", () => {
     ;(domainServices.deleteAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
       error: "Agendamento não encontrado",
+      code: "APPOINTMENT_NOT_FOUND",
     })
 
-    const result = await useCase.execute(IDS.appointmentId)
+    const result = await useCase.execute(IDS.appointmentId, IDS.salonId)
 
     expect(result.success).toBe(false)
     if (!result.success) {

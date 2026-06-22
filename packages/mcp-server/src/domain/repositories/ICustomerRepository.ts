@@ -5,9 +5,11 @@ import { Customer } from "../entities"
  */
 export interface ICustomerRepository {
   /**
-   * Busca um cliente por ID
+   * Busca um cliente por ID.
+   * Quando `salonId` é informado, só retorna o cliente se ele pertencer a esse
+   * salão (isolamento multi-tenant / defesa em profundidade — bug A3).
    */
-  findById(id: string): Promise<Customer | null>
+  findById(id: string, salonId?: string): Promise<Customer | null>
 
   /**
    * Busca um cliente por telefone em um salão
