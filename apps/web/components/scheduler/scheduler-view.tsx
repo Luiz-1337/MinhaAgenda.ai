@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import dynamic from "next/dynamic"
 import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus } from "lucide-react"
 import { DailyScheduler } from "./daily-scheduler"
@@ -53,74 +54,52 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     return new Date()
   })
 
-  // Estado unificado de dados
-  const [appointments, setAppointments] = useState<AppointmentDTO[]>([])
-  const [professionals, setProfessionals] = useState<ProfessionalInfo[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
   // Estado de UI
   const [selectedProId, setSelectedProId] = useState<string | null>(null)
   const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [schedulerHours, setSchedulerHours] = useState({ startHour: 8, endHour: 22 })
+  const queryClient = useQueryClient()
 
-  // Carrega horários do calendário (baseado na disponibilidade do salão/profissional)
-  useEffect(() => {
-    if (!salonId) return
-    getSchedulerHours(salonId, selectedProId).then((res) => {
-      if (!("error" in res)) {
-        setSchedulerHours(res)
-      }
-    })
-  }, [salonId, selectedProId])
-
-  // Carrega dados unificados (Agendamentos + Profissionais)
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true)
-      setError(null)
-
-      let start: Date
-      let end: Date
-
-      // Calcula range baseado na view
-      switch (viewType) {
-        case 'daily':
-          start = startOfDayBrazil(currentDate)
-          end = endOfDayBrazil(currentDate)
-          break
-        case 'weekly':
-          start = startOfWeekBrazil(currentDate, { weekStartsOn: 0 })
-          end = endOfWeekBrazil(currentDate, { weekStartsOn: 0 })
-          break
-        case 'monthly':
-          start = startOfMonthBrazil(currentDate)
-          end = endOfMonthBrazil(currentDate)
-          break
-      }
-
-      try {
-        const result = await getAppointments(salonId, start, end)
-
-        if ('error' in result) {
-          setError(result.error)
-          setAppointments([])
-          setProfessionals([])
-        } else {
-          setAppointments(result.appointments)
-          setProfessionals(result.professionals)
-        }
-      } catch (err) {
-        console.error('Erro ao buscar dados:', err)
-        setError('Falha ao carregar agendamentos')
-      } finally {
-        setLoading(false)
-      }
+  // Range [start, end] derivado da view + data corrente (TZ Brasília)
+  const { start, end } = useMemo<{ start: Date; end: Date }>(() => {
+    switch (viewType) {
+      case 'daily':
+        return { start: startOfDayBrazil(currentDate), end: endOfDayBrazil(currentDate) }
+      case 'weekly':
+        return { start: startOfWeekBrazil(currentDate, { weekStartsOn: 0 }), end: endOfWeekBrazil(currentDate, { weekStartsOn: 0 }) }
+      case 'monthly':
+        return { start: startOfMonthBrazil(currentDate), end: endOfMonthBrazil(currentDate) }
     }
+  }, [viewType, currentDate])
 
-    fetchData()
-  }, [salonId, currentDate, viewType])
+  // Agendamentos + profissionais — cache por tenant/range; keepPreviousData evita o flash ao navegar
+  const appointmentsQuery = useQuery({
+    queryKey: ['scheduler-appointments', salonId, viewType, start.toISOString(), end.toISOString()],
+    queryFn: async () => {
+      const result = await getAppointments(salonId, start, end)
+      if ('error' in result) throw new Error(result.error)
+      return result
+    },
+    enabled: !!salonId,
+    placeholderData: keepPreviousData,
+  })
+
+  const appointments = appointmentsQuery.data?.appointments ?? []
+  const professionals = appointmentsQuery.data?.professionals ?? []
+  const loading = appointmentsQuery.isLoading
+  const error = appointmentsQuery.error ? (appointmentsQuery.error as Error).message : null
+
+  // Horários do calendário (disponibilidade do salão/profissional)
+  const hoursQuery = useQuery({
+    queryKey: ['scheduler-hours', salonId, selectedProId],
+    queryFn: async () => {
+      const res = await getSchedulerHours(salonId, selectedProId)
+      if ('error' in res) throw new Error(res.error)
+      return res
+    },
+    enabled: !!salonId,
+  })
+  const schedulerHours = hoursQuery.data ?? { startHour: 8, endHour: 22 }
 
   // Seleciona o primeiro profissional automaticamente se nenhum estiver selecionado
   useEffect(() => {
@@ -203,47 +182,9 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     setCurrentDate(new Date())
   }
 
-  // Função para recarregar dados após criar agendamento
-  const handleAppointmentCreated = async () => {
-    setLoading(true)
-    setError(null)
-
-    let start: Date
-    let end: Date
-
-    // Calcula range baseado na view
-    switch (viewType) {
-      case 'daily':
-        start = startOfDayBrazil(currentDate)
-        end = endOfDayBrazil(currentDate)
-        break
-      case 'weekly':
-        start = startOfWeekBrazil(currentDate, { weekStartsOn: 0 })
-        end = endOfWeekBrazil(currentDate, { weekStartsOn: 0 })
-        break
-      case 'monthly':
-        start = startOfMonthBrazil(currentDate)
-        end = endOfMonthBrazil(currentDate)
-        break
-    }
-
-    try {
-      const result = await getAppointments(salonId, start, end)
-
-      if ('error' in result) {
-        setError(result.error)
-        setAppointments([])
-        setProfessionals([])
-      } else {
-        setAppointments(result.appointments)
-        setProfessionals(result.professionals)
-      }
-    } catch (err) {
-      console.error('Erro ao buscar dados:', err)
-      setError('Falha ao carregar agendamentos')
-    } finally {
-      setLoading(false)
-    }
+  // Recarrega após criar agendamento: invalida o cache do range (refetch automático)
+  const handleAppointmentCreated = () => {
+    void queryClient.invalidateQueries({ queryKey: ['scheduler-appointments', salonId] })
   }
 
   const getDateLabel = () => {

@@ -8,6 +8,13 @@ import { getSalonCustomers, createSalonCustomer, type CustomerRow } from "@/app/
 import { getServices } from "@/app/actions/services"
 import type { ServiceRow } from "@/lib/types/service"
 import type { ProfessionalInfo } from "@/app/actions/appointments"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 
 interface CreateAppointmentDialogProps {
   open: boolean
@@ -250,38 +257,21 @@ export function CreateAppointmentDialog({
   // Filtra profissionais ativos
   const activeProfessionals = professionals.filter(p => p.isActive)
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 z-30 animate-in fade-in duration-300"
-        onClick={handleClose} 
-      />
-      
-      {/* Modal Card */}
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-lg z-40 flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
-        
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
+      <DialogContent className="max-w-lg p-0 gap-0 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-border flex justify-between items-center bg-muted/50">
+        <DialogHeader className="p-6 border-b border-border bg-muted/50 gap-0 space-y-0 text-left">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-accent rounded-lg text-accent-foreground">
               <Calendar size={18} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground tracking-tight">Novo Agendamento</h2>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Criar agendamento manual</p>
+              <DialogTitle className="text-lg font-bold text-foreground tracking-tight">Novo Agendamento</DialogTitle>
+              <DialogDescription className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Criar agendamento manual</DialogDescription>
             </div>
           </div>
-          <button 
-            onClick={handleClose}
-            disabled={isPending}
-            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Body */}
         <form onSubmit={handleSubmit}>
@@ -549,7 +539,7 @@ export function CreateAppointmentDialog({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
