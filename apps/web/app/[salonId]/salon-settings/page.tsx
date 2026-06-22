@@ -14,6 +14,7 @@ export default function SalonSettingsPage() {
   const [salonData, setSalonData] = useState<SalonDetails | null>(null)
   const [isLoadingSalon, setIsLoadingSalon] = useState(false)
   const [lastLoadedSalonId, setLastLoadedSalonId] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   const formRef = useRef<SalonEditFormRef>(null)
 
@@ -25,13 +26,15 @@ export default function SalonSettingsPage() {
     
     setIsLoadingSalon(true)
     setSalonData(null)
-    
+    setLoadError(null)
+
     try {
       const result = await getCurrentSalon(salonId)
       if ("error" in result) {
         console.error("Erro ao carregar salão:", result.error)
         setSalonData(null)
         setLastLoadedSalonId(null)
+        setLoadError(result.error)
       } else {
         setSalonData(result)
         setLastLoadedSalonId(salonId)
@@ -40,6 +43,7 @@ export default function SalonSettingsPage() {
       console.error("Erro ao carregar salão:", error)
       setSalonData(null)
       setLastLoadedSalonId(null)
+      setLoadError("Não foi possível carregar as configurações do salão.")
     } finally {
       setIsLoadingSalon(false)
     }
@@ -160,12 +164,25 @@ export default function SalonSettingsPage() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : salonData && activeSalon ? (
-            <SalonEditForm 
-              ref={formRef} 
-              salon={salonData} 
+            <SalonEditForm
+              ref={formRef}
+              salon={salonData}
               salonId={activeSalon.id}
               onPendingChange={setIsPending}
             />
+          ) : activeSalon && loadError ? (
+            <div className="py-8 text-center flex flex-col items-center gap-3">
+              <p className="text-sm text-muted-foreground">
+                Não foi possível carregar as configurações do salão.
+              </p>
+              <button
+                type="button"
+                onClick={() => loadSalonData(activeSalon.id)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                Tentar novamente
+              </button>
+            </div>
           ) : (
             <div className="py-8 text-center text-muted-foreground">
               Nenhum salão selecionado. Selecione um salão no menu superior.
