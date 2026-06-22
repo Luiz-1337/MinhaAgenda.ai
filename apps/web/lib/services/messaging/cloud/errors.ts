@@ -9,7 +9,7 @@
  * Referência de códigos: Cloud API error codes (Meta).
  */
 
-import { WhatsAppMessageError } from '@/lib/services/evolution/evolution-message.service';
+import { WhatsAppMessageError } from '../../evolution/evolution-message.service';
 
 // NÃO adianta reenviar: problema de destinatário, janela de 24h, template ou política.
 const NON_RETRYABLE = new Set<number>([

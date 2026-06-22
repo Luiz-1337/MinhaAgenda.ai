@@ -8,8 +8,8 @@
  * Endpoint de envio: POST https://graph.facebook.com/{ver}/{phone_number_id}/messages
  */
 
-import { WhatsAppMessageError } from '@/lib/services/evolution/evolution-message.service';
-import { logger, hashPhone } from '@/lib/infra/logger';
+import { WhatsAppMessageError } from '../../evolution/evolution-message.service';
+import { logger, hashPhone } from '../../../infra/logger';
 import type {
   MessageProvider,
   OutboundResult,
