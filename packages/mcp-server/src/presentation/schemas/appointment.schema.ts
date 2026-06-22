@@ -41,17 +41,10 @@ export type DeleteAppointmentInput = z.infer<typeof deleteAppointmentSchema>
 
 /**
  * Schema para busca de agendamentos futuros.
- * O cliente é identificado automaticamente via clientPhone do closure.
- * `phone` permanece opcional para casos em que a IA queira consultar outro número
- * (raro — geralmente vem do contexto da conversa).
+ * O cliente é SEMPRE identificado pelo clientPhone do closure (número do WhatsApp
+ * da sessão). Não expomos parâmetro de telefone para a IA: pedir/usar outro número
+ * viola a regra "NUNCA peça telefone" e pode não casar com o cadastro (mismatch de DDI).
  */
-export const getMyFutureAppointmentsSchema = z.object({
-  phone: z
-    .string()
-    .optional()
-    .describe(
-      "Telefone do cliente (opcional - padrão = telefone do WhatsApp atual)"
-    ),
-})
+export const getMyFutureAppointmentsSchema = z.object({})
 
 export type GetMyFutureAppointmentsInput = z.infer<typeof getMyFutureAppointmentsSchema>

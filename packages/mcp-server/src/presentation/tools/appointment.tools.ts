@@ -85,15 +85,15 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
 
     getMyFutureAppointments: defineTool(ctx, {
       description:
-        "Lista agendamentos futuros do cliente. OBRIGATÓRIO chamar ANTES de updateAppointment ou removeAppointment. Retorna IDs internos necessários para reagendar/cancelar. Não precisa de parâmetros.",
+        "Lista os agendamentos futuros do cliente atual. Retorna IDs internos necessários para reagendar/cancelar. NÃO precisa de parâmetros — o cliente é identificado automaticamente pelo número do WhatsApp da sessão. NUNCA peça telefone ao cliente.",
       inputSchema: getMyFutureAppointmentsSchema,
-      handler: async (input, { container, salonId, clientPhone }) => {
+      handler: async (_input, { container, salonId, clientPhone }) => {
         const result = await container
           .resolve<GetUpcomingAppointmentsUseCase>(TOKENS.GetUpcomingAppointmentsUseCase)
           .execute({
             salonId,
             customerId: undefined,
-            phone: input.phone || clientPhone,
+            phone: clientPhone,
           })
 
         return AppointmentPresenter.listToJSON(unwrap(result))

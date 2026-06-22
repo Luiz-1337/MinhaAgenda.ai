@@ -16,6 +16,10 @@ import { conversation as listaServicos } from "./conversations/03-lista-servicos
 import { conversation as agendamentoSolicitaData } from "./conversations/04-agendamento-solicita-data"
 import { conversation as agendamentoDiretoDiaHora } from "./conversations/05-agendamento-direto-dia-hora"
 import { conversation as memoriaToolContext } from "./conversations/06-memoria-tool-context"
+import { conversation as remarcarSemTelefone } from "./conversations/07-remarcar-sem-telefone"
+import { conversation as cancelarSemTelefone } from "./conversations/08-cancelar-sem-telefone"
+import { conversation as remarcarMultiplos } from "./conversations/09-remarcar-multiplos"
+import { conversation as remarcarZero } from "./conversations/10-remarcar-zero-agendamentos"
 
 const ALL_CONVERSATIONS: Conversation[] = [
   saudacaoPura,
@@ -24,6 +28,10 @@ const ALL_CONVERSATIONS: Conversation[] = [
   agendamentoSolicitaData,
   agendamentoDiretoDiaHora,
   memoriaToolContext,
+  remarcarSemTelefone,
+  cancelarSemTelefone,
+  remarcarMultiplos,
+  remarcarZero,
 ]
 
 describe("golden conversations", () => {

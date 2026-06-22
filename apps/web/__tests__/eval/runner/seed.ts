@@ -101,7 +101,8 @@ async function ensureFixturesExist(env: EvalEnv): Promise<{ agentId: string }> {
  */
 export async function prepareConversationContext(
   env: EvalEnv,
-  customerName: string | null
+  customerName: string | null,
+  seedAppointments?: { inDays: number }[]
 ): Promise<EvalSeed> {
   const { agentId } = await ensureFixturesExist(env)
 
@@ -169,6 +170,26 @@ export async function prepareConversationContext(
 
   if (!newChat) {
     throw new Error("Failed to create eval chat")
+  }
+
+  // Semeia agendamentos futuros (para testar remarcar/cancelar). Horário ~15:00
+  // Brasília (18:00 UTC); o horário exato é irrelevante para as asserções.
+  if (seedAppointments && seedAppointments.length > 0) {
+    const now = Date.now()
+    const rows = seedAppointments.map(({ inDays }) => {
+      const start = new Date(now + inDays * 24 * 60 * 60 * 1000)
+      start.setUTCHours(18, 0, 0, 0)
+      const end = new Date(start.getTime() + 30 * 60 * 1000)
+      return {
+        salonId: env.salonId,
+        professionalId: env.professionalId,
+        clientId: customer.id,
+        serviceId: env.serviceId,
+        date: start,
+        endTime: end,
+      }
+    })
+    await db.insert(appointments).values(rows)
   }
 
   return {

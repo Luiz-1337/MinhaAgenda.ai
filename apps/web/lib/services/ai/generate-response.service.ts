@@ -9,7 +9,14 @@
  */
 
 import { createMCPTools } from "@repo/mcp-server/tools/vercel-ai";
-import { NIL_UUID } from "@repo/mcp-server";
+import {
+  NIL_UUID,
+  container as mcpContainer,
+  TOKENS as MCP_TOKENS,
+  registerProviders,
+  isOk,
+} from "@repo/mcp-server";
+import type { AppointmentListDTO, Result } from "@repo/mcp-server";
 import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
 import { normalizeWhatsappFormatting } from "./whatsapp-format";
 import { getActiveAgentInfo } from "./agent-info.service";
@@ -34,7 +41,7 @@ import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, customerTrinksProfile, profiles, appointments, professionals, salons, eq, and } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 import type { ProcessedMedia } from "./media-processor.service";
-import type { TrinksProfileSnapshot } from "./system-prompt-builder.service";
+import type { TrinksProfileSnapshot, UpcomingAppointmentSnapshot } from "./system-prompt-builder.service";
 import { enqueueTrinksProfileSync } from "../../queues/trinks-sync-queue";
 
 const TRINKS_PROFILE_STALE_HOURS = 24;
@@ -49,6 +56,50 @@ async function isAiKanbanEnabled(salonId: string): Promise<boolean> {
     return !!row?.aiKanbanClassificationEnabled;
   } catch {
     return false;
+  }
+}
+
+/** Forma mínima do GetUpcomingAppointmentsUseCase resolvido do container MCP. */
+type UpcomingAppointmentsUseCase = {
+  execute(input: {
+    salonId: string;
+    customerId?: string;
+    phone?: string;
+  }): Promise<Result<AppointmentListDTO, unknown>>;
+};
+
+/**
+ * Carrega os agendamentos futuros do cliente para injetar no system prompt, para
+ * que o agente SEMPRE saiba os agendamentos em aberto (mesmo em dias diferentes) e
+ * remarque/cancele sem pedir telefone nem re-localizar via tool.
+ *
+ * Reaproveita o GetUpcomingAppointmentsUseCase (mesma lógica/format do tool
+ * getMyFutureAppointments). Retorna:
+ * - lista (possivelmente vazia) quando a busca foi bem-sucedida;
+ * - `null` quando falhou — nesse caso o prompt omite o bloco em vez de afirmar
+ *   incorretamente que não há agendamentos.
+ */
+async function fetchUpcomingAppointments(
+  salonId: string,
+  customerId: string | undefined,
+  clientPhone: string,
+  log: Logger,
+): Promise<UpcomingAppointmentSnapshot[] | null> {
+  try {
+    const useCase = mcpContainer.resolve<UpcomingAppointmentsUseCase>(
+      MCP_TOKENS.GetUpcomingAppointmentsUseCase,
+    );
+    const result = await useCase.execute({ salonId, customerId, phone: clientPhone });
+    if (!isOk(result)) return [];
+    return result.data.appointments.map((a) => ({
+      id: a.id,
+      serviceName: a.serviceName,
+      professionalName: a.professionalName,
+      startsAt: a.startsAt,
+    }));
+  } catch (err) {
+    log.warn({ err }, "fetchUpcomingAppointments falhou; bloco de agendamentos omitido do prompt");
+    return null;
   }
 }
 
@@ -123,10 +174,17 @@ export async function generateAIResponse(
   const timer = new StageTimer("ai-response", { chatId, salonId }, startTime);
 
   try {
+    // Garante providers do container MCP registrados ANTES das chamadas paralelas
+    // que resolvem use-cases (createMCPTools + fetchUpcomingAppointments). Evita
+    // corrida de dupla-registro na primeira mensagem após o boot do worker.
+    if (!mcpContainer.has(MCP_TOKENS.AppointmentRepository)) {
+      registerProviders(mcpContainer);
+    }
+
     // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
     const embeddingPromise = generateQueryEmbedding(userMessage);
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, upcomingAppointments] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
@@ -136,6 +194,7 @@ export async function generateAIResponse(
       embeddingPromise.catch(() => null),
       fetchTrinksProfile(salonId, customerId, clientPhone, contextLogger),
       isAiKanbanEnabled(salonId),
+      fetchUpcomingAppointments(salonId, customerId, clientPhone, contextLogger),
     ]);
     timer.mark("context_loaded");
 
@@ -229,7 +288,8 @@ export async function generateAIResponse(
       agentInfo, // Passa agentInfo para evitar query duplicada
       noShowRisk, // Flag de Risco de Falta
       soloProfessional, // Profissional único (null se 2+)
-      trinksProfile // Cliente 360° vindo do cache (null quando integração inativa ou cliente novo)
+      trinksProfile, // Cliente 360° vindo do cache (null quando integração inativa ou cliente novo)
+      upcomingAppointments // Agendamentos futuros em aberto (injetados para remarcar/cancelar sem pedir telefone)
     );
     timer.mark("prompt_built");
 
@@ -791,14 +851,18 @@ function summarizeToolResult(toolName: string, result: unknown): string {
         .join(", ");
     }
 
-    // Appointment criado/atualizado
+    // Appointment criado/atualizado — preserva o id interno para os próximos turnos
+    // (o bloco TOOL_CONTEXT é removido antes de enviar ao cliente, então o id não vaza).
     if (toolName === "addAppointment" || toolName === "updateAppointment") {
-      return `OK: ${data.message || JSON.stringify(data).substring(0, 150)}`;
+      const base = data.message || JSON.stringify(data).substring(0, 150);
+      return data.id ? `OK: ${base} (id:${data.id})` : `OK: ${base}`;
     }
 
-    // Cancelamento
+    // Cancelamento — preserva o id cancelado
     if (toolName === "removeAppointment") {
-      return `cancelado: ${data.message || "OK"}`;
+      const cancelledId = data.appointmentId || data.id;
+      const base = data.message || "OK";
+      return cancelledId ? `cancelado: ${base} (id:${cancelledId})` : `cancelado: ${base}`;
     }
 
     // Salon info
