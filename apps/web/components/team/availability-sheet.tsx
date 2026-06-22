@@ -91,7 +91,7 @@ export default function AvailabilitySheet({ open, onOpenChange, professional }: 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-40 overflow-hidden">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 z-30 animate-in fade-in duration-300"
