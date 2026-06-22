@@ -49,13 +49,18 @@ export const isoDateTimeOptionalSchema = z
  */
 export const NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
+const NIL_UUID_ERROR =
+  "ID inválido (placeholder/zerado detectado). Use as tools de busca " +
+  "(getServices, getProfessionals, getMyFutureAppointments) para obter " +
+  "IDs reais ANTES de criar ou atualizar agendamentos — NUNCA invente IDs."
+
 /**
  * Schema para UUID
  */
 export const uuidSchema = z
   .string()
   .uuid("Deve ser um UUID válido")
-  .refine((v) => v !== NIL_UUID, "UUID nulo (todos zeros) não é permitido")
+  .refine((v) => v !== NIL_UUID, { message: NIL_UUID_ERROR })
 
 /**
  * Schema para UUID opcional
@@ -63,7 +68,7 @@ export const uuidSchema = z
 export const uuidOptionalSchema = z
   .string()
   .uuid("Deve ser um UUID válido")
-  .refine((v) => v !== NIL_UUID, "UUID nulo (todos zeros) não é permitido")
+  .refine((v) => v !== NIL_UUID, { message: NIL_UUID_ERROR })
   .optional()
 
 /**

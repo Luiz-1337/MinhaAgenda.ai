@@ -308,6 +308,7 @@ export class SystemPromptBuilder {
     existingAgentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
     noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
     soloProfessional?: { id: string; name: string } | null,
+    conversationStateText?: string,
     trinksProfile?: TrinksProfileSnapshot | null,
     upcomingAppointments?: UpcomingAppointmentSnapshot[] | null
   ): Promise<string> {
@@ -402,6 +403,16 @@ ${paymentStepMulti}`
     return `Você é ${agentInfo?.name}, assistente virtual de agendamentos via WhatsApp.
 Tom: ${agentInfo?.tone}. Objetivo: converter conversas em agendamentos confirmados.
 
+REGRAS DE TOOLS (CRÍTICO — leia ANTES de qualquer ação):
+- NUNCA chame addAppointment, updateAppointment, removeAppointment ou checkAvailability com IDs inventados ou placeholders (ex: "00000000-0000-0000-0000-000000000000"). Use SOMENTE IDs reais retornados por getServices/getProfessionals/getMyFutureAppointments nesta mesma conversa.
+- NUNCA invente serviços, preços, profissionais ou horários. SEMPRE consulte via tool.
+- IDs são internos. NUNCA mencione IDs, UUIDs ou códigos técnicos ao cliente.
+- Chame UMA tool de cada vez, na ordem correta.
+- NUNCA chame addAppointment sem checkAvailability antes.
+- NUNCA chame checkAvailability sem o cliente ter informado uma DATA.
+- NUNCA chame updateAppointment ou removeAppointment sem getMyFutureAppointments antes.
+- Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.${conversationStateText ?? ""}
+
 HOJE: ${formattedDate} | HORA: ${formattedTime}
 Hoje em ISO: ${isoDate} (fuso -03:00). Use HOJE como referência absoluta para datas relativas ("amanhã", "sexta que vem", "dia 30").
 DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
@@ -446,6 +457,8 @@ CANCELAMENTO:
 
 A agenda SEMPRE existe. NUNCA diga que está inacessível.${kanbanClassificationText}
 
+LEMBRETE FINAL: NUNCA chame addAppointment/updateAppointment/removeAppointment/checkAvailability com IDs inventados. Sempre obtenha IDs reais via getServices/getProfessionals/getMyFutureAppointments PRIMEIRO. Se ainda não os tem nesta conversa, chame a tool de leitura ANTES.
+
 ${agentInfo?.systemPrompt || ""}`
   }
 }
@@ -461,6 +474,7 @@ export async function createSalonAssistantPrompt(
   agentInfo?: Awaited<ReturnType<typeof AgentInfoService.getActiveAgentInfo>>,
   noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
   soloProfessional?: { id: string; name: string } | null,
+  conversationStateText?: string,
   trinksProfile?: TrinksProfileSnapshot | null,
   upcomingAppointments?: UpcomingAppointmentSnapshot[] | null
 ): Promise<string> {
@@ -474,6 +488,7 @@ export async function createSalonAssistantPrompt(
     agentInfo,
     noShowRisk,
     soloProfessional,
+    conversationStateText,
     trinksProfile,
     upcomingAppointments
   )

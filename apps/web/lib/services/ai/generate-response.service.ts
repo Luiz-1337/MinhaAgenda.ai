@@ -23,6 +23,12 @@ import { getActiveAgentInfo } from "./agent-info.service";
 import { mapModelToOpenAI } from "./model-mapper.service";
 import { runOpenAIResponses } from "./openai-responses-runner.service";
 import {
+  detectExecutedTools,
+  formatConversationStateText,
+  detectAppointmentIntent,
+  detectFlowViolation,
+} from "./conversation-state";
+import {
   AVAILABILITY_TECHNICAL_FALLBACK_MESSAGE,
   enforceAgendaAvailabilityPolicy,
   resolveFriendlyAvailabilityErrorMessage,
@@ -250,6 +256,18 @@ export async function generateAIResponse(
       content: msg.content,
     }));
 
+    // Detecta tools de leitura ja executadas em mensagens assistant antigas
+    // (escaneando blocos ---TOOL_CONTEXT---). Usado para:
+    //   - injetar "ESTADO DA CONVERSA" no system prompt
+    //   - forcar tool_choice em getServices quando ha intent de agendamento
+    //   - telemetria de violacao de fluxo
+    const executedTools = detectExecutedTools(conversationMessages);
+    const conversationStateText = formatConversationStateText(executedTools);
+    const forceFirstTool =
+      detectAppointmentIntent(userMessage) && !executedTools.has("getServices")
+        ? "getServices"
+        : undefined;
+
     // Monta content da mensagem do usuário (multimodal se houver imagem)
     let userContent: unknown;
     if (params.media?.type === "image" && params.media.imageUrl) {
@@ -288,6 +306,7 @@ export async function generateAIResponse(
       agentInfo, // Passa agentInfo para evitar query duplicada
       noShowRisk, // Flag de Risco de Falta
       soloProfessional, // Profissional único (null se 2+)
+      conversationStateText, // Estado de tools de leitura já executadas
       trinksProfile, // Cliente 360° vindo do cache (null quando integração inativa ou cliente novo)
       upcomingAppointments // Agendamentos futuros em aberto (injetados para remarcar/cancelar sem pedir telefone)
     );
@@ -309,8 +328,30 @@ export async function generateAIResponse(
       input: conversationMessages,
       tools: mcpTools as unknown as ToolSetDefinition,
       maxToolRounds: 5,
+      forceFirstTool, // Item 5: forca getServices em intent de agendamento sem historico
     });
     timer.mark("openai_done");
+
+    // Telemetria estruturada de tool calls (sempre, nao condicionado a AI_DEBUG).
+    // Permite filtrar em prod por `flowViolation: true` para detectar regressoes
+    // do tipo "agente tentou criar agendamento sem buscar IDs antes".
+    const toolSequence = steps.flatMap((s) =>
+      (s.toolCalls ?? []).map((c) => c.toolName)
+    );
+    const toolErrors = steps.flatMap((s) =>
+      (s.toolResults ?? []).filter((r) => r.isError).map((r) => r.toolName)
+    );
+    const flowViolation = detectFlowViolation(toolSequence, executedTools);
+    contextLogger.info(
+      {
+        toolSequence,
+        toolErrors,
+        toolRounds: steps.length,
+        flowViolation,
+        forcedFirstTool: forceFirstTool ?? null,
+      },
+      "AI tool sequence"
+    );
 
     // Log das tool calls e resultados
     if (AI_DEBUG) {
