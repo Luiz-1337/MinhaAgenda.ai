@@ -13,12 +13,12 @@ import { generateAIResponse } from "../lib/services/ai/generate-response.service
 import { processMedia } from "../lib/services/ai/media-processor.service";
 import { saveMessage } from "../lib/services/chat.service";
 import {
-  sendWhatsAppMessage,
   isSessionError,
   getSessionErrorReason,
   WhatsAppMessageError,
 } from "../lib/services/evolution/evolution-message.service";
 import { restartInstance } from "../lib/services/evolution/evolution-instance.service";
+import { getProviderByKind, type MessageProvider } from "../lib/services/messaging";
 import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
 import { WhatsAppError, getUserFriendlyMessage } from "../lib/errors";
 import { withTimeout } from "../lib/utils/async.utils";
@@ -107,6 +107,7 @@ async function triggerSessionRecovery(
  * linha da mensagem (permite o painel mostrar "não entregue").
  */
 async function deliverReply(opts: {
+  provider: MessageProvider;
   sendTo: string;
   text: string;
   salonId: string;
@@ -114,13 +115,19 @@ async function deliverReply(opts: {
   chatId: string;
   instanceName: string;
 }): Promise<string | undefined> {
-  const result = await sendWhatsAppMessage(opts.sendTo, opts.text, opts.salonId, {
+  const result = await opts.provider.sendText({
+    to: opts.sendTo,
+    body: opts.text,
+    salonId: opts.salonId,
     agentId: opts.agentId,
   });
   const messageId = result?.messageId;
   // Tracking is best-effort: a missing messageId just disables delivery-retry for
   // this one reply — it must never break the send/save pipeline.
-  if (messageId) {
+  //
+  // O watchdog + escada de reenvio (status:0) é específico da Evolution. No Cloud,
+  // o status de entrega chega por webhook (sent/delivered/read/failed) — não montar.
+  if (messageId && opts.provider.kind === "evolution") {
     try {
       await storeSentMessageContext(
         messageId,
@@ -168,6 +175,7 @@ async function deliverReply(opts: {
  * Usa um TTL no Redis para evitar spam: envia no máximo uma vez a cada 24h por chat.
  */
 async function notifyClientSubscriptionBlocked(
+  provider: MessageProvider,
   sendTo: string,
   salonId: string,
   agentId: string,
@@ -184,7 +192,7 @@ async function notifyClientSubscriptionBlocked(
       ? 'Olá! No momento nosso atendimento automatizado está temporariamente indisponível. Entre em contato diretamente conosco para agendar. Desculpe o transtorno!'
       : 'Olá! Estamos com uma pendência no pagamento e o atendimento automatizado está pausado. Entre em contato conosco diretamente. Obrigado pela compreensão!';
 
-    await sendWhatsAppMessage(sendTo, message, salonId, { agentId });
+    await provider.sendText({ to: sendTo, body: message, salonId, agentId });
   } catch (err) {
     jobLogger.warn({ err }, "Failed to send subscription blocked notification to client");
   }
@@ -218,6 +226,13 @@ async function processMessage(
     job.data.addressingMode || (remoteJid.endsWith("@lid") ? "lid" : "jid");
 
   const sendTo = replyToJid || remoteJid || clientPhone;
+
+  // Provedor de envio derivado do job: 'cloud' -> CloudProvider, senão Evolution.
+  // O mesmo canal que recebeu a mensagem responde. replyText é o atalho para os
+  // envios simples (avisos/fallbacks); a resposta principal vai por deliverReply.
+  const provider = getProviderByKind(job.data.provider);
+  const replyText = (text: string) =>
+    provider.sendText({ to: sendTo, body: text, salonId, agentId });
 
   const jobLogger = createContextLogger({
     jobId: job.id,
@@ -280,7 +295,7 @@ async function processMessage(
           } else {
             jobLogger.warn({ err: result.error.message }, "RecordCustomerOptOutUseCase failed");
           }
-          await deliverReply({ sendTo, text: OPT_OUT_CONFIRMATION_MESSAGE, salonId, agentId, chatId, instanceName });
+          await deliverReply({ provider, sendTo, text: OPT_OUT_CONFIRMATION_MESSAGE, salonId, agentId, chatId, instanceName });
         } catch (err) {
           jobLogger.error({ err }, "Failed to process hard opt-out");
         }
@@ -298,7 +313,7 @@ async function processMessage(
           const repo = mcpContainer.resolve<IRetentionRepository>(MCP_TOKENS.RetentionRepository);
           const cleared = await repo.clearOptOut(salonId, clientPhone);
           if (cleared) {
-            await deliverReply({ sendTo, text: OPT_IN_CONFIRMATION_MESSAGE, salonId, agentId, chatId, instanceName });
+            await deliverReply({ provider, sendTo, text: OPT_IN_CONFIRMATION_MESSAGE, salonId, agentId, chatId, instanceName });
             jobLogger.info({}, "Customer opt-in restored");
             timer.flush(jobLogger, { outcome: "opt_in", queueWaitMs });
             return {
@@ -454,7 +469,7 @@ async function processMessage(
 
     if (!salonRecord || salonRecord.subscriptionStatus === 'CANCELED') {
       jobLogger.info({ salonId, status: salonRecord?.subscriptionStatus }, "Salon subscription inactive, skipping AI processing");
-      await notifyClientSubscriptionBlocked(sendTo, salonId, agentId, 'canceled', jobLogger);
+      await notifyClientSubscriptionBlocked(provider, sendTo, salonId, agentId, 'canceled', jobLogger);
       return {
         status: "manual_mode",
         chatId,
@@ -469,7 +484,7 @@ async function processMessage(
       const changedAt = salonRecord.subscriptionStatusChangedAt ? new Date(salonRecord.subscriptionStatusChangedAt).getTime() : 0;
       if (Date.now() - changedAt > gracePeriodMs) {
         jobLogger.info({ salonId }, "Salon PAST_DUE grace period expired, skipping AI processing");
-        await notifyClientSubscriptionBlocked(sendTo, salonId, agentId, 'past_due', jobLogger);
+        await notifyClientSubscriptionBlocked(provider, sendTo, salonId, agentId, 'past_due', jobLogger);
         return {
           status: "manual_mode",
           chatId,
@@ -521,11 +536,8 @@ async function processMessage(
         const redis = getRedisClient();
         const notified = await redis.set(`credits:blocked:${salonId}:${sendTo}`, "1", "EX", 60 * 60 * 24, "NX");
         if (notified !== null) {
-          await sendWhatsAppMessage(
-            sendTo,
-            "Olá! No momento nosso atendimento automatizado está temporariamente indisponível. Em breve retornaremos. Obrigado pela compreensão!",
-            salonId,
-            { agentId }
+          await replyText(
+            "Olá! No momento nosso atendimento automatizado está temporariamente indisponível. Em breve retornaremos. Obrigado pela compreensão!"
           );
         }
       } catch (err) {
@@ -594,7 +606,7 @@ async function processMessage(
         );
         timer.mark("ai_response_generated");
 
-        const providerMessageId = await deliverReply({ sendTo, text: response.text, salonId, agentId, chatId, instanceName });
+        const providerMessageId = await deliverReply({ provider, sendTo, text: response.text, salonId, agentId, chatId, instanceName });
         await markReplied(messageId);
         timer.mark("whatsapp_sent");
 
@@ -648,7 +660,7 @@ async function processMessage(
 
         if (!media.transcribedText) {
           const fallback = "Desculpe, não consegui processar seu áudio. Poderia enviar como texto?";
-          await sendWhatsAppMessage(sendTo, fallback, salonId, { agentId });
+          await replyText(fallback);
           await saveMessage(chatId, "assistant", fallback);
 
           jobLogger.warn({ mediaType, processingMs: media.metadata.processingTimeMs }, "Audio transcription failed");
@@ -684,7 +696,7 @@ async function processMessage(
         );
         timer.mark("ai_response_generated");
 
-        const providerMessageId = await deliverReply({ sendTo, text: response.text, salonId, agentId, chatId, instanceName });
+        const providerMessageId = await deliverReply({ provider, sendTo, text: response.text, salonId, agentId, chatId, instanceName });
         await markReplied(messageId);
         timer.mark("whatsapp_sent");
 
@@ -730,7 +742,7 @@ async function processMessage(
       // Vídeo/Documento: resposta genérica
       const mediaResponse = await handleMediaMessage(mediaType, permanentMediaUrl);
 
-      await sendWhatsAppMessage(sendTo, mediaResponse, salonId, { agentId });
+      await replyText(mediaResponse);
       await saveMessage(chatId, "assistant", mediaResponse);
 
       jobLogger.info({ mediaType, hasStoredMedia: !!permanentMediaUrl }, "Media message handled");
@@ -759,7 +771,7 @@ async function processMessage(
     );
     timer.mark("ai_response_generated");
 
-    const providerMessageId = await deliverReply({ sendTo, text: response.text, salonId, agentId, chatId, instanceName });
+    const providerMessageId = await deliverReply({ provider, sendTo, text: response.text, salonId, agentId, chatId, instanceName });
     await markReplied(messageId);
     timer.mark("whatsapp_sent");
 
@@ -851,7 +863,7 @@ async function processMessage(
           "Estou com uma instabilidade temporaria no WhatsApp. Tente novamente em alguns instantes.";
 
         try {
-          await sendWhatsAppMessage(sendTo, exhaustedMessage, salonId, { agentId });
+          await replyText(exhaustedMessage);
           await saveMessage(chatId, "assistant", exhaustedMessage);
         } catch (sendError) {
           jobLogger.error(
@@ -873,7 +885,7 @@ async function processMessage(
     if (error instanceof WhatsAppError && !error.retryable) {
       try {
         const errorMessage = getUserFriendlyMessage(error);
-        await sendWhatsAppMessage(sendTo, errorMessage, salonId, { agentId });
+        await replyText(errorMessage);
         await saveMessage(chatId, "assistant", errorMessage);
       } catch (sendError) {
         jobLogger.error({ err: sendError }, "Failed to send error message to client");
@@ -894,7 +906,7 @@ async function processMessage(
       if (!error.retryable) {
         const errorMessage = "Desculpe, não consegui enviar sua resposta. Tente novamente em instantes.";
         try {
-          await sendWhatsAppMessage(sendTo, errorMessage, salonId, { agentId });
+          await replyText(errorMessage);
           await saveMessage(chatId, "assistant", errorMessage);
         } catch (sendError) {
           jobLogger.error({ err: sendError }, "Failed to send WhatsAppMessageError fallback to client");
@@ -918,7 +930,7 @@ async function processMessage(
           ? getUserFriendlyMessage(error)
           : "Desculpe, tive uma instabilidade técnica agora. Já avisei a equipe e em breve retornamos. 🙏";
       try {
-        await sendWhatsAppMessage(sendTo, fallback, salonId, { agentId });
+        await replyText(fallback);
         await saveMessage(chatId, "assistant", fallback);
       } catch (sendError) {
         jobLogger.error({ err: sendError }, "Failed to send terminal fallback to client");

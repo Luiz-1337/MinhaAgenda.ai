@@ -29,6 +29,10 @@ export interface MessageJobData {
   clientPhone: string;
   replyToJid?: string; // JID original para responder (pode ser LID ou número)
 
+  // Transporte (Cloud API)
+  provider?: "evolution" | "cloud"; // ausente = 'evolution' (default, retrocompat)
+  phoneNumberId?: string; // Cloud API: phone_number_id do tenant (origem do reply)
+
   // Conteúdo
   body: string;
 
