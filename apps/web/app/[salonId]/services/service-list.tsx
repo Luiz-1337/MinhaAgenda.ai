@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,7 +15,6 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { getServices, upsertService, deleteService, getServiceLinkedProfessionals } from "@/app/actions/services"
-import { getProfessionals } from "@/app/actions/professionals"
 import type { ServiceRow, PriceType } from "@/lib/types/service"
 import type { ProfessionalRow } from "@/lib/types/professional"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
@@ -74,19 +73,21 @@ const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] as con
 
 interface ServiceListProps {
   salonId: string
+  initialServices: ServiceRow[]
+  initialProfessionals: ProfessionalRow[]
 }
 
-export default function ServiceList({ salonId }: ServiceListProps) {
+export default function ServiceList({ salonId, initialServices, initialProfessionals }: ServiceListProps) {
   const { activeSalon } = useSalon()
   const { isSolo } = useSalonAuth()
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
-  const [list, setList] = useState<ServiceRow[]>([])
-  const [professionals, setProfessionals] = useState<ProfessionalRow[]>([])
+  const [list, setList] = useState<ServiceRow[]>(initialServices)
+  const [professionals] = useState<ProfessionalRow[]>(initialProfessionals)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ServiceRow | null>(null)
   const [, startTransition] = useTransition()
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null)
   // Segundo passo: serviço com agendamentos vinculados (exige confirmação extra)
@@ -99,50 +100,6 @@ export default function ServiceList({ salonId }: ServiceListProps) {
     resolver: zodResolver(serviceSchema as any),
     defaultValues: { name: "", description: "", duration: 60, durationMax: null, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, priceOnRequest: false, allowedWeekdays: [], allowedStartTimes: [], isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] },
   })
-
-  useEffect(() => {
-    if (!salonId) return
-
-    setIsLoading(true)
-    startTransition(async () => {
-      try {
-        const res = await getServices(salonId)
-        if ("error" in res) {
-          console.error("Erro ao carregar serviços:", res.error)
-          toast.error(res.error)
-          setList([])
-        } else {
-          setList(res.data || [])
-        }
-      } catch (error) {
-        console.error("Erro ao carregar serviços:", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar serviços")
-        setList([])
-      } finally {
-        setIsLoading(false)
-      }
-    })
-  }, [salonId])
-
-  // Carregar profissionais do salão
-  useEffect(() => {
-    if (!salonId) return
-
-    startTransition(async () => {
-      try {
-        const res = await getProfessionals(salonId)
-        if ("error" in res) {
-          console.error("Erro ao carregar profissionais:", res.error)
-          setProfessionals([])
-        } else {
-          setProfessionals(res)
-        }
-      } catch (error) {
-        console.error("Erro ao carregar profissionais:", error)
-        setProfessionals([])
-      }
-    })
-  }, [salonId])
 
   const filteredServices = useMemo(() => {
     return list.filter((service) => {

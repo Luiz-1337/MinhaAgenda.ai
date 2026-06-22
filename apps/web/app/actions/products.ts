@@ -18,8 +18,6 @@ const upsertProductSchema = z.object({
   isActive: z.boolean().default(true),
 })
 
-export type { UpsertProductInput }
-
 type ProductSelect = Pick<
   typeof products.$inferSelect,
   "id" | "salonId" | "name" | "description" | "price" | "isActive"

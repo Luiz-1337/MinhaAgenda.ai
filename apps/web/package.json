@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next dev --webpack",
-    "build": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next build --webpack",
+    "dev": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next dev",
+    "build": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next build",
     "start": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next start",
     "lint": "eslint",
     "worker": "dotenv -e ../../.env -- tsx workers/message-processor.ts",
@@ -76,7 +76,6 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "babel-plugin-react-compiler": "1.0.0",
     "baseline-browser-mapping": "^2.9.19",
     "dotenv-cli": "^7.4.4",
     "eslint": "^9",

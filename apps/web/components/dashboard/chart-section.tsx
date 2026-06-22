@@ -32,6 +32,8 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
   const tooltipBg = isDark ? '#0f172a' : '#ffffff';
   const tooltipBorder = isDark ? '#1e293b' : '#e2e8f0';
   const tooltipText = isDark ? '#e2e8f0' : '#1e293b';
+  // Cor da série alinhada à marca (--brand-blue), theme-aware — evita hex fora da paleta
+  const seriesColor = isDark ? '#5a9ae0' : '#2873bf';
 
   const handleRangeClick = (newRange: 7 | 14 | 30) => {
     if (onRangeChange) {
@@ -69,8 +71,8 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
           <AreaChart data={displayData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorCredits" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                <stop offset="5%" stopColor={seriesColor} stopOpacity={0.3}/>
+                <stop offset="95%" stopColor={seriesColor} stopOpacity={0}/>
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -99,9 +101,9 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
               formatter={(value: number) => [`${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 0 })} C`, 'Créditos']}
             />
             <Area 
-              type="monotone" 
-              dataKey="value" 
-              stroke="#6366f1" 
+              type="monotone"
+              dataKey="value"
+              stroke={seriesColor}
               strokeWidth={2}
               fillOpacity={1} 
               fill="url(#colorCredits)" 

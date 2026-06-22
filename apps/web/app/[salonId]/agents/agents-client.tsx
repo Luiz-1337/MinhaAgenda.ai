@@ -44,7 +44,6 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
   const deferredSearchTerm = useDeferredValue(searchTerm)
-  const [openMenuAgentId, setOpenMenuAgentId] = useState<string | null>(null)
 
   // WhatsApp state
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({ numbers: [] })
@@ -525,8 +524,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           return (
             <div
               key={agent.id}
-              className={`group flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-card border border-border rounded-md hover:border-accent/30 transition-all duration-300 ${openMenuAgentId === agent.id ? "relative z-50" : "relative"
-                }`}
+              className="group relative flex flex-col md:flex-row items-start md:items-center justify-between p-5 bg-card border border-border rounded-md hover:border-accent/30 transition-all duration-300"
             >
               <div className="flex items-start md:items-center gap-4 flex-1">
                 {/* Avatar / Initial */}
@@ -574,7 +572,6 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
                   onDuplicate={() => handleDuplicateAgent(agent)}
                   onToggleActive={() => handleToggleActive(agent)}
                   isActive={agent.isActive}
-                  onOpenChange={(isOpen) => setOpenMenuAgentId(isOpen ? agent.id : null)}
                 />
               </div>
             </div>

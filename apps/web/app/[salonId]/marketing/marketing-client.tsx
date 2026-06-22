@@ -136,9 +136,13 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
       serviceIds: selectedServices.map((service) => service.id),
     };
 
+    // Descarta respostas fora de ordem: ao trocar de filtro em rajada, só a
+    // última requisição válida atualiza o contador (evita race de resposta stale).
+    let ignore = false;
     startPreviewing(async () => {
       setPreviewError(null);
       const result = await previewSegmentedLeads(criteria, salonId);
+      if (ignore) return;
       if ("error" in result) {
         setPreviewError(result.error);
         setLeadsCount(0);
@@ -147,6 +151,9 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
 
       setLeadsCount(result.data?.count ?? 0);
     });
+    return () => {
+      ignore = true;
+    };
   }, [salonId, lastVisitFilter, selectedServices]);
 
   const addStep = () => {
@@ -778,7 +785,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
         )}
       </div>
       {isLeadsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-lg bg-card border border-border">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>

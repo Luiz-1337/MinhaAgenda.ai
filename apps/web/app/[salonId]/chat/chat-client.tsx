@@ -1,6 +1,6 @@
 "use client"
 
-import { useDeferredValue, useMemo, useState, useRef, useEffect } from "react"
+import { memo, useDeferredValue, useMemo, useState, useRef, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
@@ -58,6 +58,39 @@ function getStatusBadge(status: ConversationStatus) {
   }
 }
 
+// Bolha de mensagem memoizada: evita re-render de toda a lista a cada poll/setMessages.
+const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage }) {
+  const isClient = msg.from === "cliente"
+
+  return (
+    <div className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
+      <div className="max-w-[85%] md:max-w-[70%] relative group">
+        {/* Message Bubble */}
+        <div
+          className={`p-3 md:p-4 relative ${isClient
+            ? "bg-chat-user text-chat-user-foreground rounded-lg rounded-tl-none"
+            : "bg-chat-bot text-chat-bot-foreground rounded-lg rounded-tr-none"
+            }`}
+        >
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
+          <span
+            className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-chat-user-foreground/60" : "text-chat-bot-foreground/60"
+              }`}
+          >
+            {msg.time}
+          </span>
+          {!isClient && (msg.deliveryStatus === "failed" || msg.deliveryStatus === "undelivered") && (
+            <span className="text-[10px] font-medium mt-0.5 block text-red-500">não entregue</span>
+          )}
+          {!isClient && msg.deliveryStatus === "retrying" && (
+            <span className="text-[10px] font-medium mt-0.5 block text-amber-500">reenviando…</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+})
+
 export default function ChatClient({ salonId }: { salonId: string }) {
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
@@ -77,6 +110,8 @@ export default function ChatClient({ salonId }: { salonId: string }) {
   const isLoadingRef = useRef(false)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageCountRef = useRef<number>(0)
+  // Assinatura (id + deliveryStatus) p/ detectar mudanças que o length sozinho não pega
+  const lastSignatureRef = useRef<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Busca conversas com cache e polling automático via React Query
@@ -169,6 +204,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         } else {
           setMessages(result)
           lastMessageCountRef.current = result.length
+          lastSignatureRef.current = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}`).join("|")
         }
       } catch (error) {
         if (!isMounted) return
@@ -212,9 +248,13 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         const result = await getChatMessages(activeId)
         if (!isMounted) return
         if (!("error" in result)) {
-          if (result.length !== lastMessageCountRef.current) {
+          // Compara id+deliveryStatus de todas as mensagens: pega mudança de status
+          // de entrega (ex.: "reenviando"→"não entregue") que o length ignora.
+          const signature = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}`).join("|")
+          if (signature !== lastSignatureRef.current) {
             setMessages(result)
             lastMessageCountRef.current = result.length
+            lastSignatureRef.current = signature
           }
         }
       } catch (error) {
@@ -598,37 +638,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
                 Nenhuma mensagem ainda
               </div>
             ) : (
-              messages.map((msg) => {
-                const isClient = msg.from === "cliente"
-
-                return (
-                  <div key={msg.id} className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
-                    <div className="max-w-[85%] md:max-w-[70%] relative group">
-                      {/* Message Bubble */}
-                      <div
-                        className={`p-3 md:p-4 relative ${isClient
-                          ? "bg-chat-user text-chat-user-foreground rounded-lg rounded-tl-none"
-                          : "bg-chat-bot text-chat-bot-foreground rounded-lg rounded-tr-none"
-                          }`}
-                      >
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
-                        <span
-                          className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-chat-user-foreground/60" : "text-chat-bot-foreground/60"
-                            }`}
-                        >
-                          {msg.time}
-                        </span>
-                        {!isClient && (msg.deliveryStatus === "failed" || msg.deliveryStatus === "undelivered") && (
-                          <span className="text-[10px] font-medium mt-0.5 block text-red-500">não entregue</span>
-                        )}
-                        {!isClient && msg.deliveryStatus === "retrying" && (
-                          <span className="text-[10px] font-medium mt-0.5 block text-amber-500">reenviando…</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
+              messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
             )}
             <div ref={messagesEndRef} />
           </div>

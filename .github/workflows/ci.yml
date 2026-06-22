@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: lint · types · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Guard de reconciliação: nenhum .sql novo no caminho Drizzle aposentado.
+      - name: Guard — migrations no caminho único
+        run: node scripts/check-no-new-drizzle-sql.mjs
+
+      - name: Lint
+        run: pnpm turbo run lint
+
+      - name: Check types
+        run: pnpm turbo run check-types
+
+      # Next faz type-check no build; cobre apps/web.
+      - name: Build
+        run: pnpm turbo run build
+
+  # TODO (drift-guard completo): subir um Postgres efêmero a partir do snapshot canônico
+  # e rodar `drizzle-kit check` (ou comparar schema.ts × information_schema) para FALHAR
+  # se o schema divergir do banco. Requer banco efêmero (NÃO usar credencial de prod no CI).
+  # Ver docs/adr/0001-migration-source-of-truth.md.

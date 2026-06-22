@@ -53,10 +53,7 @@ async function main() {
     const delAppt = await tx`DELETE FROM appointments WHERE salon_id = ${TARGET_SALON_ID}`
     console.log(`  Deleted ${delAppt.count} appointments`)
 
-    // Clean embeddings and knowledge base via agents
-    const delEmb = await tx`DELETE FROM embeddings WHERE agent_id IN (SELECT id FROM agents WHERE salon_id = ${TARGET_SALON_ID})`
-    console.log(`  Deleted ${delEmb.count} embeddings`)
-
+    // Clean knowledge base via agents (tabela `embeddings` aposentada — morta)
     const delKb = await tx`DELETE FROM agent_knowledge_base WHERE agent_id IN (SELECT id FROM agents WHERE salon_id = ${TARGET_SALON_ID})`
     console.log(`  Deleted ${delKb.count} agent_knowledge_base`)
 
@@ -260,22 +257,8 @@ async function main() {
     }
     console.log(`  Copied ${kbCount} agent_knowledge_base entries`)
 
-    // 3i. Embeddings
-    let embCount = 0
-    for (const [oldAgentId, newAgentId] of agentMap) {
-      const srcEmb = await tx`
-        SELECT content, embedding::text as embedding_text, metadata
-        FROM embeddings WHERE agent_id = ${oldAgentId}
-      `
-      for (const e of srcEmb) {
-        await tx.unsafe(`
-          INSERT INTO embeddings (id, agent_id, content, embedding, metadata)
-          VALUES ($1, $2, $3, $4::vector, $5::jsonb)
-        `, [randomUUID(), newAgentId, e.content, e.embedding_text, e.metadata ? JSON.stringify(e.metadata) : null])
-        embCount++
-      }
-    }
-    console.log(`  Copied ${embCount} embeddings`)
+    // 3i. Embeddings: removido — tabela `embeddings` aposentada (morta).
+    //     O RAG usa agent_knowledge_base, copiado no passo anterior.
 
     // 3j. SystemPromptTemplates
     const srcSpt = await tx`

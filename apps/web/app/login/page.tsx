@@ -2,6 +2,7 @@
 
 import React, { useActionState, useState, useEffect, useTransition } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Bot, ArrowRight, Sun, Moon, Lock, Mail, Loader2, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
@@ -155,7 +156,7 @@ export default function LoginPage() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center">
                 <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Senha</label>
-                <a href="/forgot-password" className="text-xs font-medium text-accent hover:text-accent/80">Esqueceu?</a>
+                <Link href="/forgot-password" className="text-xs font-medium text-accent hover:text-accent/80">Esqueceu?</Link>
               </div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -196,9 +197,9 @@ export default function LoginPage() {
           
           <p className="mt-8 text-center text-sm text-muted-foreground">
             Não tem uma conta?{' '}
-            <a href="/register" className="font-semibold text-accent hover:underline">
+            <Link href="/register" className="font-semibold text-accent hover:underline">
               Cadastre-se
-            </a>
+            </Link>
           </p>
         </div>
         

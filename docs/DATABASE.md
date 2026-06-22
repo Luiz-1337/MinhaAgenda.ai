@@ -1,58 +1,47 @@
 # Banco de Dados e Migrations — MinhaAgenda.ai
 
 > **LEIA ISTO ANTES DE CRIAR OU RODAR QUALQUER MIGRATION.**
-> O estado de migrations deste projeto está **bagunçado e dessincronizado**.
-> Mexer sem cuidado pode corromper o schema em produção.
+> A fonte única da verdade foi eleita (ADR 0001). Os comandos antigos estão **congelados**.
 
-## 1. Estado atual (verificado jun/2026) — a realidade, não o ideal
+## 1. Fonte única da verdade (decidida — ver `docs/adr/0001-migration-source-of-truth.md`)
 
-Existem **três sistemas de migration concorrentes**, e nenhum é claramente a
-fonte única da verdade:
+- **Tracking (o que já foi aplicado):** `supabase_migrations.schema_migrations` (Supabase CLI / `apply_migration`).
+- **Schema (forma desejada das tabelas):** `packages/db/src/schema.ts` (Drizzle é o **ORM/tipos**, não o aplicador).
+- **Aplicar migration:** SQL idempotente em `supabase/migrations/NNN_nome.sql`, aplicado via Supabase CLI / `apply_migration`.
 
-### A. Drizzle — `packages/db/drizzle/*.sql`
-- **49 arquivos `.sql`**, mas `drizzle/meta/_journal.json` registra **apenas 20**.
-  → ~29 migrations foram escritas à mão e o `drizzle-kit` **não as conhece**.
-- **8 colisões de número** (dois arquivos com o mesmo prefixo): `0002`, `0003`,
-  `0004`, `0005`, `0016`, `0017`, `0018`, `0019` — nomes auto-gerados
-  (`0002_magenta_nemesis`) misturados com manuais (`0002_user_tier_and_password`).
-  É ambíguo qual rodou.
+## 2. FREEZE ATIVO — não use os caminhos antigos
 
-### B. Supabase — `supabase/migrations/*.sql`
-- **13 arquivos** (`001`…`012`, `999`). SQL cru: auth, `pgvector`, triggers, RLS.
-- **`009` faltando**; **`012` duplicado** (`012_fix_appointments_client_fk.sql`
-  vs `..._v2.sql`); lacunas `008→010` e `012→999`.
+- `pnpm db:generate` / `pnpm db:push` estão **bloqueados** por `packages/db/scripts/guard-migrations.mjs`.
+  No estado anterior eles recriavam 0020–0041 e **dropavam 7 constraints** que só existem no banco.
+  Bypass consciente (só em reconciliação supervisionada): `generate:unsafe` / `push:unsafe`.
+- Os **51 `.sql`** do Drizzle (`packages/db/drizzle/`) e os **11 runners `.mjs`** estão **arquivados**
+  em `_archive/` — registro histórico, **não execute**.
+- `_journal.json` (parava no `0019`) e `drizzle.__drizzle_migrations` (0 linhas) estão **aposentados**.
 
-### C. Runners manuais — `packages/db/scripts/migrate_*.mjs`
-- ~10 scripts `.mjs` (`migrate_002`, `003`, `005`, `006`, `009`, `038`, `039`…),
-  espelhados em scripts `db:migrate:manual:NNN` do `package.json` raiz.
+## 3. Como adicionar uma migration (fluxo canônico)
 
-## 2. Avisos de produção (não ignore)
-- **O `_journal.json` do Drizzle NÃO reflete o estado real do prod.** Há
-  migrations escritas mas **não aplicadas** em produção (ex.: `0034`, `0041`
-  conforme auditoria de jun/2026). O tracking de migrations é **não-confiável**.
-- **Antes de qualquer mudança de schema, confira o schema REAL do banco**
-  (via Supabase MCP: `list_tables` / `list_migrations`, ou `psql`), não o que
-  os arquivos sugerem.
-- **Há tenants reais com nomes parecidos** (dois salões "Spettacolo" legítimos).
-  Nunca purgue dados assumindo que duplicata de nome = lixo. Confirme por ID.
-- **Sempre faça backup do banco antes de rodar migration em prod.**
+1. Escreva **SQL idempotente** (`IF NOT EXISTS` / `IF EXISTS` / `DO $$ ... $$`) em
+   `supabase/migrations/NNN_nome.sql` (próximo número livre após o maior existente).
+2. Atualize `packages/db/src/schema.ts` **no mesmo PR** para refletir a mudança (tipos/ORM).
+3. **Backup do banco** (snapshot) antes de aplicar em produção.
+4. Aplique via Supabase CLI (`supabase db push` / migration) ou `apply_migration` (MCP) —
+   registra automaticamente em `supabase_migrations.schema_migrations`.
+5. Rode `get_advisors` (security + performance) antes/depois e confirme o efeito.
+6. O **gate de CI** (`.github/workflows/ci.yml`) valida `schema.ts` × banco e bloqueia
+   novos `.sql` em `packages/db/drizzle/` fora de `_archive/`.
 
-## 3. Como proceder AGORA (regras interinas, até o P4)
-Enquanto a fonte canônica não for eleita formalmente:
-1. **Não invente um novo sistema.** Não adicione um quarto caminho de migration.
-2. **Evite gerar migration Drizzle nova** (`db:generate`) sem entender o estado
-   — o journal desatualizado fará o drizzle-kit calcular diff errado.
-3. Mudança de schema necessária e urgente? Escreva **SQL explícito e idempotente**
-   (`IF NOT EXISTS`, `IF EXISTS`), aplique de forma controlada e **registre o que
-   foi aplicado** (qual arquivo, qual ambiente, quando).
-4. **Em dúvida, pergunte antes de aplicar.** Este é um ponto de alto risco.
+## 4. Avisos de produção (não ignore)
 
-## 4. Decisão em aberto (P4 — não decidida)
-Falta **eleger uma fonte única da verdade** e reconciliar:
-- Opção 1: Drizzle canônico → reconstruir/realinhar o `_journal.json` com os 49 SQL.
-- Opção 2: Supabase migrations canônico → aposentar formalmente o journal do Drizzle.
+- **Confira o schema REAL do banco** (Supabase MCP `list_tables` / `execute_sql`) antes de mudar — não confie só nos arquivos.
+- **Tenants reais com nomes parecidos:** TRÊS salões "Spettacolo" legítimos (`ed4cb777`, `0e5d76eb`, `8b68b7d8`)
+  e DOIS chamados variações de "top". **Nunca purgue por nome — sempre por ID.**
+- **`packages/db/scripts/reset.mjs` (`db:reset`) trunca tudo + `auth.users`.** Nunca aponte para produção.
+- **Sempre faça backup antes de migration em prod.**
+- A credencial Supabase vazada deve ser **rotacionada** (service_role bypassa RLS — sem rotação, RLS não protege contra quem tem a chave).
 
-Essa decisão **não foi tomada** e exige: backup, inventário do que realmente está
-aplicado em cada ambiente, e validação. Quando for feita, **atualize este
-documento** com a fonte escolhida e o passo-a-passo de "como adicionar uma
-migration". Até lá, trate a seção 3 como lei.
+## 5. Histórico (estado anterior, para contexto)
+
+Antes da reconciliação (21/jun/2026) havia 4 mecanismos divergentes: Drizzle arquivos (51 `.sql`, 10 colisões
+de número — `0002`-`0005`, `0016`-`0019`, `0040`, `0041`), Drizzle journal (parava no `0019`),
+`__drizzle_migrations` (0 linhas), `supabase_migrations` (4 entradas) e ~11 runners `.mjs`.
+As migrations `0034` e `0041` **já estão aplicadas** (correção de auditorias anteriores que as davam como pendentes).

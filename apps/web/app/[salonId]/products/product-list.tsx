@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,17 +28,18 @@ type ProductForm = z.infer<typeof productSchema>
 
 interface ProductListProps {
   salonId: string
+  initialProducts: ProductRow[]
 }
 
-export default function ProductList({ salonId }: ProductListProps) {
+export default function ProductList({ salonId, initialProducts }: ProductListProps) {
   const { activeSalon } = useSalon()
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
-  const [list, setList] = useState<ProductRow[]>([])
+  const [list, setList] = useState<ProductRow[]>(initialProducts)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ProductRow | null>(null)
   const [, startTransition] = useTransition()
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null)
 
@@ -48,29 +49,6 @@ export default function ProductList({ salonId }: ProductListProps) {
     defaultValues: { name: "", description: "", price: 0, isActive: true },
   })
 
-  useEffect(() => {
-    if (!salonId) return
-
-    setIsLoading(true)
-    startTransition(async () => {
-      try {
-        const res = await getProducts(salonId)
-        if ("error" in res) {
-          console.error("Erro ao carregar produtos:", res.error)
-          toast.error(res.error)
-          setList([])
-        } else {
-          setList(res.data || [])
-        }
-      } catch (error) {
-        console.error("Erro ao carregar produtos:", error)
-        toast.error(error instanceof Error ? error.message : "Erro ao carregar produtos")
-        setList([])
-      } finally {
-        setIsLoading(false)
-      }
-    })
-  }, [salonId])
 
   const filteredProducts = useMemo(() => {
     return list.filter((product) => {

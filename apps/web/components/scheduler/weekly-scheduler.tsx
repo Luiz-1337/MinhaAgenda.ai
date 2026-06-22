@@ -157,11 +157,13 @@ export function WeeklyScheduler({
         </div>
       ) : (
         <div className="flex-1 overflow-hidden flex flex-col bg-card rounded-md border border-border">
+          {/* Wrapper de scroll horizontal: header + grade rolam juntos no mobile */}
+          <div className="flex-1 min-h-0 overflow-x-auto custom-scrollbar flex flex-col">
           {/* Header Row */}
-          <div className="flex border-b border-border">
+          <div className="flex border-b border-border min-w-max">
             <div className="w-16 flex-shrink-0 border-r border-border bg-muted/50"></div>
             {weekDays.map((day, i) => (
-              <div key={day.toISOString()} className={`flex-1 py-3 text-center text-sm font-semibold text-foreground ${i < weekDays.length - 1 ? 'border-r border-border' : ''}`}>
+              <div key={day.toISOString()} className={`flex-1 min-w-[110px] sm:min-w-0 py-3 text-center text-sm font-semibold text-foreground ${i < weekDays.length - 1 ? 'border-r border-border' : ''}`}>
                 <div className="text-xs text-muted-foreground mb-0.5">
                   {formatBrazilTime(day, "EEE", { locale: ptBR })}
                 </div>
@@ -178,7 +180,7 @@ export function WeeklyScheduler({
           {/* Time Grid */}
           <div className="flex-1 overflow-y-auto custom-scrollbar relative">
             {hours.map((hour) => (
-              <div key={hour} className="flex border-b border-border relative group" style={{ minHeight: `${HOUR_ROW_HEIGHT}px` }}>
+              <div key={hour} className="flex border-b border-border relative group min-w-max" style={{ minHeight: `${HOUR_ROW_HEIGHT}px` }}>
                 <div className="w-16 flex-shrink-0 border-r border-border bg-muted/30 text-xs text-muted-foreground font-mono text-right pr-3 pt-2">
                   {hour}:00
                 </div>
@@ -189,7 +191,7 @@ export function WeeklyScheduler({
                   const dayStart = startOfDayBrazil(day)
 
                   return (
-                    <div key={dayIndex} className={`flex-1 relative ${dayIndex < weekDays.length - 1 ? 'border-r border-border' : ''} hover:bg-muted/50 transition-colors`}>
+                    <div key={dayIndex} className={`flex-1 min-w-[110px] sm:min-w-0 relative ${dayIndex < weekDays.length - 1 ? 'border-r border-border' : ''} hover:bg-muted/50 transition-colors`}>
                       {[...dayAppointments]
                         .filter(apt => {
                           const aptHour = getBrazilHours(apt.startTime)
@@ -226,6 +228,7 @@ export function WeeklyScheduler({
                 })}
               </div>
             ))}
+          </div>
           </div>
         </div>
       )}

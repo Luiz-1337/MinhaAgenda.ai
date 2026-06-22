@@ -21,8 +21,6 @@ const upsertProfessionalSchema = z.object({
   isActive: z.boolean().default(true),
 })
 
-export type { UpsertProfessionalInput }
-
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 
 /**

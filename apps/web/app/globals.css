@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/*
+ * Escala de z-index (convenção do projeto — use estes níveis ao criar overlays):
+ *   z-10  conteúdo posicionado dentro da página (headers sticky, células)
+ *   z-20  reservado
+ *   z-30  overlay/backdrop de modal e sheet
+ *   z-40  conteúdo de modal/sheet (shadcn Dialog/Sheet e modais custom)
+ *   z-50  popovers portalizados (Select/DropdownMenu) e loading-overlay global
+ *   z-[100] sino de alertas (portalizado em document.body, acima de tudo)
+ * Popovers usam portal (Radix) → escapam de stacking context; modais custom
+ * devem manter overlay z-30 / content z-40 para não competir com o loading-overlay.
+ */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

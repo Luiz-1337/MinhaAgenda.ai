@@ -208,13 +208,35 @@ const MessageUpdateInnerSchema = z.object({
   messageStubParameters: z.array(z.string()).optional(),
 });
 
-export const MessagesUpdateDataSchema = z.object({
+// A Evolution emite messages.update em DOIS formatos:
+//  - aninhado:        { key: { id, remoteJid, fromMe }, update: { status }, status }
+//  - achatado (v2.3.x): { keyId, remoteJid, fromMe, participant, status, messageId }
+// O formato achatado não tem objeto `key` (tem `keyId`), então normalizamos para
+// o aninhado ANTES de validar — senão o safeParse falha e a escada status:0 e a
+// confirmação de entrega nunca disparam (só o watchdog, que apenas alerta).
+export const MessagesUpdateDataSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const r = raw as Record<string, unknown>;
+    if (r.key === undefined && (r.keyId !== undefined || r.remoteJid !== undefined)) {
+      return {
+        ...r,
+        key: {
+          id: r.keyId,
+          remoteJid: r.remoteJid,
+          fromMe: r.fromMe,
+          ...(typeof r.participant === 'string' ? { participant: r.participant } : {}),
+        },
+      };
+    }
+  }
+  return raw;
+}, z.object({
   key: MessageKeySchema,
   update: MessageUpdateInnerSchema.optional(),
   // Algumas builds colocam o status no nível raiz em vez de dentro de `update`.
   status: z.union([z.number(), z.string()]).optional(),
   messageId: z.string().optional(),
-});
+}));
 
 /**
  * Schema permissivo para o payload raw da Evolution API (aceita v1 e v2)

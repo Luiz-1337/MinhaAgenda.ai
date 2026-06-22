@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Bot, ArrowRight, Mail, User, MessageSquare, Building2, CheckCircle2, Phone, Users, Loader2, CheckCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { sendContactEmail } from '../actions/contact';
 
 export default function ContactPage() {
@@ -59,7 +60,7 @@ export default function ContactPage() {
             </span>
           </div>
           <nav className="hidden md:flex items-center gap-8">
-            <a href="/" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors">Voltar para Home</a>
+            <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors">Voltar para Home</Link>
           </nav>
         </div>
       </header>
