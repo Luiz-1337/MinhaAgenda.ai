@@ -3,6 +3,7 @@
 import { useTransition, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
@@ -478,7 +479,7 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
                     Nenhum WhatsApp configurado.
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Configure o WhatsApp na <a href={`/${salonId}/agents`} className="text-accent hover:text-accent/80 underline">página de Agentes</a>.
+                    Configure o WhatsApp na <Link href={`/${salonId}/agents`} className="text-accent hover:text-accent/80 underline">página de Agentes</Link>.
                   </p>
                 </div>
               )}

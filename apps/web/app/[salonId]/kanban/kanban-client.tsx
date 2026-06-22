@@ -7,12 +7,14 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   closestCorners,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
-import { SortableContext, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
+import type { Announcements } from "@dnd-kit/core"
+import { SortableContext, horizontalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 import { Search, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -51,8 +53,29 @@ export default function KanbanClient({ salonId }: { salonId: string }) {
   const [activeCard, setActiveCard] = useState<KanbanChatCard | null>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  // Anúncios em pt-BR para leitores de tela durante o arraste por teclado.
+  const announcements: Announcements = {
+    onDragStart({ active }) {
+      return `Pegou o item ${active.id}.`
+    },
+    onDragOver({ active, over }) {
+      return over
+        ? `Item ${active.id} sobre a posição de ${over.id}.`
+        : `Item ${active.id} fora de uma área de soltar.`
+    },
+    onDragEnd({ active, over }) {
+      return over
+        ? `Item ${active.id} solto na posição de ${over.id}.`
+        : `Item ${active.id} solto.`
+    },
+    onDragCancel({ active }) {
+      return `Arraste do item ${active.id} cancelado.`
+    },
+  }
 
   const { data: aiClassification } = useQuery({
     queryKey: ["kanban-ai-flag", salonId],
@@ -336,6 +359,7 @@ export default function KanbanClient({ salonId }: { salonId: string }) {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
+        accessibility={{ announcements }}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
