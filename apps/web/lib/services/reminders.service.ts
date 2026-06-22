@@ -92,7 +92,7 @@ export async function dispatchDailyReminders(
 
             const aptDateFormatted = new Date(apt.date).toLocaleString('pt-BR', formatterOptions)
 
-            const messageBody = `Olá ${apt.client.firstName || apt.client.fullName}, tudo bem?
+            const messageBody = `Olá ${apt.client.name.split(' ')[0]}, tudo bem?
 Passando para lembrar do seu horário no salão *${apt.salon.name}* para *${apt.service.name}* com ${apt.professional.name}.
 
 Será: ${aptDateFormatted}

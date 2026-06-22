@@ -138,14 +138,7 @@ async function main() {
         DELETE FROM customers WHERE salon_id = ANY(${salonIds})
       `
 
-      // 14. Embeddings
-      console.log('🗑️  Deletando embeddings...')
-      await tx`
-        DELETE FROM embeddings 
-        WHERE agent_id IN (
-          SELECT id FROM agents WHERE salon_id = ANY(${salonIds})
-        )
-      `
+      // 14. Embeddings: removido — tabela `embeddings` aposentada (morta).
 
       // 15. Agent knowledge base
       console.log('🗑️  Deletando agent_knowledge_base...')

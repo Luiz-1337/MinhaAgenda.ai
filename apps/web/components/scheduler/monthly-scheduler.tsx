@@ -117,10 +117,10 @@ export function MonthlyScheduler({
           </div>
         </div>
       ) : (
-        <div className="flex-1 min-h-[500px] bg-card rounded-md border border-border p-6 overflow-hidden flex flex-col">
-          <div className="grid grid-cols-7 gap-5 flex-1 min-h-0 [grid-auto-rows:minmax(90px,1fr)]">
+        <div className="flex-1 min-h-[500px] bg-card rounded-md border border-border p-2 sm:p-6 overflow-hidden flex flex-col">
+          <div className="grid grid-cols-7 gap-1 sm:gap-5 flex-1 min-h-0 [grid-auto-rows:minmax(90px,1fr)]">
             {weekDayNames.map((d, index) => (
-              <div key={weekDayKeys[index]} className="text-center text-base font-bold text-muted-foreground py-2">{d}</div>
+              <div key={weekDayKeys[index]} className="text-center text-xs sm:text-base font-bold text-muted-foreground py-2">{d}</div>
             ))}
             {calendarDays.map((day) => {
               // Converte day para horário de Brasília para comparação consistente
@@ -135,7 +135,7 @@ export function MonthlyScheduler({
                   key={day.toISOString()}
                   onClick={() => isCurrentMonth && onDayClick?.(day)}
                   className={`
-                    border rounded-md p-4 relative flex flex-col justify-between transition-all
+                    border rounded-md p-1.5 sm:p-4 relative flex flex-col justify-between transition-all
                     ${isCurrentMonth
                       ? 'border-border bg-muted/50 hover:border-accent/50 cursor-pointer'
                       : 'border-transparent opacity-30'}
@@ -143,7 +143,7 @@ export function MonthlyScheduler({
                 >
                   {isCurrentMonth && (
                     <>
-                      <span className={`text-base font-medium ${isToday ? 'text-accent font-bold' : 'text-muted-foreground'}`}>
+                      <span className={`text-xs sm:text-base font-medium ${isToday ? 'text-accent font-bold' : 'text-muted-foreground'}`}>
                         {formatBrazilTime(day, "d")}
                       </span>
                       {hasEvent && (

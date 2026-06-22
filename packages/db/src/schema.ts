@@ -1,7 +1,7 @@
 // ============================================================================
 // IMPORTS
 // ============================================================================
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
   pgTable,
   uuid,
@@ -16,6 +16,7 @@ import {
   date,
   jsonb,
   uniqueIndex,
+  unique,
   bigint,
   customType
 } from 'drizzle-orm/pg-core'
@@ -101,7 +102,7 @@ export const payments = pgTable(
   },
   (table) => [
     index('payments_user_idx').on(table.userId),
-    index('payments_external_id_idx').on(table.externalId),
+    // payments_external_id_idx removido — redundante com o UNIQUE de external_id (HIG-3)
     index('payments_status_idx').on(table.status),
     index('payments_created_at_idx').on(table.createdAt)
   ]
@@ -138,7 +139,7 @@ export const salons = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    index('salon_slug_idx').on(table.slug),
+    // salon_slug_idx removido — redundante com o UNIQUE de slug (HIG-3)
     index('salon_owner_idx').on(table.ownerId)
   ]
 )
@@ -274,7 +275,9 @@ export const scheduleOverrides = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
-    index('override_prof_time_idx').on(table.professionalId, table.startTime, table.endTime)
+    index('override_prof_time_idx').on(table.professionalId, table.startTime, table.endTime),
+    // FK schedule_overrides.salon_id sem índice de cobertura — HIG-4 (reconciliação 21/jun)
+    index('schedule_overrides_salon_idx').on(table.salonId)
   ]
 )
 
@@ -397,7 +400,12 @@ export const chatKanbanColumns = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    index('chat_kanban_columns_salon_idx').on(table.salonId, table.position)
+    index('chat_kanban_columns_salon_idx').on(table.salonId, table.position),
+    // Refletem constraints existentes só no banco (reconciliação 21/jun — DRIFT-1)
+    uniqueIndex('chat_kanban_columns_salon_default').on(table.salonId).where(sql`is_default = true`),
+    uniqueIndex('chat_kanban_columns_salon_system_key_idx')
+      .on(table.salonId, table.systemKey)
+      .where(sql`system_key IS NOT NULL`)
   ]
 )
 
@@ -423,7 +431,11 @@ export const chats = pgTable(
   (table) => [
     index('chats_salon_status_idx').on(table.salonId, table.status),
     index('chats_agent_idx').on(table.agentId),
-    index('chats_kanban_idx').on(table.salonId, table.kanbanColumnId)
+    index('chats_kanban_idx').on(table.salonId, table.kanbanColumnId),
+    // FK chats.kanban_column_id (o composto acima começa por salonId) — HIG-4
+    index('chats_kanban_column_idx').on(table.kanbanColumnId),
+    // Reflete UNIQUE constraint existente só no banco (reconciliação 21/jun — DRIFT-1)
+    unique('chats_salon_id_client_phone_unique').on(table.salonId, table.clientPhone)
   ]
 )
 
@@ -448,7 +460,11 @@ export const messages = pgTable(
     deliveryAttempts: integer('delivery_attempts').default(0).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
-  (table) => [index('messages_provider_message_id_idx').on(table.providerMessageId)]
+  (table) => [
+    index('messages_provider_message_id_idx').on(table.providerMessageId),
+    // FK messages.chat_id sem índice (1858 linhas → Seq Scan na abertura de conversa) — HIG-1
+    index('messages_chat_created_idx').on(table.chatId, table.createdAt)
+  ]
 )
 
 // chatMessages removed (obsolete)
@@ -498,7 +514,9 @@ export const customers = pgTable(
   (table) => [
     uniqueIndex('customers_salon_phone_unique').on(table.salonId, table.phone),
     index('customers_salon_idx').on(table.salonId),
-    index('customers_phone_idx').on(table.phone)
+    index('customers_phone_idx').on(table.phone),
+    // Reflete índice parcial existente só no banco (reconciliação 21/jun — DRIFT-1)
+    index('customers_active_phone_idx').on(table.salonId, table.phone).where(sql`opted_out_at IS NULL`)
   ]
 )
 
@@ -525,7 +543,9 @@ export const customerTrinksProfile = pgTable(
   },
   (table) => [
     uniqueIndex('customer_trinks_profile_customer_idx').on(table.customerId),
-    index('customer_trinks_profile_salon_synced_idx').on(table.salonId, table.syncedAt)
+    index('customer_trinks_profile_salon_synced_idx').on(table.salonId, table.syncedAt),
+    // Reflete índice parcial existente só no banco (reconciliação 21/jun — DRIFT-1)
+    index('customer_trinks_profile_vip_idx').on(table.salonId, table.vipScore.desc()).where(sql`vip_score > 0`)
   ]
 )
 
@@ -589,7 +609,7 @@ export const recoverySteps = pgTable(
   },
   (table) => [
     index('recovery_steps_flow_idx').on(table.recoveryFlowId),
-    index('recovery_steps_order_idx').on(table.recoveryFlowId, table.stepOrder),
+    // recovery_steps_order_idx removido — redundante com o uniqueIndex abaixo (HIG-3)
     uniqueIndex('recovery_steps_flow_order_unique').on(table.recoveryFlowId, table.stepOrder)
   ]
 )
@@ -618,7 +638,16 @@ export const campaignMessages = pgTable(
     index('campaign_messages_status_idx').on(table.status),
     index('campaign_messages_customer_idx').on(table.customerId),
     index('campaign_messages_phone_idx').on(table.phoneNumber),
-    index('campaign_messages_recovery_step_idx').on(table.recoveryStepId)
+    index('campaign_messages_recovery_step_idx').on(table.recoveryStepId),
+    // Refletem índices parciais existentes só no banco (reconciliação 21/jun — DRIFT-1).
+    // NOTA: campaign_msgs_dedup usa a expressão (sent_at)::date — o drizzle-kit tem suporte
+    // irregular a índices por expressão; valide o diff em dry-run antes de qualquer generate.
+    uniqueIndex('campaign_msgs_dedup')
+      .on(table.customerId, table.recoveryStepId, sql`((sent_at)::date)`)
+      .where(sql`customer_id IS NOT NULL AND recovery_step_id IS NOT NULL`),
+    index('campaign_msgs_recent_ai_idx')
+      .on(table.customerId, table.sentAt.desc())
+      .where(sql`generated_by_ai = true AND status = 'sent'`)
   ]
 )
 
@@ -677,7 +706,7 @@ export const agentStats = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    index('agent_stats_salon_agent_idx').on(table.salonId, table.agentName),
+    // agent_stats_salon_agent_idx removido — redundante com o uniqueIndex abaixo (HIG-3)
     uniqueIndex('agent_stats_salon_agent_unique').on(table.salonId, table.agentName)
   ]
 )
@@ -713,21 +742,9 @@ export const agents = pgTable(
   ]
 )
 
-export const embeddings = pgTable(
-  'embeddings',
-  {
-    id: uuid('id').defaultRandom().primaryKey().notNull(),
-    agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'cascade' }).notNull(),
-    content: text('content').notNull(),
-    embedding: vector('embedding').notNull(),
-    metadata: jsonb('metadata'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull()
-  },
-  (table) => [
-    index('embeddings_agent_idx').on(table.agentId)
-  ]
-)
+// `embeddings` removida — tabela RAG legada e MORTA (0 linhas, 0 uso de app),
+// substituída por agentKnowledgeBase. O DROP físico é a migration
+// supabase/migrations/018_drop_embeddings.sql (aplicar SÓ após o deploy desta remoção).
 
 export const agentKnowledgeBase = pgTable(
   'agent_knowledge_base',
@@ -878,7 +895,7 @@ export const availabilityRelations = relations(availability, ({ one }) => ({
 export const appointmentsRelations = relations(appointments, ({ one }) => ({
   salon: one(salons, { fields: [appointments.salonId], references: [salons.id] }),
   professional: one(professionals, { fields: [appointments.professionalId], references: [professionals.id] }),
-  client: one(profiles, { fields: [appointments.clientId], references: [profiles.id] }),
+  client: one(customers, { fields: [appointments.clientId], references: [customers.id] }),
   service: one(services, { fields: [appointments.serviceId], references: [services.id] })
 }))
 
@@ -926,12 +943,7 @@ export const customerTrinksProfileRelations = relations(customerTrinksProfile, (
 export const agentsRelations = relations(agents, ({ one, many }) => ({
   salon: one(salons, { fields: [agents.salonId], references: [salons.id] }),
   chats: many(chats),
-  embeddings: many(embeddings),
   knowledgeBase: many(agentKnowledgeBase)
-}))
-
-export const embeddingsRelations = relations(embeddings, ({ one }) => ({
-  agent: one(agents, { fields: [embeddings.agentId], references: [agents.id] })
 }))
 
 export const agentKnowledgeBaseRelations = relations(agentKnowledgeBase, ({ one }) => ({
