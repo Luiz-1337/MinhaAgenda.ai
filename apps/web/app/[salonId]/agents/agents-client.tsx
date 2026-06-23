@@ -55,6 +55,8 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({ numbers: [] })
   const [whatsappLoading, setWhatsappLoading] = useState(true)
   const [cloudStatus, setCloudStatus] = useState<WhatsAppCloudStatus>(initialCloudStatus)
+  const [phoneNumberIdInput, setPhoneNumberIdInput] = useState("")
+  const [wabaIdInput, setWabaIdInput] = useState("")
 
   const [isConnecting, setIsConnecting] = useState(false)
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
@@ -393,12 +395,41 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
           </div>
         )}
 
-        {/* Sem conexão -> Embedded Signup da Meta (novo mecanismo) */}
+        {/* Sem conexão -> conectar número Cloud (input manual + Embedded Signup) */}
         {!whatsappLoading && !cloudStatus.connected && whatsappNumbers.length === 0 && (
           <div className="flex flex-col gap-3 py-2">
-            <p className="text-sm text-muted-foreground text-center max-w-sm mx-auto">
-              Conecte o WhatsApp do seu salão para que os agentes possam interagir com seus clientes.
+            <p className="text-sm text-muted-foreground max-w-md">
+              Conecte o WhatsApp do salão (Cloud API). Informe o <b>phone_number_id</b> do número
+              (Meta → WhatsApp → Configuração da API) — <b>não</b> o número de telefone.
             </p>
+            <div className="flex flex-col gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={phoneNumberIdInput}
+                onChange={(e) => setPhoneNumberIdInput(e.target.value)}
+                placeholder="phone_number_id (ex.: 1155888540940947)"
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-success/40"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={wabaIdInput}
+                onChange={(e) => setWabaIdInput(e.target.value)}
+                placeholder="waba_id (opcional)"
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-success/40"
+              />
+              <button
+                type="button"
+                disabled={isConnecting || phoneNumberIdInput.trim().length === 0}
+                onClick={() => handleCloudConnect({ phoneNumberId: phoneNumberIdInput.trim(), wabaId: wabaIdInput.trim() || undefined })}
+                className="px-4 py-2.5 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />}
+                Conectar número
+              </button>
+            </div>
+            {/* Embedded Signup — ativo quando NEXT_PUBLIC_META_APP_ID/CONFIG_ID estiverem setados */}
             <MetaEmbeddedSignup
               salonId={salonId}
               disabled={isConnecting}
