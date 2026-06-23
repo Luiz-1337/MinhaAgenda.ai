@@ -13,6 +13,8 @@ const CreateAppointmentDialog = dynamic(
   { ssr: false }
 )
 import { getAppointments, getSchedulerHours } from "@/app/actions/appointments"
+import type { DailyAppointment } from "@/lib/types/appointments"
+import { AppointmentDetailDialog } from "./appointment-detail-dialog"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import {
@@ -58,6 +60,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   const [selectedProId, setSelectedProId] = useState<string | null>(null)
   const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [selectedAppointment, setSelectedAppointment] = useState<DailyAppointment | null>(null)
   const queryClient = useQueryClient()
 
   // Range [start, end] derivado da view + data corrente (TZ Brasília)
@@ -320,6 +323,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             selectedProfessionalId={selectedProId}
             startHour={schedulerHours.startHour}
             endHour={schedulerHours.endHour}
+            onAppointmentClick={setSelectedAppointment}
           />
         )}
         {viewType === "weekly" && (
@@ -333,6 +337,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             selectedProfessionalId={selectedProId}
             startHour={schedulerHours.startHour}
             endHour={schedulerHours.endHour}
+            onAppointmentClick={setSelectedAppointment}
           />
         )}
         {viewType === "monthly" && (
@@ -359,6 +364,15 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
         salonId={salonId}
         professionals={professionals}
         onSuccess={handleAppointmentCreated}
+      />
+
+      {/* Appointment Detail / Delete Dialog */}
+      <AppointmentDetailDialog
+        appointment={selectedAppointment}
+        open={!!selectedAppointment}
+        onOpenChange={(o) => { if (!o) setSelectedAppointment(null) }}
+        salonId={salonId}
+        onDeleted={handleAppointmentCreated}
       />
     </div>
   )

@@ -18,6 +18,7 @@ interface DailySchedulerProps {
   selectedProfessionalId: string | null
   startHour?: number
   endHour?: number
+  onAppointmentClick?: (appointment: DailyAppointment) => void
 }
 
 const PIXELS_PER_MINUTE = 2
@@ -72,7 +73,8 @@ export function DailyScheduler({
   error,
   selectedProfessionalId,
   startHour = 8,
-  endHour = 22
+  endHour = 22,
+  onAppointmentClick,
 }: DailySchedulerProps) {
   
   const dayStart = useMemo(() => startOfDayBrazil(currentDate), [currentDate])
@@ -169,6 +171,7 @@ export function DailyScheduler({
                       return (
                         <div
                           key={appointment.id}
+                          onClick={() => onAppointmentClick?.(appointment)}
                           className={`absolute left-0 w-full p-2 m-0.5 rounded text-xs font-medium cursor-pointer hover:brightness-110 transition-all z-10 border-l-4 overflow-hidden ${colorScheme.bg} ${colorScheme.border} ${colorScheme.text}`}
                           style={{ 
                             height: `${Math.max(height, 62)}px`,

@@ -1,6 +1,6 @@
 "use server"
 
-import { db, domainServices as sharedServices, professionals, salons, profiles, and, eq } from "@repo/db"
+import { db, domainServices as sharedServices, appointments, professionals, salons, profiles, and, eq } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import type { ActionResult } from "@/lib/types/common"
 
@@ -347,4 +347,83 @@ export async function getSchedulerHours(
     console.error("Erro em getSchedulerHours:", err)
     return DEFAULT
   }
+}
+
+/**
+ * Apaga (hard delete) um agendamento a partir do painel.
+ *
+ * Permissão: o dono do salão e gerentes podem apagar qualquer agendamento do salão;
+ * profissionais (staff) só podem apagar os próprios. A autorização é feita contra o
+ * salão REAL do agendamento (defesa contra IDOR entre tenants).
+ *
+ * Reusa `deleteAppointmentService` — o mesmo caminho que a IA usa: remove o evento
+ * espelhado no Google Calendar e tenta preencher a vaga pela fila de espera.
+ */
+export async function deleteAppointment(
+  appointmentId: string,
+  salonId: string
+): Promise<ActionResult<void>> {
+  if (!appointmentId || !salonId) {
+    return { error: "Parâmetros obrigatórios ausentes" }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  // Busca o agendamento pelo ID real (com seu salão e profissional reais).
+  const appointment = await db.query.appointments.findFirst({
+    where: eq(appointments.id, appointmentId),
+    columns: { id: true, salonId: true, professionalId: true },
+  })
+
+  if (!appointment) {
+    return { error: "Agendamento não encontrado" }
+  }
+
+  // Autoriza SEMPRE contra o salão real do agendamento (não o salonId do contexto).
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, appointment.salonId),
+    columns: { id: true, ownerId: true },
+  })
+  if (!salon) {
+    return { error: "Salão do agendamento não encontrado" }
+  }
+
+  let canDelete = salon.ownerId === user.id // dono = gerente do próprio salão
+
+  if (!canDelete) {
+    const me = await db.query.professionals.findFirst({
+      where: and(
+        eq(professionals.salonId, appointment.salonId),
+        eq(professionals.userId, user.id)
+      ),
+      columns: { id: true, role: true },
+    })
+    if (me) {
+      const isManager = me.role === "OWNER" || me.role === "MANAGER"
+      // Gerente apaga qualquer um do salão; staff só o próprio.
+      canDelete = isManager || me.id === appointment.professionalId
+    }
+  }
+
+  if (!canDelete) {
+    return { error: "Você não tem permissão para apagar este agendamento" }
+  }
+
+  const result = await sharedServices.deleteAppointmentService({
+    appointmentId,
+    salonId: appointment.salonId,
+  })
+
+  if (!result.success) {
+    return { error: result.error }
+  }
+
+  return { success: true, data: undefined }
 }
