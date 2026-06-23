@@ -7,7 +7,7 @@ import { createAppointment } from "@/app/actions/appointments"
 import { getSalonCustomers, createSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { getServices } from "@/app/actions/services"
 import type { ServiceRow } from "@/lib/types/service"
-import type { ProfessionalInfo } from "@/app/actions/appointments"
+import type { ProfessionalInfo } from "@/lib/types/appointments"
 import {
   Dialog,
   DialogContent,

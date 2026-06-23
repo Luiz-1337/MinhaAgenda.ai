@@ -14,14 +14,14 @@ import { ProfessionalService } from "@/lib/services/professional.service"
 import { SalonPlanService } from "@/lib/services/services/salon-plan.service"
 import { AvailabilityRepository } from "@/lib/services/availability/availability.repository"
 
-// Re-exportando tipos para compatibilidade com componentes existentes que possam importá-los
-export type { AppointmentDTO, ProfessionalDTO as ProfessionalInfo }
-export type DailyAppointment = AppointmentDTO
-
 /**
  * Resultado da busca de agendamentos.
+ *
+ * Os tipos públicos (AppointmentDTO, ProfessionalInfo, DailyAppointment) ficam em
+ * "@/lib/types/appointments": um arquivo "use server" só pode exportar async
+ * functions — re-exportar tipos daqui quebra o build do Turbopack (Next 16).
  */
-export interface AppointmentsResult {
+interface AppointmentsResult {
   professionals: ProfessionalDTO[]
   appointments: AppointmentDTO[]
 }

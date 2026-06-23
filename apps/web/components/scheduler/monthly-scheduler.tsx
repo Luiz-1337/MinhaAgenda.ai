@@ -4,7 +4,7 @@ import { useMemo } from "react"
 import { eachDayOfInterval, isSameDay, isSameMonth } from "date-fns"
 import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
+import type { DailyAppointment, ProfessionalInfo } from "@/lib/types/appointments"
 
 interface MonthlySchedulerProps {
   salonId: string

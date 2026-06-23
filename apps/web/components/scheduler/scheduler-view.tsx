@@ -12,7 +12,7 @@ const CreateAppointmentDialog = dynamic(
   () => import("./create-appointment-dialog").then(m => ({ default: m.CreateAppointmentDialog })),
   { ssr: false }
 )
-import { getAppointments, getSchedulerHours, type AppointmentDTO, type ProfessionalInfo } from "@/app/actions/appointments"
+import { getAppointments, getSchedulerHours } from "@/app/actions/appointments"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import {

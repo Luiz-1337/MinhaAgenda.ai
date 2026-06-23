@@ -6,7 +6,7 @@ import { ptBR } from "date-fns/locale/pt-BR"
 import { formatBrazilTime, startOfDayBrazil, getBrazilHours } from "@/lib/utils/timezone.utils"
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { DailyAppointment, ProfessionalInfo } from "@/app/actions/appointments"
+import type { DailyAppointment, ProfessionalInfo } from "@/lib/types/appointments"
 
 interface DailySchedulerProps {
   salonId: string
