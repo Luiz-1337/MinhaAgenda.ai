@@ -18,6 +18,8 @@ import { logger } from "../infra/logger";
 export interface MessageJobData {
   // Identificadores
   messageId: string;
+  /** id da linha em `messages` (mensagem do cliente) — p/ anexar a mídia após o upload. */
+  userMessageId?: string;
   chatId: string;
   salonId: string;
   agentId: string; // ID do agente que receberá a mensagem

@@ -247,14 +247,16 @@ export async function saveMessage(
     providerMessageId?: string
     /** Estado de entrega inicial ('sent' para respostas que acabaram de sair). */
     deliveryStatus?: string
+    /** Tipo da mídia recebida do cliente ('image' | 'audio' | 'video' | 'document'). */
+    mediaType?: string
   }
-): Promise<void> {
+): Promise<string> {
   // Append tool summary ao content para que o histórico tenha contexto de tools
   const finalContent = options?.toolSummary
     ? content + options.toolSummary
     : content;
 
-  await db.insert(messages).values({
+  const [inserted] = await db.insert(messages).values({
     chatId,
     role,
     content: finalContent,
@@ -265,7 +267,8 @@ export async function saveMessage(
     model: options?.model ?? null,
     providerMessageId: options?.providerMessageId ?? null,
     deliveryStatus: options?.deliveryStatus ?? null,
-  })
+    mediaType: options?.mediaType ?? null,
+  }).returning({ id: messages.id })
 
   if (role === "assistant") {
     await db
@@ -286,6 +289,16 @@ export async function saveMessage(
       })
       .where(eq(chats.id, chatId))
   }
+
+  return inserted.id
+}
+
+/**
+ * Atualiza o caminho da mídia (Storage) de uma mensagem — chamado pelo worker
+ * após subir a foto/áudio do cliente ao bucket privado.
+ */
+export async function setMessageMediaPath(messageId: string, mediaPath: string): Promise<void> {
+  await db.update(messages).set({ mediaPath }).where(eq(messages.id, messageId))
 }
 
 

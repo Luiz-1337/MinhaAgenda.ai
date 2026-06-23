@@ -15,6 +15,10 @@ export interface ProcessedMedia {
   type: "image" | "audio"
   imageUrl?: string
   transcribedText?: string
+  /** Buffer original baixado — usado para persistir a mídia no Storage e exibir no painel. */
+  buffer?: Buffer
+  /** mime real resolvido (ex.: image/jpeg, audio/ogg). */
+  mimeType?: string
   metadata: {
     originalMediaType: string
     processingTimeMs: number
@@ -152,6 +156,8 @@ async function processImage(params: ProcessMediaParams, startTime: number): Prom
     return {
       type: "image",
       imageUrl: dataUrl,
+      buffer: downloaded.buffer,
+      mimeType: resolvedMime,
       metadata: {
         originalMediaType: "image",
         processingTimeMs: Date.now() - startTime,
@@ -222,7 +228,16 @@ async function processAudio(params: ProcessMediaParams, startTime: number): Prom
 
     if (!transcribedText) {
       logger.warn("Whisper retornou transcrição vazia")
-      return audioFallback(startTime)
+      // Mesmo sem transcrição, devolve o buffer para que o áudio apareça no painel.
+      return {
+        type: "audio",
+        buffer: downloaded.buffer,
+        mimeType: resolvedMime,
+        metadata: {
+          originalMediaType: "audio",
+          processingTimeMs: Date.now() - startTime,
+        },
+      }
     }
 
     logger.info(
@@ -236,6 +251,8 @@ async function processAudio(params: ProcessMediaParams, startTime: number): Prom
     return {
       type: "audio",
       transcribedText,
+      buffer: downloaded.buffer,
+      mimeType: resolvedMime,
       metadata: {
         originalMediaType: "audio",
         processingTimeMs: Date.now() - startTime,

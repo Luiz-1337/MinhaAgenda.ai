@@ -260,14 +260,19 @@ async function handleInboundMessage(
     withTimeout(findOrCreateChat(clientPhone, salonId, agentId), DB_TIMEOUT, 'findOrCreateChat'),
   ]);
 
-  // 6. Salvar a mensagem do cliente.
-  await withTimeout(saveMessage(chat.id, 'user', body), DB_TIMEOUT, 'saveMessage');
+  // 6. Salvar a mensagem do cliente (guardando o tipo de mídia p/ exibir no painel).
+  const userMessageId = await withTimeout(
+    saveMessage(chat.id, 'user', body, hasMedia && mediaType ? { mediaType } : undefined),
+    DB_TIMEOUT,
+    'saveMessage',
+  );
 
   // 7. Enfileirar (mesmo job da Evolution; campos Baileys recebem placeholders
   //    no caminho Cloud — o reply via Cloud é wiring do B8).
   await withTimeout(
     enqueueMessage({
       messageId,
+      userMessageId,
       chatId: chat.id,
       salonId,
       agentId,

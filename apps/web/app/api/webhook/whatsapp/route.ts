@@ -438,8 +438,8 @@ async function handleMessageUpsert(
   const mediaUrl = extractMediaUrl(messageData);
 
   // 8. SALVAR MENSAGEM RAW NO BANCO (com timeout)
-  await withTimeout(
-    saveMessage(chat.id, 'user', messageContent),
+  const userMessageId = await withTimeout(
+    saveMessage(chat.id, 'user', messageContent, hasMedia(messageData) && mediaType ? { mediaType } : undefined),
     DB_TIMEOUT,
     'saveMessage'
   );
@@ -456,6 +456,7 @@ async function handleMessageUpsert(
   await withTimeout(
     enqueueMessage({
       messageId,
+      userMessageId,
       chatId: chat.id,
       salonId,
       agentId,

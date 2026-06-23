@@ -11,7 +11,8 @@ import { logger, createContextLogger, getReplicaId } from "../lib/infra/logger";
 import { StageTimer } from "../lib/infra/stage-timer";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
 import { processMedia } from "../lib/services/ai/media-processor.service";
-import { saveMessage } from "../lib/services/chat.service";
+import { saveMessage, setMessageMediaPath } from "../lib/services/chat.service";
+import { uploadWhatsappMedia } from "../lib/supabase/storage";
 import {
   isSessionError,
   getSessionErrorReason,
@@ -41,6 +42,37 @@ const LOCK_TTL_MS = 120000;
 const AI_TIMEOUT_MS = 90000;
 const CONCURRENCY = 10;
 const SESSION_RECOVERY_LOCK_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Persiste a mídia recebida do cliente (foto/áudio) no Storage privado e anexa o
+ * caminho à mensagem, para o painel exibir. Nunca lança — falha aqui não pode
+ * impedir a resposta da IA.
+ */
+async function persistInboundMedia(
+  media: { buffer?: Buffer; mimeType?: string },
+  mediaType: "image" | "audio" | "video" | "document",
+  userMessageId: string | undefined,
+  salonId: string,
+  chatId: string,
+): Promise<void> {
+  if (!media.buffer || !userMessageId) return;
+  try {
+    const path = await uploadWhatsappMedia({
+      salonId,
+      chatId,
+      messageId: userMessageId,
+      buffer: media.buffer,
+      mimeType: media.mimeType,
+      mediaType,
+    });
+    if (path) {
+      await setMessageMediaPath(userMessageId, path);
+      logger.info({ path, mediaType, chatId }, "Mídia do cliente salva no Storage");
+    }
+  } catch (err) {
+    logger.warn({ err, chatId }, "Falha ao salvar mídia no Storage (não bloqueia a resposta)");
+  }
+}
 
 // Liveness do worker: enquanto o processo está vivo, refresca uma chave no Redis.
 // Se ela expirar (sem refresh), o /health e o cron health-watch detectam que o
@@ -583,6 +615,7 @@ async function processMessage(
           messageKey: { remoteJid, fromMe: false, id: messageId },
         });
         timer.mark("media_processed_image");
+        await persistInboundMedia(media, "image", job.data.userMessageId, salonId, chatId);
 
         const caption = body && body !== "[IMAGE]" ? body : "";
         const imageContext = caption
@@ -659,6 +692,7 @@ async function processMessage(
           messageKey: { remoteJid, fromMe: false, id: messageId },
         });
         timer.mark("media_processed_audio");
+        await persistInboundMedia(media, "audio", job.data.userMessageId, salonId, chatId);
 
         if (!media.transcribedText) {
           const fallback = "Desculpe, não consegui processar seu áudio. Poderia enviar como texto?";
