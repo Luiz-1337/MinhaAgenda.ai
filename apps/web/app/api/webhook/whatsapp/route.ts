@@ -202,12 +202,21 @@ async function handleMessageUpsert(
   }
 
   // Extrai número de telefone do formato Evolution (5511999999999@s.whatsapp.net)
-  // IMPORTANTE: WhatsApp Business às vezes usa LIDs (@lid) em vez de números reais
-  // - remoteJid pode ser: 5511999999999@s.whatsapp.net (normal) ou 123456789@lid (LID)
-  // - Para RESPONDER: usar remoteJid diretamente (Evolution API faz o roteamento)
-  // - Para BANCO: usar senderPn (número real) se disponível, senão usar o número do LID
+  // IMPORTANTE: WhatsApp Business usa LIDs (@lid) em vez do número real p/ alguns contatos.
+  // A Evolution ALTERNA qual campo carrega o quê entre versões:
+  //   v2.3.x: key.remoteJid = <lid>@lid            | remoteJidAlt = <fone>@s.whatsapp.net
+  //   v2.4.0: key.remoteJid = <fone>@s.whatsapp.net | remoteJidAlt = <lid>@lid
+  // Por isso NÃO confiamos na POSIÇÃO do campo — identificamos cada um pelo SUFIXO do JID.
+  // - Para RESPONDER: ecoa o remoteJid de entrada (preserva o roteamento da sessão Signal).
+  // - Para o BANCO (clientPhone): sempre o número real; um @lid NUNCA deve virar "telefone".
   const remoteJidAlt = messageData.key.remoteJidAlt || messageData.remoteJidAlt || data.remoteJidAlt;
   const addressingMode = getAddressingMode(remoteJid);
+
+  const candidateJids = [remoteJid, remoteJidAlt].filter(
+    (j): j is string => typeof j === 'string' && j.length > 0
+  );
+  const lidJid = candidateJids.find((j) => j.endsWith('@lid')) ?? null;
+  const phoneJid = candidateJids.find((j) => !j.endsWith('@lid')) ?? null;
 
   // Keep reply addressing exactly as inbound remoteJid to preserve Signal session routing.
   const replyToJid: string = remoteJid;
@@ -215,49 +224,51 @@ async function handleMessageUpsert(
 
   timer.mark('parsed');
 
-  if (addressingMode === 'lid') {
-    const lid = remoteJid.split('@')[0];
-
+  if (phoneJid) {
+    // Número real veio direto no payload (caso comum; e o formato da v2.4.0).
+    clientPhone = extractPhoneNumber(phoneJid);
+    // Se o @lid também veio, registra o mapeamento LID -> telefone p/ resoluções futuras.
+    if (lidJid) {
+      await storeLidMapping(lidJid.split('@')[0], ensureJid(phoneJid), instanceName);
+      reqLogger.info({ remoteJid, remoteJidAlt, clientPhone }, 'Phone resolved from payload; LID mapping stored');
+    }
+  } else if (lidJid) {
+    // Só veio o @lid (sem telefone no payload): resolve por cache / campos auxiliares.
+    const lid = lidJid.split('@')[0];
     const senderPn = messageData.senderPn || data.senderPn;
     const participant = messageData.key.participant || messageData.participant;
     const participantPn = (messageData as any).participant_pn || (data as any).participant_pn;
 
-    if (remoteJidAlt && !remoteJidAlt.endsWith('@lid')) {
-      const normalizedAlt = ensureJid(remoteJidAlt);
-      clientPhone = extractPhoneNumber(normalizedAlt);
-      await storeLidMapping(lid, normalizedAlt, instanceName);
-      reqLogger.info({ remoteJid, remoteJidAlt: normalizedAlt, clientPhone }, 'Using remoteJidAlt and storing LID mapping');
-    } else {
-      const cachedPhone = await resolveLidToPhone(lid, instanceName);
+    const cachedPhone = await resolveLidToPhone(lid, instanceName);
 
-      if (cachedPhone) {
-        clientPhone = extractPhoneNumber(cachedPhone);
-        reqLogger.info({ remoteJid, cachedPhone, clientPhone }, 'LID resolved from Redis cache');
-      } else if (senderPn && !senderPn.includes(lid)) {
-        const normalizedSenderPn = ensureJid(senderPn);
-        clientPhone = extractPhoneNumber(normalizedSenderPn);
-        await storeLidMapping(lid, normalizedSenderPn, instanceName);
-        reqLogger.info({ remoteJid, senderPn: normalizedSenderPn, clientPhone }, 'Using senderPn field and storing LID mapping');
-      } else if (participantPn) {
-        const normalizedParticipantPn = ensureJid(participantPn);
-        clientPhone = extractPhoneNumber(normalizedParticipantPn);
-        await storeLidMapping(lid, normalizedParticipantPn, instanceName);
-        reqLogger.info({ remoteJid, participantPn: normalizedParticipantPn, clientPhone }, 'Using participant_pn field and storing LID mapping');
-      } else if (participant && !participant.includes('@lid')) {
-        const normalizedParticipant = ensureJid(participant);
-        clientPhone = extractPhoneNumber(normalizedParticipant);
-        await storeLidMapping(lid, normalizedParticipant, instanceName);
-        reqLogger.info({ remoteJid, participant: normalizedParticipant, clientPhone }, 'Using participant field and storing LID mapping');
-      } else {
-        clientPhone = lid;
-        reqLogger.error(
-          { remoteJid, remoteJidAlt, pushName: messageData.pushName, instanceName },
-          'LID NOT RESOLVED - using LID as fallback client identifier'
-        );
-      }
+    if (cachedPhone) {
+      clientPhone = extractPhoneNumber(cachedPhone);
+      reqLogger.info({ remoteJid, cachedPhone, clientPhone }, 'LID resolved from Redis cache');
+    } else if (senderPn && !senderPn.includes(lid)) {
+      const normalizedSenderPn = ensureJid(senderPn);
+      clientPhone = extractPhoneNumber(normalizedSenderPn);
+      await storeLidMapping(lid, normalizedSenderPn, instanceName);
+      reqLogger.info({ remoteJid, senderPn: normalizedSenderPn, clientPhone }, 'Using senderPn field and storing LID mapping');
+    } else if (participantPn) {
+      const normalizedParticipantPn = ensureJid(participantPn);
+      clientPhone = extractPhoneNumber(normalizedParticipantPn);
+      await storeLidMapping(lid, normalizedParticipantPn, instanceName);
+      reqLogger.info({ remoteJid, participantPn: normalizedParticipantPn, clientPhone }, 'Using participant_pn field and storing LID mapping');
+    } else if (participant && !participant.includes('@lid')) {
+      const normalizedParticipant = ensureJid(participant);
+      clientPhone = extractPhoneNumber(normalizedParticipant);
+      await storeLidMapping(lid, normalizedParticipant, instanceName);
+      reqLogger.info({ remoteJid, participant: normalizedParticipant, clientPhone }, 'Using participant field and storing LID mapping');
+    } else {
+      clientPhone = lid;
+      reqLogger.error(
+        { remoteJid, remoteJidAlt, pushName: messageData.pushName, instanceName },
+        'LID NOT RESOLVED - using LID as fallback client identifier'
+      );
     }
   } else {
-    clientPhone = extractPhoneNumber(remoteJidAlt || remoteJid);
+    // Sem @lid e sem telefone identificável (fallback defensivo).
+    clientPhone = extractPhoneNumber(remoteJid);
   }
 
   reqLogger = reqLogger.child({

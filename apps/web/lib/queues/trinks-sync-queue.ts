@@ -6,8 +6,10 @@
  *   - integrations server actions when the salon owner clicks "Sincronizar Clientes"
  *
  * Each job re-runs SyncCustomerTrinksProfileUseCase for one customer.
- * Idempotent via jobId = "trinks-profile:<customerId>" — duplicate enqueues
+ * Idempotent via jobId = "trinks-profile_<customerId>" — duplicate enqueues
  * within BullMQ's job retention window collapse to a single execution.
+ * NOTE: BullMQ (>=5.x) rejects ":" in custom job ids ("Custom Id cannot
+ * contain :"), so the separator is "_", not ":".
  */
 
 import { Queue, Job } from "bullmq"
@@ -67,7 +69,7 @@ export async function enqueueTrinksProfileSync(
   try {
     const queue = getTrinksSyncQueue()
     const job = await queue.add("sync-profile", data, {
-      jobId: `trinks-profile:${data.customerId}`,
+      jobId: `trinks-profile_${data.customerId}`,
       // Lower priority than message processing — these jobs are background sync.
       priority: 5,
     })
