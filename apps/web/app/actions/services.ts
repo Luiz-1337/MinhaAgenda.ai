@@ -59,7 +59,7 @@ export async function upsertService(
     const result = await ServiceUseCase.upsert(input)
 
     if (!("error" in result)) {
-      revalidatePath("/dashboard/services")
+      revalidatePath(`/${input.salonId}/services`)
     }
 
     return result
@@ -87,7 +87,7 @@ export async function deleteService(
     const result = await ServiceUseCase.delete(id, salonId, { force })
 
     if (!("error" in result)) {
-      revalidatePath("/dashboard/services")
+      revalidatePath(`/${salonId}/services`)
     }
 
     return result

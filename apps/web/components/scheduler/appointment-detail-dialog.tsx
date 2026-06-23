@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition, type ReactNode } from "react"
 import { toast } from "sonner"
-import { Calendar, Clock, User, Scissors, Trash2, X, FileText } from "lucide-react"
+import { Calendar, Clock, User, Scissors, Trash2, X, FileText, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { deleteAppointment } from "@/app/actions/appointments"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
@@ -127,7 +127,7 @@ export function AppointmentDetailDialog({
                   disabled={isPending}
                   className="flex items-center gap-2 px-4 py-2.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Trash2 size={16} />
+                  {isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                   {isPending ? "Apagando..." : "Sim, apagar"}
                 </button>
               </div>

@@ -124,7 +124,7 @@ export function ColumnSettingsMenu({ column, onRename, onDelete }: Props) {
             <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} disabled={saving || !name.trim()}>
+            <Button onClick={handleSave} loading={saving} disabled={saving || !name.trim()}>
               {saving ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>

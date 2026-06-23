@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
-import { Clock, Copy, Save } from "lucide-react"
+import { Clock, Copy, Save, Loader2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { getSalonAvailability, updateSalonAvailability } from "@/app/actions/salon-availability"
 import type { ScheduleItem } from "@/lib/types/availability"
@@ -203,7 +203,7 @@ export default function SoloAvailabilitySection({ salonId, className }: Props) {
           disabled={!canSave || isPending}
           className="w-full px-4 py-3 rounded-md bg-accent hover:bg-accent/90 text-accent-foreground text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Save size={16} />
+          {isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {isPending ? "Salvando..." : "Salvar Horários"}
         </button>
       </div>

@@ -334,17 +334,11 @@ export function AgentForm({ salonId, mode, initialData, onCancel }: AgentFormPro
         <Button
           type="submit"
           form="agent-form"
-          disabled={isPending}
+          loading={isPending}
           className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-md px-5 py-2.5 flex items-center gap-2"
         >
-          {isPending ? (
-            "Salvando..."
-          ) : (
-            <>
-              <Save size={18} />
-              {mode === "create" ? "Criar Agente" : "Salvar Alterações"}
-            </>
-          )}
+          {!isPending && <Save size={18} />}
+          {isPending ? "Salvando..." : mode === "create" ? "Criar Agente" : "Salvar Alterações"}
         </Button>
       </div>
 

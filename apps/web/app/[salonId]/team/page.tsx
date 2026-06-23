@@ -1,31 +1,22 @@
-import dynamic from "next/dynamic"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Card } from "@/components/ui/card"
+import TeamClient from "./team-client"
+import { getProfessionals } from "@/app/actions/professionals"
 
-const TeamClient = dynamic(() => import("./team-client"), {
-  loading: () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-8 w-36" />
-        <Skeleton className="h-10 w-40" />
-      </div>
-      <Card className="p-0 overflow-hidden">
-        <div className="divide-y divide-border">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 px-6 py-4">
-              <Skeleton className="h-10 w-10 rounded-full" />
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  ),
-})
+export default async function TeamPage({
+  params,
+}: {
+  params: Promise<{ salonId: string }>
+}) {
+  const { salonId } = await params
 
-export default function TeamPage() {
-  return <TeamClient />
+  // Busca inicial no servidor — entregue no HTML, sem fetch pós-hidratação (sem cold-start).
+  const res = await getProfessionals(salonId)
+  const initialProfessionals = Array.isArray(res) ? res : []
+
+  return (
+    <TeamClient
+      key={salonId}
+      salonId={salonId}
+      initialProfessionals={initialProfessionals}
+    />
+  )
 }

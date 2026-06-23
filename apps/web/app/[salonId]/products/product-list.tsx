@@ -7,15 +7,16 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Plus, Package, DollarSign, Tag, X, Save } from "lucide-react"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
+import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { getProducts, upsertProduct, deleteProduct } from "@/app/actions/products"
 import type { ProductRow } from "@/lib/types/product"
-import { useSalon } from "@/contexts/salon-context"
 
 const productSchema = z.object({
   id: z.string().uuid().optional(),
@@ -32,16 +33,28 @@ interface ProductListProps {
 }
 
 export default function ProductList({ salonId, initialProducts }: ProductListProps) {
-  const { activeSalon } = useSalon()
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
-  const [list, setList] = useState<ProductRow[]>(initialProducts)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ProductRow | null>(null)
-  const [, startTransition] = useTransition()
-  const [isLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null)
+
+  // react-query é a fonte da verdade; o RSC entrega initialProducts (paint rápido, sem refetch no mount).
+  const { data: list = [], isFetching } = useQuery({
+    queryKey: ["products", salonId],
+    queryFn: async () => {
+      const res = await getProducts(salonId)
+      if ("error" in res) {
+        toast.error(res.error)
+        return []
+      }
+      return res.data ?? []
+    },
+    initialData: initialProducts,
+  })
 
   const form = useForm<ProductForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -96,16 +109,7 @@ export default function ProductList({ salonId, initialProducts }: ProductListPro
       toast.success(editing ? "Produto atualizado" : "Produto criado")
       setOpen(false)
       setEditing(null)
-      try {
-        const again = await getProducts(salonId)
-        if ("error" in again) {
-          console.error("Erro ao recarregar produtos:", again.error)
-        } else {
-          setList(again.data || [])
-        }
-      } catch (error) {
-        console.error("Erro ao recarregar produtos:", error)
-      }
+      queryClient.invalidateQueries({ queryKey: ["products", salonId] })
     })
   }
 
@@ -129,16 +133,7 @@ export default function ProductList({ salonId, initialProducts }: ProductListPro
       }
       toast.success("Produto removido")
       setProductToDelete(null)
-      try {
-        const again = await getProducts(salonId)
-        if ("error" in again) {
-          console.error("Erro ao recarregar produtos:", again.error)
-        } else {
-          setList(again.data || [])
-        }
-      } catch (error) {
-        console.error("Erro ao recarregar produtos:", error)
-      }
+      queryClient.invalidateQueries({ queryKey: ["products", salonId] })
     })
   }
 
@@ -156,6 +151,7 @@ export default function ProductList({ salonId, initialProducts }: ProductListPro
         <div className="flex items-center gap-2">
           <Package size={24} className="text-muted-foreground" />
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Produtos</h2>
+          <RefetchIndicator active={isFetching} />
         </div>
         <button
           onClick={openCreate}
@@ -185,7 +181,7 @@ export default function ProductList({ salonId, initialProducts }: ProductListPro
             </div>
             <button
               onClick={() => setOpen(false)}
-              disabled={form.formState.isSubmitting}
+              disabled={isPending}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <X size={20} />
@@ -252,19 +248,20 @@ export default function ProductList({ salonId, initialProducts }: ProductListPro
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                disabled={form.formState.isSubmitting}
+                disabled={isPending}
                 className="px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancelar
               </button>
-              <button
+              <Button
                 type="submit"
-                disabled={form.formState.isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-sm font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                size="lg"
+                loading={isPending}
+                className="font-bold shadow-md"
               >
-                <Save size={18} />
-                {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Produto" : "Criar Produto"}
-              </button>
+                {!isPending && <Save size={18} />}
+                {isPending ? "Salvando..." : editing ? "Salvar Produto" : "Criar Produto"}
+              </Button>
             </div>
           </form>
         </DialogContent>
@@ -330,19 +327,7 @@ export default function ProductList({ salonId, initialProducts }: ProductListPro
 
         {/* Table Body */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {isLoading ? (
-            <div className="p-6 space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                  <div className="h-4 flex-1 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                </div>
-              ))}
-            </div>
-          ) : filteredProducts.length === 0 ? (
+          {filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
               <Package size={32} className="mb-3 opacity-50" />
               <p>Nenhum produto encontrado.</p>

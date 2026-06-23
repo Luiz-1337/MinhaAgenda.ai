@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { toast } from "sonner"
-import { X, Calendar, User, Briefcase, Zap, FileText, Clock, Plus, Phone, Mail } from "lucide-react"
+import { X, Calendar, User, Briefcase, Zap, FileText, Clock, Plus, Phone, Mail, Loader2 } from "lucide-react"
 import { createAppointment } from "@/app/actions/appointments"
 import { getSalonCustomers, createSalonCustomer, type CustomerRow } from "@/app/actions/customers"
 import { getServices } from "@/app/actions/services"
@@ -534,7 +534,7 @@ export function CreateAppointmentDialog({
               disabled={isPending}
               className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground rounded-md text-sm font-bold shadow-lg shadow-accent/20 flex items-center gap-2 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <Calendar size={18} />
+              {isPending ? <Loader2 size={18} className="animate-spin" /> : <Calendar size={18} />}
               {isPending ? "Criando..." : "Criar Agendamento"}
             </button>
           </div>

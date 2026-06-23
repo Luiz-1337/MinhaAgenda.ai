@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { GoogleCalendarIntegration } from "@/components/dashboard/google-calendar-integration"
 import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
 import {
   saveTrinksToken,
   deleteTrinksIntegration,
@@ -192,8 +193,9 @@ export function IntegrationsClient({
                 <button
                   type="submit"
                   disabled={isPendingTrinks || !trinksToken.trim()}
-                  className="px-5 py-2.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
+                  {isPendingTrinks && <Loader2 size={14} className="animate-spin" />}
                   {isPendingTrinks ? "Salvando..." : trinksIntegrationStatus?.hasToken ? "Atualizar Token" : "Salvar Token"}
                 </button>
 

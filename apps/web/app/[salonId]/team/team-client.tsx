@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -8,16 +8,18 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Plus, User, Pencil, Clock, Trash2, AlertCircle, X, Save } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { getProfessionals, upsertProfessional, deleteProfessional } from "@/app/actions/professionals"
 import type { ProfessionalRow } from "@/lib/types/professional"
-import { useSalon, useSalonAuth } from "@/contexts/salon-context"
+import { useSalonAuth } from "@/contexts/salon-context"
 import { canAddProfessional } from "@/lib/utils/permissions"
 import AvailabilitySheet from "@/components/team/availability-sheet"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
+import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 
 // Função para formatar os dias da semana
 function formatWorkingDays(days?: number[]): string {
@@ -39,21 +41,36 @@ const professionalSchema = z.object({
 })
 type ProfessionalForm = z.infer<typeof professionalSchema>
 
-export default function TeamClient() {
-  const { activeSalon } = useSalon()
+interface TeamClientProps {
+  salonId: string
+  initialProfessionals: ProfessionalRow[]
+}
+
+export default function TeamClient({ salonId, initialProfessionals }: TeamClientProps) {
   const { planTier, isManager } = useSalonAuth()
+  const queryClient = useQueryClient()
 
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
-  const [list, setList] = useState<ProfessionalRow[]>([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ProfessionalRow | null>(null)
-  const [, startTransition] = useTransition()
+  const [isPending, startTransition] = useTransition()
   const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [selectedProfessional, setSelectedProfessional] = useState<ProfessionalRow | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [professionalToDelete, setProfessionalToDelete] = useState<{ id: string; name: string } | null>(null)
+
+  // react-query keyed no salonId da ROTA; o RSC entrega initialProfessionals (sem cold-start).
+  const { data: list = [], isFetching } = useQuery({
+    queryKey: ["professionals", salonId],
+    queryFn: async () => {
+      const res = await getProfessionals(salonId)
+      if (Array.isArray(res)) return res
+      toast.error(res.error)
+      return []
+    },
+    initialData: initialProfessionals,
+  })
 
   const form = useForm<ProfessionalForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,21 +82,6 @@ export default function TeamClient() {
   const activeCount = useMemo(() => list.filter(p => p.is_active).length, [list])
   const canCreate = canAddProfessional(planTier, activeCount)
   const isSolo = planTier === 'SOLO'
-
-  useEffect(() => {
-    if (!activeSalon) return
-
-    setIsLoading(true)
-    startTransition(async () => {
-      const res = await getProfessionals(activeSalon.id)
-      if (Array.isArray(res)) {
-        setList(res)
-      } else {
-        toast.error(res.error)
-      }
-      setIsLoading(false)
-    })
-  }, [activeSalon?.id])
 
   const filteredTeam = useMemo(() => {
     return list.filter((member) => {
@@ -114,13 +116,13 @@ export default function TeamClient() {
   }
 
   async function onSubmit(values: ProfessionalForm) {
-    if (!activeSalon) {
+    if (!salonId) {
       toast.error("Selecione um salão")
       return
     }
 
     startTransition(async () => {
-      const res = await upsertProfessional({ ...values, salonId: activeSalon.id })
+      const res = await upsertProfessional({ ...values, salonId })
       if ("error" in res) {
         toast.error(res.error)
         return
@@ -128,8 +130,7 @@ export default function TeamClient() {
       toast.success(editing ? "Profissional atualizado" : "Profissional criado")
       setOpen(false)
       setEditing(null)
-      const again = await getProfessionals(activeSalon.id)
-      if (Array.isArray(again)) setList(again)
+      queryClient.invalidateQueries({ queryKey: ["professionals", salonId] })
     })
   }
 
@@ -139,22 +140,21 @@ export default function TeamClient() {
   }
 
   async function onDelete() {
-    if (!activeSalon || !professionalToDelete) {
+    if (!salonId || !professionalToDelete) {
       toast.error("Selecione um salão")
       return
     }
 
     setDeleteConfirmOpen(false)
     startTransition(async () => {
-      const res = await deleteProfessional(professionalToDelete.id, activeSalon.id)
+      const res = await deleteProfessional(professionalToDelete.id, salonId)
       if ("error" in res) {
         toast.error(res.error)
         return
       }
       toast.success("Profissional removido")
       setProfessionalToDelete(null)
-      const again = await getProfessionals(activeSalon.id)
-      if (Array.isArray(again)) setList(again)
+      queryClient.invalidateQueries({ queryKey: ["professionals", salonId] })
     })
   }
 
@@ -165,6 +165,7 @@ export default function TeamClient() {
         <div className="flex items-center gap-2">
           <User size={24} className="text-muted-foreground" />
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Equipe</h2>
+          <RefetchIndicator active={isFetching} />
         </div>
 
         {isSolo ? (
@@ -208,7 +209,7 @@ export default function TeamClient() {
             </div>
             <button
               onClick={() => setOpen(false)}
-              disabled={form.formState.isSubmitting}
+              disabled={isPending}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <X size={20} />
@@ -304,19 +305,20 @@ export default function TeamClient() {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                disabled={form.formState.isSubmitting}
+                disabled={isPending}
                 className="px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancelar
               </button>
-              <button
+              <Button
                 type="submit"
-                disabled={form.formState.isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                size="lg"
+                loading={isPending}
+                className="rounded-xl font-bold shadow-md"
               >
-                <Save size={18} />
-                {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Profissional" : "Criar Profissional"}
-              </button>
+                {!isPending && <Save size={18} />}
+                {isPending ? "Salvando..." : editing ? "Salvar Profissional" : "Criar Profissional"}
+              </Button>
             </div>
           </form>
         </DialogContent>
@@ -383,20 +385,7 @@ export default function TeamClient() {
 
         {/* Table Body */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {isLoading ? (
-            <div className="p-6 space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
-                  <div className="h-4 flex-1 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                </div>
-              ))}
-            </div>
-          ) : filteredTeam.length === 0 ? (
+          {filteredTeam.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
               <User size={32} className="mb-3 opacity-50" />
               <p>Nenhum membro encontrado.</p>

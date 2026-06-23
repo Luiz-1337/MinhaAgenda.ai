@@ -81,7 +81,7 @@ export function DeleteContactDialog({
             type="button"
             variant="destructive"
             onClick={handleDelete}
-            disabled={isPending}
+            loading={isPending}
           >
             {isPending ? "Removendo..." : "Remover"}
           </Button>

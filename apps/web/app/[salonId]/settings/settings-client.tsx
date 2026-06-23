@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react"
 import { ProfileEditForm, type ProfileEditFormRef } from "@/components/dashboard/profile-edit-form"
-import { Store, Save, ArrowRight } from "lucide-react"
+import { Store, Save, ArrowRight, Loader2 } from "lucide-react"
 import type { ProfileDetails } from "@/app/actions/profile"
 import Link from "next/link"
 
@@ -29,7 +29,7 @@ export function SettingsClient({
           disabled={isPending}
           className="flex items-center gap-2 px-3 md:px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Save size={16} />
+          {isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           <span className="hidden sm:inline">{isPending ? "Salvando..." : "Salvar Alterações"}</span>
           <span className="sm:hidden">{isPending ? "..." : "Salvar"}</span>
         </button>

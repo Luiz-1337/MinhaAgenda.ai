@@ -8,16 +8,18 @@ import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save, ArrowLeftRight, Star } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Search, Plus, Zap, Clock, DollarSign, Tag, X, Save, ArrowLeftRight, Star, Loader2 } from "lucide-react"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
+import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { getServices, upsertService, deleteService, getServiceLinkedProfessionals } from "@/app/actions/services"
 import type { ServiceRow, PriceType } from "@/lib/types/service"
 import type { ProfessionalRow } from "@/lib/types/professional"
-import { useSalon, useSalonAuth } from "@/contexts/salon-context"
+import { useSalonAuth } from "@/contexts/salon-context"
 
 const priceTypeSchema = z.enum(["fixed", "range"])
 
@@ -78,16 +80,15 @@ interface ServiceListProps {
 }
 
 export default function ServiceList({ salonId, initialServices, initialProfessionals }: ServiceListProps) {
-  const { activeSalon } = useSalon()
   const { isSolo } = useSalonAuth()
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all")
   const [searchTerm, setSearchTerm] = useState("")
-  const [list, setList] = useState<ServiceRow[]>(initialServices)
   const [professionals] = useState<ProfessionalRow[]>(initialProfessionals)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ServiceRow | null>(null)
-  const [, startTransition] = useTransition()
-  const [isLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const [loadingLinked, setLoadingLinked] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string } | null>(null)
   // Segundo passo: serviço com agendamentos vinculados (exige confirmação extra)
@@ -99,6 +100,20 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(serviceSchema as any),
     defaultValues: { name: "", description: "", duration: 60, durationMax: null, price: 0, priceType: "fixed", priceMin: undefined, priceMax: undefined, priceOnRequest: false, allowedWeekdays: [], allowedStartTimes: [], isActive: true, averageCycleDays: null, professionalIds: [], specialistProfessionalIds: [] },
+  })
+
+  // react-query é a fonte da verdade; o RSC entrega initialServices (paint rápido, sem refetch no mount).
+  const { data: list = [], isFetching } = useQuery({
+    queryKey: ["services", salonId],
+    queryFn: async () => {
+      const res = await getServices(salonId)
+      if ("error" in res) {
+        toast.error(res.error)
+        return []
+      }
+      return res.data ?? []
+    },
+    initialData: initialServices,
   })
 
   const filteredServices = useMemo(() => {
@@ -123,23 +138,9 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
 
   async function openEdit(service: ServiceRow) {
     setEditing(service)
-
-    // Carregar profissionais vinculados ao serviço
-    let linkedProfessionalIds: string[] = []
-    let linkedSpecialistIds: string[] = []
-    try {
-      const linked = await getServiceLinkedProfessionals(service.id, salonId)
-      if ("error" in linked) {
-        console.error("Erro ao carregar profissionais vinculados:", linked.error)
-      } else {
-        linkedProfessionalIds = linked.data?.professionalIds || []
-        linkedSpecialistIds = linked.data?.specialistIds || []
-      }
-    } catch (error) {
-      console.error("Erro ao carregar profissionais vinculados:", error)
-    }
-
     setNewStartTime("")
+    // Abre o modal imediatamente com os dados que já temos (paint rápido);
+    // os profissionais vinculados chegam logo depois, com spinner próprio na seção.
     form.reset({
       id: service.id,
       name: service.name,
@@ -155,10 +156,26 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
       allowedStartTimes: service.allowed_start_times ?? [],
       isActive: service.is_active,
       averageCycleDays: service.average_cycle_days ?? null,
-      professionalIds: linkedProfessionalIds,
-      specialistProfessionalIds: linkedSpecialistIds,
+      professionalIds: [],
+      specialistProfessionalIds: [],
     })
     setOpen(true)
+
+    // Carregar profissionais vinculados ao serviço (assíncrono, com feedback)
+    setLoadingLinked(true)
+    try {
+      const linked = await getServiceLinkedProfessionals(service.id, salonId)
+      if ("error" in linked) {
+        console.error("Erro ao carregar profissionais vinculados:", linked.error)
+      } else {
+        form.setValue("professionalIds", linked.data?.professionalIds || [])
+        form.setValue("specialistProfessionalIds", linked.data?.specialistIds || [])
+      }
+    } catch (error) {
+      console.error("Erro ao carregar profissionais vinculados:", error)
+    } finally {
+      setLoadingLinked(false)
+    }
   }
 
   async function onSubmit(values: ServiceForm) {
@@ -189,16 +206,7 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
       toast.success(editing ? "Serviço atualizado" : "Serviço criado")
       setOpen(false)
       setEditing(null)
-      try {
-        const again = await getServices(salonId)
-        if ("error" in again) {
-          console.error("Erro ao recarregar serviços:", again.error)
-        } else {
-          setList(again.data || [])
-        }
-      } catch (error) {
-        console.error("Erro ao recarregar serviços:", error)
-      }
+      queryClient.invalidateQueries({ queryKey: ["services", salonId] })
     })
   }
 
@@ -207,18 +215,9 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
     setDeleteConfirmOpen(true)
   }
 
-  async function reloadServices() {
+  function reloadServices() {
     if (!salonId) return
-    try {
-      const again = await getServices(salonId)
-      if ("error" in again) {
-        console.error("Erro ao recarregar serviços:", again.error)
-      } else {
-        setList(again.data || [])
-      }
-    } catch (error) {
-      console.error("Erro ao recarregar serviços:", error)
-    }
+    return queryClient.invalidateQueries({ queryKey: ["services", salonId] })
   }
 
   async function onDelete() {
@@ -308,6 +307,7 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
         <div className="flex items-center gap-2">
           <Zap size={24} className="text-muted-foreground" />
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Serviços</h2>
+          <RefetchIndicator active={isFetching} />
         </div>
         <button
           onClick={openCreate}
@@ -337,7 +337,7 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
             </div>
             <button
               onClick={() => setOpen(false)}
-              disabled={form.formState.isSubmitting}
+              disabled={isPending}
               className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <X size={20} />
@@ -642,7 +642,12 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
                     Marque a estrela para definir o especialista do serviço — a IA oferece esse profissional primeiro, mas pode agendar com outro habilitado se o cliente pedir.
                   </p>
                   <div className="border border-border rounded-md bg-card">
-                    {(() => {
+                    {loadingLinked ? (
+                      <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Carregando profissionais vinculados...
+                      </div>
+                    ) : (() => {
                       const activeProfessionals = professionals.filter((p) => p.is_active)
                       if (activeProfessionals.length === 0) {
                         return (
@@ -764,19 +769,20 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                disabled={form.formState.isSubmitting}
+                disabled={isPending}
                 className="px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancelar
               </button>
-              <button
+              <Button
                 type="submit"
-                disabled={form.formState.isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                size="lg"
+                loading={isPending}
+                className="rounded-xl font-bold shadow-md"
               >
-                <Save size={18} />
-                {form.formState.isSubmitting ? "Salvando..." : editing ? "Salvar Serviço" : "Criar Serviço"}
-              </button>
+                {!isPending && <Save size={18} />}
+                {isPending ? "Salvando..." : editing ? "Salvar Serviço" : "Criar Serviço"}
+              </Button>
             </div>
           </form>
         </DialogContent>
@@ -843,20 +849,7 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
 
         {/* Table Body */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {isLoading ? (
-            <div className="p-6 space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                  <div className="h-4 flex-1 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-20 bg-muted animate-pulse rounded" />
-                  <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                </div>
-              ))}
-            </div>
-          ) : filteredServices.length === 0 ? (
+          {filteredServices.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
               <Zap size={32} className="mb-3 opacity-50" />
               <p>Nenhum serviço encontrado.</p>

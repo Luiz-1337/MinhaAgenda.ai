@@ -199,7 +199,7 @@ export async function upsertProfessional(
       await ProfessionalService.createProfessional(input.salonId, { ...dataWithUserId, personKey })
     }
 
-    revalidatePath("/dashboard/team")
+    revalidatePath(`/${input.salonId}/team`)
     return { success: true }
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Erro ao salvar profissional" }
@@ -293,6 +293,6 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
     return { error: error instanceof Error ? error.message : "Erro ao remover profissional" }
   }
 
-  revalidatePath("/dashboard/team")
+  revalidatePath(`/${salonId}/team`)
   return { success: true }
 }

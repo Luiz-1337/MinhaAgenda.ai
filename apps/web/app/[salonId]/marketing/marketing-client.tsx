@@ -13,7 +13,8 @@ import {
   Zap,
   X,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { getRecoveryFlow, saveRecoveryFlow, previewSegmentedLeads, createBroadcastCampaign, sendBroadcastCampaign, listSegmentedLeads } from "@/app/actions/marketing";
 import { getServices } from "@/app/actions/services";
@@ -608,6 +609,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                 disabled={isSaving || isLoading || isFlowLoading}
                 className="flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary/90 disabled:bg-primary/60 text-primary-foreground rounded-md text-sm font-bold transition-all hover:-translate-y-1 active:scale-95 disabled:cursor-not-allowed"
               >
+                {isSaving && <Loader2 size={16} className="animate-spin" />}
                 {isSaving ? "Salvando..." : "Salvar fluxo"}
               </button>
             </div>

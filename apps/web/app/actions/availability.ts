@@ -101,7 +101,7 @@ export async function updateAvailability(
       await AvailabilityRepository.insertMany(toInsert)
     }
 
-    revalidatePath("/dashboard/team")
+    revalidatePath(`/${salonId}/team`)
     return { success: true, data: undefined }
   } catch (error) {
     const errorMessage =

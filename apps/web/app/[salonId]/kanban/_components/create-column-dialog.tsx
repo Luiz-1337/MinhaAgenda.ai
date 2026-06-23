@@ -90,7 +90,7 @@ export function CreateColumnDialog({ onCreate }: Props) {
           <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleCreate} disabled={saving || !name.trim()}>
+          <Button onClick={handleCreate} loading={saving} disabled={saving || !name.trim()}>
             {saving ? "Criando..." : "Criar"}
           </Button>
         </DialogFooter>

@@ -254,7 +254,7 @@ export async function updateSalon(
     return { error: updateResult.error.message }
   }
 
-  revalidatePath("/dashboard/settings")
+  revalidatePath(`/${salonId}/salon-settings`)
   revalidatePath("/")
   return { success: true }
 }

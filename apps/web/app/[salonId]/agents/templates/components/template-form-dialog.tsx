@@ -392,17 +392,11 @@ export function TemplateFormDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isPending}
+              loading={isPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              {isPending ? (
-                "Salvando..."
-              ) : (
-                <>
-                  <Save size={18} className="mr-2" />
-                  {initialData ? "Salvar Alterações" : "Criar Template"}
-                </>
-              )}
+              {!isPending && <Save size={18} className="mr-2" />}
+              {isPending ? "Salvando..." : initialData ? "Salvar Alterações" : "Criar Template"}
             </Button>
           </DialogFooter>
         </form>
