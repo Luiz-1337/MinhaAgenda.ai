@@ -2,7 +2,7 @@
 
 import { db, chats, messages, customers, chatKanbanColumns, and, asc, desc, eq, inArray } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
-import { sendWhatsAppMessage } from "@/lib/services/evolution/evolution-message.service"
+import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
 import { saveMessage } from "@/lib/services/chat.service"
 
 export interface ChatConversation {
@@ -325,8 +325,9 @@ export async function sendManualMessage(
     // Salva a mensagem como assistant (mensagem do agente humano)
     await saveMessage(chat.id, "assistant", content.trim())
 
-    // Envia via WhatsApp usando o número do agente ativo
-    await sendWhatsAppMessage(chat.clientPhone, content.trim(), chat.salonId)
+    // Envia via WhatsApp pelo provider do salão. Envio manual está num chat
+    // ativo (geralmente dentro da janela de 24h) -> passa chatId para a checagem.
+    await sendProactiveMessage({ salonId: chat.salonId, to: chat.clientPhone, text: content.trim(), chatId: chat.id })
 
     // Atualiza updatedAt do chat
     await db

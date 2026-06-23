@@ -1,5 +1,6 @@
 import { getCurrentSalon } from "@/app/actions/salon"
 import { getAgents } from "@/app/actions/agents"
+import { getWhatsAppCloudStatus } from "@/app/actions/whatsapp-cloud"
 import { AgentsClient } from "./agents-client"
 
 export default async function AgentsPage({ params }: { params: Promise<{ salonId: string }> }) {
@@ -17,7 +18,8 @@ export default async function AgentsPage({ params }: { params: Promise<{ salonId
 
   const agentsResult = await getAgents(salonId)
   const agents = "error" in agentsResult ? [] : agentsResult.data ?? []
+  const initialCloudStatus = await getWhatsAppCloudStatus(salonId)
 
-  return <AgentsClient salonId={salonId} initialAgents={agents} />
+  return <AgentsClient salonId={salonId} initialAgents={agents} initialCloudStatus={initialCloudStatus} />
 }
 

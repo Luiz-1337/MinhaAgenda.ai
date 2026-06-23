@@ -13,7 +13,8 @@
 > - ✅ **B1** interface `MessageProvider` + `EvolutionProvider` (additive, 0 mudança de comportamento)
 > - ✅ **B3** `CloudProvider` (envio + mapa de erros) · ✅ **B4** webhook `/cloud` (handshake + assinatura + inbound + status + eco) — *typecheck do projeto: 0 erros*
 > - ✅ **Wiring do worker** — job `provider`/`phoneNumberId` + `message-processor` roteando os 9 envios pelo provider do job (watchdog/escada `status:0` só p/ Evolution). *typecheck 0 erros; 0 `sendWhatsAppMessage` restante no worker.* Loop fechado: webhook Cloud → fila → IA → reply via Cloud → status.
-> - ⬜ **PRÓXIMO: TESTE no número de teste** — `.env` (incl. `WHATSAPP_PILOT_AGENT_ID` de um salão c/ assinatura+créditos) → expor webhook (deploy/túnel) → configurar na Meta (campo `messages`) → subir worker → mandar msg p/ +1 555 634 9014.
+> - ✅ **TESTE REATIVO PASSOU (22/jun/2026)** no número de teste +1 555 634 9014 — deployado em prod (main: feat d996480 + hotfix 0993f87 dos imports relativos). Hosting: web/webhook na **Vercel**, worker na **Railway**; env nos dois. Ciclo completo: cliente → webhook → fila → worker → bot responde pela Cloud API → entregue.
+> - ⚠️ **FAZER AGORA: rotacionar** o token permanente + App Secret (ficaram expostos no chat).
 > - ⬜ pendentes de espera (não bloqueiam o teste): **A2** verificação CNPJ · **A6** template lembrete · **A7** nº Spettacolo no app Business ≥7 dias
 > - ⬜ depois do teste OK: **B8** trocar o shim `WHATSAPP_PILOT_AGENT_ID` pela coluna `agents.whatsapp_phone_number_id` · **B6** download de mídia Cloud · **B7** handoff `smb_message_echoes`
 

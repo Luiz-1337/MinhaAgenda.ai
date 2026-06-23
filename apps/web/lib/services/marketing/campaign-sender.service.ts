@@ -2,7 +2,8 @@
  * Serviço para envio de campanhas de broadcast
  */
 
-import { sendWhatsAppMessage, normalizePhoneNumber, formatPhoneToE164 } from "@/lib/services/evolution/evolution-message.service"
+import { formatPhoneToE164 } from "@/lib/services/evolution/evolution-message.service"
+import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
 import { MarketingRepository } from "./marketing.repository"
 import { SegmentationService } from "./segmentation.service"
 import { VariableReplacerService } from "./variable-replacer.service"
@@ -107,9 +108,9 @@ export class CampaignSenderService {
           status: 'pending',
         })
 
-        // Envia via WhatsApp
+        // Envia via WhatsApp (provider do salão; broadcast Cloud exige template)
         try {
-          await sendWhatsAppMessage(phoneNumber, finalMessage, salonId)
+          await sendProactiveMessage({ salonId, to: phoneNumber, text: finalMessage })
 
           // Atualiza status para sent
           await MarketingRepository.updateCampaignMessageStatus(messageRecord.id, 'sent')

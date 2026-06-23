@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
+import { connectWhatsAppCloud, disconnectWhatsAppCloud, type WhatsAppCloudStatus } from "@/app/actions/whatsapp-cloud"
 
 const QRCodeModal = dynamic(
   () => import("@/components/whatsapp/qrcode-modal").then(m => ({ default: m.QRCodeModal })),
@@ -15,6 +16,10 @@ const QRCodeModal = dynamic(
 )
 const VerificationModal = dynamic(
   () => import("@/components/whatsapp/verification-modal").then(m => ({ default: m.VerificationModal })),
+  { ssr: false }
+)
+const MetaEmbeddedSignup = dynamic(
+  () => import("@/components/whatsapp/meta-embedded-signup").then(m => ({ default: m.MetaEmbeddedSignup })),
   { ssr: false }
 )
 
@@ -34,9 +39,10 @@ type WhatsAppStatus = {
 type AgentsClientProps = {
   salonId: string
   initialAgents: AgentRow[]
+  initialCloudStatus: WhatsAppCloudStatus
 }
 
-export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
+export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: AgentsClientProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -48,6 +54,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
   // WhatsApp state
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({ numbers: [] })
   const [whatsappLoading, setWhatsappLoading] = useState(true)
+  const [cloudStatus, setCloudStatus] = useState<WhatsAppCloudStatus>(initialCloudStatus)
 
   const [isConnecting, setIsConnecting] = useState(false)
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
@@ -128,6 +135,43 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
       router.refresh()
     } catch {
       toast.error("Erro de conexão. Tente novamente.")
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  // WhatsApp Cloud (Meta) — Embedded Signup (mecanismo novo)
+  async function handleCloudConnect(data: { phoneNumberId: string; wabaId?: string }) {
+    setIsConnecting(true)
+    try {
+      const res = await connectWhatsAppCloud(salonId, { phoneNumberId: data.phoneNumberId, wabaId: data.wabaId })
+      if ("error" in res) {
+        toast.error(res.error)
+        return
+      }
+      toast.success("WhatsApp conectado via Cloud API!")
+      setCloudStatus({ connected: true, phoneNumberId: data.phoneNumberId, wabaId: data.wabaId ?? null })
+      router.refresh()
+    } catch {
+      toast.error("Erro ao conectar. Tente novamente.")
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  async function handleCloudDisconnect() {
+    setIsConnecting(true)
+    try {
+      const res = await disconnectWhatsAppCloud(salonId)
+      if ("error" in res) {
+        toast.error(res.error)
+        return
+      }
+      toast.success("WhatsApp desconectado")
+      setCloudStatus({ connected: false, phoneNumberId: null, wabaId: null })
+      router.refresh()
+    } catch {
+      toast.error("Erro ao desconectar.")
     } finally {
       setIsConnecting(false)
     }
@@ -325,25 +369,47 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
           </div>
         </div>
 
-        {!whatsappLoading && whatsappNumbers.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-6">
-            <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-              Conecte o WhatsApp do seu salão para que os agentes possam interagir com seus clientes.
-            </p>
+        {/* Conectado via Cloud API (Meta) */}
+        {!whatsappLoading && cloudStatus.connected && (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Phone size={16} className="text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">
+                {cloudStatus.phoneNumberId ? `Cloud API · ${cloudStatus.phoneNumberId}` : "WhatsApp Cloud API"}
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <CheckCircle size={12} />
+              Conectado
+            </span>
             <button
               type="button"
+              onClick={handleCloudDisconnect}
               disabled={isConnecting}
-              onClick={() => handleConnectWhatsApp()}
-              className="px-6 py-2.5 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-medium  transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-md text-xs font-medium disabled:opacity-50"
             >
-              {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />}
-              Conectar WhatsApp
+              Desconectar
             </button>
           </div>
         )}
 
+        {/* Sem conexão -> Embedded Signup da Meta (novo mecanismo) */}
+        {!whatsappLoading && !cloudStatus.connected && whatsappNumbers.length === 0 && (
+          <div className="flex flex-col gap-3 py-2">
+            <p className="text-sm text-muted-foreground text-center max-w-sm mx-auto">
+              Conecte o WhatsApp do seu salão para que os agentes possam interagir com seus clientes.
+            </p>
+            <MetaEmbeddedSignup
+              salonId={salonId}
+              disabled={isConnecting}
+              onSuccess={(data) => handleCloudConnect({ phoneNumberId: data.phoneNumberId, wabaId: data.wabaId })}
+              onError={(e) => toast.error(e)}
+            />
+          </div>
+        )}
+
         {/* Pending Verification State */}
-        {!whatsappLoading && hasPendingVerification && (() => {
+        {!whatsappLoading && !cloudStatus.connected && hasPendingVerification && (() => {
           const n = whatsappNumbers[0]
           return (
             <div className="space-y-3">
@@ -387,7 +453,7 @@ export function AgentsClient({ salonId, initialAgents }: AgentsClientProps) {
         })()}
 
         {/* Connected State - show when verified OR when has number but status is not pending */}
-        {!whatsappLoading && whatsappNumbers.length > 0 && !hasPendingVerification && (() => {
+        {!whatsappLoading && !cloudStatus.connected && whatsappNumbers.length > 0 && !hasPendingVerification && (() => {
           const n = whatsappNumbers[0]
           const isVerified = n.status === "verified" || !n.status
           return (

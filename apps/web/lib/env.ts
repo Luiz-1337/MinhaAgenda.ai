@@ -23,7 +23,21 @@ export function validateEnv(): void {
     "SUPABASE_SERVICE_ROLE_KEY",
   ] as const;
 
-  const missing = required.filter((key) => !process.env[key]);
+  const missing: string[] = required.filter((key) => !process.env[key]);
+
+  // WhatsApp Cloud API: obrigatórias em PRODUÇÃO (o token é a fronteira de
+  // segurança do canal; sem APP_SECRET o webhook não valida a assinatura). Em
+  // dev ficam opcionais para não travar o ambiente local. WHATSAPP_PHONE_NUMBER_ID
+  // NÃO é exigida (deixou de ser roteador — o número vem por agente no banco);
+  // WHATSAPP_GRAPH_VERSION tem default no código.
+  if (process.env.NODE_ENV === "production") {
+    const cloudRequired = [
+      "WHATSAPP_CLOUD_TOKEN",
+      "WHATSAPP_APP_SECRET",
+      "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+    ];
+    missing.push(...cloudRequired.filter((key) => !process.env[key]));
+  }
 
   if (missing.length > 0) {
     throw new Error(

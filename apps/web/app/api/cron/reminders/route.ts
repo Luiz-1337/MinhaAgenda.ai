@@ -1,14 +1,16 @@
 import { logger, db } from '@repo/db'
-import { sendWhatsAppMessage } from '@/lib/services/evolution/evolution-message.service'
+import { sendProactiveMessage } from '@/lib/services/messaging/proactive'
 import { dispatchDailyReminders } from '@/lib/services/reminders.service'
 import { requireCronAuth } from '@/lib/services/admin-auth.service'
 import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
 
-// Wrapper para adaptar sendWhatsAppMessage ao tipo SendReminderMessage
+// Roteia pelo provider do salão (Evolution = texto livre; Cloud = template fora
+// da janela de 24h). Lembrete é tipicamente fora da janela: quando o template
+// de lembrete estiver aprovado na Meta, passar `template` aqui (gate do cutover).
 const sendReminderMessage = async (to: string, body: string, salonId: string): Promise<void> => {
-    await sendWhatsAppMessage(to, body, salonId)
+    await sendProactiveMessage({ salonId, to, text: body })
 }
 
 export async function GET(request: NextRequest) {

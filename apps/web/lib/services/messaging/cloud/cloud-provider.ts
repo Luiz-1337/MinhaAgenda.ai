@@ -14,6 +14,7 @@ import type {
   MessageProvider,
   OutboundResult,
   SendMediaArgs,
+  SendTemplateArgs,
   SendTextArgs,
 } from '../provider';
 import { mapMetaError } from './errors';
@@ -106,6 +107,27 @@ export class CloudProvider implements MessageProvider {
         to: digitsOnly(args.to),
         type: args.mediaType,
         [args.mediaType]: media,
+      },
+      args.to,
+    );
+  }
+
+  sendTemplate(args: SendTemplateArgs): Promise<OutboundResult> {
+    const components =
+      args.bodyParams && args.bodyParams.length > 0
+        ? [{ type: 'body', parameters: args.bodyParams.map((t) => ({ type: 'text', text: t })) }]
+        : undefined;
+    return this.send(
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: digitsOnly(args.to),
+        type: 'template',
+        template: {
+          name: args.templateName,
+          language: { code: args.languageCode },
+          ...(components ? { components } : {}),
+        },
       },
       args.to,
     );

@@ -64,6 +64,15 @@ export async function POST(req: NextRequest) {
     const raw = await req.text();
 
     // 2. Validar assinatura X-Hub-Signature-256 antes de parsear.
+    // Em PRODUÇÃO é OBRIGATÓRIA: sem App Secret configurado, recusa — um POST
+    // forjado poderia injetar inbound em QUALQUER salão (escolhendo o
+    // phone_number_id no payload), gastando crédito de IA e agindo por terceiros.
+    // Em dev fica opcional para facilitar testes locais.
+    if (process.env.NODE_ENV === 'production' && APP_SECRET.length === 0) {
+      reqLogger.error('Cloud webhook: WHATSAPP_APP_SECRET ausente em produção — recusando');
+      WebhookMetrics.error('auth_failed');
+      return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+    }
     if (APP_SECRET.length > 0) {
       const signature = req.headers.get('x-hub-signature-256') || '';
       if (!verifySignature(raw, signature, APP_SECRET)) {

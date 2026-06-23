@@ -37,6 +37,19 @@ export interface SendMediaArgs extends SendTextArgs {
   fileName?: string;
 }
 
+export interface SendTemplateArgs {
+  /** Destinatário em E.164. */
+  to: string;
+  salonId: string;
+  agentId?: string;
+  /** Nome do template HSM aprovado na Meta. */
+  templateName: string;
+  /** Código de idioma do template (ex.: 'pt_BR'). */
+  languageCode: string;
+  /** Parâmetros do corpo do template, em ordem ({{1}}, {{2}}, ...). */
+  bodyParams?: string[];
+}
+
 export type ProviderKind = 'evolution' | 'cloud';
 
 export interface MessageProvider {
@@ -51,4 +64,11 @@ export interface MessageProvider {
    * mensagens geradas por IA, ex.: dispatcher de retenção).
    */
   sendTextWithTyping(args: SendTextArgs): Promise<OutboundResult>;
+
+  /**
+   * Envia uma mensagem de TEMPLATE (HSM) aprovado. Necessária para mensagens
+   * iniciadas pelo negócio FORA da janela de 24h na Cloud API. A Evolution não
+   * tem templates (envia texto livre a qualquer hora) — seu provider rejeita.
+   */
+  sendTemplate(args: SendTemplateArgs): Promise<OutboundResult>;
 }

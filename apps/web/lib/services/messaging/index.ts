@@ -12,7 +12,7 @@
  * `@/`. Use SEMPRE caminhos relativos / pacotes reais (@repo/*) aqui.
  */
 
-import { db, agents, eq } from '@repo/db';
+import { db, agents, eq, and } from '@repo/db';
 import { EvolutionProvider } from './evolution-provider';
 import { createCloudProviderFromEnv } from './cloud/cloud-provider';
 import type { MessageProvider, ProviderKind } from './provider';
@@ -48,14 +48,21 @@ export function getProviderForJob(
  * Default 'evolution' preserva 100% o comportamento atual.
  */
 export async function getProviderForSalon(
-  _salonId: string,
+  salonId: string,
   agentId?: string,
 ): Promise<MessageProvider> {
-  if (!agentId) return evolutionProvider;
-  const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, agentId),
-    columns: { messagingProvider: true, whatsappPhoneNumberId: true },
-  });
+  // Sem agentId, resolve o agente ATIVO do salão (espelha como a Evolution
+  // resolve salão -> agente ativo). Assim os call-sites proativos que só têm
+  // salonId (lembrete, marketing) escolhem o provider correto.
+  const agent = agentId
+    ? await db.query.agents.findFirst({
+        where: eq(agents.id, agentId),
+        columns: { messagingProvider: true, whatsappPhoneNumberId: true },
+      })
+    : await db.query.agents.findFirst({
+        where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
+        columns: { messagingProvider: true, whatsappPhoneNumberId: true },
+      });
   if (agent?.messagingProvider === 'cloud' && agent.whatsappPhoneNumberId) {
     return createCloudProviderFromEnv({ phoneNumberId: agent.whatsappPhoneNumberId });
   }

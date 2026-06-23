@@ -15,6 +15,7 @@ import type {
   MessageProvider,
   OutboundResult,
   SendMediaArgs,
+  SendTemplateArgs,
   SendTextArgs,
 } from './provider';
 
@@ -41,5 +42,14 @@ export class EvolutionProvider implements MessageProvider {
     return sendWithTypingIndicator(args.to, args.body, args.salonId, {
       agentId: args.agentId,
     });
+  }
+
+  // A Evolution envia texto livre a qualquer hora — não usa templates HSM.
+  // Os call-sites proativos usam sendText quando o provider é Evolution; este
+  // método nunca deve ser chamado nesse caminho (rejeita por segurança).
+  sendTemplate(_args: SendTemplateArgs): Promise<OutboundResult> {
+    return Promise.reject(
+      new Error('EvolutionProvider não suporta templates (use sendText).'),
+    );
   }
 }

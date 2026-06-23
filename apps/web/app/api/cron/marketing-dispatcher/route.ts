@@ -1,5 +1,5 @@
 import { db, domainServices, logger, recoveryFlows, recoverySteps, sql } from '@repo/db'
-import { sendWhatsAppMessage, sendWithTypingIndicator } from '@/lib/services/evolution/evolution-message.service'
+import { sendProactiveMessage } from '@/lib/services/messaging/proactive'
 import { requireCronAuth } from '@/lib/services/admin-auth.service'
 import { NextRequest } from 'next/server'
 import { runAiRetentionDispatcher } from '@/lib/services/marketing/ai-retention-dispatcher.service'
@@ -16,11 +16,9 @@ const sendMarketingMessage = async (
   salonId: string,
   options?: { generatedByAi?: boolean }
 ): Promise<void> => {
-  if (options?.generatedByAi) {
-    await sendWithTypingIndicator(to, body, salonId)
-    return
-  }
-  await sendWhatsAppMessage(to, body, salonId)
+  // Roteia pelo provider do salão. Evolution: texto livre (msgs de IA ganham o
+  // indicador de digitação). Cloud: exige template fora da janela de 24h.
+  await sendProactiveMessage({ salonId, to, text: body, withTyping: options?.generatedByAi })
 }
 
 export async function GET(request: NextRequest) {
