@@ -139,28 +139,27 @@ function verifySignature(raw: string, header: string, secret: string): boolean {
 }
 
 /**
- * Resolve o salão/agente a partir do phone_number_id.
+ * Resolve o salão/agente a partir do phone_number_id, via banco.
  *
- * SHIM de piloto (B4): mapeia o número de teste para um agente via env
- * (WHATSAPP_PHONE_NUMBER_ID + WHATSAPP_PILOT_AGENT_ID). B8 substitui isto por
- * uma coluna `agents.whatsapp_phone_number_id` consultada diretamente.
+ * Espelha o ramo agent-first do webhook Evolution (que resolve por instanceName):
+ * aqui o phone_number_id JÁ identifica o agente. Lookup O(1) por
+ * agents.whatsapp_phone_number_id (UNIQUE — garante 1 agente por número).
+ * Falha-fechado: sem mapeamento => null (o chamador descarta + alerta; NUNCA
+ * chuta um agente, para não responder por outro salão).
  */
 async function resolveCloudTenant(
   phoneNumberId: string | undefined,
 ): Promise<{ salonId: string; agentId: string } | null> {
   if (!phoneNumberId) return null;
-  const pilotAgentId = process.env.WHATSAPP_PILOT_AGENT_ID;
-  if (phoneNumberId === process.env.WHATSAPP_PHONE_NUMBER_ID && pilotAgentId) {
-    const agent = await withTimeout(
-      db.query.agents.findFirst({
-        where: eq(agents.id, pilotAgentId),
-        columns: { id: true, salonId: true },
-      }),
-      DB_TIMEOUT,
-      'findPilotAgent',
-    );
-    if (agent) return { salonId: agent.salonId, agentId: agent.id };
-  }
+  const agent = await withTimeout(
+    db.query.agents.findFirst({
+      where: eq(agents.whatsappPhoneNumberId, phoneNumberId),
+      columns: { id: true, salonId: true },
+    }),
+    DB_TIMEOUT,
+    'findAgentByPhoneNumberId',
+  );
+  if (agent) return { salonId: agent.salonId, agentId: agent.id };
   return null;
 }
 

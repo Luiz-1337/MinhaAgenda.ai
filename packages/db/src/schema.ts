@@ -732,13 +732,20 @@ export const agents = pgTable(
     evolutionInstanceToken: text('evolution_instance_token'),
     evolutionConnectionStatus: text('evolution_connection_status'), // 'connected' | 'disconnected' | 'connecting'
     evolutionConnectedAt: timestamp('evolution_connected_at'),
+    // WhatsApp Cloud API (Meta) fields (per-agent) — migration 019
+    messagingProvider: text('messaging_provider').default('evolution').notNull(), // 'evolution' | 'cloud'
+    whatsappPhoneNumberId: text('whatsapp_phone_number_id'), // phone_number_id da Cloud API — chave de resolução de tenant do webhook /cloud
+    whatsappWabaId: text('whatsapp_waba_id'), // WhatsApp Business Account ID (reconciliação / futuro multi-WABA)
     isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
     index('agents_salon_idx').on(table.salonId),
-    index('agents_evolution_instance_idx').on(table.evolutionInstanceName)
+    index('agents_evolution_instance_idx').on(table.evolutionInstanceName),
+    // 1 agente por número Cloud = isolamento de tenant do webhook /cloud.
+    // No banco é UNIQUE PARCIAL (WHERE whatsapp_phone_number_id IS NOT NULL) — ver migration 019.
+    uniqueIndex('agents_whatsapp_phone_number_id_unique').on(table.whatsappPhoneNumberId)
   ]
 )
 

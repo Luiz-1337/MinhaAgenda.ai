@@ -1,16 +1,18 @@
 /**
  * Resolução do provider de mensageria por salão/agente.
  *
- * Estado atual (Bloco B1): existe apenas o EvolutionProvider, então esta
- * função sempre o retorna — comportamento idêntico ao de hoje.
+ * Dois caminhos:
+ *  - getProviderForJob: caminho REATIVO (responder a mensagem recebida). O
+ *    provider vem do job (o canal que recebeu responde). NÃO bate no banco.
+ *  - getProviderForSalon: caminho PROATIVO (lembrete/marketing/envio manual).
+ *    LÊ a flag agents.messaging_provider no banco para escolher o provider.
  *
- * Próximos passos:
- *  - B3: implementar o CloudProvider (WhatsApp Cloud API da Meta).
- *  - B8: criar a coluna `agents.messaging_provider` ('evolution' | 'cloud')
- *        e fazer esta função LER essa flag para escolher o provider por salão,
- *        habilitando rollout gradual e rollback instantâneo.
+ * IMPORTANTE: este arquivo entra no grafo de import do WORKER (via
+ * message-processor e delivery-retry), que roda sob tsx e NÃO resolve o alias
+ * `@/`. Use SEMPRE caminhos relativos / pacotes reais (@repo/*) aqui.
  */
 
+import { db, agents, eq } from '@repo/db';
 import { EvolutionProvider } from './evolution-provider';
 import { createCloudProviderFromEnv } from './cloud/cloud-provider';
 import type { MessageProvider, ProviderKind } from './provider';
@@ -18,20 +20,45 @@ import type { MessageProvider, ProviderKind } from './provider';
 const evolutionProvider = new EvolutionProvider();
 
 /**
- * Resolve o provider pelo "kind" que veio no job: 'cloud' -> CloudProvider
- * (criado das env vars, piloto de número único), senão -> EvolutionProvider
- * (singleton). É o que o worker usa para enviar a resposta no MESMO canal em
- * que a mensagem chegou.
+ * Provider para um job JÁ RECEBIDO (caminho REATIVO): o canal que recebeu a
+ * mensagem responde. 'cloud' envia a partir do phone_number_id do próprio job
+ * (o número do salão; token da plataforma vem da env). Job 'cloud' sem
+ * phoneNumberId => erro — recusa enviar para não usar número errado/de teste
+ * (vazamento cross-tenant). Default ('evolution'/ausente) => Evolution.
  */
-export function getProviderByKind(kind: ProviderKind | undefined): MessageProvider {
-  return kind === 'cloud' ? createCloudProviderFromEnv() : evolutionProvider;
+export function getProviderForJob(
+  job: { provider?: ProviderKind; phoneNumberId?: string },
+): MessageProvider {
+  if (job.provider === 'cloud') {
+    if (!job.phoneNumberId) {
+      throw new Error(
+        'Job cloud sem phoneNumberId — envio recusado para evitar remetente incorreto (cross-tenant).',
+      );
+    }
+    return createCloudProviderFromEnv({ phoneNumberId: job.phoneNumberId });
+  }
+  return evolutionProvider;
 }
 
+/**
+ * Provider para envios INICIADOS pelo app (PROATIVOS: lembrete, marketing,
+ * envio manual). Lê a flag agents.messaging_provider + o número do agente no
+ * banco. 'cloud' + phone_number_id => CloudProvider (token de env da
+ * plataforma; envia a partir do número do salão); senão Evolution.
+ * Default 'evolution' preserva 100% o comportamento atual.
+ */
 export async function getProviderForSalon(
   _salonId: string,
-  _agentId?: string,
+  agentId?: string,
 ): Promise<MessageProvider> {
-  // TODO(B8): ler agents.messaging_provider e retornar CloudProvider quando 'cloud'.
+  if (!agentId) return evolutionProvider;
+  const agent = await db.query.agents.findFirst({
+    where: eq(agents.id, agentId),
+    columns: { messagingProvider: true, whatsappPhoneNumberId: true },
+  });
+  if (agent?.messagingProvider === 'cloud' && agent.whatsappPhoneNumberId) {
+    return createCloudProviderFromEnv({ phoneNumberId: agent.whatsappPhoneNumberId });
+  }
   return evolutionProvider;
 }
 

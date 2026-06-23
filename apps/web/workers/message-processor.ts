@@ -18,7 +18,7 @@ import {
   WhatsAppMessageError,
 } from "../lib/services/evolution/evolution-message.service";
 import { restartInstance } from "../lib/services/evolution/evolution-instance.service";
-import { getProviderByKind, type MessageProvider } from "../lib/services/messaging";
+import { getProviderForJob, type MessageProvider } from "../lib/services/messaging";
 import { db, chats, salons as salonsTable, domainServices, eq } from "@repo/db";
 import { WhatsAppError, getUserFriendlyMessage } from "../lib/errors";
 import { withTimeout } from "../lib/utils/async.utils";
@@ -230,7 +230,7 @@ async function processMessage(
   // Provedor de envio derivado do job: 'cloud' -> CloudProvider, senão Evolution.
   // O mesmo canal que recebeu a mensagem responde. replyText é o atalho para os
   // envios simples (avisos/fallbacks); a resposta principal vai por deliverReply.
-  const provider = getProviderByKind(job.data.provider);
+  const provider = getProviderForJob({ provider: job.data.provider, phoneNumberId: job.data.phoneNumberId });
   const replyText = (text: string) =>
     provider.sendText({ to: sendTo, body: text, salonId, agentId });
 
