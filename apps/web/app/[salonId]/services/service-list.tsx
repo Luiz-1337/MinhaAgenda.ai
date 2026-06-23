@@ -487,7 +487,10 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
                 </div>
 
                 <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Switch {...form.register("priceOnRequest")} checked={form.watch("priceOnRequest")} />
+                  <Switch
+                    checked={form.watch("priceOnRequest")}
+                    onCheckedChange={(v) => form.setValue("priceOnRequest", v, { shouldDirty: true, shouldValidate: true })}
+                  />
                   <span>Sob avaliação (valor definido no atendimento)</span>
                 </Label>
 
@@ -622,7 +625,10 @@ export default function ServiceList({ salonId, initialServices, initialProfessio
 
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Switch {...form.register("isActive")} checked={form.watch("isActive")} />
+                  <Switch
+                    checked={form.watch("isActive")}
+                    onCheckedChange={(v) => form.setValue("isActive", v, { shouldDirty: true })}
+                  />
                   <span>Ativo</span>
                 </Label>
               </div>
