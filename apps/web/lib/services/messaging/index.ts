@@ -49,22 +49,19 @@ export function getProviderForJob(
  */
 export async function getProviderForSalon(
   salonId: string,
-  agentId?: string,
+  _agentId?: string,
 ): Promise<MessageProvider> {
-  // Sem agentId, resolve o agente ATIVO do salão (espelha como a Evolution
-  // resolve salão -> agente ativo). Assim os call-sites proativos que só têm
-  // salonId (lembrete, marketing) escolhem o provider correto.
-  const agent = agentId
-    ? await db.query.agents.findFirst({
-        where: eq(agents.id, agentId),
-        columns: { messagingProvider: true, whatsappPhoneNumberId: true },
-      })
-    : await db.query.agents.findFirst({
-        where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
-        columns: { messagingProvider: true, whatsappPhoneNumberId: true },
-      });
-  if (agent?.messagingProvider === 'cloud' && agent.whatsappPhoneNumberId) {
-    return createCloudProviderFromEnv({ phoneNumberId: agent.whatsappPhoneNumberId });
+  // Cloud é por-salão: resolve o agente do salão que TEM a config Cloud,
+  // INDEPENDENTE de qual agente está ativo. Evita split-brain — se o agente
+  // ativo mudar, o número continua ligado a quem conectou, e o proativo
+  // (que segue o número, igual ao inbound) não diverge. Sem agente Cloud =>
+  // Evolution (default), comportamento atual preservado.
+  const cloudAgent = await db.query.agents.findFirst({
+    where: and(eq(agents.salonId, salonId), eq(agents.messagingProvider, 'cloud')),
+    columns: { whatsappPhoneNumberId: true },
+  });
+  if (cloudAgent?.whatsappPhoneNumberId) {
+    return createCloudProviderFromEnv({ phoneNumberId: cloudAgent.whatsappPhoneNumberId });
   }
   return evolutionProvider;
 }

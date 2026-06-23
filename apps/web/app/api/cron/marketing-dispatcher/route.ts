@@ -7,9 +7,9 @@ import { runAiRetentionDispatcher } from '@/lib/services/marketing/ai-retention-
 export const runtime = 'nodejs'
 export const maxDuration = 300 // Vercel Pro max — needed for parallel LLM batches and template fan-out
 
-// Wrapper para adaptar sendWhatsAppMessage ao tipo SendMarketingMessage (Promise<void>).
-// AI-generated messages get a humanizing typing indicator (presence: composing + blocking
-// delay) before the text. Static templates keep the original simple-send behavior.
+// Wrapper para o tipo SendMarketingMessage. Roteia pelo provider do salão via
+// sendProactiveMessage: msgs geradas por IA ganham o indicador de digitação no
+// caminho Evolution; o caminho Cloud exige template fora da janela de 24h.
 const sendMarketingMessage = async (
   to: string,
   body: string,

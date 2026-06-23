@@ -60,26 +60,40 @@ export async function connectWhatsAppCloud(
     return { error: "Nenhum agente ativo neste salão. Crie/ative um agente antes de conectar." }
   }
 
-  // Dedup: nenhum OUTRO agente pode usar o mesmo número (isolamento de tenant).
+  // Dedup CROSS-SALÃO: o número não pode pertencer a OUTRO salão (isolamento de
+  // tenant). Dentro do mesmo salão é permitido re-vincular (limpeza abaixo).
   const existing = await db.query.agents.findFirst({
     where: eq(agents.whatsappPhoneNumberId, phoneNumberId),
-    columns: { id: true },
+    columns: { id: true, salonId: true },
   })
-  if (existing && existing.id !== agent.id) {
-    return { error: "Este número já está conectado a outro agente/salão." }
+  if (existing && existing.salonId !== salonId) {
+    return { error: "Este número já está conectado a outro salão." }
   }
 
-  await db
-    .update(agents)
-    .set({
-      messagingProvider: "cloud",
-      whatsappPhoneNumberId: phoneNumberId,
-      whatsappWabaId: input.wabaId ?? null,
-      whatsappStatus: "verified",
-      whatsappConnectedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(agents.id, agent.id))
+  try {
+    // Garante UM ÚNICO agente Cloud por salão: limpa a config Cloud de qualquer
+    // outro agente do salão (evita split-brain se o agente ativo mudou) ANTES de
+    // gravar no agente ativo atual.
+    await db
+      .update(agents)
+      .set({ messagingProvider: "evolution", whatsappPhoneNumberId: null, whatsappWabaId: null, updatedAt: new Date() })
+      .where(and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")))
+
+    await db
+      .update(agents)
+      .set({
+        messagingProvider: "cloud",
+        whatsappPhoneNumberId: phoneNumberId,
+        whatsappWabaId: input.wabaId ?? null,
+        whatsappStatus: "verified",
+        whatsappConnectedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, agent.id))
+  } catch {
+    // Backstop do índice UNIQUE (corrida concorrente) -> mensagem amigável.
+    return { error: "Este número já está conectado a outro agente/salão." }
+  }
 
   revalidatePath(`/${salonId}/agents`)
   return { success: true }
@@ -92,21 +106,19 @@ export async function disconnectWhatsAppCloud(
   const auth = await authorize(salonId)
   if ("error" in auth) return auth
 
-  const agent = await db.query.agents.findFirst({
-    where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
-    columns: { id: true },
-  })
-  if (!agent) return { error: "Nenhum agente ativo neste salão." }
-
+  // Limpa a config Cloud de QUALQUER agente Cloud do salão (não só o ativo) —
+  // cobre o caso de o número estar num agente que não é mais o ativo.
   await db
     .update(agents)
     .set({
       messagingProvider: "evolution",
       whatsappPhoneNumberId: null,
       whatsappWabaId: null,
+      whatsappStatus: null,
+      whatsappConnectedAt: null,
       updatedAt: new Date(),
     })
-    .where(eq(agents.id, agent.id))
+    .where(and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")))
 
   revalidatePath(`/${salonId}/agents`)
   return { success: true }
@@ -117,12 +129,18 @@ export async function disconnectWhatsAppCloud(
  * externa). Chamar na page.tsx (RSC) e passar por prop, evitando polling.
  */
 export async function getWhatsAppCloudStatus(salonId: string): Promise<WhatsAppCloudStatus> {
+  // É uma server action exposta -> precisa se AUTO-autorizar (não confiar só no
+  // chamador). Sem permissão, devolve "não conectado" em vez de vazar o número.
+  const auth = await authorize(salonId)
+  if ("error" in auth) return { connected: false, phoneNumberId: null, wabaId: null }
+
+  // Procura o agente do salão com config Cloud (independente de qual está ativo).
   const agent = await db.query.agents.findFirst({
-    where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
-    columns: { messagingProvider: true, whatsappPhoneNumberId: true, whatsappWabaId: true },
+    where: and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")),
+    columns: { whatsappPhoneNumberId: true, whatsappWabaId: true },
   })
   return {
-    connected: agent?.messagingProvider === "cloud" && !!agent.whatsappPhoneNumberId,
+    connected: !!agent?.whatsappPhoneNumberId,
     phoneNumberId: agent?.whatsappPhoneNumberId ?? null,
     wabaId: agent?.whatsappWabaId ?? null,
   }

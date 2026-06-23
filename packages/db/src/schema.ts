@@ -744,8 +744,11 @@ export const agents = pgTable(
     index('agents_salon_idx').on(table.salonId),
     index('agents_evolution_instance_idx').on(table.evolutionInstanceName),
     // 1 agente por número Cloud = isolamento de tenant do webhook /cloud.
-    // No banco é UNIQUE PARCIAL (WHERE whatsapp_phone_number_id IS NOT NULL) — ver migration 019.
-    uniqueIndex('agents_whatsapp_phone_number_id_unique').on(table.whatsappPhoneNumberId)
+    // UNIQUE PARCIAL (WHERE NOT NULL) — espelha a migration 019 (vários agentes
+    // sem número são permitidos; um número não pode repetir).
+    uniqueIndex('agents_whatsapp_phone_number_id_unique')
+      .on(table.whatsappPhoneNumberId)
+      .where(sql`whatsapp_phone_number_id IS NOT NULL`)
   ]
 )
 
