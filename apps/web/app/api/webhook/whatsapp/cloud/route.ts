@@ -177,21 +177,23 @@ function extractContent(msg: any): {
   body: string;
   hasMedia: boolean;
   mediaType?: 'image' | 'audio' | 'video' | 'document';
+  mediaId?: string;
 } {
   switch (msg.type) {
     case 'text':
       return { body: msg.text?.body ?? '', hasMedia: false };
     case 'image':
-      return { body: msg.image?.caption ?? '[imagem]', hasMedia: true, mediaType: 'image' };
+      return { body: msg.image?.caption ?? '[imagem]', hasMedia: true, mediaType: 'image', mediaId: msg.image?.id };
     case 'video':
-      return { body: msg.video?.caption ?? '[vídeo]', hasMedia: true, mediaType: 'video' };
+      return { body: msg.video?.caption ?? '[vídeo]', hasMedia: true, mediaType: 'video', mediaId: msg.video?.id };
     case 'audio':
-      return { body: '[áudio]', hasMedia: true, mediaType: 'audio' };
+      return { body: '[áudio]', hasMedia: true, mediaType: 'audio', mediaId: msg.audio?.id };
     case 'document':
       return {
         body: msg.document?.caption ?? msg.document?.filename ?? '[documento]',
         hasMedia: true,
         mediaType: 'document',
+        mediaId: msg.document?.id,
       };
     case 'button':
       return { body: msg.button?.text ?? '', hasMedia: false };
@@ -250,7 +252,7 @@ async function handleInboundMessage(
   const logger2 = reqLogger.child({ messageId, from: hashPhone(clientPhone), salonId, agentId });
 
   // 4. Conteúdo.
-  const { body, hasMedia, mediaType } = extractContent(msg);
+  const { body, hasMedia, mediaType, mediaId } = extractContent(msg);
 
   // 5. Customer + chat (paralelo).
   const [customer, chat] = await Promise.all([
@@ -280,7 +282,8 @@ async function handleInboundMessage(
       body,
       hasMedia,
       mediaType: mediaType ?? undefined,
-      mediaUrl: undefined, // download de mídia da Cloud = B6
+      mediaId, // Cloud: id da mídia p/ o worker baixar (B6)
+      mediaUrl: undefined,
       receivedAt: new Date(Number(msg.timestamp) * 1000).toISOString(),
       profileName,
       customerName: customer.name,

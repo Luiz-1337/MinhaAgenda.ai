@@ -1,6 +1,7 @@
 import { toFile } from "openai"
 import { getOpenAIClient } from "./openai-client"
 import { getBase64FromMediaMessage } from "../evolution/evolution-message.service"
+import { downloadCloudMedia } from "../messaging/cloud/media"
 import { createContextLogger } from "../../infra/logger"
 
 const AUDIO_MAX_SIZE_BYTES = 25 * 1024 * 1024 // 25MB (limite do Whisper)
@@ -25,7 +26,10 @@ export interface ProcessMediaParams {
   mediaType: "image" | "audio"
   mediaUrl: string
   mimeType?: string
-  // Dados necessários para o endpoint getBase64FromMediaMessage
+  // Cloud API: id da mídia (download em 2 passos). Quando presente, tem
+  // prioridade sobre o caminho Evolution.
+  mediaId?: string
+  // Dados necessários para o endpoint getBase64FromMediaMessage (Evolution)
   instanceName: string
   messageKey: { remoteJid: string; fromMe: boolean; id: string }
 }
@@ -63,6 +67,20 @@ async function fetchMediaBase64(
   params: ProcessMediaParams,
   logger: ReturnType<typeof createContextLogger>
 ): Promise<{ buffer: Buffer; mimetype: string } | null> {
+  // Cloud API: baixa pela media id (GET /{id} -> url -> bytes com Bearer).
+  if (params.mediaId) {
+    const cloud = await downloadCloudMedia(params.mediaId)
+    if (!cloud) {
+      logger.warn("Cloud API não retornou a mídia")
+      return null
+    }
+    logger.info(
+      { sizeBytes: cloud.buffer.length, mimetype: cloud.mimetype },
+      "Mídia obtida via Cloud API (media id)"
+    )
+    return cloud
+  }
+
   const result = await getBase64FromMediaMessage(params.instanceName, params.messageKey)
 
   if (!result) {

@@ -578,6 +578,7 @@ async function processMessage(
         const media = await processMedia({
           mediaType: "image",
           mediaUrl: permanentMediaUrl || "",
+          mediaId: job.data.mediaId,
           instanceName,
           messageKey: { remoteJid, fromMe: false, id: messageId },
         });
@@ -653,6 +654,7 @@ async function processMessage(
         const media = await processMedia({
           mediaType: "audio",
           mediaUrl: permanentMediaUrl || "",
+          mediaId: job.data.mediaId,
           instanceName,
           messageKey: { remoteJid, fromMe: false, id: messageId },
         });

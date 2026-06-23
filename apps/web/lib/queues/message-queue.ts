@@ -40,6 +40,7 @@ export interface MessageJobData {
   hasMedia: boolean;
   mediaType?: "image" | "audio" | "video" | "document";
   mediaUrl?: string;
+  mediaId?: string; // Cloud API: id da mídia para download no worker (B6)
 
   // Metadados
   receivedAt: string; // ISO timestamp
