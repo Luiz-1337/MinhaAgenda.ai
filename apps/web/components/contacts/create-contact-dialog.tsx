@@ -2,27 +2,35 @@
 
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
-import { X, User, Phone, Mail, Tag, Save } from "lucide-react"
+import { X, User, Phone, Mail, Tag, Save, Loader2 } from "lucide-react"
 import { createSalonCustomer, type CreateSalonCustomerInput } from "@/app/actions/customers"
 import type { CustomerRow } from "@/app/actions/customers"
+import { setCustomerTags, type TagRow } from "@/app/actions/customer-tags"
+import { TagPicker } from "@/components/contacts/tag-picker"
+import { formatPhoneInput } from "@/lib/utils/phone.utils"
 
 interface CreateContactDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   salonId: string
+  catalog: TagRow[]
   onSuccess?: (customer: CustomerRow) => void
+  onTagCreated: (tag: TagRow) => void
 }
 
 export function CreateContactDialog({
   open,
   onOpenChange,
   salonId,
+  catalog,
   onSuccess,
+  onTagCreated,
 }: CreateContactDialogProps) {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [preferences, setPreferences] = useState("")
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -57,19 +65,33 @@ export function CreateContactDialog({
 
       if ("error" in result) {
         toast.error(result.error)
-      } else {
-        toast.success("Contato criado com sucesso!")
-        // Limpa o formulário
-        setName("")
-        setPhone("")
-        setEmail("")
-        setPreferences("")
-        // Fecha o dialog
-        onOpenChange(false)
-        // Chama callback de sucesso
-        if (onSuccess && result.data) {
-          onSuccess(result.data)
+        return
+      }
+
+      let customer = result.data
+      // Persiste as tags atribuídas (se houver) e mescla no retorno.
+      if (customer && selectedTagIds.length > 0) {
+        const tagRes = await setCustomerTags({
+          customerId: customer.id,
+          salonId,
+          tagIds: selectedTagIds,
+        })
+        if ("error" in tagRes) {
+          toast.error(tagRes.error)
+        } else {
+          customer = { ...customer, tags: tagRes.data ?? [] }
         }
+      }
+
+      toast.success("Contato criado com sucesso!")
+      setName("")
+      setPhone("")
+      setEmail("")
+      setPreferences("")
+      setSelectedTagIds([])
+      onOpenChange(false)
+      if (onSuccess && customer) {
+        onSuccess(customer)
       }
     })
   }
@@ -82,6 +104,7 @@ export function CreateContactDialog({
       setPhone("")
       setEmail("")
       setPreferences("")
+      setSelectedTagIds([])
     }
   }
 
@@ -147,14 +170,14 @@ export function CreateContactDialog({
                 </label>
                 <div className="relative group">
                   <Phone size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
-                  <input 
-                    type="tel" 
-                    placeholder="(00) 00000-0000" 
+                  <input
+                    type="tel"
+                    placeholder="(00) 00000-0000"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                     disabled={isPending}
                     required
-                    className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+                    className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -184,9 +207,21 @@ export function CreateContactDialog({
                   value={preferences}
                   onChange={(e) => setPreferences(e.target.value)}
                   disabled={isPending}
-                  className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                  className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tags</label>
+              <TagPicker
+                salonId={salonId}
+                catalog={catalog}
+                selectedIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                onTagCreated={onTagCreated}
+                disabled={isPending}
+              />
             </div>
           </div>
 
@@ -205,7 +240,7 @@ export function CreateContactDialog({
               disabled={isPending}
               className="px-5 py-2.5 bg-success hover:bg-success/90 text-primary-foreground rounded-md text-sm font-bold flex items-center gap-2 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <Save size={18} />
+              {isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
               {isPending ? "Criando..." : "Salvar Contato"}
             </button>
           </div>

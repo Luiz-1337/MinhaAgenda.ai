@@ -2,16 +2,21 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { toast } from "sonner"
-import { X, User, Phone, Mail, Tag, Save } from "lucide-react"
+import { X, User, Phone, Mail, Tag, Save, Loader2 } from "lucide-react"
 import { updateSalonCustomer, type UpdateSalonCustomerInput } from "@/app/actions/customers"
 import type { CustomerRow } from "@/app/actions/customers"
+import { setCustomerTags, type TagRow } from "@/app/actions/customer-tags"
+import { TagPicker } from "@/components/contacts/tag-picker"
+import { formatPhoneBR, formatPhoneInput } from "@/lib/utils/phone.utils"
 
 interface EditContactDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   salonId: string
   customer: CustomerRow | null
+  catalog: TagRow[]
   onSuccess?: (customer: CustomerRow) => void
+  onTagCreated: (tag: TagRow) => void
 }
 
 export function EditContactDialog({
@@ -19,23 +24,27 @@ export function EditContactDialog({
   onOpenChange,
   salonId,
   customer,
+  catalog,
   onSuccess,
+  onTagCreated,
 }: EditContactDialogProps) {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [preferences, setPreferences] = useState("")
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
   // Preenche o formulário quando o customer muda
   useEffect(() => {
     if (customer) {
       setName(customer.name || "")
-      setPhone(customer.phone || "")
+      setPhone(formatPhoneBR(customer.phone))
       setEmail(customer.email || "")
       // Extrai notes das preferências se existir
       const prefs = customer.preferences as { notes?: string } | null
       setPreferences(prefs?.notes || "")
+      setSelectedTagIds((customer.tags ?? []).map((t) => t.id))
     }
   }, [customer])
 
@@ -63,28 +72,51 @@ export function EditContactDialog({
       return
     }
 
+    // Preserva o telefone original (com DDI) quando o campo não foi alterado,
+    // evitando que abrir+salvar o contato apague o "55" do número do WhatsApp.
+    const phoneUnchanged = phone === formatPhoneBR(customer.phone)
+
     const input: UpdateSalonCustomerInput = {
       customerId: customer.id,
       salonId,
       name: name.trim(),
-      phone: phone.trim(),
+      phone: phoneUnchanged ? customer.phone ?? "" : phone.trim(),
       email: email.trim() || undefined,
       preferences: preferences.trim() || undefined,
     }
+
+    const originalTagIds = (customer.tags ?? []).map((t) => t.id)
+    const tagsChanged =
+      selectedTagIds.length !== originalTagIds.length ||
+      selectedTagIds.some((id) => !originalTagIds.includes(id))
 
     startTransition(async () => {
       const result = await updateSalonCustomer(input)
 
       if ("error" in result) {
         toast.error(result.error)
-      } else {
-        toast.success("Contato atualizado com sucesso!")
-        // Fecha o dialog
-        onOpenChange(false)
-        // Chama callback de sucesso
-        if (onSuccess && result.data) {
-          onSuccess(result.data)
+        return
+      }
+
+      let updated = result.data
+      // Sincroniza as tags do contato (inclusive para limpar todas), só se mudou.
+      if (tagsChanged) {
+        const tagRes = await setCustomerTags({
+          customerId: customer.id,
+          salonId,
+          tagIds: selectedTagIds,
+        })
+        if ("error" in tagRes) {
+          toast.error(tagRes.error)
+        } else if (updated) {
+          updated = { ...updated, tags: tagRes.data ?? [] }
         }
+      }
+
+      toast.success("Contato atualizado com sucesso!")
+      onOpenChange(false)
+      if (onSuccess && updated) {
+        onSuccess(updated)
       }
     })
   }
@@ -157,14 +189,14 @@ export function EditContactDialog({
                 </label>
                 <div className="relative group">
                   <Phone size={16} className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-accent transition-colors" />
-                  <input 
-                    type="tel" 
-                    placeholder="(00) 00000-0000" 
+                  <input
+                    type="tel"
+                    placeholder="(00) 00000-0000"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                     disabled={isPending}
                     required
-                    className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+                    className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -194,9 +226,21 @@ export function EditContactDialog({
                   value={preferences}
                   onChange={(e) => setPreferences(e.target.value)}
                   disabled={isPending}
-                  className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                  className="w-full bg-background border border-border rounded-md pl-10 pr-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tags</label>
+              <TagPicker
+                salonId={salonId}
+                catalog={catalog}
+                selectedIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+                onTagCreated={onTagCreated}
+                disabled={isPending}
+              />
             </div>
           </div>
 
@@ -215,7 +259,7 @@ export function EditContactDialog({
               disabled={isPending}
               className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-accent-foreground rounded-md text-sm font-bold flex items-center gap-2 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <Save size={18} />
+              {isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
               {isPending ? "Salvando..." : "Salvar Alterações"}
             </button>
           </div>

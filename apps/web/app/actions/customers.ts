@@ -13,8 +13,22 @@ export type CustomerRow = {
   email: string | null
   phone: string | null
   preferences: Record<string, unknown> | null
+  tags: { id: string; name: string; color: string }[]
   createdAt: string
   updatedAt: string
+}
+
+// Achata as atribuições de tags (com a tag aninhada) em {id,name,color}[],
+// ordenadas pela position do catálogo.
+type TagAssignmentWithTag = {
+  tag: { id: string; name: string; color: string; position: number }
+}
+function mapCustomerTags(
+  assignments: TagAssignmentWithTag[]
+): { id: string; name: string; color: string }[] {
+  return [...assignments]
+    .sort((a, b) => a.tag.position - b.tag.position)
+    .map((a) => ({ id: a.tag.id, name: a.tag.name, color: a.tag.color }))
 }
 
 /**
@@ -46,21 +60,22 @@ export async function getSalonCustomers(salonId: string): Promise<ActionResult<C
 
     // 3. DB Operation
     // Busca os clientes do salão diretamente da tabela customers
-    const customersList = await db
-      .select({
-        id: customers.id,
-        salonId: customers.salonId,
-        name: customers.name,
-        email: customers.email,
-        phone: customers.phone,
-        preferences: customers.preferences,
-        createdAt: customers.createdAt,
-        updatedAt: customers.updatedAt,
-      })
-      .from(customers)
+    const customersList = await db.query.customers.findMany({
       // Exclui placeholders internos (ex.: contato "Google Calendar" da sync).
-      .where(and(eq(customers.salonId, salonId), eq(customers.isSystem, false)))
-      .orderBy(desc(customers.updatedAt))
+      where: and(eq(customers.salonId, salonId), eq(customers.isSystem, false)),
+      orderBy: desc(customers.updatedAt),
+      columns: {
+        id: true,
+        salonId: true,
+        name: true,
+        email: true,
+        phone: true,
+        preferences: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      with: { tagAssignments: { with: { tag: true } } },
+    })
 
     const mappedCustomers = customersList.map((customer) => ({
       id: customer.id,
@@ -69,6 +84,7 @@ export async function getSalonCustomers(salonId: string): Promise<ActionResult<C
       email: customer.email || null,
       phone: customer.phone || null,
       preferences: customer.preferences as Record<string, unknown> | null,
+      tags: mapCustomerTags(customer.tagAssignments),
       createdAt: customer.createdAt.toISOString(),
       updatedAt: customer.updatedAt.toISOString(),
     }))
@@ -211,6 +227,7 @@ export async function createSalonCustomer(
         createdAt: true,
         updatedAt: true,
       },
+      with: { tagAssignments: { with: { tag: true } } },
     })
 
     if (!createdCustomer) {
@@ -224,6 +241,7 @@ export async function createSalonCustomer(
       email: createdCustomer.email || null,
       phone: createdCustomer.phone || null,
       preferences: createdCustomer.preferences as Record<string, unknown> | null,
+      tags: mapCustomerTags(createdCustomer.tagAssignments),
       createdAt: createdCustomer.createdAt.toISOString(),
       updatedAt: createdCustomer.updatedAt.toISOString(),
     }
@@ -415,6 +433,7 @@ export async function updateSalonCustomer(
         createdAt: true,
         updatedAt: true,
       },
+      with: { tagAssignments: { with: { tag: true } } },
     })
 
     if (!updatedCustomer) {
@@ -428,6 +447,7 @@ export async function updateSalonCustomer(
       email: updatedCustomer.email || null,
       phone: updatedCustomer.phone || null,
       preferences: updatedCustomer.preferences as Record<string, unknown> | null,
+      tags: mapCustomerTags(updatedCustomer.tagAssignments),
       createdAt: updatedCustomer.createdAt.toISOString(),
       updatedAt: updatedCustomer.updatedAt.toISOString(),
     }

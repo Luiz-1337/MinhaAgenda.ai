@@ -61,6 +61,10 @@ function getStatusBadge(status: ConversationStatus) {
 // Bolha de mensagem memoizada: evita re-render de toda a lista a cada poll/setMessages.
 const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isClient = msg.from === "cliente"
+  const isMedia = msg.mediaType === "image" || msg.mediaType === "audio"
+  // Esconde o placeholder "[imagem]"/"[áudio]" quando é mídia; mantém legenda real.
+  const isPlaceholder = isMedia && /^\[[^\]]+\]$/.test((msg.text || "").trim())
+  const showText = !!msg.text && !isPlaceholder
 
   return (
     <div className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
@@ -72,7 +76,32 @@ const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage })
             : "bg-chat-bot text-chat-bot-foreground rounded-lg rounded-tr-none"
             }`}
         >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text || ""}</p>
+          {isMedia && (
+            msg.mediaUrl ? (
+              msg.mediaType === "image" ? (
+                <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="block mb-1">
+                  {/* URL assinada e temporária — next/image otimizaria por URL e quebraria a cada renovação; <img> é o certo aqui */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={msg.mediaUrl}
+                    alt="Imagem enviada pelo cliente"
+                    loading="lazy"
+                    className="rounded-lg max-h-72 w-auto object-cover cursor-zoom-in"
+                  />
+                </a>
+              ) : (
+                <audio controls preload="none" src={msg.mediaUrl} className="mb-1 w-56 max-w-full" />
+              )
+            ) : (
+              <div className="flex items-center gap-2 text-xs opacity-70 mb-1">
+                <Loader2 size={14} className="animate-spin" />
+                {msg.mediaType === "image" ? "Recebendo imagem…" : "Recebendo áudio…"}
+              </div>
+            )
+          )}
+          {showText && (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+          )}
           <span
             className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-chat-user-foreground/60" : "text-chat-bot-foreground/60"
               }`}
@@ -95,7 +124,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const requestedChatId = searchParams.get("chatId")
-  const [filter, setFilter] = useState<"all" | "waiting">("all")
+  const [filter, setFilter] = useState<"all" | "waiting" | "manual">("all")
   const [query, setQuery] = useState("")
   const deferredQuery = useDeferredValue(query)
   const [activeId, setActiveId] = useState<string | null>(requestedChatId)
@@ -158,6 +187,8 @@ export default function ChatClient({ salonId }: { salonId: string }) {
     let list = conversations
     if (filter === "waiting") {
       list = list.filter((c) => c.status === "Aguardando humano")
+    } else if (filter === "manual") {
+      list = list.filter((c) => c.isManual)
     }
     if (q) {
       const qDigits = q.replace(/\D/g, "")
@@ -170,6 +201,9 @@ export default function ChatClient({ salonId }: { salonId: string }) {
     }
     return list
   }, [filter, deferredQuery, conversations])
+
+  // Contador de chats em atendimento manual (a IA não responde estes)
+  const manualCount = useMemo(() => conversations.filter((c) => c.isManual).length, [conversations])
 
   const active = useMemo(() => filtered.find((c) => c.id === activeId) ?? filtered[0], [filtered, activeId])
   const isManualMode = useMemo(() => {
@@ -204,7 +238,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         } else {
           setMessages(result)
           lastMessageCountRef.current = result.length
-          lastSignatureRef.current = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}`).join("|")
+          lastSignatureRef.current = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}:${m.mediaUrl ? "1" : "0"}`).join("|")
         }
       } catch (error) {
         if (!isMounted) return
@@ -250,7 +284,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         if (!("error" in result)) {
           // Compara id+deliveryStatus de todas as mensagens: pega mudança de status
           // de entrega (ex.: "reenviando"→"não entregue") que o length ignora.
-          const signature = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}`).join("|")
+          const signature = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}:${m.mediaUrl ? "1" : "0"}`).join("|")
           if (signature !== lastSignatureRef.current) {
             setMessages(result)
             lastMessageCountRef.current = result.length
@@ -452,6 +486,20 @@ export default function ChatClient({ salonId }: { salonId: string }) {
               >
                 Em espera
               </button>
+              <button
+                onClick={() => setFilter("manual")}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${filter === "manual"
+                  ? "bg-card text-foreground dark:text-foreground border border-border shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
+              >
+                Manual
+                {manualCount > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-success text-primary-foreground text-[9px] font-bold leading-none">
+                    {manualCount}
+                  </span>
+                )}
+              </button>
             </div>
 
             <div className="relative">
@@ -554,6 +602,19 @@ export default function ChatClient({ salonId }: { salonId: string }) {
                         {active.kanbanColumnName}
                       </span>
                     )}
+                    {active.customerTags?.map((tag) => (
+                      <span
+                        key={tag.id}
+                        className="px-2 py-0.5 rounded-full border text-[10px] font-medium"
+                        style={{
+                          backgroundColor: tag.color + "20",
+                          borderColor: tag.color + "40",
+                          color: tag.color,
+                        }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
                     {activeRisk && (
                       <span
                         className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-[10px] font-medium text-red-700 dark:text-red-300"

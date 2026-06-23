@@ -18,7 +18,8 @@ import {
   uniqueIndex,
   unique,
   bigint,
-  customType
+  customType,
+  primaryKey
 } from 'drizzle-orm/pg-core'
 
 // ============================================================================
@@ -458,6 +459,11 @@ export const messages = pgTable(
     // 'sent' | 'retrying' | 'delivered' | 'failed' | 'undelivered'
     deliveryStatus: text('delivery_status'),
     deliveryAttempts: integer('delivery_attempts').default(0).notNull(),
+    // Mídia recebida do cliente (foto/áudio do WhatsApp). NULL em mensagens de texto.
+    // mediaType: 'image' | 'audio' | 'video' | 'document'. mediaPath: caminho no
+    // bucket privado 'whatsapp-media' (Supabase Storage), servido via URL assinada.
+    mediaType: text('media_type'),
+    mediaPath: text('media_path'),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -546,6 +552,44 @@ export const customerTrinksProfile = pgTable(
     index('customer_trinks_profile_salon_synced_idx').on(table.salonId, table.syncedAt),
     // Reflete índice parcial existente só no banco (reconciliação 21/jun — DRIFT-1)
     index('customer_trinks_profile_vip_idx').on(table.salonId, table.vipScore.desc()).where(sql`vip_score > 0`)
+  ]
+)
+
+// Catálogo de tags personalizáveis por salão (nome + cor). Reutilizáveis e
+// atribuíveis a vários contatos. Conceito diferente de customer_trinks_profile.tags
+// (aquele é label vindo do Trinks).
+export const customerTags = pgTable(
+  'customer_tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    color: text('color').default('#94a3b8').notNull(),
+    position: integer('position').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('customer_tags_salon_idx').on(table.salonId, table.position),
+    uniqueIndex('customer_tags_salon_name_unique').on(table.salonId, table.name)
+  ]
+)
+
+// Junção contato <-> tag (M:N). Carrega salonId denormalizado para indexação/RLS
+// por tenant sem join. Cascade em ambos os lados: apagar a tag ou o contato
+// remove a atribuição automaticamente.
+export const customerTagAssignments = pgTable(
+  'customer_tag_assignments',
+  {
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    tagId: uuid('tag_id').references(() => customerTags.id, { onDelete: 'cascade' }).notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.customerId, table.tagId] }),
+    index('customer_tag_assignments_tag_idx').on(table.tagId),
+    index('customer_tag_assignments_salon_customer_idx').on(table.salonId, table.customerId)
   ]
 )
 
@@ -937,12 +981,24 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 
 // chatMessagesRelations removed (obsolete)
 
-export const customersRelations = relations(customers, ({ one }) => ({
+export const customersRelations = relations(customers, ({ one, many }) => ({
   salon: one(salons, { fields: [customers.salonId], references: [salons.id] }),
   trinksProfile: one(customerTrinksProfile, {
     fields: [customers.id],
     references: [customerTrinksProfile.customerId]
-  })
+  }),
+  tagAssignments: many(customerTagAssignments)
+}))
+
+export const customerTagsRelations = relations(customerTags, ({ one, many }) => ({
+  salon: one(salons, { fields: [customerTags.salonId], references: [salons.id] }),
+  assignments: many(customerTagAssignments)
+}))
+
+export const customerTagAssignmentsRelations = relations(customerTagAssignments, ({ one }) => ({
+  customer: one(customers, { fields: [customerTagAssignments.customerId], references: [customers.id] }),
+  tag: one(customerTags, { fields: [customerTagAssignments.tagId], references: [customerTags.id] }),
+  salon: one(salons, { fields: [customerTagAssignments.salonId], references: [salons.id] })
 }))
 
 export const customerTrinksProfileRelations = relations(customerTrinksProfile, ({ one }) => ({

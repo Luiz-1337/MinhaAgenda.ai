@@ -2,8 +2,10 @@
 
 import { db, chats, messages, customers, chatKanbanColumns, and, asc, desc, eq, inArray } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
+import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
 import { saveMessage } from "@/lib/services/chat.service"
+import { getWhatsappMediaSignedUrl } from "@/lib/supabase/storage"
 
 export interface ChatConversation {
   id: string
@@ -19,6 +21,7 @@ export interface ChatConversation {
   kanbanColumnId: string | null
   kanbanColumnName: string | null
   kanbanColumnColor: string | null
+  customerTags: { id: string; name: string; color: string }[]
 }
 
 export interface ChatMessage {
@@ -28,6 +31,10 @@ export interface ChatMessage {
   time: string
   /** Status de entrega (só para mensagens do agente): 'sent'|'retrying'|'delivered'|'failed'|'undelivered'. */
   deliveryStatus?: string | null
+  /** Tipo da mídia recebida do cliente ('image' | 'audio' | ...), se houver. */
+  mediaType?: string | null
+  /** URL assinada (temporária) da mídia no Storage; null enquanto o worker ainda processa. */
+  mediaUrl?: string | null
 }
 
 /**
@@ -133,7 +140,10 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
 
     // Busca nomes dos clientes WhatsApp pela tabela customers
     const phoneNumbers = salonChats.map((chat) => chat.clientPhone.replace(/\D/g, ""))
-    const customerByPhone = new Map<string, { id: string; name: string; phone: string }>()
+    const customerByPhone = new Map<
+      string,
+      { id: string; name: string; phone: string; tags: { id: string; name: string; color: string }[] }
+    >()
 
     if (phoneNumbers.length > 0) {
       const salonCustomers = await db.query.customers.findMany({
@@ -146,10 +156,19 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           name: true,
           phone: true,
         },
+        with: { tagAssignments: { with: { tag: true } } },
       })
 
       for (const customer of salonCustomers) {
-        customerByPhone.set(customer.phone, customer)
+        customerByPhone.set(customer.phone, {
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          tags: customer.tagAssignments
+            .slice()
+            .sort((a, b) => a.tag.position - b.tag.position)
+            .map((a) => ({ id: a.tag.id, name: a.tag.name, color: a.tag.color })),
+        })
       }
     }
 
@@ -161,10 +180,8 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
         const customer = customerByPhone.get(normalizedPhone)
         const lastMessage = lastMessageByChat.get(chat.id)!
 
-        // Formata telefone para exibição
-        const formattedPhone = normalizedPhone.length === 11
-          ? `(${normalizedPhone.slice(0, 2)}) ${normalizedPhone.slice(2, 7)}-${normalizedPhone.slice(7)}`
-          : chat.clientPhone
+        // Formata telefone para exibição (tira DDI 55; trata 13 dígitos do WhatsApp)
+        const formattedPhone = formatPhoneBR(normalizedPhone) || chat.clientPhone
 
         const effectiveColumnId = chat.kanbanColumnId && kanbanById.has(chat.kanbanColumnId)
           ? chat.kanbanColumnId
@@ -185,6 +202,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
           kanbanColumnId: effectiveColumnId,
           kanbanColumnName: effectiveColumn?.name ?? null,
           kanbanColumnColor: effectiveColumn?.color ?? null,
+          customerTags: customer?.tags ?? [],
         }
       })
 
@@ -229,15 +247,19 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[] | {
     )
 
     // Reverte para ordem cronológica (mais antiga primeiro)
-    const chatMessagesList: ChatMessage[] = validMessages
-      .reverse()
-      .map((msg) => ({
-        id: msg.id,
-        from: (msg.role === "user" ? "cliente" : "agente") as "cliente" | "agente",
-        text: msg.content || "",
-        time: formatMessageTime(msg.createdAt),
-        deliveryStatus: msg.role === "assistant" ? msg.deliveryStatus : undefined,
-      }))
+    const chatMessagesList: ChatMessage[] = await Promise.all(
+      validMessages
+        .reverse()
+        .map(async (msg) => ({
+          id: msg.id,
+          from: (msg.role === "user" ? "cliente" : "agente") as "cliente" | "agente",
+          text: msg.content || "",
+          time: formatMessageTime(msg.createdAt),
+          deliveryStatus: msg.role === "assistant" ? msg.deliveryStatus : undefined,
+          mediaType: msg.mediaType ?? null,
+          mediaUrl: msg.mediaPath ? await getWhatsappMediaSignedUrl(msg.mediaPath) : null,
+        }))
+    )
 
     return chatMessagesList
   } catch (error) {
