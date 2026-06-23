@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next dev",
-    "build": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next build",
+    "build": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next build --webpack",
     "start": "dotenv -e ../../.env -- node ./node_modules/next/dist/bin/next start",
     "lint": "eslint",
     "worker": "dotenv -e ../../.env -- tsx workers/message-processor.ts",
