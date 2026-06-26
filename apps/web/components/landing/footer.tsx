@@ -78,12 +78,17 @@ const Footer: React.FC = () => {
 
         </div>
 
-        <div className="pt-8 border-t border-border/60 flex flex-col sm:flex-row justify-between items-center gap-2">
-          <p className="text-xs text-muted-foreground">
-            &copy; 2025 minhaagenda.ai. Todos os direitos reservados.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Feito com IA para o Brasil
+        <div className="pt-8 border-t border-border/60 flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
+            <p className="text-xs text-muted-foreground">
+              &copy; 2025 minhaagenda.ai. Todos os direitos reservados.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Feito com IA para o Brasil
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground text-center sm:text-left">
+            LUIZ GUILHERME DE OLIVEIRA TECNOLOGIA DA INFORMACAO LTDA &middot; CNPJ: 64.983.542/0001-04
           </p>
         </div>
       </div>
