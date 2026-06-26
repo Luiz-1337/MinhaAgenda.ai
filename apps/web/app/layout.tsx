@@ -34,6 +34,11 @@ export const metadata: Metadata = {
     locale: "pt_BR",
     siteName: "MinhaAgenda AI",
   },
+  verification: {
+    other: {
+      "facebook-domain-verification": "2pyf26y4bzqn57upockl308nbz2xjb",
+    },
+  },
 };
 
 export default function RootLayout({
