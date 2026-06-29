@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { Instagram, Facebook, Twitter } from 'lucide-react';
 
 const Footer: React.FC = () => {
@@ -66,13 +67,16 @@ const Footer: React.FC = () => {
           <div>
             <p className="text-xs font-semibold text-foreground uppercase tracking-widest mb-4">Legal</p>
             <ul className="space-y-2.5">
-              {['Privacidade', 'Termos'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    {item}
-                  </a>
-                </li>
-              ))}
+              <li>
+                <Link href="/privacidade" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Privacidade
+                </Link>
+              </li>
+              <li>
+                <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Termos
+                </a>
+              </li>
             </ul>
           </div>
 
