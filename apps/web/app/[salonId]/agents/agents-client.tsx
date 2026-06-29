@@ -429,7 +429,13 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
                 Conectar número
               </button>
             </div>
-            {/* Embedded Signup — ativo quando NEXT_PUBLIC_META_APP_ID/CONFIG_ID estiverem setados */}
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">ou conecte automaticamente</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            {/* Embedded Signup — ativo quando NEXT_PUBLIC_META_APP_ID/CONFIG_ID estiverem setados.
+                Renderiza 2 opções: WhatsApp Business (número novo) e QR Code (Coexistência). */}
             <MetaEmbeddedSignup
               salonId={salonId}
               disabled={isConnecting}

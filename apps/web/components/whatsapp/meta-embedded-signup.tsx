@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useCallback, useState } from "react"
-import { Loader2, MessageCircle, AlertCircle, ExternalLink } from "lucide-react"
+import { useEffect, useCallback, useRef, useState } from "react"
+import { Loader2, MessageCircle, AlertCircle, ExternalLink, QrCode } from "lucide-react"
 import { toast } from "sonner"
 
 // Tipos para o Facebook SDK
@@ -59,6 +59,16 @@ interface EmbeddedSignupData {
   }
 }
 
+// Qual fluxo de Embedded Signup está em andamento (para o estado de loading por botão).
+type SignupFlow = "standard" | "coexistence"
+
+// Valor do extras.featureType que ativa o onboarding via app do WhatsApp Business
+// (Coexistência / QR Code). O antigo "coexistence" foi descontinuado pela Meta.
+const COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding"
+
+// Libera os botões se nenhum evento de signup chegar (ex.: popup fechado sem concluir).
+const SIGNUP_TIMEOUT_MS = 90_000
+
 export interface MetaEmbeddedSignupProps {
   salonId: string
   onSuccess: (data: { wabaId: string; phoneNumberId: string; phoneNumber?: string }) => void
@@ -68,11 +78,22 @@ export interface MetaEmbeddedSignupProps {
 
 /**
  * Componente para Meta Embedded Signup
- * Permite usuários conectarem ou criarem WABAs diretamente na aplicação
+ * Permite conectar um número à WhatsApp Cloud API de duas formas:
  *
- * Requisitos:
- * - META_APP_ID no .env
- * - META_CONFIG_ID no .env
+ *  1. WhatsApp Business (padrão): seleciona/cria a WABA e registra um número
+ *     dedicado na Cloud API.
+ *  2. QR Code (Coexistência): conecta o app do WhatsApp Business já existente
+ *     escaneando um QR, mantendo app + Cloud API no MESMO número.
+ *     Ativado por extras.featureType = "whatsapp_business_app_onboarding".
+ *
+ * Requisitos (.env):
+ * - NEXT_PUBLIC_META_APP_ID
+ * - NEXT_PUBLIC_META_CONFIG_ID
+ * - NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID (necessária p/ habilitar o botão QR;
+ *   precisa de uma config do Embedded Signup preparada para "WhatsApp Business
+ *   app onboarding" — NÃO usar a config padrão aqui)
+ * - NEXT_PUBLIC_META_SOLUTION_ID (opcional; obrigatória se a conta opera como
+ *   Solution Partner — entra em extras.setup.solutionID nos dois fluxos)
  */
 export function MetaEmbeddedSignup({
   salonId,
@@ -80,15 +101,40 @@ export function MetaEmbeddedSignup({
   onError,
   disabled = false,
 }: MetaEmbeddedSignupProps) {
-  const [isLoading, setIsLoading] = useState(false)
+  const [loadingFlow, setLoadingFlow] = useState<SignupFlow | null>(null)
   const [sdkLoaded, setSdkLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // IDs de configuração do Meta
   const appId = process.env.NEXT_PUBLIC_META_APP_ID
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID
+  // Config dedicada ao fluxo de Coexistência. SEM fallback para o config padrão:
+  // a Coexistência exige uma configuração do Embedded Signup preparada para
+  // "WhatsApp Business app onboarding". Disparar o featureType de coexistência
+  // contra o config padrão abriria o fluxo errado (ou falharia) em silêncio.
+  const coexistenceConfigId = process.env.NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID
+  // Solution ID do Tech Provider (obrigatório se a conta opera como Solution Partner).
+  const solutionId = process.env.NEXT_PUBLIC_META_SOLUTION_ID
 
-  // Carrega o Facebook SDK
+  const isLoading = loadingFlow !== null
+
+  // Timeout de segurança para destravar os botões se o signup não retornar evento.
+  const signupTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearSignupTimeout = useCallback(() => {
+    if (signupTimeout.current) {
+      clearTimeout(signupTimeout.current)
+      signupTimeout.current = null
+    }
+  }, [])
+  const resetLoading = useCallback(() => {
+    clearSignupTimeout()
+    setLoadingFlow(null)
+  }, [clearSignupTimeout])
+
+  // Limpa o timeout pendente ao desmontar.
+  useEffect(() => () => clearSignupTimeout(), [clearSignupTimeout])
+
+  // Carrega o Facebook SDK (uma única vez por montagem)
   useEffect(() => {
     if (!appId) {
       setError("META_APP_ID não configurado")
@@ -107,7 +153,7 @@ export function MetaEmbeddedSignup({
         appId: appId,
         autoLogAppEvents: true,
         xfbml: true,
-        version: "v21.0",
+        version: "v22.0",
       })
       setSdkLoaded(true)
     }
@@ -129,7 +175,7 @@ export function MetaEmbeddedSignup({
     }
   }, [appId])
 
-  // Listener para capturar resultado do signup
+  // Listener para capturar resultado do signup (compartilhado pelos dois fluxos)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       // Valida origem
@@ -138,8 +184,8 @@ export function MetaEmbeddedSignup({
       }
 
       try {
-        const data: EmbeddedSignupData = typeof event.data === "string" 
-          ? JSON.parse(event.data) 
+        const data: EmbeddedSignupData = typeof event.data === "string"
+          ? JSON.parse(event.data)
           : event.data
 
         if (data.type === "WA_EMBEDDED_SIGNUP") {
@@ -147,22 +193,22 @@ export function MetaEmbeddedSignup({
             const { phone_number_id, waba_id } = data.data
 
             if (phone_number_id && waba_id) {
-              setIsLoading(false)
+              resetLoading()
               onSuccess({
                 wabaId: waba_id,
                 phoneNumberId: phone_number_id,
               })
             } else {
-              setIsLoading(false)
+              resetLoading()
               const errorMsg = "Dados incompletos do signup. Tente novamente."
               setError(errorMsg)
               onError?.(errorMsg)
             }
           } else if (data.event === "CANCEL") {
-            setIsLoading(false)
+            resetLoading()
             toast.info("Conexão cancelada")
           } else if (data.event === "ERROR") {
-            setIsLoading(false)
+            resetLoading()
             const errorMsg = "Erro durante o processo de conexão"
             setError(errorMsg)
             onError?.(errorMsg)
@@ -175,43 +221,58 @@ export function MetaEmbeddedSignup({
 
     window.addEventListener("message", handleMessage)
     return () => window.removeEventListener("message", handleMessage)
-  }, [onSuccess, onError])
+  }, [onSuccess, onError, resetLoading])
 
-  const launchEmbeddedSignup = useCallback(() => {
-    if (!sdkLoaded || !window.FB) {
-      toast.error("Facebook SDK não carregado. Recarregue a página.")
-      return
-    }
-
-    if (!configId) {
-      toast.error("Configuração do Meta não encontrada")
-      return
-    }
-
-    setIsLoading(true)
-    setError(null)
-
-    const loginOptions: FacebookLoginOptions = {
-      config_id: configId,
-      response_type: "code",
-      override_default_response_type: true,
-      extras: {
-        sessionInfoVersion: 3,
-        setup: {},
-      },
-    }
-
-
-    window.FB.login((response: FacebookLoginResponse) => {
-      if (response.status !== "connected") {
-        setIsLoading(false)
-        if (response.status === "not_authorized") {
-          toast.error("Autorização negada. Por favor, permita o acesso ao WhatsApp Business.")
-        }
+  const launchEmbeddedSignup = useCallback(
+    (flow: SignupFlow) => {
+      if (!sdkLoaded || !window.FB) {
+        toast.error("Facebook SDK não carregado. Recarregue a página.")
+        return
       }
-      // O resultado principal vem via postMessage
-    }, loginOptions)
-  }, [sdkLoaded, configId])
+
+      const cfgId = flow === "coexistence" ? coexistenceConfigId : configId
+      if (!cfgId) {
+        toast.error(
+          flow === "coexistence"
+            ? "Coexistência não configurada (NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID ausente)."
+            : "Configuração do Meta não encontrada"
+        )
+        return
+      }
+
+      setLoadingFlow(flow)
+      setError(null)
+
+      // Destrava os botões caso o signup não retorne nenhum evento (popup fechado etc.).
+      clearSignupTimeout()
+      signupTimeout.current = setTimeout(() => setLoadingFlow(null), SIGNUP_TIMEOUT_MS)
+
+      const loginOptions: FacebookLoginOptions = {
+        config_id: cfgId,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: {
+          sessionInfoVersion: 3,
+          setup: solutionId ? { solutionID: solutionId } : {},
+          // QR/Coexistência: onboarding do número que já está no app WhatsApp Business.
+          ...(flow === "coexistence"
+            ? { featureType: COEXISTENCE_FEATURE_TYPE }
+            : {}),
+        },
+      }
+
+      window.FB.login((response: FacebookLoginResponse) => {
+        if (response.status !== "connected") {
+          resetLoading()
+          if (response.status === "not_authorized") {
+            toast.error("Autorização negada. Por favor, permita o acesso ao WhatsApp Business.")
+          }
+        }
+        // O resultado principal vem via postMessage
+      }, loginOptions)
+    },
+    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, resetLoading]
+  )
 
   // Se não tem configuração, mostra erro
   if (!appId || !configId) {
@@ -224,25 +285,65 @@ export function MetaEmbeddedSignup({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <button
-        type="button"
-        onClick={launchEmbeddedSignup}
-        disabled={disabled || isLoading || !sdkLoaded}
-        className="flex items-center justify-center gap-2 px-4 py-3 bg-[#25D366] hover:bg-[#22c55e] text-white rounded-lg text-sm font-semibold shadow-md shadow-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 size={18} className="animate-spin" />
-            <span>Conectando...</span>
-          </>
-        ) : (
-          <>
-            <MessageCircle size={18} />
-            <span>Conectar com WhatsApp Business</span>
-          </>
-        )}
-      </button>
+    <div className="flex flex-col gap-4">
+      {/* Opção 1 — WhatsApp Business (número dedicado na Cloud API) */}
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => launchEmbeddedSignup("standard")}
+          disabled={disabled || isLoading || !sdkLoaded}
+          aria-busy={loadingFlow === "standard"}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-[#25D366] hover:bg-[#22c55e] text-white rounded-lg text-sm font-semibold shadow-md shadow-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loadingFlow === "standard" ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              <span>Conectando...</span>
+            </>
+          ) : (
+            <>
+              <MessageCircle size={18} />
+              <span>Conectar com WhatsApp Business</span>
+            </>
+          )}
+        </button>
+        <p className="text-xs text-muted-foreground px-1">
+          Use um número novo/dedicado. Você seleciona ou cria a conta e registra o número na Meta.
+        </p>
+      </div>
+
+      {/* Opção 2 — QR Code / Coexistência (usa o app WhatsApp Business atual) */}
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => launchEmbeddedSignup("coexistence")}
+          disabled={disabled || isLoading || !sdkLoaded || !coexistenceConfigId}
+          aria-busy={loadingFlow === "coexistence"}
+          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-[#25D366] text-[#075E54] dark:text-[#25D366] bg-transparent hover:bg-[#25D366]/10 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loadingFlow === "coexistence" ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              <span>Gerando QR Code...</span>
+            </>
+          ) : (
+            <>
+              <QrCode size={18} />
+              <span>Conectar via QR Code</span>
+            </>
+          )}
+        </button>
+        <p className="text-xs text-muted-foreground px-1">
+          Use o número que já está no seu app WhatsApp Business. Você escaneia um QR e mantém o
+          app + automação juntos no mesmo número (Coexistência).
+          {!coexistenceConfigId && (
+            <span className="block mt-0.5 text-amber-600 dark:text-amber-400">
+              Indisponível: defina <code>NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID</code> com a
+              configuração de Coexistência criada no painel da Meta.
+            </span>
+          )}
+        </p>
+      </div>
 
       {!sdkLoaded && (
         <p className="text-xs text-muted-foreground flex items-center gap-1">

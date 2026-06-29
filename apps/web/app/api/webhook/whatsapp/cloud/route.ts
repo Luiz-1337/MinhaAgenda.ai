@@ -25,7 +25,7 @@ import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/servi
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { RateLimitError } from '@/lib/errors';
-import { db, agents, messages, eq } from '@repo/db';
+import { db, agents, messages, chats, eq, and } from '@repo/db';
 
 export const maxDuration = 10;
 
@@ -333,14 +333,78 @@ async function handleStatus(st: any, reqLogger: ContextLogger) {
 }
 
 /**
- * Coexistence: eco de uma mensagem que o DONO enviou pelo app do celular.
- * O bot precisa pausar a IA nesse chat (handoff humano) — implementação completa
- * no Bloco B7. Por ora, só registra para visibilidade.
+ * Tipos de eco que representam CONTEÚDO real enviado pela atendente (e que vale
+ * persistir no histórico). edit/revoke/reaction/desconhecido NÃO geram bolha
+ * nova — no máximo disparam o handoff — para não poluir o contexto da IA com
+ * placeholders (extractContent foi escrito para INBOUND e cai num default genérico).
  */
-async function handleEcho(_echo: any, phoneNumberId: string | undefined, reqLogger: ContextLogger) {
-  reqLogger.info(
-    { phoneNumberId },
-    'smb_message_echo recebido — handoff humano (pausar IA) pendente no B7',
+const ECHO_CONTENT_TYPES = new Set(['text', 'image', 'audio', 'video', 'document', 'button', 'interactive']);
+
+/**
+ * Coexistence (B7): eco de uma mensagem que a ATENDENTE enviou pelo app do
+ * WhatsApp Business. A Meta ecoa SÓ o que sai do app — nunca o que o bot manda
+ * pela Cloud API — então um eco significa que um humano assumiu a conversa.
+ * Handoff: pausamos a IA nesse chat (isManual=true) e persistimos a fala do
+ * humano no histórico (contexto da IA + visibilidade no painel). O dono reativa
+ * a IA pelo botão "Passar para a IA" do chat (auto-retomada por janela é
+ * follow-up — exigiria nova coluna).
+ */
+async function handleEcho(echo: any, phoneNumberId: string | undefined, reqLogger: ContextLogger) {
+  const echoId: string | undefined = echo?.id;
+  // Destinatário do eco = o cliente. Normaliza p/ dígitos (igual ao inbound, que
+  // grava o chat sob msg.from em E.164 só-dígitos) — senão findOrCreateChat, que
+  // casa clientPhone literalmente, criaria um chat DUPLICADO e o handoff cairia
+  // no chat errado.
+  const customerPhone: string | undefined = echo?.to ? String(echo.to).replace(/\D/g, '') : undefined;
+
+  // Idempotência (a Meta re-tenta em 5xx). Chave própria; não colide com inbound.
+  if (
+    echoId &&
+    (await withTimeout(isMessageProcessed(echoId), REDIS_TIMEOUT, 'isMessageProcessed').catch(() => false))
+  ) {
+    WebhookMetrics.duplicate();
+    return;
+  }
+
+  const tenant = await resolveCloudTenant(phoneNumberId);
+  if (!tenant) {
+    reqLogger.error({ phoneNumberId }, 'Cloud echo: phone_number_id sem mapeamento para salão/agente');
+    return; // sem mapeamento -> retry não resolve
+  }
+  // Sem 'to' (ex.: revoke só traz original_message_id) -> não dá pra rotear; ignora.
+  if (!customerPhone) {
+    reqLogger.warn({ phoneNumberId, echoType: echo?.type }, 'Cloud echo sem destinatário (to); ignorado');
+    return;
+  }
+
+  const { salonId, agentId } = tenant;
+
+  const chat = await withTimeout(
+    findOrCreateChat(customerPhone, salonId, agentId),
+    DB_TIMEOUT,
+    'findOrCreateChat',
   );
-  // TODO(B7): marcar chat como modo manual / pausar resposta da IA.
+  // Handoff humano: pausa a IA nesse chat (só escreve se ainda não era manual,
+  // p/ não bater no banco / reordenar listas por updatedAt em todo eco).
+  await withTimeout(
+    db.update(chats)
+      .set({ isManual: true, updatedAt: new Date() })
+      .where(and(eq(chats.id, chat.id), eq(chats.isManual, false))),
+    DB_TIMEOUT,
+    'setChatManual',
+  );
+  // Persiste a fala do humano (role assistant = bolha de saída) SÓ para tipos de
+  // conteúdo real — edit/revoke/reaction não viram bolha (evita lixo no contexto).
+  if (ECHO_CONTENT_TYPES.has(echo?.type)) {
+    const { body } = extractContent(echo);
+    await withTimeout(saveMessage(chat.id, 'assistant', body), DB_TIMEOUT, 'saveEcho');
+  }
+
+  if (echoId) {
+    await withTimeout(markMessageProcessed(echoId), REDIS_TIMEOUT, 'markMessageProcessed');
+  }
+  reqLogger.info(
+    { salonId, agentId, chatId: chat.id, echoType: echo?.type },
+    'Coexistence: atendente ativa no app — IA pausada (modo manual)',
+  );
 }

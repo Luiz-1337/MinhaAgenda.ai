@@ -328,11 +328,13 @@ async function handleMessageUpsert(
   // SOLO: instâncias nomeadas salon-{salonId} -> busca no salons, depois agente ativo
   let salonId: string;
   let agentId: string;
+  // Provider do número — usado no guard anti double-delivery (Coexistência) abaixo.
+  let messagingProvider: string | null = null;
 
   const agentByInstance = await withTimeout(
     db.query.agents.findFirst({
       where: eq(agents.evolutionInstanceName, instanceName),
-      columns: { id: true, salonId: true },
+      columns: { id: true, salonId: true, messagingProvider: true },
     }),
     DB_TIMEOUT,
     'findAgentByInstance'
@@ -342,6 +344,7 @@ async function handleMessageUpsert(
     // Agent-level instance (PRO/Enterprise)
     salonId = agentByInstance.salonId;
     agentId = agentByInstance.id;
+    messagingProvider = agentByInstance.messagingProvider;
   } else {
     // Salon-level instance fallback (SOLO)
     const salon = await withTimeout(
@@ -375,7 +378,7 @@ async function handleMessageUpsert(
           eq(agents.salonId, salonId),
           eq(agents.isActive, true)
         ),
-        columns: { id: true },
+        columns: { id: true, messagingProvider: true },
       }),
       DB_TIMEOUT,
       'findActiveAgent'
@@ -405,6 +408,28 @@ async function handleMessageUpsert(
     }
 
     agentId = activeAgent.id;
+    messagingProvider = activeAgent.messagingProvider;
+  }
+
+  // Defesa em profundidade (Coexistência / migração p/ Cloud): se este número já
+  // é servido pela Cloud API, a Evolution NÃO deve responder — senão o cliente
+  // recebe resposta DUPLA (a Cloud processa o mesmo inbound, e o dedup por
+  // messageId não cruza canais: wamid != Baileys key.id). Descarta + alerta.
+  if (messagingProvider === 'cloud') {
+    reqLogger.warn(
+      { instanceName, salonId, agentId },
+      'Evolution inbound ignorado: número está na Cloud API (anti double-delivery)'
+    );
+    WebhookMetrics.error('evolution_on_cloud');
+    void recordAlert({
+      scope: 'salon',
+      salonId,
+      type: 'evolution_inbound_on_cloud',
+      severity: 'warning',
+      title: 'Mensagem chegou pela Evolution, mas o número está na Cloud API (Coexistência) — ignorada para evitar resposta dupla',
+      detail: { instanceName },
+    });
+    return NextResponse.json({ status: 'ignored' }, { status: 200 });
   }
 
   reqLogger = reqLogger.child({ salonId, agentId });
