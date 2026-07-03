@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import { getSalonRemainingCredits } from "@/lib/services/credits.service"
 
 /**
@@ -14,12 +14,7 @@ export async function getRemainingCredits(
     return { error: "salonId é obrigatório" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!(await getSessionUserId())) {
     return { error: "Não autenticado" }
   }
 

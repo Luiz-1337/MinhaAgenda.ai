@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import { type CreateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import type { ActionResult } from "@/lib/types/common"
 import { db, salons, professionals, profiles, eq, asc, or, and } from "@repo/db"
@@ -37,12 +38,9 @@ export type SalonDetails = {
  * Busca todos os salões do usuário autenticado (como dono ou profissional)
  */
 export async function getUserSalons(): Promise<SalonListItem[]> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const userId = await getSessionUserId()
 
-  if (!user) {
+  if (!userId) {
     return []
   }
 
@@ -64,13 +62,13 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
       professionals,
       and(
         eq(professionals.salonId, salons.id),
-        eq(professionals.userId, user.id)
+        eq(professionals.userId, userId)
       )
     )
     .where(
       or(
-        eq(salons.ownerId, user.id),
-        eq(professionals.userId, user.id)
+        eq(salons.ownerId, userId),
+        eq(professionals.userId, userId)
       )
     )
     .orderBy(asc(salons.name))
@@ -84,7 +82,7 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     subscriptionStatus: s.subscriptionStatus as 'ACTIVE' | 'PAID' | 'PAST_DUE' | 'CANCELED' | 'TRIAL',
     subscriptionStatusChangedAt: s.subscriptionStatusChangedAt,
     // Prioridade: Se é dono -> MANAGER, senão usa a role do profissional (se for OWNER vira MANAGER), senão STAFF
-    role: (s.ownerId === user.id || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
+    role: (s.ownerId === userId || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
   }))
 }
 
@@ -133,12 +131,9 @@ export async function createSalon(data: CreateSalonSchema): Promise<CreateSalonR
  * Busca os dados completos do salão atual
  */
 export async function getCurrentSalon(salonId: string): Promise<SalonDetails | { error: string }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const userId = await getSessionUserId()
 
-  if (!user) {
+  if (!userId) {
     return { error: "Não autenticado" }
   }
 
@@ -163,9 +158,9 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
   }
 
   // Verifica permissão: Dono ou Profissional vinculado
-  if (salon.ownerId !== user.id) {
+  if (salon.ownerId !== userId) {
     const professional = await db.query.professionals.findFirst({
-      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id))
+      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, userId))
     })
 
     if (!professional) {

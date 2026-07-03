@@ -14,7 +14,7 @@ import {
   inArray,
   sql
 } from "@repo/db"
-import { createClient } from "@/lib/supabase/server"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import type { KanbanBoardDTO, KanbanColumnDTO, KanbanChatCard } from "@/lib/types/kanban"
 
@@ -41,12 +41,11 @@ function formatPhone(raw: string): string {
 
 async function authorize(salonId: string): Promise<{ userId: string } | { error: string }> {
   if (!salonId) return { error: "salonId é obrigatório" }
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Não autenticado" }
-  const allowed = await hasSalonPermission(salonId, user.id)
+  const userId = await getSessionUserId()
+  if (!userId) return { error: "Não autenticado" }
+  const allowed = await hasSalonPermission(salonId, userId)
   if (!allowed) return { error: "Sem permissão neste salão" }
-  return { userId: user.id }
+  return { userId }
 }
 
 async function authorizeByColumn(columnId: string): Promise<{ userId: string; salonId: string } | { error: string }> {
