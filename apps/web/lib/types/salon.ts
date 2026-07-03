@@ -21,7 +21,6 @@ export type SalonOwnerResult = SalonOwnerContext | SalonOwnerError
 export interface SalonListItem {
   id: string
   name: string
-  slug: string
   whatsapp?: string | null
   planTier: PlanTier
   role: ProfessionalRole

@@ -118,7 +118,9 @@ export const salons = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     ownerId: uuid('owner_id').references(() => profiles.id).notNull(),
     name: text('name').notNull(),
-    slug: text('slug').unique().notNull(),
+    // slug DEPRECADO (jul/2026): nullable, não gerado nem lido pelo app. Coluna e UNIQUE
+    // mantidos (MCP/seeds ainda usam; nulls não conflitam no UNIQUE). Ver migration 023.
+    slug: text('slug').unique(),
     whatsapp: text('whatsapp').unique(),
     address: text('address'),
     phone: text('phone'),

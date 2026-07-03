@@ -47,12 +47,6 @@ const salonSettingsSchema = z.object({
 
 export const createSalonSchema = z.object({
   name: z.string().min(3),
-  slug: z
-    .string()
-    .min(3)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-    .optional()
-    .or(z.literal("")),
   whatsapp: z.string().optional().or(z.literal("")),
   address: z.string().optional().or(z.literal("")),
   phone: z.string().optional().or(z.literal("")),
@@ -63,7 +57,7 @@ export const createSalonSchema = z.object({
 
 export type CreateSalonSchema = z.infer<typeof createSalonSchema>
 
-// Schema para atualização do salão (slug não pode ser alterado)
+// Schema para atualização do salão
 export const updateSalonSchema = z.object({
   name: z.string().min(3),
   whatsapp: z.string().optional().or(z.literal("")),

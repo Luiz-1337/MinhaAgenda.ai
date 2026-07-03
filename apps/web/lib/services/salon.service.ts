@@ -210,7 +210,6 @@ export async function createSalonWithOwner(userId: string, data: CreateSalonSche
         .values({
           ownerId: userId,
           name: data.name,
-          slug: data.slug || normalizeString(data.name).toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7),
           whatsapp: data.whatsapp || null,
           address: data.address || null,
           phone: data.phone || null,

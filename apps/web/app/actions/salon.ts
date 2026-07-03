@@ -15,7 +15,6 @@ export type CreateSalonResult = ActionResult<{ salonId: string }>
 export type SalonDetails = {
   id: string
   name: string
-  slug: string
   whatsapp?: string | null
   address?: string | null
   phone?: string | null
@@ -48,7 +47,6 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     .select({
       id: salons.id,
       name: salons.name,
-      slug: salons.slug,
       whatsapp: salons.whatsapp,
       tier: profiles.tier,
       ownerId: salons.ownerId,
@@ -76,7 +74,6 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
   return result.map(s => ({
     id: s.id,
     name: s.name,
-    slug: s.slug,
     whatsapp: s.whatsapp,
     planTier: s.tier as 'SOLO' | 'PRO' | 'ENTERPRISE',
     subscriptionStatus: s.subscriptionStatus as 'ACTIVE' | 'PAID' | 'PAST_DUE' | 'CANCELED' | 'TRIAL',
@@ -142,7 +139,6 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
     columns: {
       id: true,
       name: true,
-      slug: true,
       whatsapp: true,
       address: true,
       phone: true,
@@ -171,7 +167,6 @@ export async function getCurrentSalon(salonId: string): Promise<SalonDetails | {
   return {
     id: salon.id,
     name: salon.name,
-    slug: salon.slug,
     whatsapp: salon.whatsapp ?? undefined,
     address: salon.address ?? undefined,
     phone: salon.phone ?? undefined,
