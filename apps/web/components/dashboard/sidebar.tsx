@@ -20,7 +20,6 @@ import {
   Briefcase,
   Zap,
   Package,
-  Megaphone,
   Trello,
   Plug,
 } from "lucide-react"
@@ -72,7 +71,6 @@ const menuGroups = [
       { href: "billing", label: "Faturamento", icon: CreditCard },
       { href: "services", label: "Serviços", icon: Zap },
       { href: "products", label: "Produtos", icon: Package },
-      { href: "marketing", label: "Marketing", icon: Megaphone },
       { href: "integrations", label: "Integrações", icon: Plug },
     ]
   }
