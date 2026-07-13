@@ -3,10 +3,10 @@
  */
 
 /**
- * Tabela de pesos por modelo
- * gpt-5.4-mini-2026-03-17 é a base (peso 1.0)
+ * Tabela de pesos por modelo. Chaves em lowercase (getModelWeight normaliza
+ * a entrada). Exportada para credits-sql.ts reproduzir o cálculo em SQL.
  */
-const MODEL_WEIGHTS: Record<string, number> = {
+export const MODEL_WEIGHTS: Record<string, number> = {
   "gpt-5.4-mini-2026-03-17": 0.5,
 } as const
 
