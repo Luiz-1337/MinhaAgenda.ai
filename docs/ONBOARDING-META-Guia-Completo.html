@@ -1,0 +1,577 @@
+<meta charset="utf-8">
+<title>Onboarding Meta — Guia Completo (MinhaAgenda)</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", -apple-system, Roboto, Arial, sans-serif; color: #1a2233; font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 4px; color: #14203a; letter-spacing: -0.5px; }
+  h2 { font-size: 15pt; color: #14203a; border-bottom: 2.5px solid #6d5df6; padding-bottom: 5px; margin: 0 0 12px; break-after: avoid; }
+  h3 { font-size: 11.5pt; color: #2b3550; margin: 16px 0 6px; break-after: avoid; }
+  p { margin: 6px 0; }
+  .page { break-before: page; padding-top: 2mm; }
+  .no-break { break-inside: avoid; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f0f2f8; border: 1px solid #dde1ee; border-radius: 3px; padding: 0 4px; }
+  pre { font-family: Consolas, monospace; font-size: 8.5pt; background: #f7f8fc; border: 1px solid #dde1ee; border-left: 3px solid #6d5df6; border-radius: 4px; padding: 8px 10px; overflow-x: hidden; white-space: pre-wrap; word-break: break-all; break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 9.5pt; }
+  th { background: #14203a; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+  td { border: 1px solid #d7dcea; padding: 5px 8px; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  ul, ol { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  a { color: #4c3fd6; text-decoration: none; }
+
+  /* chips de status */
+  .chip { display: inline-block; font-size: 8pt; font-weight: 700; border-radius: 10px; padding: 1px 9px; vertical-align: middle; letter-spacing: 0.3px; }
+  .ok    { background: #e0f5e7; color: #147a3d; border: 1px solid #9ad9b1; }
+  .todo  { background: #fff3d6; color: #9a6b00; border: 1px solid #eecf82; }
+  .block { background: #eceef5; color: #5a6480; border: 1px solid #c6ccdd; }
+  .p0    { background: #fde3e3; color: #b3261e; border: 1px solid #f2a6a2; }
+
+  /* callouts */
+  .call { border-radius: 6px; padding: 9px 12px; margin: 10px 0; break-inside: avoid; font-size: 9.8pt; }
+  .call b:first-child { display: block; margin-bottom: 2px; }
+  .warn { background: #fff7e8; border: 1px solid #f0d9a6; border-left: 4px solid #e8a13c; }
+  .danger { background: #fdeeee; border: 1px solid #f0b9b5; border-left: 4px solid #d9534f; }
+  .info { background: #edf3fe; border: 1px solid #bcd2f7; border-left: 4px solid #4a7de2; }
+  .good { background: #ecf8f0; border: 1px solid #b5e2c4; border-left: 4px solid #2f9e5b; }
+
+  /* checklist */
+  .ck { list-style: none; padding-left: 4px; }
+  .ck li { margin: 5px 0; padding-left: 24px; position: relative; break-inside: avoid; }
+  .ck li::before { content: "☐"; position: absolute; left: 0; top: -1px; font-size: 12pt; color: #8a93ad; }
+  .ck li.done::before { content: "☑"; color: #2f9e5b; }
+  .ck li.att::before { content: "⚠"; color: #d9822b; }
+  .ev { color: #147a3d; font-size: 9pt; display: block; margin-top: 1px; }
+  .ev::before { content: "✔ Evidência de conclusão: "; font-weight: 700; }
+  .path { font-size: 9.2pt; color: #4c3fd6; font-weight: 600; }
+  .small { font-size: 8.8pt; color: #5a6480; }
+
+  .cover { text-align: left; padding-top: 30mm; }
+  .cover .rule { height: 5px; width: 70mm; background: linear-gradient(90deg,#6d5df6,#25d366); border-radius: 3px; margin: 10px 0 24px; }
+  .kv { display: inline-block; margin-right: 26px; margin-top: 8px; }
+  .kv b { display: block; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 1px; color: #8a93ad; }
+  .toc td { border: none; border-bottom: 1px dotted #c6ccdd; padding: 4px 2px; }
+  .fig { text-align: center; margin: 10px 0; break-inside: avoid; }
+  .figcap { font-size: 8.6pt; color: #5a6480; margin-top: 3px; text-align: center; }
+</style>
+
+<!-- ══════════════ CAPA ══════════════ -->
+<div class="cover">
+  <div class="small" style="letter-spacing:2px;text-transform:uppercase;">MinhaAgenda · WhatsApp Cloud API</div>
+  <h1>Onboarding Meta — Guia Completo</h1>
+  <div style="font-size:13pt;color:#4c5670;">Tech Provider · Embedded Signup · Coexistência (QR)</div>
+  <div class="rule"></div>
+  <p style="max-width:150mm;">Roteiro definitivo para concluir a habilitação do MinhaAgenda na API oficial do WhatsApp:
+  o que <b>já está pronto</b> (código e pré-requisitos), o que <b>falta fazer no painel da Meta</b>, em que ordem,
+  com caminhos de navegação, critérios de aprovação, testes de validação e plano de contingência.
+  Personalizado para o estado real do projeto em 3&nbsp;de&nbsp;julho&nbsp;de&nbsp;2026.</p>
+  <div>
+    <span class="kv"><b>Documento</b>ONBOARDING-META-Guia-Completo</span>
+    <span class="kv"><b>Data</b>03/jul/2026</span>
+    <span class="kv"><b>Piloto</b>Spettacolo Salone</span>
+    <span class="kv"><b>Escopo</b>Meta / WhatsApp Business Platform</span>
+  </div>
+  <div class="call info" style="margin-top:26px;max-width:150mm;">
+    <b>Resumo em uma linha</b>
+    O código está pronto e provado; o que falta é <b>burocracia Meta em 3 gates sequenciais</b> — Verificação do negócio → App Review → Configurações do Embedded Signup — seguidos de 2 variáveis de ambiente e 3 campos de webhook. Estimativa: 1 a 3 semanas de calendário, ~1 dia de esforço ativo.
+  </div>
+</div>
+
+<!-- ══════════════ SUMÁRIO ══════════════ -->
+<div class="page">
+<h2>Sumário</h2>
+<table class="toc">
+  <tr><td><b>§0</b></td><td>Mapa geral e caminho crítico</td></tr>
+  <tr><td><b>§1</b></td><td>Estado atual: o que já está pronto (e o P0 de segurança)</td></tr>
+  <tr><td><b>§2</b></td><td>FASE 1 — Verificação do negócio (o gate mestre)</td></tr>
+  <tr><td><b>§3</b></td><td>FASE 2 — Higiene do app para o review</td></tr>
+  <tr><td><b>§4</b></td><td>FASE 3 — App Review / Acesso Avançado (com roteiro do vídeo)</td></tr>
+  <tr><td><b>§5</b></td><td>FASE 4 — Status de Tech Provider, limites e a questão do Solution ID</td></tr>
+  <tr><td><b>§6</b></td><td>FASE 5 — Criar as DUAS configurações do Embedded Signup</td></tr>
+  <tr><td><b>§7</b></td><td>FASE 6 — Webhook: campos a assinar (incl. Coexistência)</td></tr>
+  <tr><td><b>§8</b></td><td>FASE 7 — Plano de testes ponta a ponta</td></tr>
+  <tr><td><b>§9</b></td><td>FASE 8 — Multi-tenant de verdade: o gap de token por salão (código)</td></tr>
+  <tr><td><b>§10</b></td><td>Go-live do Spettacolo (cutover) e rollback</td></tr>
+  <tr><td><b>§11</b></td><td>Troubleshooting: sintoma → causa → ação</td></tr>
+  <tr><td><b>§12</b></td><td>Glossário de IDs e mapa de variáveis de ambiente</td></tr>
+  <tr><td><b>§13</b></td><td>Fontes oficiais</td></tr>
+</table>
+
+<h2 style="margin-top:18px;">§0 · Mapa geral e caminho crítico</h2>
+<div class="fig">
+<svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:760px;">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#5a6480"/></marker>
+  </defs>
+  <style>
+    .bx { rx:8; stroke-width:1.5; }
+    .t  { font: 600 11px "Segoe UI", Arial; fill:#14203a; }
+    .s  { font: 400 9.5px "Segoe UI", Arial; fill:#5a6480; }
+    .lab{ font: 700 9px "Segoe UI", Arial; }
+  </style>
+  <!-- linha 1: feito -->
+  <rect class="bx" x="10" y="18" width="170" height="52" fill="#ecf8f0" stroke="#2f9e5b"/>
+  <text class="t" x="22" y="38">✔ Código + piloto</text>
+  <text class="s" x="22" y="52">Provider Cloud, webhook /cloud,</text>
+  <text class="s" x="22" y="63">teste reativo OK (22/jun)</text>
+
+  <rect class="bx" x="200" y="18" width="170" height="52" fill="#ecf8f0" stroke="#2f9e5b"/>
+  <text class="t" x="212" y="38">✔ Pré-req. do site</text>
+  <text class="s" x="212" y="52">domínio verificado, política de</text>
+  <text class="s" x="212" y="63">privacidade, CNPJ no rodapé</text>
+
+  <rect class="bx" x="390" y="18" width="170" height="52" fill="#fdeeee" stroke="#d9534f"/>
+  <text class="t" x="402" y="38">⚠ P0 segurança</text>
+  <text class="s" x="402" y="52">rotacionar token System User</text>
+  <text class="s" x="402" y="63">+ App Secret (expostos)</text>
+
+  <!-- linha 2: gates -->
+  <rect class="bx" x="10" y="118" width="170" height="60" fill="#fff3d6" stroke="#e8a13c"/>
+  <text class="lab" x="22" y="134" fill="#9a6b00">GATE 1 · §2</text>
+  <text class="t" x="22" y="150">Verificação do negócio</text>
+  <text class="s" x="22" y="164">CNPJ no Security Center</text>
+  <text class="s" x="22" y="175">10 min – 5 dias úteis</text>
+
+  <rect class="bx" x="200" y="118" width="170" height="60" fill="#fff3d6" stroke="#e8a13c"/>
+  <text class="lab" x="212" y="134" fill="#9a6b00">GATE 2 · §4</text>
+  <text class="t" x="212" y="150">App Review</text>
+  <text class="s" x="212" y="164">acesso avançado às 2 permissões</text>
+  <text class="s" x="212" y="175">vídeo + caso de uso · dias–2 sem</text>
+
+  <rect class="bx" x="390" y="118" width="170" height="60" fill="#fff3d6" stroke="#e8a13c"/>
+  <text class="lab" x="402" y="134" fill="#9a6b00">GATE 3 · §6</text>
+  <text class="t" x="402" y="150">2 configs no ES Builder</text>
+  <text class="s" x="402" y="164">padrão + Coexistência</text>
+  <text class="s" x="402" y="175">→ 2 Config IDs · 15 min</text>
+
+  <rect class="bx" x="580" y="118" width="170" height="60" fill="#edf3fe" stroke="#4a7de2"/>
+  <text class="lab" x="592" y="134" fill="#2b5cb8">AUTOMÁTICO · §5</text>
+  <text class="t" x="592" y="150">Tech Provider ativo</text>
+  <text class="s" x="592" y="164">limite 10 → 200 clientes/7d</text>
+  <text class="s" x="592" y="175">(sem botão: decorre dos gates)</text>
+
+  <!-- linha 3 -->
+  <rect class="bx" x="105" y="228" width="170" height="52" fill="#f0f2f8" stroke="#8a93ad"/>
+  <text class="t" x="117" y="248">Envs + webhook · §6–§7</text>
+  <text class="s" x="117" y="262">2 vars na Vercel · assinar</text>
+  <text class="s" x="117" y="273">smb_* + history · 15 min</text>
+
+  <rect class="bx" x="295" y="228" width="170" height="52" fill="#f0f2f8" stroke="#8a93ad"/>
+  <text class="t" x="307" y="248">Teste Coexistência · §8</text>
+  <text class="s" x="307" y="262">número real, app ≥ 2.24.17,</text>
+  <text class="s" x="307" y="273">≥ 7 dias de uso</text>
+
+  <rect class="bx" x="485" y="228" width="170" height="52" fill="#e0f5e7" stroke="#147a3d"/>
+  <text class="t" x="497" y="248">🚀 Go-live Spettacolo · §10</text>
+  <text class="s" x="497" y="262">cutover D1–D6 do runbook,</text>
+  <text class="s" x="497" y="273">rollback = religar Evolution</text>
+
+  <!-- setas -->
+  <line x1="95"  y1="70" x2="95"  y2="118" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="180" y1="148" x2="200" y2="148" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="370" y1="148" x2="390" y2="148" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="560" y1="148" x2="580" y2="148" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="285" y1="178" x2="230" y2="228" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="275" y1="254" x2="295" y2="254" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="465" y1="254" x2="485" y2="254" stroke="#5a6480" stroke-width="1.5" marker-end="url(#arr)"/>
+</svg>
+<div class="figcap">Fig. 1 — O funil completo. Verde = pronto; âmbar = gates Meta pendentes; vermelho = ação de segurança imediata.</div>
+</div>
+
+<div class="call info no-break">
+  <b>A regra de ouro da ordem</b>
+  Os gates 1→2 são <b>sequenciais</b> (o App Review exige negócio verificado). O gate 3 (configs) só destrava por completo após o review — mas o fluxo inteiro pode ser <b>ensaiado antes, em modo de desenvolvimento</b>, com usuários que tenham papel no app (§8). Ou seja: enquanto a Meta processa, vocês já testam.
+</div>
+</div>
+
+<!-- ══════════════ §1 ESTADO ATUAL ══════════════ -->
+<div class="page">
+<h2>§1 · Estado atual: o que já está pronto</h2>
+<p>Tudo abaixo está <b>feito, commitado e (onde aplicável) em produção</b>. Nada desta seção precisa ser refeito — ela existe para você não gastar energia re-checando o que já passou.</p>
+<table>
+  <tr><th style="width:34%">Item</th><th>Evidência</th><th style="width:14%">Status</th></tr>
+  <tr><td>App Meta tipo Business criado, produto WhatsApp adicionado, IDs anotados</td><td>Runbook A1 — <code>PHONE_NUMBER_ID</code>/<code>WABA_ID</code> do nº de teste registrados</td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Envio provado na Cloud API (template + texto livre)</td><td>curl OK; quality rating GREEN</td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Token permanente (System User) + App Secret + verify token</td><td>Runbook A4/A5 — validados em produção</td><td><span class="chip p0">ROTACIONAR</span></td></tr>
+  <tr><td>Webhook <code>/api/webhook/whatsapp/cloud</code> com handshake GET + validação <code>X-Hub-Signature-256</code> obrigatória em prod</td><td><code>apps/web/app/api/webhook/whatsapp/cloud/route.ts</code></td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Pipeline completo no provider Cloud (fila → worker → IA → resposta → status)</td><td>Teste reativo passou em 22/jun no nº de teste; deploy Vercel (web) + Railway (worker)</td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Domínio verificado na Meta (meta tag)</td><td>commit <code>bddf0e2</code></td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Política de privacidade pública + ícone do app</td><td>commit <code>e155f8b</code></td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Razão social + CNPJ visíveis no rodapé do site</td><td>commit <code>9df78d2</code></td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Componente Embedded Signup com os 2 fluxos (padrão + QR/Coexistência via <code>featureType="whatsapp_business_app_onboarding"</code>)</td><td><code>apps/web/components/whatsapp/meta-embedded-signup.tsx</code> (commit <code>8353bbc</code>, deployado)</td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Handoff B7 (eco do app → <code>chats.isManual</code>) + guard anti entrega-dupla (webhook Evolution descarta se <code>provider='cloud'</code>)</td><td>commit <code>8353bbc</code></td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Botão QR no painel com gate: acende sozinho quando <code>NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID</code> existir</td><td>gate no componente, sem fallback proposital</td><td><span class="chip ok">FEITO</span></td></tr>
+  <tr><td>Config de <b>Coexistência</b> criada no App Dashboard (produto: só WhatsApp Cloud API; permissões MANAGE + MESSAGING) e <code>NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID</code> setada</td><td>feito em 29/jun — <b>validar</b>: env é build-time (§6)</td><td><span class="chip ok">FEITO*</span></td></tr>
+</table>
+
+<h3>O que falta (é SÓ isto)</h3>
+<table>
+  <tr><th style="width:6%">#</th><th>Pendência</th><th style="width:16%">Onde</th><th style="width:14%">Seção</th></tr>
+  <tr><td>P0</td><td>Rotacionar <code>WHATSAPP_CLOUD_TOKEN</code> + <code>WHATSAPP_APP_SECRET</code> (expostos em chat)</td><td>BM + App Dashboard</td><td>§1.1</td></tr>
+  <tr><td>1</td><td>Verificação do negócio (CNPJ)</td><td>Security Center</td><td>§2</td></tr>
+  <tr><td>2</td><td>Higiene do app (data deletion URL, categoria, domínios)</td><td>App Dashboard</td><td>§3</td></tr>
+  <tr><td>3</td><td>App Review: acesso avançado a <code>whatsapp_business_messaging</code> + <code>whatsapp_business_management</code></td><td>App Review</td><td>§4</td></tr>
+  <tr><td>4</td><td>Configs do ES: Coexistência <b>já criada</b> (29/jun) — validar build/botão QR; conferir config padrão + <code>NEXT_PUBLIC_META_APP_ID</code>/<code>CONFIG_ID</code> na Vercel</td><td>ES Builder</td><td>§6</td></tr>
+  <tr><td>5</td><td>Assinar campos <code>smb_message_echoes</code>, <code>smb_app_state_sync</code>, <code>history</code> (+ <code>message_template_status_update</code>, <code>account_update</code>)</td><td>Webhook config</td><td>§7</td></tr>
+  <tr><td>6</td><td>Template UTILITY <code>lembrete_agendamento</code> aprovado</td><td>WhatsApp Manager</td><td>§3.1</td></tr>
+  <tr><td>7</td><td>Número Spettacolo no app WhatsApp Business ≥ 7 dias</td><td>celular do salão</td><td>§8</td></tr>
+  <tr><td>8</td><td>Código multi-tenant: troca de <code>code</code> → token por salão + <code>subscribed_apps</code> + <code>register</code></td><td>repo</td><td>§9</td></tr>
+  <tr><td>9</td><td>Cutover Spettacolo (D1–D6) e desligamento do Evolution no número</td><td>operação</td><td>§10</td></tr>
+</table>
+
+<h3>§1.1 · P0 imediato — rotação das credenciais expostas <span class="chip p0">FAZER HOJE</span></h3>
+<ul class="ck">
+  <li><span class="path">business.facebook.com → Configurações do negócio → Usuários → Usuários do sistema</span>: selecionar o System User → <b>Gerar novo token</b> (mesmos escopos: <code>whatsapp_business_messaging</code>, <code>whatsapp_business_management</code>) → copiar.</li>
+  <li><span class="path">developers.facebook.com → seu app → Configurações do app → Básico</span>: em <b>Chave secreta do app</b>, clicar <b>Redefinir</b> → copiar a nova.</li>
+  <li>Atualizar <code>WHATSAPP_CLOUD_TOKEN</code> e <code>WHATSAPP_APP_SECRET</code> na <b>Vercel</b> (web) e na <b>Railway</b> (worker) → redeploy dos dois.</li>
+  <li>Revogar o token antigo (ao gerar novo token de System User o anterior <i>continua válido</i> — revogue na lista de tokens do System User). A redefinição do App Secret invalida o antigo sozinha.</li>
+  <li>Smoke test: enviar 1 mensagem via curl com o token novo e mandar 1 inbound para validar a assinatura nova do webhook.
+    <span class="ev">envio 200 OK + inbound processado no log após a troca.</span></li>
+</ul>
+<div class="call warn"><b>Por que isso vem antes de tudo</b> A verificação e o review chamam atenção humana da Meta para o app. Credencial vazada + app sob análise é o pior momento possível para um incidente. 15 minutos de trabalho, risco eliminado.</div>
+</div>
+
+<!-- ══════════════ §2 VERIFICAÇÃO DE NEGÓCIO ══════════════ -->
+<div class="page">
+<h2>§2 · FASE 1 — Verificação do negócio <span class="chip todo">GATE MESTRE</span></h2>
+<p>É o pré-requisito de <b>tudo</b>: App Review exige portfólio verificado, o selo destrava o limite de 200 clientes/7 dias e remove o teto de 250 conversas/dia iniciadas pelo negócio. Leva de 10 minutos a 5 dias úteis (mediana: ~2).</p>
+
+<h3>Antes de submeter — dossiê anti-reprovação</h3>
+<ul class="ck">
+  <li>Razão social no Business Portfolio <b>idêntica, caractere por caractere,</b> à do Cartão CNPJ (inclusive LTDA/ME). Divergência de nome é a causa nº 1 de reprovação.</li>
+  <li>Endereço e telefone do portfólio iguais aos do CNPJ na Receita. Atualize o portfólio ANTES de iniciar.</li>
+  <li class="done">Site público com razão social + CNPJ visíveis (rodapé) — <b>feito</b> (commit <code>9df78d2</code>).</li>
+  <li class="done">Domínio verificado no Business Manager (meta tag) — <b>feito</b> (commit <code>bddf0e2</code>).</li>
+  <li>Documentos em mãos (PDF/foto nítida): <b>Cartão CNPJ</b> (comprovante de inscrição — emitir na hora no site da Receita), e como reserva: contrato social OU conta de consumo/fatura recente com razão social + endereço.</li>
+  <li class="att">E-mail de confirmação: a Meta prefere e-mail <b>no domínio do site</b> da empresa (ex.: <code>contato@&lt;dominio-do-minhaagenda&gt;</code>). Se não existir, crie um alias antes — confirmar por e-mail genérico (gmail etc.) enfraquece o caso; há alternativa por telefone, mas o e-mail do domínio é o caminho liso.</li>
+</ul>
+
+<h3>Passo a passo</h3>
+<ul class="ck">
+  <li>Abrir <span class="path">business.facebook.com → Configurações → Central de Segurança (Security Center)</span> → cartão <b>Verificação do negócio</b> → <b>Iniciar verificação</b>. <span class="small">Atalho equivalente: App Dashboard → Configurações → Básico → seção Verificação → Start Verification.</span></li>
+  <li>Confirmar/editar os dados legais da empresa (razão social, endereço, telefone, site).</li>
+  <li>Selecionar o método de confirmação de contato (e-mail do domínio ▸ preferido; telefone como alternativa) e inserir o código recebido.</li>
+  <li>Upload do(s) documento(s) quando solicitado (Cartão CNPJ primeiro).</li>
+  <li>Aguardar. Acompanhe em <span class="path">Security Center → Verificação</span> — o status muda para <i>Em análise</i> e depois <i>Verificado</i>. Chega e-mail também.
+    <span class="ev">selo “Verificado” no Security Center do portfólio.</span></li>
+</ul>
+
+<div class="call danger no-break">
+  <b>Se reprovar</b>
+  A Meta informa o motivo (genérico). Ordem de suspeita: (1) nome divergente → corrigir portfólio e reenviar com Cartão CNPJ recém-emitido; (2) endereço → anexar conta de consumo com o endereço do CNPJ; (3) site “não relacionado” → conferir se o rodapé com CNPJ está na home e se o domínio verificado é o mesmo cadastrado no portfólio. Pode reenviar imediatamente; não há penalidade por tentativa.
+</div>
+
+<h2 style="margin-top:16px;">§3 · FASE 2 — Higiene do app para o review <span class="chip todo">30 MIN</span></h2>
+<p>Itens do App Dashboard que o revisor confere antes mesmo de assistir seu vídeo. Vários já estão prontos; complete o resto:</p>
+<ul class="ck">
+  <li class="done">Ícone do app 1024×1024 — <b>feito</b> (commit <code>e155f8b</code>).</li>
+  <li class="done">Privacy Policy URL — página existe; <b>confira</b> se a URL está preenchida em <span class="path">Configurações do app → Básico</span>.</li>
+  <li class="att"><b>Exclusão de dados do usuário</b> (obrigatório p/ modo Live): em <span class="path">Básico → Exclusão de dados do usuário</span>, informar URL com instruções (pode ser âncora na própria política de privacidade, ex.: <code>/privacidade#exclusao-de-dados</code>). Se a âncora não existir, criar — 3 linhas: como o salão/cliente solicita exclusão e prazo.</li>
+  <li>Categoria do app: <b>Business</b> (ou “Business and pages”); App Domains com o domínio do painel; Plataforma <b>Website</b> adicionada com a URL do painel.</li>
+  <li>App vinculado ao Business Portfolio (o mesmo que será verificado) — <span class="path">Básico → Business Portfolio</span>.</li>
+  <li>2FA ativo nos administradores do app (a Meta pode exigir para operações sensíveis).</li>
+  <li><b>NÃO ligar o modo Live ainda</b> — em dev o Embedded Signup funciona para usuários com papel no app (é assim que se grava o vídeo, §4); Live antes do acesso avançado <i>esconde</i> as permissões do fluxo.</li>
+</ul>
+
+<h3>§3.1 · Em paralelo: template de lembrete (aprovação rápida)</h3>
+<ul class="ck">
+  <li><span class="path">WhatsApp Manager → Ferramentas da conta → Modelos de mensagem → Criar</span>: nome <code>lembrete_agendamento</code>, categoria <b>UTILITY</b>, idioma <code>pt_BR</code>, corpo com variáveis nome/serviço/data-hora. Aprova em minutos–horas e é bloqueador do cutover (cron de lembretes).
+  <span class="ev">status “Aprovado” no WhatsApp Manager.</span></li>
+</ul>
+</div>
+
+<!-- ══════════════ §4 APP REVIEW ══════════════ -->
+<div class="page">
+<h2>§4 · FASE 3 — App Review / Acesso Avançado <span class="chip todo">O GATE MAIS CHATO</span></h2>
+<p>Objetivo: <b>Advanced Access</b> em <code>whatsapp_business_messaging</code> (enviar/receber pelas WABAs de clientes) e <code>whatsapp_business_management</code> (gerenciar as WABAs deles). Sem isso, o Embedded Signup só funciona para contas com papel no app. Se o fluxo pedir <code>business_management</code>, solicite também com a mesma justificativa.</p>
+
+<h3>Onde</h3>
+<p><span class="path">App Dashboard → App Review → Permissões e recursos</span> → buscar cada permissão → <b>Request Advanced Access</b> → preencher a submissão única.</p>
+
+<h3>O que preparar (checklist da submissão)</h3>
+<ul class="ck">
+  <li><b>Descrição do caso de uso</b> (use e adapte): <i>“MinhaAgenda is a SaaS scheduling platform for beauty salons in Brazil. Salon owners connect their own WhatsApp Business number via Embedded Signup. Our platform (1) receives customer messages via webhooks and lets an AI assistant + salon staff reply (whatsapp_business_messaging), and (2) manages the customer's WABA connection, phone number registration and message templates on their behalf (whatsapp_business_management). Messaging is customer-service oriented: booking, rescheduling and appointment reminders.”</i></li>
+  <li><b>Screencast (o item que mais reprova)</b> — roteiro shot-a-shot:
+    <ol>
+      <li>Login no painel MinhaAgenda (conta demo, dados fictícios).</li>
+      <li>Navegar até <i>Agentes → Conectar WhatsApp</i>.</li>
+      <li>Clicar no botão → popup do Embedded Signup da Meta abre (gravar o popup INTEIRO, incluindo o login FB e a seleção/criação de WABA).</li>
+      <li>Concluir o fluxo → painel mostra “número conectado”.</li>
+      <li>Enviar mensagem de um celular para o número → mostrar a mensagem chegando no painel e a resposta saindo.</li>
+    </ol>
+    <span class="small">Grave em dev mode com um usuário que tenha papel no app (Administrador/Desenvolvedor/Testador — adicione em <span class="path">Funções do app</span>). Legendas ou narração em inglês aumentam a taxa de aprovação. Nada de dados reais de clientes na tela.</span></li>
+  <li><b>Instruções de teste para o revisor</b>: URL do painel + credenciais de uma conta demo funcional (salão sandbox com agente ativo). O revisor PRECISA conseguir reproduzir o caminho do vídeo.</li>
+  <li>Justificativa individual por permissão (2–3 frases cada, derivadas do caso de uso acima).</li>
+  <li>Conferir que a verificação do negócio (§2) já está <b>concluída</b> — submissão com portfólio não-verificado é reprovação automática.</li>
+</ul>
+
+<h3>Depois de submeter</h3>
+<ul class="ck">
+  <li>Prazo típico: poucos dias a ~2 semanas. Status em <span class="path">App Review → Solicitações</span>; resposta também por e-mail.</li>
+  <li>Se aprovar: as permissões aparecem como <b>Advanced Access</b> em Permissões e recursos. <b>Agora sim</b>: alternar o app para <b>Live</b>.
+    <span class="ev">as 2 permissões com “Acesso avançado” + app em modo Live.</span></li>
+  <li>Se reprovar: ler o feedback, corrigir SÓ o apontado e resubmeter (sem limite prático de tentativas; cada rodada custa dias — capriche na primeira).</li>
+</ul>
+
+<div class="call danger no-break">
+  <b>Top 3 motivos de reprovação (e a vacina)</b>
+  (1) <b>Vídeo não mostra o fluxo de ponta a ponta</b> → grave do login ao “conectado”, sem cortes no popup.
+  (2) <b>Revisor não conseguiu testar</b> → conta demo quebrada/expirada; teste você mesmo em aba anônima antes de submeter.
+  (3) <b>“Permissão não utilizada”</b> → a justificativa não conecta a permissão ao que aparece no vídeo; cite a tela exata onde cada permissão age.
+</div>
+
+<h2 style="margin-top:16px;">§5 · FASE 4 — Tech Provider, limites e Solution ID <span class="chip block">AUTOMÁTICO</span></h2>
+<ul>
+  <li><b>Não existe botão “virar Tech Provider”.</b> O status decorre de: portfólio verificado (§2) + acesso avançado (§4) + access verification quando exigida. Confira em <span class="path">WhatsApp Manager → Visão geral de parceiro (Partner overview)</span>.</li>
+  <li><b>Limite de onboarding</b>: 10 clientes novos por janela móvel de 7 dias por padrão → sobe <b>automaticamente para 200/7d</b> ao concluir verificação + review. Acima disso: Meta Business Partner ou ticket no Direct Support. Para o estágio atual, 200/semana é mais que suficiente.</li>
+  <li><b>Solution ID — esclarecimento importante</b>: <code>NEXT_PUBLIC_META_SOLUTION_ID</code> é <b>opcional</b> e o componente já o trata assim. Solution/Partner Solution só existe se vocês fecharem parceria formal com um <b>Solution Partner</b> (billing centralizado pela linha de crédito dele). No modelo escolhido (direto na Meta, cliente paga a própria conversa), <b>não crie solution nenhuma</b> — deixe a env vazia. Registro na memória do projeto de que isso <i>não</i> é pendência.</li>
+  <li>Consequência do modelo standalone: cada salão onboardado precisará <b>adicionar forma de pagamento</b> no WhatsApp Manager da própria WABA <i>apenas para mensagens pagas</i> (templates proativos). O fluxo reativo (janela de serviço 24h) é gratuito e funciona sem cartão.</li>
+</ul>
+</div>
+
+<!-- ══════════════ §6 CONFIGS ES ══════════════ -->
+<div class="page">
+<h2>§6 · FASE 5 — As DUAS configurações do Embedded Signup <span class="chip todo">PARCIAL — VALIDAR</span></h2>
+<p>O código de vocês exige <b>duas</b> configurações separadas — por decisão de projeto, o fluxo QR <b>não tem fallback</b> para a config padrão (disparar Coexistência contra config comum abre o fluxo errado em silêncio). <b>Estado atual:</b> a config de Coexistência (②) <b>já foi criada</b> (29/jun) e a env setada — resta validar o build e conferir a config padrão (①):</p>
+
+<div class="fig">
+<svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:760px;">
+  <style>
+    .wt { font: 600 10.5px "Segoe UI", Arial; fill:#14203a; }
+    .ws { font: 400 9px "Segoe UI", Arial; fill:#5a6480; }
+    .wm { font: 600 9px Consolas, monospace; fill:#4c3fd6; }
+  </style>
+  <!-- janela mock -->
+  <rect x="10" y="10" width="460" height="220" rx="8" fill="#ffffff" stroke="#c6ccdd" stroke-width="1.5"/>
+  <rect x="10" y="10" width="460" height="26" rx="8" fill="#14203a"/>
+  <text x="24" y="27" font-family="Segoe UI" font-size="10" fill="#fff" font-weight="600">developers.facebook.com — App Dashboard</text>
+  <!-- sidebar -->
+  <rect x="10" y="36" width="130" height="194" fill="#f7f8fc"/>
+  <text class="ws" x="22" y="56">Painel</text>
+  <text class="ws" x="22" y="74">Casos de uso</text>
+  <text class="wt" x="22" y="96">▸ WhatsApp</text>
+  <text class="wm" x="30" y="112">Embedded Signup</text>
+  <text class="wm" x="30" y="124">Builder</text>
+  <text class="ws" x="22" y="146">Facebook Login</text>
+  <text class="ws" x="22" y="158">for Business →</text>
+  <text class="wm" x="30" y="172">Configurations</text>
+  <text class="ws" x="22" y="196">App Review</text>
+  <text class="ws" x="22" y="214">Configurações</text>
+  <!-- área principal -->
+  <text class="wt" x="156" y="60">Configurações do Embedded Signup</text>
+  <rect x="156" y="72" width="296" height="60" rx="6" fill="#f0f2f8" stroke="#8a93ad"/>
+  <text class="wt" x="168" y="92">① MinhaAgenda — Padrão</text>
+  <text class="ws" x="168" y="106">Variação: WhatsApp Embedded Signup · API: Cloud API</text>
+  <text class="wm" x="168" y="122">Configuration ID: 8123…  → NEXT_PUBLIC_META_CONFIG_ID</text>
+  <rect x="156" y="142" width="296" height="72" rx="6" fill="#e9fbef" stroke="#2f9e5b"/>
+  <text class="wt" x="168" y="162">② MinhaAgenda — Coexistência (QR)</text>
+  <text class="ws" x="168" y="176">Variação: WhatsApp Embedded Signup</text>
+  <text class="ws" x="168" y="188">+ habilitar “WhatsApp Business App onboarding”</text>
+  <text class="wm" x="168" y="204">Configuration ID: 9456…  → NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID</text>
+
+  <!-- lado direito: fluxo -->
+  <rect x="500" y="30" width="250" height="86" rx="8" fill="#edf3fe" stroke="#4a7de2"/>
+  <text class="wt" x="514" y="52">Botão “Conectar WhatsApp”</text>
+  <text class="ws" x="514" y="68">usa config ① → fluxo clássico</text>
+  <text class="ws" x="514" y="82">(número novo/dedicado, app do</text>
+  <text class="ws" x="514" y="94">celular é desativado)</text>
+  <rect x="500" y="132" width="250" height="98" rx="8" fill="#e9fbef" stroke="#2f9e5b"/>
+  <text class="wt" x="514" y="154">Botão “QR / Coexistência”</text>
+  <text class="ws" x="514" y="170">usa config ② + extras.featureType =</text>
+  <text class="wm" x="514" y="184">whatsapp_business_app_onboarding</text>
+  <text class="ws" x="514" y="200">→ app do celular CONTINUA vivo;</text>
+  <text class="ws" x="514" y="212">assistente vê tudo no telefone</text>
+</svg>
+<div class="figcap">Fig. 2 — Onde as configs nascem no App Dashboard e a qual botão do painel cada Config ID pertence.</div>
+</div>
+
+<h3>Passo a passo</h3>
+<ul class="ck">
+  <li>Abrir <span class="path">App Dashboard → WhatsApp → Embedded Signup Builder</span> (apps Business). <span class="small">Layout alternativo/antigo: Facebook Login for Business → Configurations — é a mesma entidade “Configuration”.</span></li>
+  <li><b>Config ①</b>: Criar configuração → nome <code>MinhaAgenda - Padrao</code> → variação de login <b>WhatsApp Embedded Signup</b> → APIs: Cloud API → salvar → <b>copiar o Configuration ID</b>.</li>
+  <li class="done"><b>Config ②</b> (Coexistência): <b>já criada em 29/jun</b> (produto: só WhatsApp Cloud API; permissões MANAGE + MESSAGING) e ID na env. <span class="small">Referência caso precise recriar: mesma variação WhatsApp Embedded Signup + habilitar a opção de onboarding do app WhatsApp Business; o código já manda <code>extras.featureType="whatsapp_business_app_onboarding"</code> (valor antigo <code>"coexistence"</code> morto).</span></li>
+  <li>Testar no próprio Builder: selecionar a config ② → <b>Preview/Open flow</b> → deve exibir a variante com QR code.</li>
+  <li class="att"><b>Validação build-time (pegadinha real)</b>: <code>NEXT_PUBLIC_*</code> entra no bundle <b>no build</b>. Se a env foi setada na Vercel DEPOIS do último deploy, o botão QR continua “Indisponível” até um <b>redeploy</b>. Validar: abrir <span class="path">painel → Agentes</span>; se indisponível, redeploy resolve.</li>
+  <li>Gravar as envs na <b>Vercel</b> (Production + Preview):
+<pre>NEXT_PUBLIC_META_APP_ID=&lt;App ID — App Dashboard → Básico&gt;
+NEXT_PUBLIC_META_CONFIG_ID=&lt;Configuration ID da config ①&gt;
+NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID=&lt;Configuration ID da config ②&gt;
+# NEXT_PUBLIC_META_SOLUTION_ID — DEIXAR VAZIA (§5)</pre></li>
+  <li>Redeploy → abrir <span class="path">painel → Agentes</span> e conferir que o botão QR saiu do estado “Indisponível”.
+    <span class="ev">os dois botões ativos no painel; popup abre nos dois fluxos.</span></li>
+</ul>
+<div class="call danger no-break"><b>Deadline real: Embedded Signup v2 será descontinuado em 15/out/2026</b> O componente usa SDK v22.0; configs novas já nascem v4, mas o contrato do <code>postMessage</code> mudou entre gerações. Agendar a migração/validação v4 dos DOIS fluxos <b>antes de 15/out/2026</b> (doc “Version 4” no §13) — depois dessa data o fluxo v2 quebra em produção. Se o popup retornar evento sem <code>phone_number_id</code>, é sintoma disso.</div>
+</div>
+
+<!-- ══════════════ §7 WEBHOOK ══════════════ -->
+<div class="page">
+<h2>§7 · FASE 6 — Webhook: campos a assinar <span class="chip todo">10 MIN</span></h2>
+<p>A rota já existe e valida assinatura; o que falta é <b>assinatura de campos</b> no app. Hoje: <code>messages</code> (e provavelmente <code>message_template_status_update</code>). A Coexistência exige mais três.</p>
+
+<h3>Configuração (nível do APP — vale para todas as WABAs que assinarem o app)</h3>
+<ul class="ck">
+  <li>Abrir <span class="path">App Dashboard → WhatsApp → Configuração → Webhook</span>: URL <code>https://&lt;dominio-do-painel&gt;/api/webhook/whatsapp/cloud</code> + Verify Token (<code>WHATSAPP_WEBHOOK_VERIFY_TOKEN</code>) — <span class="small">já validado; refazer o “Verificar e salvar” apenas se trocar o verify token na rotação P0.</span></li>
+  <li>Na tabela <b>Campos do webhook</b>, assinar:
+    <table style="margin-top:4px;">
+      <tr><th>Campo</th><th>Para quê</th><th>Status</th></tr>
+      <tr><td><code>messages</code></td><td>inbound + statuses (sent/delivered/read/failed)</td><td><span class="chip ok">ASSINADO</span></td></tr>
+      <tr><td><code>message_template_status_update</code></td><td>aprovação/pausa de templates</td><td><span class="chip todo">CONFERIR</span></td></tr>
+      <tr><td><code>smb_message_echoes</code></td><td><b>eco do que a assistente manda pelo app → aciona o handoff B7 (pausa a IA)</b></td><td><span class="chip todo">ASSINAR</span></td></tr>
+      <tr><td><code>smb_app_state_sync</code></td><td>sync de contatos/estado do app Business</td><td><span class="chip todo">ASSINAR</span></td></tr>
+      <tr><td><code>history</code></td><td>importação do histórico (até 6 meses) na conexão Coexistência</td><td><span class="chip todo">ASSINAR</span></td></tr>
+      <tr><td><code>account_update</code></td><td>mudanças na WABA (ban, verificação, limites)</td><td><span class="chip todo">RECOMENDADO</span></td></tr>
+    </table>
+  </li>
+  <li>Teste rápido: botão <b>Testar</b> ao lado de <code>messages</code> → payload de exemplo deve aparecer no log da Vercel com assinatura válida.
+    <span class="ev">POST de teste com 200 no log + campos smb_* listados como “Assinado”.</span></li>
+</ul>
+<div class="call info no-break">
+  <b>Volume do <code>history</code></b>
+  Ao conectar um salão por Coexistência, a Meta despeja até 6 meses de conversa em lotes no webhook. A rota <code>/cloud</code> precisa <b>não</b> tratar isso como inbound novo (sem disparar IA para mensagem antiga). Se o handler ainda não distingue payload de <code>history</code>, tratar/descartar explicitamente antes do primeiro onboarding real — vale um teste dedicado no §8.
+</div>
+
+<h3>Assinatura por WABA de cliente (multi-tenant)</h3>
+<p class="small">Além dos campos no app, cada WABA de salão onboardado precisa ter o app inscrito nela: <code>POST /&lt;WABA_ID&gt;/subscribed_apps</code> com o token daquele cliente — hoje isso não existe no código; entra no §9 como parte do onboarding server-side.</p>
+
+<h2 style="margin-top:14px;">§8 · FASE 7 — Plano de testes ponta a ponta</h2>
+<h3>A) Antes da aprovação (modo dev) — ensaio geral do Embedded Signup</h3>
+<ul class="ck">
+  <li>Adicionar os envolvidos em <span class="path">App Dashboard → Funções do app</span> (Administrador/Desenvolvedor/Testador).</li>
+  <li>Com as configs do §6 criadas, rodar o fluxo padrão E o fluxo QR no painel usando essas contas — em dev mode o ES funciona para quem tem papel no app. É o ambiente para gravar o screencast do §4.</li>
+</ul>
+<h3>B) Pipeline reativo (número de teste) <span class="chip ok">JÁ PASSOU 22/JUN</span></h3>
+<p class="small">Número de teste Meta (+1 555 634 9014, até 5 destinatários): ciclo inbound → fila → IA → resposta → delivered comprovado. Repetir apenas o smoke test após a rotação P0.</p>
+<h3>C) Coexistência de verdade (exige número REAL — não funciona no número de teste)</h3>
+<ul class="ck">
+  <li>Pré-condições do número: app <b>WhatsApp Business ≥ 2.24.17</b> no celular; número em uso no app há <b>≥ 7 dias</b>; Brasil ✔ suportado. <span class="small">Use um chip de laboratório antes do Spettacolo, se possível.</span></li>
+  <li>Fluxo: painel → botão QR → popup → escanear QR com o celular do número → autorizar (com importação de histórico) → callback grava <code>phone_number_id</code>.</li>
+  <li>Validar, nesta ordem:
+    <ol>
+      <li>Inbound de um cliente-teste chega ao webhook e à IA;</li>
+      <li><b>Resposta da IA aparece no app do celular</b> (espelhamento API→app);</li>
+      <li>Assistente responde pelo app → eco <code>smb_message_echoes</code> chega → <b>IA pausa naquele chat</b> (B7);</li>
+      <li>Lote de <code>history</code> não dispara IA nem duplica conversa (§7);</li>
+      <li>Ligação de voz para o número continua tocando no celular;</li>
+      <li>Envio proativo respeita o limite de throughput da Coexistência (doc atual: 20 msg/s; notas antigas citavam 5 — assumir o menor nos crons até medir).</li>
+    </ol>
+    <span class="ev">os 6 itens verificados num chip de teste OU direto no cutover controlado do §10.</span></li>
+</ul>
+</div>
+
+<!-- ══════════════ §9 MULTI-TENANT ══════════════ -->
+<div class="page">
+<h2>§9 · FASE 8 — Multi-tenant de verdade: o gap de token por salão <span class="chip todo">CÓDIGO</span></h2>
+<div class="call warn">
+  <b>O gap, sem eufemismo</b>
+  Hoje <code>connectWhatsAppCloud</code> (<code>apps/web/app/actions/whatsapp-cloud.ts</code>) persiste <code>phone_number_id</code>/<code>waba_id</code> e o envio usa o <b>token único da plataforma</b> (<code>WHATSAPP_CLOUD_TOKEN</code>, System User do SEU portfólio). Isso funciona para números dentro do portfólio de vocês (piloto Spettacolo) — mas <b>não alcança a WABA de um salão terceiro</b> onboardado via Embedded Signup. Para o SaaS, o onboarding precisa trocar o <code>code</code> do ES por um token do cliente.
+</div>
+
+<div class="fig">
+<svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:760px;">
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#4c3fd6"/></marker></defs>
+  <style>
+    .ac { font: 700 10px "Segoe UI", Arial; fill:#14203a; }
+    .msg { font: 500 9px "Segoe UI", Arial; fill:#2b3550; }
+    .mono { font: 600 8.5px Consolas, monospace; fill:#4c3fd6; }
+    .life { stroke:#c6ccdd; stroke-width:1.2; stroke-dasharray:4 3; }
+    .fl { stroke:#4c3fd6; stroke-width:1.4; }
+  </style>
+  <!-- atores -->
+  <rect x="20"  y="12" width="130" height="30" rx="6" fill="#f0f2f8" stroke="#8a93ad"/><text class="ac" x="38" y="31">Dono do salão</text>
+  <rect x="210" y="12" width="150" height="30" rx="6" fill="#e9ecfd" stroke="#6d5df6"/><text class="ac" x="228" y="31">Painel (ES popup)</text>
+  <rect x="420" y="12" width="150" height="30" rx="6" fill="#e9ecfd" stroke="#6d5df6"/><text class="ac" x="438" y="31">Server (action)</text>
+  <rect x="620" y="12" width="120" height="30" rx="6" fill="#fdf1e3" stroke="#e8a13c"/><text class="ac" x="646" y="31">Graph API</text>
+  <line class="life" x1="85"  y1="42" x2="85"  y2="290"/>
+  <line class="life" x1="285" y1="42" x2="285" y2="290"/>
+  <line class="life" x1="495" y1="42" x2="495" y2="290"/>
+  <line class="life" x1="680" y1="42" x2="680" y2="290"/>
+  <!-- mensagens -->
+  <line class="fl" x1="85" y1="62" x2="285" y2="62" marker-end="url(#a2)"/><text class="msg" x="100" y="56">completa ES (padrão ou QR/Coexistência)</text>
+  <line class="fl" x1="285" y1="92" x2="495" y2="92" marker-end="url(#a2)"/><text class="msg" x="298" y="86">phone_number_id + waba_id + <tspan class="mono">code</tspan> ①</text>
+  <line class="fl" x1="495" y1="122" x2="680" y2="122" marker-end="url(#a2)"/><text class="mono" x="505" y="116">GET /oauth/access_token (client_id, secret, code) ②</text>
+  <line class="fl" x1="680" y1="146" x2="495" y2="146" marker-end="url(#a2)"/><text class="msg" x="520" y="140">business token do CLIENTE (guardar cifrado/salão) ③</text>
+  <line class="fl" x1="495" y1="176" x2="680" y2="176" marker-end="url(#a2)"/><text class="mono" x="505" y="170">POST /&lt;WABA&gt;/subscribed_apps ④</text>
+  <line class="fl" x1="495" y1="206" x2="680" y2="206" marker-end="url(#a2)"/><text class="mono" x="505" y="200">POST /&lt;PHONE&gt;/register {pin: 6 díg.} ⑤</text>
+  <line class="fl" x1="495" y1="236" x2="680" y2="236" marker-end="url(#a2)"/><text class="mono" x="505" y="230">POST /&lt;PHONE&gt;/messages (teste) ⑥</text>
+  <line class="fl" x1="285" y1="266" x2="85" y2="266" marker-end="url(#a2)"/><text class="msg" x="112" y="260">“Conectado ✔” + instrução de cartão p/ proativo ⑦</text>
+</svg>
+<div class="figcap">Fig. 3 — Onboarding server-side por salão. Hoje o código faz só o trecho ① (persistência); ②–⑥ são o trabalho novo.</div>
+</div>
+
+<ul class="ck">
+  <li>Frontend: no retorno do ES, capturar também o <code>code</code> (resposta do FB.login) e enviá-lo à action junto com os IDs.</li>
+  <li>Server: trocar <code>code</code> → business token (endpoint ② — usa <code>META_APP_SECRET</code> <b>server-side</b>; nunca NEXT_PUBLIC).</li>
+  <li>Armazenar o token <b>cifrado, por salão</b> — mesmo padrão/mesa de segurança dos tokens OAuth do Google em <code>salon_integrations</code> (RLS já protege a tabela; token de WhatsApp entra na mesma classe de segredo).</li>
+  <li>④ inscrever o app na WABA do cliente; ⑤ registrar o número (PIN de 6 dígitos = habilita a criptografia/registro Cloud); ⑥ smoke test.</li>
+  <li>Roteamento de envio: <code>CloudProvider</code> passa a resolver token por salão (fallback para o token da plataforma quando o número é do portfólio próprio — caso Spettacolo).</li>
+  <li>UX pós-conexão: instruir o dono a adicionar cartão no WhatsApp Manager <i>quando for ativar lembretes/campanhas</i> (reativo funciona sem).</li>
+</ul>
+<div class="call info no-break"><b>Quando fazer</b> Não bloqueia o go-live do Spettacolo (número no portfólio próprio, token da plataforma). Bloqueia o <b>primeiro salão terceiro</b>. Janela ideal: enquanto o App Review (§4) está na fila da Meta.</div>
+</div>
+
+<!-- ══════════════ §10 GO LIVE ══════════════ -->
+<div class="page">
+<h2>§10 · Go-live do Spettacolo (cutover) <span class="chip todo">DEPOIS DOS GATES</span></h2>
+<p>Condensa o Bloco D do runbook <code>docs/MIGRACAO-WhatsApp-Cloud-API.md</code> — pré-requisitos: §2 concluída (ou aceitar teto de 250 conversas/dia), template §3.1 aprovado, número no Business app ≥ 7 dias, §6–§8 verdes.</p>
+<ul class="ck">
+  <li><b>D1</b> Onboardar o número do Spettacolo pelo botão <b>QR/Coexistência</b> do painel (com importação de histórico) → anotar o <code>PHONE_NUMBER_ID</code> real.</li>
+  <li><b>D2</b> Conferir campos do webhook (§7) valendo para a WABA do número real.</li>
+  <li><b>D3</b> 🔴 <b>Desconectar o Evolution deste número</b> (logout da instância Baileys) — o ponto de corte real; elimina entrega dupla na origem (o guard <code>provider='cloud'</code> segura o resíduo).</li>
+  <li><b>D4</b> <code>UPDATE agents SET messaging_provider='cloud', whatsapp_phone_number_id='&lt;real&gt;' …</code> (e env <code>WHATSAPP_PHONE_NUMBER_ID</code> se ainda usada pelo shim).</li>
+  <li><b>D5</b> Bateria do §8-C no número real (6 itens, incluindo handoff e ligação de voz).</li>
+  <li><b>D6</b> Monitorar 1–2 semanas: delivered/read vs failed, latência, custo no painel Meta, quality rating VERDE, handoff pausando IA.
+    <span class="ev">≥99% do reativo entregue; lembrete UTILITY entregue; quality verde por 7 dias.</span></li>
+</ul>
+<div class="call good no-break"><b>Rollback (instantâneo e ensaiado)</b> <code>messaging_provider='evolution'</code> + religar o Evolution (re-scan QR) no número. Nenhum dado se perde; o webhook Cloud simplesmente para de receber.</div>
+
+<h2 style="margin-top:16px;">§11 · Troubleshooting — sintoma → causa → ação</h2>
+<table>
+  <tr><th style="width:26%">Sintoma</th><th style="width:33%">Causa provável</th><th>Ação</th></tr>
+  <tr><td>Verificação de negócio reprovada</td><td>Razão social/endereço divergentes; site sem vínculo legal</td><td>§2 — corrigir portfólio, Cartão CNPJ recém-emitido, reenviar</td></tr>
+  <tr><td>App Review reprovado</td><td>Vídeo incompleto; conta demo inacessível; justificativa genérica</td><td>§4 — vacina dos 3 motivos; corrigir só o apontado e resubmeter</td></tr>
+  <tr><td>Popup abre mas SEM a opção QR/app Business</td><td>Config errada (padrão) no botão QR, ou opção de Coexistência não habilitada na config</td><td>§6 — conferir <code>NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID</code> e a opção na config ②</td></tr>
+  <tr><td>Botão QR “Indisponível” no painel</td><td>Env ausente OU setada depois do build (<code>NEXT_PUBLIC_*</code> é build-time)</td><td>§6 — conferir env na Vercel + <b>redeploy</b></td></tr>
+  <tr><td>Erro <code>(#10)</code>/<code>(#200)</code> ao chamar Graph API para WABA de cliente</td><td>Sem acesso avançado OU usando token da plataforma p/ WABA de terceiro</td><td>§4 (review) e §9 (token por salão)</td></tr>
+  <tr><td><code>131047</code> no envio</td><td>Fora da janela de 24h sem template</td><td>usar template UTILITY (§3.1); conferir <code>isWithin24hWindow</code></td></tr>
+  <tr><td><code>133010</code> / número “not registered”</td><td>Faltou <code>POST /register</code> após onboarding</td><td>§9 passo ⑤</td></tr>
+  <tr><td>Assistente responde pelo app e a IA responde POR CIMA</td><td>Campo <code>smb_message_echoes</code> não assinado (B7 nunca dispara)</td><td>§7 — assinar o campo; testar §8-C item 3</td></tr>
+  <tr><td>Conversas antigas inundam o painel/IA na conexão</td><td>Lote de <code>history</code> tratado como inbound novo</td><td>§7 — guard de history antes do onboarding real</td></tr>
+  <tr><td>Mensagem duplicada ao cliente</td><td>Evolution ainda conectado no número em Coexistência</td><td>§10 D3 — logout Baileys (guard já descarta o eco Evolution)</td></tr>
+  <tr><td>Envio começa a falhar 401 “de repente”</td><td>Token System User invalidado (rotação, mudança de senha/segurança no BM) — foi a causa do outage de 24/jun</td><td>alarme no 1º 401 do provider Cloud; runbook: gerar token novo no System User e trocar env (15 min)</td></tr>
+  <tr><td>Onboarding de cliente recusado por limite</td><td>Teto de 10/7d (pré-aprovações) atingido</td><td>§5 — concluir gates p/ subir a 200/7d; acompanhar no Partner overview</td></tr>
+</table>
+</div>
+
+<!-- ══════════════ §12 GLOSSÁRIO ══════════════ -->
+<div class="page">
+<h2>§12 · Glossário de IDs e mapa de variáveis</h2>
+<table>
+  <tr><th style="width:30%">Entidade / variável</th><th style="width:42%">O que é</th><th>Onde obter</th></tr>
+  <tr><td><b>App ID</b> → <code>NEXT_PUBLIC_META_APP_ID</code></td><td>Identidade do app MinhaAgenda na Meta (pública)</td><td>App Dashboard → Configurações → Básico</td></tr>
+  <tr><td><b>App Secret</b> → <code>WHATSAPP_APP_SECRET</code></td><td>Segredo do app; valida <code>X-Hub-Signature-256</code> e troca de <code>code</code> (server-only)</td><td>mesmo lugar (Mostrar) — <span class="chip p0">ROTACIONAR</span></td></tr>
+  <tr><td><b>Business Portfolio ID</b></td><td>A “empresa” dona do app; é o que se verifica no §2</td><td>business.facebook.com → Configurações → Informações</td></tr>
+  <tr><td><b>WABA ID</b> → <code>WHATSAPP_WABA_ID</code></td><td>WhatsApp Business Account (do portfólio próprio, no piloto; do cliente, no multi-tenant)</td><td>WhatsApp Manager / retorno do ES</td></tr>
+  <tr><td><b>Phone Number ID</b> → <code>WHATSAPP_PHONE_NUMBER_ID</code></td><td>ID do número na Cloud API (chave de tenant do webhook)</td><td>API Setup / retorno do ES</td></tr>
+  <tr><td><b>Configuration ID ①</b> → <code>NEXT_PUBLIC_META_CONFIG_ID</code></td><td>Config do ES fluxo padrão</td><td>§6 — ES Builder</td></tr>
+  <tr><td><b>Configuration ID ②</b> → <code>NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID</code></td><td>Config do ES com onboarding do app Business (QR)</td><td>§6 — ES Builder</td></tr>
+  <tr><td><b>Solution ID</b> → <code>NEXT_PUBLIC_META_SOLUTION_ID</code></td><td>Só p/ parceria com Solution Partner — <b>não usar</b> (§5)</td><td>—</td></tr>
+  <tr><td><b>System User token</b> → <code>WHATSAPP_CLOUD_TOKEN</code></td><td>Token permanente do portfólio próprio (envio do piloto)</td><td>BM → Usuários do sistema — <span class="chip p0">ROTACIONAR</span></td></tr>
+  <tr><td><b>Business token (por salão)</b></td><td>Token do cliente vindo da troca do <code>code</code> (§9); cifrado por salão</td><td>GET /oauth/access_token</td></tr>
+  <tr><td><b>Verify Token</b> → <code>WHATSAPP_WEBHOOK_VERIFY_TOKEN</code></td><td>Segredo do handshake GET do webhook</td><td>definido por vocês</td></tr>
+  <tr><td><code>WHATSAPP_GRAPH_VERSION</code></td><td>Versão da Graph API (v21.0 estável)</td><td>—</td></tr>
+</table>
+
+<h2 style="margin-top:16px;">§13 · Fontes oficiais</h2>
+<ul class="small">
+  <li>Meta — Become a Tech Provider: <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/get-started-for-tech-providers">developers.facebook.com/…/get-started-for-tech-providers</a></li>
+  <li>Meta — Onboarding de clientes como Tech Provider (token exchange, register, subscribed_apps): <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-customers-as-a-tech-provider/">developers.facebook.com/…/onboarding-customers-as-a-tech-provider</a></li>
+  <li>Meta — Embedded Signup (overview / implementation / Version 4): <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview">overview</a> · <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/implementation">implementation</a> · <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/version-4">version-4</a></li>
+  <li>Meta — Coexistência (Onboard WhatsApp Business app users): <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users">developers.facebook.com/…/onboarding-business-app-users</a></li>
+  <li>Meta — Business verification: <a href="https://developers.facebook.com/docs/development/release/business-verification">developers.facebook.com/docs/development/release/business-verification</a></li>
+  <li>Meta — Pricing (mensagens de serviço grátis na janela 24h): <a href="https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing">developers.facebook.com/…/pricing</a></li>
+  <li>Limites de onboarding 10→200/7d: <a href="https://www.infobip.com/docs/whatsapp/tech-provider-program/business-onboarding">Infobip — Tech Provider Program</a> · <a href="https://www.alibabacloud.com/help/en/chatapp/use-cases/how-to-register-as-a-meta-tech-provider">Alibaba Cloud — Register as Meta Tech Provider</a></li>
+  <li>Coexistência (sync bidirecional, chamadas, 6m de histórico): <a href="https://sanuker.com/whatsapp-coexistence-business-api/">Sanuker</a> · <a href="https://support.wati.io/en/articles/11822402-introducing-whatsapp-coexistence">Wati</a> · <a href="https://help.aliyun.com/en/chatapp/use-cases/whatsapp-business-app-coexistence-best-practices">Alibaba Cloud</a></li>
+  <li>Runbook interno: <code>docs/MIGRACAO-WhatsApp-Cloud-API.md</code> (Blocos A–E; este guia detalha os gates Meta e incorpora D1–D6).</li>
+</ul>
+<p class="small" style="margin-top:14px;border-top:1px solid #d7dcea;padding-top:6px;">Gerado em 03/jul/2026 a partir do estado real do repositório MinhaAgenda + documentação Meta vigente. Rótulos de UI do painel da Meta mudam com frequência; os caminhos indicados refletem julho/2026 — em caso de divergência, o nome da entidade (Configuration, Partner overview, Security Center) é o guia mais estável que o menu.</p>
+</div>
