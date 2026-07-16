@@ -782,6 +782,7 @@ export const agents = pgTable(
     messagingProvider: text('messaging_provider').default('evolution').notNull(), // 'evolution' | 'cloud'
     whatsappPhoneNumberId: text('whatsapp_phone_number_id'), // phone_number_id da Cloud API — chave de resolução de tenant do webhook /cloud
     whatsappWabaId: text('whatsapp_waba_id'), // WhatsApp Business Account ID (reconciliação / futuro multi-WABA)
+    whatsappCloudToken: text('whatsapp_cloud_token'), // access token Cloud API do SALÃO, CIFRADO (AES-256-GCM, envelope v1:iv:tag:ct). Null => usa o token da plataforma (env). Migration 020
     isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()

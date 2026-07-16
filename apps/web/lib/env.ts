@@ -39,6 +39,17 @@ export function validateEnv(): void {
     missing.push(...cloudRequired.filter((key) => !process.env[key]));
   }
 
+  // ENCRYPTION_KEY: além de presente (acima), precisa de entropia mínima — é o
+  // segredo da cifra AES-256-GCM em repouso (lib/infra/crypto.ts, que deriva a
+  // chave via KDF). Não exigimos formato específico, só um piso de tamanho, e
+  // falhamos no boot em vez de só na 1ª decifragem. Qualquer segredo real passa.
+  const encKey = process.env.ENCRYPTION_KEY;
+  if (encKey && encKey.length < 16) {
+    throw new Error(
+      "ENCRYPTION_KEY muito curta (mínimo 16 caracteres): é o segredo da cifra de tokens em repouso."
+    );
+  }
+
   if (missing.length > 0) {
     throw new Error(
       `Missing required environment variables:\n  - ${missing.join("\n  - ")}`

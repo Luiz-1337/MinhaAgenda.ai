@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState, useTransition, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
-import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText, Loader2, MessageCircle, CheckCircle, Clock, AlertCircle } from "lucide-react"
+import { Search, Plus, Bot, BrainCircuit, Phone, GraduationCap, FileText, MessageCircle, CheckCircle, Clock, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/agents"
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
@@ -55,8 +55,6 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({ numbers: [] })
   const [whatsappLoading, setWhatsappLoading] = useState(true)
   const [cloudStatus, setCloudStatus] = useState<WhatsAppCloudStatus>(initialCloudStatus)
-  const [phoneNumberIdInput, setPhoneNumberIdInput] = useState("")
-  const [wabaIdInput, setWabaIdInput] = useState("")
 
   const [isConnecting, setIsConnecting] = useState(false)
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
@@ -143,10 +141,22 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
   }
 
   // WhatsApp Cloud (Meta) — Embedded Signup (mecanismo novo)
-  async function handleCloudConnect(data: { phoneNumberId: string; wabaId?: string }) {
+  async function handleCloudConnect(data: {
+    phoneNumberId: string
+    wabaId?: string
+    // authorization code do Embedded Signup (self-service): o servidor troca pelo
+    // token do cliente. Ausente no caminho manual => usa o token da plataforma.
+    code?: string
+    flow?: "standard" | "coexistence"
+  }) {
     setIsConnecting(true)
     try {
-      const res = await connectWhatsAppCloud(salonId, { phoneNumberId: data.phoneNumberId, wabaId: data.wabaId })
+      const res = await connectWhatsAppCloud(salonId, {
+        phoneNumberId: data.phoneNumberId,
+        wabaId: data.wabaId,
+        code: data.code,
+        flow: data.flow,
+      })
       if ("error" in res) {
         toast.error(res.error)
         return
@@ -395,51 +405,19 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
           </div>
         )}
 
-        {/* Sem conexão -> conectar número Cloud (input manual + Embedded Signup) */}
+        {/* Sem conexão -> conectar número Cloud via Embedded Signup (2 fluxos) */}
         {!whatsappLoading && !cloudStatus.connected && whatsappNumbers.length === 0 && (
           <div className="flex flex-col gap-3 py-2">
             <p className="text-sm text-muted-foreground max-w-md">
-              Conecte o WhatsApp do salão (Cloud API). Informe o <b>phone_number_id</b> do número
-              (Meta → WhatsApp → Configuração da API) — <b>não</b> o número de telefone.
+              Conecte o WhatsApp do salão. Escolha uma das opções abaixo — você faz login na
+              sua conta da Meta e autoriza; não precisa digitar nenhum ID.
             </p>
-            <div className="flex flex-col gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={phoneNumberIdInput}
-                onChange={(e) => setPhoneNumberIdInput(e.target.value)}
-                placeholder="phone_number_id (ex.: 1155888540940947)"
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-success/40"
-              />
-              <input
-                type="text"
-                inputMode="numeric"
-                value={wabaIdInput}
-                onChange={(e) => setWabaIdInput(e.target.value)}
-                placeholder="waba_id (opcional)"
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-success/40"
-              />
-              <button
-                type="button"
-                disabled={isConnecting || phoneNumberIdInput.trim().length === 0}
-                onClick={() => handleCloudConnect({ phoneNumberId: phoneNumberIdInput.trim(), wabaId: wabaIdInput.trim() || undefined })}
-                className="px-4 py-2.5 bg-success hover:bg-success/90 text-primary-foreground rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <MessageCircle size={18} />}
-                Conectar número
-              </button>
-            </div>
-            <div className="flex items-center gap-3 py-1">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">ou conecte automaticamente</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
             {/* Embedded Signup — ativo quando NEXT_PUBLIC_META_APP_ID/CONFIG_ID estiverem setados.
                 Renderiza 2 opções: WhatsApp Business (número novo) e QR Code (Coexistência). */}
             <MetaEmbeddedSignup
               salonId={salonId}
               disabled={isConnecting}
-              onSuccess={(data) => handleCloudConnect({ phoneNumberId: data.phoneNumberId, wabaId: data.wabaId })}
+              onSuccess={(data) => handleCloudConnect({ phoneNumberId: data.phoneNumberId, wabaId: data.wabaId, code: data.code, flow: data.flow })}
               onError={(e) => toast.error(e)}
             />
           </div>

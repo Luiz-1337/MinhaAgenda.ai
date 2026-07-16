@@ -3,7 +3,8 @@
  *
  * Dois caminhos:
  *  - getProviderForJob: caminho REATIVO (responder a mensagem recebida). O
- *    provider vem do job (o canal que recebeu responde). NÃO bate no banco.
+ *    provider vem do job (o canal que recebeu responde). Faz UMA leitura O(1) no
+ *    índice UNIQUE do phone_number_id para resolver o token do salão (multi-tenant).
  *  - getProviderForSalon: caminho PROATIVO (lembrete/marketing/envio manual).
  *    LÊ a flag agents.messaging_provider no banco para escolher o provider.
  *
@@ -15,6 +16,7 @@
 import { db, agents, eq, and } from '@repo/db';
 import { EvolutionProvider } from './evolution-provider';
 import { createCloudProviderFromEnv } from './cloud/cloud-provider';
+import { resolveCloudToken, decodeCloudToken } from './cloud/token-resolver';
 import type { MessageProvider, ProviderKind } from './provider';
 
 const evolutionProvider = new EvolutionProvider();
@@ -22,20 +24,22 @@ const evolutionProvider = new EvolutionProvider();
 /**
  * Provider para um job JÁ RECEBIDO (caminho REATIVO): o canal que recebeu a
  * mensagem responde. 'cloud' envia a partir do phone_number_id do próprio job
- * (o número do salão; token da plataforma vem da env). Job 'cloud' sem
- * phoneNumberId => erro — recusa enviar para não usar número errado/de teste
- * (vazamento cross-tenant). Default ('evolution'/ausente) => Evolution.
+ * (o número do salão) usando o token DO SALÃO (resolvido por phone_number_id;
+ * fallback = token da plataforma na env). Job 'cloud' sem phoneNumberId => erro
+ * — recusa enviar para não usar número errado/de teste (vazamento cross-tenant).
+ * Default ('evolution'/ausente) => Evolution. async por causa da leitura do token.
  */
-export function getProviderForJob(
+export async function getProviderForJob(
   job: { provider?: ProviderKind; phoneNumberId?: string },
-): MessageProvider {
+): Promise<MessageProvider> {
   if (job.provider === 'cloud') {
     if (!job.phoneNumberId) {
       throw new Error(
         'Job cloud sem phoneNumberId — envio recusado para evitar remetente incorreto (cross-tenant).',
       );
     }
-    return createCloudProviderFromEnv({ phoneNumberId: job.phoneNumberId });
+    const token = await resolveCloudToken(job.phoneNumberId);
+    return createCloudProviderFromEnv({ phoneNumberId: job.phoneNumberId, token });
   }
   return evolutionProvider;
 }
@@ -58,10 +62,12 @@ export async function getProviderForSalon(
   // Evolution (default), comportamento atual preservado.
   const cloudAgent = await db.query.agents.findFirst({
     where: and(eq(agents.salonId, salonId), eq(agents.messagingProvider, 'cloud')),
-    columns: { whatsappPhoneNumberId: true },
+    columns: { whatsappPhoneNumberId: true, whatsappCloudToken: true },
   });
   if (cloudAgent?.whatsappPhoneNumberId) {
-    return createCloudProviderFromEnv({ phoneNumberId: cloudAgent.whatsappPhoneNumberId });
+    // Token do salão (decifra a coluna já lida; fallback = token da plataforma).
+    const token = decodeCloudToken(cloudAgent.whatsappCloudToken);
+    return createCloudProviderFromEnv({ phoneNumberId: cloudAgent.whatsappPhoneNumberId, token });
   }
   return evolutionProvider;
 }
