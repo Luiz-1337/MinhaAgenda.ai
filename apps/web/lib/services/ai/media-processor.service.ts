@@ -2,6 +2,7 @@ import { toFile } from "openai"
 import { getOpenAIClient } from "./openai-client"
 import { getBase64FromMediaMessage } from "../evolution/evolution-message.service"
 import { downloadCloudMedia } from "../messaging/cloud/media"
+import { resolveCloudToken } from "../messaging/cloud/token-resolver"
 import { createContextLogger } from "../../infra/logger"
 
 const AUDIO_MAX_SIZE_BYTES = 25 * 1024 * 1024 // 25MB (limite do Whisper)
@@ -33,6 +34,9 @@ export interface ProcessMediaParams {
   // Cloud API: id da mídia (download em 2 passos). Quando presente, tem
   // prioridade sobre o caminho Evolution.
   mediaId?: string
+  // Cloud API: phone_number_id do salão — resolve o token do salão para baixar a
+  // mídia (multi-tenant). Ausente => fallback do token da plataforma.
+  phoneNumberId?: string
   // Dados necessários para o endpoint getBase64FromMediaMessage (Evolution)
   instanceName: string
   messageKey: { remoteJid: string; fromMe: boolean; id: string }
@@ -71,9 +75,11 @@ async function fetchMediaBase64(
   params: ProcessMediaParams,
   logger: ReturnType<typeof createContextLogger>
 ): Promise<{ buffer: Buffer; mimetype: string } | null> {
-  // Cloud API: baixa pela media id (GET /{id} -> url -> bytes com Bearer).
+  // Cloud API: baixa pela media id (GET /{id} -> url -> bytes com Bearer). O
+  // token é o DO SALÃO (resolvido pelo phone_number_id; fallback = plataforma).
   if (params.mediaId) {
-    const cloud = await downloadCloudMedia(params.mediaId)
+    const token = await resolveCloudToken(params.phoneNumberId)
+    const cloud = await downloadCloudMedia(params.mediaId, { token })
     if (!cloud) {
       logger.warn("Cloud API não retornou a mídia")
       return null

@@ -2,7 +2,7 @@
  * Base class para server actions autenticadas (APPLICATION LAYER)
  */
 
-import { createClient } from "@/lib/supabase/server"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import type { ActionResult } from "@/lib/types/common"
 
@@ -19,16 +19,13 @@ export abstract class BaseAuthenticatedAction {
    * Valida autenticação do usuário
    */
   public static async authenticate(): Promise<ActionResult<AuthResult>> {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const userId = await getSessionUserId()
 
-    if (!user) {
+    if (!userId) {
       return { error: "Unauthorized" }
     }
 
-    return { success: true, data: { userId: user.id } }
+    return { success: true, data: { userId } }
   }
 
   /**

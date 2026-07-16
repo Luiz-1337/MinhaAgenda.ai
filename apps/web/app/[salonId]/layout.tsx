@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+import { getSessionClaims } from "@/lib/supabase/auth"
 import { getUserSalons } from "@/app/actions/salon"
 import { SalonProvider } from "@/contexts/salon-context"
 import { SidebarNav, MobileSidebar } from "@/components/dashboard/sidebar"
@@ -18,17 +18,14 @@ export default async function SalonLayout({
 }) {
   const { salonId } = await params
 
-  // Paraleliza auth + busca de salões (antes era sequencial)
-  const [supabaseClient, salons] = await Promise.all([
-    createClient(),
+  // Paraleliza auth + busca de salões (getSessionClaims é memoizada por
+  // request, então a chamada interna de getUserSalons reaproveita esta)
+  const [claims, salons] = await Promise.all([
+    getSessionClaims(),
     getUserSalons(),
   ])
 
-  const {
-    data: { user },
-  } = await supabaseClient.auth.getUser()
-
-  if (!user) {
+  if (!claims) {
     redirect("/login")
   }
 
@@ -43,7 +40,8 @@ export default async function SalonLayout({
   }
 
   // Extrai nome do usuário no server para evitar fetch redundante no client
-  const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || ""
+  const metadata = (claims.user_metadata ?? {}) as { full_name?: string }
+  const userName = metadata.full_name || claims.email?.split("@")[0] || ""
 
   return (
     <SalonProvider initialSalons={salons}>
@@ -86,7 +84,7 @@ export default async function SalonLayout({
 
           {/* Conteudo da Pagina */}
           <div className="flex-1 overflow-hidden p-3 sm:p-4 md:p-5 lg:p-[25px] min-h-0">
-            <div className="h-full overflow-y-auto">
+            <div className="h-full overflow-y-auto custom-scrollbar">
               {children}
             </div>
           </div>

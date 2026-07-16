@@ -1,7 +1,7 @@
 "use server"
 
 import { db, chats, messages, customers, chatKanbanColumns, and, asc, desc, eq, inArray } from "@repo/db"
-import { createClient } from "@/lib/supabase/server"
+import { getAuthUser, getSessionUserId } from "@/lib/supabase/auth"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
 import { saveMessage } from "@/lib/services/chat.service"
@@ -91,12 +91,7 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
     return { error: "salonId é obrigatório" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!(await getSessionUserId())) {
     return { error: "Não autenticado" }
   }
 
@@ -221,12 +216,7 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[] | {
     return { error: "chatId é obrigatório" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!(await getSessionUserId())) {
     return { error: "Não autenticado" }
   }
 
@@ -279,12 +269,7 @@ export async function setChatManualMode(
     return { error: "chatId é obrigatório" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!(await getAuthUser())) {
     return { error: "Não autenticado" }
   }
 
@@ -315,12 +300,7 @@ export async function sendManualMessage(
     return { error: "chatId e content são obrigatórios" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  if (!(await getAuthUser())) {
     return { error: "Não autenticado" }
   }
 
@@ -370,9 +350,7 @@ export async function sendManualMessage(
 export async function getNoShowRiskForChat(chatId: string): Promise<{ isHighRisk: boolean } | { error: string }> {
   if (!chatId) return { error: "chatId obrigatório" };
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Não autenticado" }
+  if (!(await getSessionUserId())) return { error: "Não autenticado" }
 
   try {
     // Busca phone e salon

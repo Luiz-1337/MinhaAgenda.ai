@@ -2,6 +2,7 @@
 
 import { db, domainServices as sharedServices, appointments, professionals, salons, profiles, and, eq } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import type { ActionResult } from "@/lib/types/common"
 
 import {
@@ -46,12 +47,9 @@ export async function getAppointments(
     return { error: "salonId é obrigatório" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const userId = await getSessionUserId()
 
-  if (!user) {
+  if (!userId) {
     return { error: "Não autenticado" }
   }
 
@@ -65,12 +63,12 @@ export async function getAppointments(
     return { error: "Salão não encontrado" }
   }
 
-  const isOwner = salon.ownerId === user.id
+  const isOwner = salon.ownerId === userId
   let isProfessional = false
 
   if (!isOwner) {
     const pro = await db.query.professionals.findFirst({
-      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id))
+      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, userId))
     })
     if (pro) isProfessional = true
   }
@@ -132,7 +130,7 @@ export async function getAppointments(
     // Descobrir role atual
     let role = isOwner ? 'MANAGER' : 'STAFF'
     if (!isOwner) {
-      const me = professionalsList.find(p => p.userId === user.id)
+      const me = professionalsList.find(p => p.userId === userId)
       // Se o profissional tem role OWNER (banco antigo), tratamos como MANAGER
       if (me?.role === 'OWNER' || me?.role === 'MANAGER') role = 'MANAGER'
       else if (me?.role) role = me.role
@@ -143,7 +141,7 @@ export async function getAppointments(
 
     if (role === 'STAFF') {
       // Staff vê apenas seus agendamentos e seu perfil profissional
-      const myProId = professionalsList.find(p => p.userId === user.id)?.id
+      const myProId = professionalsList.find(p => p.userId === userId)?.id
       if (myProId) {
         filteredAppointments = appointmentsList.filter(a => a.professionalId === myProId)
         // Opcional: filtrar profissionais também para o dropdown só mostrar ele
@@ -275,9 +273,8 @@ export async function getSchedulerHours(
     return { error: "salonId é obrigatório" }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
+  const userId = await getSessionUserId()
+  if (!userId) {
     return { error: "Não autenticado" }
   }
 
@@ -289,10 +286,10 @@ export async function getSchedulerHours(
     return { error: "Salão não encontrado" }
   }
 
-  const isOwner = salon.ownerId === user.id
+  const isOwner = salon.ownerId === userId
   const pro = !isOwner
     ? await db.query.professionals.findFirst({
-      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, user.id)),
+      where: and(eq(professionals.salonId, salonId), eq(professionals.userId, userId)),
       columns: { id: true },
     })
     : null

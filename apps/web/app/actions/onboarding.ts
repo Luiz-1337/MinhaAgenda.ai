@@ -144,15 +144,10 @@ export async function completeOnboardingWithPayment(
       }).where(eq(profiles.id, userId!))
 
       // Criar salão
-      const slug = normalizeString(data.salonName)
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7)
-
       const [newSalon] = await tx.insert(salons)
         .values({
           name: normalizeString(data.salonName),
           ownerId: userId!,
-          slug,
           subscriptionStatus: 'TRIAL',
           address: emptyStringToNull(data.address),
           phone: emptyStringToNull(data.salonPhone),

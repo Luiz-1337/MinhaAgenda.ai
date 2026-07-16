@@ -111,12 +111,10 @@ export async function signup(prevState: ActionState, formData: FormData): Promis
       }).where(eq(profiles.id, userId!))
 
       // 2. Criar salão
-      const slug = salon_name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7)
       const [newSalon] = await tx.insert(salons)
         .values({
           name: salon_name,
           ownerId: userId!,
-          slug,
           subscriptionStatus: 'TRIAL',
         })
         .returning({ id: salons.id })

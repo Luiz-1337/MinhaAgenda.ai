@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import { listOpenAlerts, resolveAlertById } from "@/lib/services/alerts/alert.service"
 
 export type SalonAlert = {
@@ -19,11 +19,7 @@ export async function getSalonAlerts(
 ): Promise<{ alerts: SalonAlert[] } | { error: string }> {
   if (!salonId) return { error: "salonId é obrigatório" }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Não autenticado" }
+  if (!(await getSessionUserId())) return { error: "Não autenticado" }
 
   try {
     const rows = await listOpenAlerts({ salonId, limit: 50 })
@@ -46,11 +42,7 @@ export async function getSalonAlerts(
 export async function dismissAlert(id: string): Promise<{ success: true } | { error: string }> {
   if (!id) return { error: "id é obrigatório" }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Não autenticado" }
+  if (!(await getSessionUserId())) return { error: "Não autenticado" }
 
   try {
     await resolveAlertById(id)

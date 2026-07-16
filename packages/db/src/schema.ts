@@ -118,7 +118,9 @@ export const salons = pgTable(
     id: uuid('id').defaultRandom().primaryKey().notNull(),
     ownerId: uuid('owner_id').references(() => profiles.id).notNull(),
     name: text('name').notNull(),
-    slug: text('slug').unique().notNull(),
+    // slug DEPRECADO (jul/2026): nullable, não gerado nem lido pelo app. Coluna e UNIQUE
+    // mantidos (MCP/seeds ainda usam; nulls não conflitam no UNIQUE). Ver migration 023.
+    slug: text('slug').unique(),
     whatsapp: text('whatsapp').unique(),
     address: text('address'),
     phone: text('phone'),
@@ -780,6 +782,7 @@ export const agents = pgTable(
     messagingProvider: text('messaging_provider').default('evolution').notNull(), // 'evolution' | 'cloud'
     whatsappPhoneNumberId: text('whatsapp_phone_number_id'), // phone_number_id da Cloud API — chave de resolução de tenant do webhook /cloud
     whatsappWabaId: text('whatsapp_waba_id'), // WhatsApp Business Account ID (reconciliação / futuro multi-WABA)
+    whatsappCloudToken: text('whatsapp_cloud_token'), // access token Cloud API do SALÃO, CIFRADO (AES-256-GCM, envelope v1:iv:tag:ct). Null => usa o token da plataforma (env). Migration 020
     isActive: boolean('is_active').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()

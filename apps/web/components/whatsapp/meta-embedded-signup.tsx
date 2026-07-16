@@ -31,6 +31,9 @@ interface FacebookLoginResponse {
     signedRequest: string
     graphDomain: string
     data_access_expiration_time: number
+    // Presente quando response_type='code' (Embedded Signup): o authorization
+    // code a ser trocado no servidor pelo access token do CLIENTE.
+    code?: string
   }
   status: "connected" | "not_authorized" | "unknown"
 }
@@ -69,9 +72,23 @@ const COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding"
 // Libera os botões se nenhum evento de signup chegar (ex.: popup fechado sem concluir).
 const SIGNUP_TIMEOUT_MS = 90_000
 
+// Após receber os ids (postMessage), espera brevemente pelo `code` (callback do
+// FB.login) antes de concluir sem ele. Os dois chegam ~juntos no fim do fluxo,
+// em ordem imprevisível; sem code, conectamos mesmo assim (fallback = piloto).
+const CODE_GRACE_MS = 4_000
+
 export interface MetaEmbeddedSignupProps {
   salonId: string
-  onSuccess: (data: { wabaId: string; phoneNumberId: string; phoneNumber?: string }) => void
+  onSuccess: (data: {
+    wabaId: string
+    phoneNumberId: string
+    phoneNumber?: string
+    // authorization code do Embedded Signup (trocado no servidor pelo token do
+    // cliente). Ausente no caminho manual/legado => servidor usa token da plataforma.
+    code?: string
+    // Qual botão originou a conexão (número dedicado vs Coexistência/QR).
+    flow?: SignupFlow
+  }) => void
   onError?: (error: string) => void
   disabled?: boolean
 }
@@ -131,8 +148,57 @@ export function MetaEmbeddedSignup({
     setLoadingFlow(null)
   }, [clearSignupTimeout])
 
-  // Limpa o timeout pendente ao desmontar.
-  useEffect(() => () => clearSignupTimeout(), [clearSignupTimeout])
+  // Buffer do resultado. O `code` (callback do FB.login) e os ids (postMessage
+  // FINISH) chegam em ordem imprevisível; juntamos os dois antes de disparar
+  // onSuccess uma única vez (firedRef). flowRef guarda qual botão originou (não
+  // depende do estado, que pode ter sido resetado no momento do disparo).
+  const codeRef = useRef<string | undefined>(undefined)
+  const signupDataRef = useRef<{ phoneNumberId: string; wabaId: string } | null>(null)
+  const flowRef = useRef<SignupFlow | null>(null)
+  const firedRef = useRef(false)
+  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearGrace = useCallback(() => {
+    if (graceTimer.current) {
+      clearTimeout(graceTimer.current)
+      graceTimer.current = null
+    }
+  }, [])
+
+  // Dispara onSuccess UMA vez com o que tivermos (ids obrigatórios; code opcional).
+  const fireSuccess = useCallback(() => {
+    if (firedRef.current) return
+    const data = signupDataRef.current
+    if (!data) return
+    firedRef.current = true
+    clearGrace()
+    resetLoading()
+    onSuccess({
+      wabaId: data.wabaId,
+      phoneNumberId: data.phoneNumberId,
+      code: codeRef.current,
+      flow: flowRef.current ?? undefined,
+    })
+  }, [clearGrace, resetLoading, onSuccess])
+
+  // Conclui quando temos os ids: se o code já veio, dispara já; senão espera uma
+  // janela de graça pelo code e conclui mesmo sem ele (fallback = token plataforma).
+  const tryComplete = useCallback(() => {
+    if (firedRef.current || !signupDataRef.current) return
+    if (codeRef.current) {
+      fireSuccess()
+      return
+    }
+    if (!graceTimer.current) {
+      graceTimer.current = setTimeout(() => fireSuccess(), CODE_GRACE_MS)
+    }
+  }, [fireSuccess])
+
+  // Limpa timeouts pendentes ao desmontar.
+  useEffect(() => () => {
+    clearSignupTimeout()
+    clearGrace()
+  }, [clearSignupTimeout, clearGrace])
 
   // Carrega o Facebook SDK (uma única vez por montagem)
   useEffect(() => {
@@ -193,11 +259,9 @@ export function MetaEmbeddedSignup({
             const { phone_number_id, waba_id } = data.data
 
             if (phone_number_id && waba_id) {
-              resetLoading()
-              onSuccess({
-                wabaId: waba_id,
-                phoneNumberId: phone_number_id,
-              })
+              // Bufferiza os ids e tenta concluir (aguarda o `code` do callback).
+              signupDataRef.current = { phoneNumberId: phone_number_id, wabaId: waba_id }
+              tryComplete()
             } else {
               resetLoading()
               const errorMsg = "Dados incompletos do signup. Tente novamente."
@@ -221,7 +285,7 @@ export function MetaEmbeddedSignup({
 
     window.addEventListener("message", handleMessage)
     return () => window.removeEventListener("message", handleMessage)
-  }, [onSuccess, onError, resetLoading])
+  }, [onError, resetLoading, tryComplete])
 
   const launchEmbeddedSignup = useCallback(
     (flow: SignupFlow) => {
@@ -243,6 +307,13 @@ export function MetaEmbeddedSignup({
       setLoadingFlow(flow)
       setError(null)
 
+      // Reinicia o buffer de resultado a cada tentativa (code + ids + guard).
+      firedRef.current = false
+      codeRef.current = undefined
+      signupDataRef.current = null
+      flowRef.current = flow
+      clearGrace()
+
       // Destrava os botões caso o signup não retorne nenhum evento (popup fechado etc.).
       clearSignupTimeout()
       signupTimeout.current = setTimeout(() => setLoadingFlow(null), SIGNUP_TIMEOUT_MS)
@@ -262,16 +333,20 @@ export function MetaEmbeddedSignup({
       }
 
       window.FB.login((response: FacebookLoginResponse) => {
-        if (response.status !== "connected") {
+        if (response.status === "connected") {
+          // Captura o authorization code (response_type='code'). Os ids chegam
+          // via postMessage; tryComplete junta os dois e dispara onSuccess.
+          codeRef.current = response.authResponse?.code
+          tryComplete()
+        } else {
           resetLoading()
           if (response.status === "not_authorized") {
             toast.error("Autorização negada. Por favor, permita o acesso ao WhatsApp Business.")
           }
         }
-        // O resultado principal vem via postMessage
       }, loginOptions)
     },
-    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, resetLoading]
+    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, clearGrace, resetLoading, tryComplete]
   )
 
   // Se não tem configuração, mostra erro

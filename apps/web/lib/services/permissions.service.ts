@@ -1,43 +1,34 @@
-import { db, salons, professionals, profiles, eq, and, or, inArray } from "@repo/db"
+import { cache } from "react"
+import { db, salons, professionals, eq, and, inArray } from "@repo/db"
 
 /**
  * Verifica se o usuário tem permissão de gerenciamento no salão.
  * Permite acesso para:
- * 1. Dono do salão (salon.ownerId) - SEMPRE tem acesso total se tier for SOLO
+ * 1. Dono do salão (salon.ownerId)
  * 2. Profissionais com cargo de MANAGER ou OWNER
+ *
+ * Memoizada por request (React.cache): checagens repetidas do mesmo
+ * (salonId, userId) dentro de um request custam uma única ida ao banco.
  */
-export async function hasSalonPermission(salonId: string, userId: string): Promise<boolean> {
-  const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, salonId),
-    columns: { id: true, ownerId: true }
-  })
-
-  if (!salon) return false
-
-  // Se é o owner, verificar se tem tier SOLO para dar acesso total
-  if (salon.ownerId === userId) {
-    const ownerProfile = await db.query.profiles.findFirst({
-      where: eq(profiles.id, userId),
-      columns: { tier: true }
+export const hasSalonPermission = cache(
+  async (salonId: string, userId: string): Promise<boolean> => {
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { id: true, ownerId: true }
     })
 
-    // Se o owner tem tier SOLO, sempre retorna true (acesso total como administrador)
-    if (ownerProfile?.tier === 'SOLO') {
-      return true
-    }
+    if (!salon) return false
 
-    // Owner de outros planos também tem acesso
-    return true
+    if (salon.ownerId === userId) return true
+
+    const pro = await db.query.professionals.findFirst({
+      where: and(
+        eq(professionals.salonId, salonId),
+        eq(professionals.userId, userId),
+        inArray(professionals.role, ['MANAGER', 'OWNER'])
+      )
+    })
+
+    return !!pro
   }
-
-  const pro = await db.query.professionals.findFirst({
-    where: and(
-      eq(professionals.salonId, salonId),
-      eq(professionals.userId, userId),
-      inArray(professionals.role, ['MANAGER', 'OWNER'])
-    )
-  })
-
-  return !!pro
-}
-
+)
