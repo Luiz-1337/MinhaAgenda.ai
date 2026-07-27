@@ -7,7 +7,7 @@ import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
 import { MarketingRepository } from "./marketing.repository"
 import { SegmentationService } from "./segmentation.service"
 import { VariableReplacerService } from "./variable-replacer.service"
-import { db, salons, profiles, appointments, services, and, eq, desc } from "@repo/db"
+import { db, salons, eq } from "@repo/db"
 
 export interface SendCampaignResult {
   success: boolean
@@ -102,7 +102,6 @@ export class CampaignSenderService {
         const messageRecord = await MarketingRepository.createCampaignMessage({
           campaignId,
           customerId: lead.customerId || null,
-          profileId: lead.profileId || null,
           phoneNumber,
           messageSent: finalMessage,
           status: 'pending',

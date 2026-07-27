@@ -6,6 +6,9 @@ import { MarketingRepository } from "./marketing.repository"
 import { SegmentationService } from "./segmentation.service"
 import { CampaignSenderService, type SendCampaignResult } from "./campaign-sender.service"
 
+/** Nomes carregados no modal de preview do público. O total vem do count(*). */
+const PREVIEW_LIMIT = 200
+
 export interface RecoveryFlowData {
   id?: string
   name: string
@@ -166,6 +169,9 @@ export class MarketingUseCase {
 
   /**
    * Retorna lista de leads segmentados (para modal de preview)
+   *
+   * Cortada em PREVIEW_LIMIT: o modal só mostra nomes e o total vem do contador
+   * (`previewSegmentation`), que roda um count(*) no banco.
    */
   static async listSegmentedLeads(
     criteria: Record<string, unknown>,
@@ -178,7 +184,8 @@ export class MarketingUseCase {
         gender?: string
         serviceIds?: string[]
       },
-      salonId
+      salonId,
+      { limit: PREVIEW_LIMIT }
     )
 
     return leads.map((lead) => ({
