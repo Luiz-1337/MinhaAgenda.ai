@@ -5,6 +5,8 @@ import { Menu, X, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
 
+import { Logo } from '@/components/brand/logo';
+
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -44,11 +46,9 @@ const Navbar: React.FC = () => {
           {/* Logo */}
           <button
             onClick={() => handleNav('home')}
-            className="flex items-center gap-1.5 group"
+            className="group"
           >
-            <span className="text-lg font-bold tracking-tight text-foreground group-hover:text-foreground/80 transition-colors">
-              minhaagenda<span className="text-accent">.ai</span>
-            </span>
+            <Logo size="md" textClassName="group-hover:text-foreground/80 transition-colors" />
           </button>
 
           {/* Desktop nav */}

@@ -11,7 +11,8 @@ import { StepPlan } from "@/components/onboarding/step-plan"
 import { StepPayment } from "@/components/onboarding/step-payment"
 import { completeOnboardingWithPayment } from "@/app/actions/onboarding"
 import { toast } from "sonner"
-import { Bot, AlertCircle, ArrowRight, Loader2 } from "lucide-react"
+import { AlertCircle, ArrowRight, Loader2 } from "lucide-react"
+import { Logo } from "@/components/brand/logo"
 
 const STEPS = [
   { label: "Credenciais", description: "E-mail e senha" },
@@ -157,14 +158,7 @@ export default function RegisterPage() {
       {/* Header */}
       <div className="border-b border-border bg-card">
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-md bg-accent flex items-center justify-center">
-              <Bot className="text-accent-foreground" size={24} />
-            </div>
-            <span className="font-bold text-2xl text-foreground tracking-tight">
-              minha<span className="text-accent">agenda</span>.ai
-            </span>
-          </div>
+          <Logo size="xl" className="mb-6" />
           <Stepper currentStep={currentStep} steps={STEPS} />
         </div>
       </div>

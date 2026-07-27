@@ -2,7 +2,8 @@
 
 import React, { useActionState, useState, useEffect, useTransition } from 'react';
 import Image from 'next/image';
-import { Bot, ArrowRight, Sun, Moon, Mail, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowRight, Sun, Moon, Mail, Loader2, CheckCircle } from 'lucide-react';
+import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { resetPasswordRequest } from '../actions/auth';
@@ -116,14 +117,7 @@ export default function ForgotPasswordPage() {
         <div className="flex-1 flex flex-col justify-center px-8 sm:px-12 lg:px-16">
           
           {/* Logo */}
-          <div className="flex items-center gap-2 mb-10">
-            <div className="w-10 h-10 rounded-md bg-accent flex items-center justify-center">
-              <Bot className="text-accent-foreground" size={24} />
-            </div>
-            <span className="font-bold text-2xl text-foreground tracking-tight">
-              minha<span className="text-accent">agenda</span>.ai
-            </span>
-          </div>
+          <Logo size="xl" className="mb-10" />
 
           {emailSent ? (
             <div className="space-y-6">

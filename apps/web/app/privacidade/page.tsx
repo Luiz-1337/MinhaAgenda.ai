@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Bot } from "lucide-react";
+import { Logo } from "@/components/brand/logo";
 import Footer from "@/components/landing/footer";
 
 export const metadata: Metadata = {
@@ -18,13 +18,8 @@ export default function PrivacidadePage() {
       {/* Header */}
       <header className="fixed top-0 w-full z-10 bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center">
-              <Bot className="text-accent-foreground" size={20} />
-            </div>
-            <span className="font-bold text-xl text-foreground tracking-tight">
-              minha<span className="text-accent">agenda</span>.ai
-            </span>
+          <Link href="/">
+            <Logo size="lg" />
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             <Link

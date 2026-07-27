@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { Logo } from "@/components/brand/logo"
 import {
   Sheet,
   SheetContent,
@@ -42,12 +43,7 @@ function AdminBrand() {
   return (
     <div className="h-11 flex items-center px-5 border-b border-sidebar-border">
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-md bg-brand-blue flex items-center justify-center">
-          <Shield className="text-accent-foreground" size={18} />
-        </div>
-        <span className="font-bold text-base text-sidebar-foreground tracking-tight">
-          minha<span className="text-brand-blue">agenda</span>.ai
-        </span>
+        <Logo size="sm" icon={Shield} textClassName="text-sidebar-foreground" />
         <span className="ml-1 text-[9px] uppercase tracking-wider font-bold text-sidebar-foreground/50 bg-sidebar-accent px-1.5 py-0.5 rounded">
           Admin
         </span>

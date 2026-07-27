@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useState } from 'react';
-import { Bot, ArrowRight, Mail, User, MessageSquare, Building2, CheckCircle2, Phone, Users, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowRight, Mail, User, MessageSquare, Building2, CheckCircle2, Phone, Users, Loader2, CheckCircle } from 'lucide-react';
+import { Logo } from '@/components/brand/logo';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { sendContactEmail } from '../actions/contact';
@@ -51,14 +52,7 @@ export default function ContactPage() {
       {/* Header */}
       <header className="fixed top-0 w-full z-10 bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center">
-              <Bot className="text-accent-foreground" size={20} />
-            </div>
-            <span className="font-bold text-xl text-foreground tracking-tight">
-              minha<span className="text-accent">agenda</span>.ai
-            </span>
-          </div>
+          <Logo size="lg" />
           <nav className="hidden md:flex items-center gap-8">
             <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-accent transition-colors">Voltar para Home</Link>
           </nav>

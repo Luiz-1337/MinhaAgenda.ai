@@ -7,7 +7,7 @@ import { UserNav } from "@/components/dashboard/user-nav"
 import { SalonSelector } from "@/components/dashboard/salon-selector"
 import { RouteGuard } from "@/components/auth/route-guard"
 import { AlertsBell } from "@/components/dashboard/alerts-bell"
-import { Bot } from 'lucide-react'
+import { Logo } from "@/components/brand/logo"
 
 export default async function SalonLayout({
   children,
@@ -52,14 +52,7 @@ export default async function SalonLayout({
           <div className="flex flex-col h-full">
             {/* Brand */}
             <div className="h-11 flex items-center px-5 border-b border-sidebar-border">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-md bg-brand-blue flex items-center justify-center">
-                  <Bot className="text-accent-foreground" size={18} />
-                </div>
-                <span className="font-bold text-base text-sidebar-foreground tracking-tight">
-                  minha<span className="text-brand-blue">agenda</span>.ai
-                </span>
-              </div>
+              <Logo size="sm" textClassName="text-sidebar-foreground" />
             </div>
             <div className="flex-1 flex flex-col overflow-hidden">
               <SidebarNav />
