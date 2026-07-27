@@ -1,0 +1,19 @@
+<!--
+  Ícone da marca (aba do navegador, atalho no celular).
+
+  É o mesmo robô do logo do site (<Logo />, lucide "bot"), mas opticamente
+  simplificado para a escala de favicon: sem as antenas laterais e com traço
+  mais grosso. Na versão fiel do lucide, a 16x16 o desenho vira um borrão —
+  o traço de 2px cai para menos de 1px e o contorno some no fundo azul.
+
+  #286EC3 é o token "accent" no tema claro (hsl 213 66% 46%).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="6" fill="#286EC3"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 9.5V6.5"/>
+    <rect x="6" y="11.5" width="20" height="14" rx="4.5"/>
+    <path d="M12 17.5v2"/>
+    <path d="M20 17.5v2"/>
+  </g>
+</svg>
