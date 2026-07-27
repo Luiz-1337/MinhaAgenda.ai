@@ -44,7 +44,7 @@ import { findRelevantContext, generateQueryEmbedding } from "./rag-context.servi
 import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
-import { db, customers, customerTrinksProfile, profiles, appointments, professionals, salons, eq, and } from "@repo/db";
+import { db, customers, customerTrinksProfile, professionals, salons, eq, and, sql } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 import type { ProcessedMedia } from "./media-processor.service";
 import type { TrinksProfileSnapshot, UpcomingAppointmentSnapshot } from "./system-prompt-builder.service";
@@ -960,28 +960,35 @@ function sanitizeAssistantText(text: string): string {
 
 /**
  * Verifica se o cliente é novo (não tem histórico de agendamentos)
+ *
+ * O histórico pendura em `appointments.client_id`, que é FK de `customers.id`
+ * (`packages/db/src/schema.ts:293`) — não de `profiles.id`, que é o assinante do SaaS.
+ * A versão anterior buscava `profiles` por telefone e usava `profile.id` nesse where:
+ * espaços de UUID distintos, então todo cliente parecia novo para a IA.
+ *
+ * Telefone só-dígitos é a forma canônica de `customers.phone` (gravada em
+ * `chat.service.ts:24`, `actions/customers.ts:147` e `:383`).
  */
 export async function checkIfNewCustomer(
   salonId: string,
   clientPhone: string
 ): Promise<boolean> {
   try {
-    const profile = await db.query.profiles.findFirst({
-      where: eq(profiles.phone, clientPhone),
-      columns: { id: true },
-    });
+    const digits = clientPhone.replace(/\D/g, "");
+    if (!digits) return true;
 
-    if (!profile) return true;
+    // Uma ida ao banco: o RTT até us-west-2 é o custo dominante deste caminho.
+    const rows = await db.execute(sql`
+      select 1
+      from appointments a
+      inner join customers c on c.id = a.client_id
+      where a.salon_id = ${salonId}
+        and c.salon_id = ${salonId}
+        and c.phone = ${digits}
+      limit 1
+    `);
 
-    const hasAppointment = await db.query.appointments.findFirst({
-      where: and(
-        eq(appointments.salonId, salonId),
-        eq(appointments.clientId, profile.id)
-      ),
-      columns: { id: true },
-    });
-
-    return !hasAppointment;
+    return rows.length === 0;
   } catch {
     return true;
   }
