@@ -5,6 +5,8 @@ import {
   retentionResponseAudit,
   and,
   eq,
+  inArray,
+  isNull,
   sql,
 } from "@repo/db"
 import {
@@ -198,15 +200,19 @@ export class DrizzleRetentionRepository implements IRetentionRepository {
     }
 
     // Update all duplicates with this number — they're the same human.
-    await db.execute(sql`
-      UPDATE customers
-      SET opted_out_at = ${now.toISOString()}::timestamp,
-          opt_out_reason = ${input.reason},
-          opt_out_source = ${input.source},
-          updated_at = ${now.toISOString()}::timestamp
-      WHERE id = ANY(${ids}::uuid[])
-        AND opted_out_at IS NULL
-    `)
+    // Query builder (not raw SQL) on purpose: the `sql` template expands a JS array
+    // into `($1, $2, ...)`, which is a row constructor in Postgres — `= ANY(...::uuid[])`
+    // over an interpolated array does NOT work and throws exactly when there ARE
+    // duplicates, i.e. the case this method exists to handle.
+    await db
+      .update(customers)
+      .set({
+        optedOutAt: now,
+        optOutReason: input.reason,
+        optOutSource: input.source,
+        updatedAt: now,
+      })
+      .where(and(inArray(customers.id, ids), isNull(customers.optedOutAt)))
 
     return {
       customerId: ids[0],
