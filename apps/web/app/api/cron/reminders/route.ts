@@ -9,8 +9,15 @@ export const runtime = 'nodejs'
 // Roteia pelo provider do salão (Evolution = texto livre; Cloud = template fora
 // da janela de 24h). Lembrete é tipicamente fora da janela: quando o template
 // de lembrete estiver aprovado na Meta, passar `template` aqui (gate do cutover).
-const sendReminderMessage = async (to: string, body: string, salonId: string): Promise<void> => {
-    await sendProactiveMessage({ salonId, to, text: body })
+// `chatId` habilita a checagem da janela de 24h no caminho Cloud: com conversa
+// recente o texto livre passa; sem ele, todo lembrete exigiria template.
+const sendReminderMessage = async (
+    to: string,
+    body: string,
+    salonId: string,
+    chatId?: string
+): Promise<void> => {
+    await sendProactiveMessage({ salonId, to, text: body, chatId })
 }
 
 export async function GET(request: NextRequest) {

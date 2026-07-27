@@ -10,7 +10,6 @@ describe("detectOptOutIntent", () => {
       "Parar.",
       "STOP",
       "stop",
-      "cancelar",
       "sair",
       "descadastrar",
       "Não quero mais",
@@ -76,5 +75,30 @@ describe("detectOptOutIntent", () => {
   it("nao confunde palavras comuns", () => {
     // "para" sozinha em contexto natural NAO e opt-out
     expect(detectOptOutIntent("Vou para o salao agora")).toBe("none")
+  })
+
+  describe("cancelar NAO e opt-out (bug do lembrete)", () => {
+    // Regressao: "cancelar" estava no HARD_OPT_OUT_REGEX. Como a deteccao roda
+    // ANTES da IA e faz curto-circuito no worker, o cliente que queria desmarcar
+    // um horario era descadastrado do marketing e o agendamento continuava de pe.
+    // Num salao, "cancelar" significa o HORARIO — tem que chegar na IA.
+    const cases = [
+      "cancelar",
+      "CANCELAR",
+      "  Cancelar. ",
+      "pode cancelar",
+      "quero cancelar",
+      "cancelar meu horario",
+      "Nao vou conseguir ir, consegue cancelar meu agendamento ?",
+    ]
+    cases.forEach((input) => {
+      it(`"${input}" nao dispara hard opt-out`, () => {
+        expect(detectOptOutIntent(input)).not.toBe("hard_opt_out")
+      })
+    })
+
+    it("cancelar sozinho cai em none (vai para a IA)", () => {
+      expect(detectOptOutIntent("cancelar")).toBe("none")
+    })
   })
 })

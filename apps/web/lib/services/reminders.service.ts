@@ -2,6 +2,9 @@ import { db, appointments, and, eq, lte, gt, isNull } from "@repo/db"
 // Relativos (padrão do repo p/ módulos que podem entrar no grafo do worker).
 import { recordAlert } from "./alerts/alert.service"
 import { ProactiveTemplateRequiredError } from "./messaging/proactive"
+import { findOrCreateChat, saveMessage } from "./chat.service"
+import { logger } from "../infra/logger"
+import { buildReminderMessage } from "./reminders.message"
 
 export interface ReminderJobResult {
     queuedCount: number
@@ -11,8 +14,12 @@ export interface ReminderJobResult {
 export type SendReminderMessage = (
     to: string,
     body: string,
-    salonId: string
+    salonId: string,
+    chatId?: string
 ) => Promise<void>
+
+export { buildReminderMessage }
+export type { ReminderMessageParts } from "./reminders.message"
 
 function normalizeToE164(phone: string): string | null {
     const cleaned = phone.trim().replace(/^whatsapp:/i, '')
@@ -95,18 +102,45 @@ export async function dispatchDailyReminders(
 
             const aptDateFormatted = new Date(apt.date).toLocaleString('pt-BR', formatterOptions)
 
-            const messageBody = `Olá ${apt.client.name.split(' ')[0]}, tudo bem?
-Passando para lembrar do seu horário no salão *${apt.salon.name}* para *${apt.service.name}* com ${apt.professional.name}.
+            const messageBody = buildReminderMessage({
+                firstName: apt.client.name.split(' ')[0],
+                salonName: apt.salon.name,
+                serviceName: apt.service.name,
+                professionalName: apt.professional.name,
+                when: aptDateFormatted,
+            })
 
-Será: ${aptDateFormatted}
-
-Para confirmar sua presença, responda com *CONFIRMAR*. 
-Caso Precise cancelar, responda *CANCELAR*.
-
-Te esperamos lá! ✨`
+            // Resolve o chat ANTES do envio por dois motivos:
+            //  1. permite gravar o lembrete no histórico (senão a IA recebe a
+            //     resposta do cliente sem saber que um lembrete saiu);
+            //  2. no WhatsApp Cloud, sem chatId o sendProactiveMessage não
+            //     consegue avaliar a janela de 24h e sempre exige template.
+            // Falha aqui não pode derrubar o lembrete: seguimos sem chatId.
+            let chatId: string | undefined
+            try {
+                chatId = (await findOrCreateChat(clientPhone, apt.salon.id)).id
+            } catch (chatError) {
+                logger.warn(
+                    { appointmentId: apt.id, salonId: apt.salon.id, err: chatError },
+                    'Não foi possível resolver o chat do lembrete; enviando sem contexto'
+                )
+            }
 
             try {
-                await sendMessage(clientPhone, messageBody, apt.salon.id)
+                await sendMessage(clientPhone, messageBody, apt.salon.id, chatId)
+
+                // Grava o lembrete no histórico só depois do envio confirmado.
+                // Não pode derrubar o job: a mensagem já saiu.
+                if (chatId) {
+                    try {
+                        await saveMessage(chatId, 'assistant', messageBody)
+                    } catch (persistError) {
+                        logger.warn(
+                            { appointmentId: apt.id, chatId, err: persistError },
+                            'Lembrete enviado mas não persistido no histórico'
+                        )
+                    }
+                }
 
                 // Atualizar no banco como enviado
                 await db.update(appointments)

@@ -11,8 +11,21 @@
 
 export type OptOutIntent = 'hard_opt_out' | 'soft_signal' | 'opt_in' | 'none'
 
+/**
+ * ATENÇÃO: "cancelar" NÃO entra aqui.
+ *
+ * Num salão, "cancelar" quase sempre significa "cancelar o meu horário", não
+ * "parar de receber mensagens". Como esta detecção roda ANTES da IA e faz
+ * curto-circuito no worker (ETAPA 0), incluir a palavra fazia o cliente que
+ * queria desmarcar um horário ser silenciosamente descadastrado do marketing —
+ * com o agendamento intacto na agenda e ninguém avisado.
+ *
+ * Sem ela, "cancelar" cai como 'none' e chega na IA, que tem
+ * getMyFutureAppointments + removeAppointment para de fato desmarcar.
+ * O opt-out continua coberto pelos termos inequívocos abaixo.
+ */
 const HARD_OPT_OUT_REGEX =
-  /^\s*(parar|sair|cancelar|stop|descadastrar|n[aã]o quero (mais|receber)|(remova|remover|remove)\s+(o\s+)?(meu|seu)?\s*n[uú]mero)\s*\.?\s*$/i
+  /^\s*(parar|sair|stop|descadastrar|n[aã]o quero (mais|receber)|(remova|remover|remove)\s+(o\s+)?(meu|seu)?\s*n[uú]mero)\s*\.?\s*$/i
 
 const OPT_IN_REGEX = /^\s*(voltar|reativar|opt[\s-]?in)\s*\.?\s*$/i
 
