@@ -1,5 +1,12 @@
-import { db, waitingList, campaigns, campaignMessages, services, professionals, profiles } from "../index"
-import { eq, and, or, lte, gt, isNull } from "drizzle-orm"
+import { db, waitingList, campaigns, campaignMessages, services, professionals, customers } from "../index"
+import { eq, and, or, lte, gt, isNull, inArray } from "drizzle-orm"
+
+/** Telefone da fila de espera em E.164 (assume BR quando falta o código do país). */
+function toE164(phone: string | null | undefined): string | null {
+    const digits = (phone ?? '').replace(/\D/g, '');
+    if (!digits) return null;
+    return digits.length >= 12 && digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
+}
 
 /**
  * Slot Filler Service
@@ -73,7 +80,32 @@ export async function processVacantSlot(params: {
 
         const defaultMessage = `Olá! Uma vaga de *${serviceName}* com ${profName} acabou de liberar para ${dateFormatted}!\n\nGostaria de aproveitar e reservar? Responda "Sim" para eu confirmar para você!`;
 
-        // Create temporary campaign
+        // O telefone vem de `customers`: waiting_list.client_id é FK de customers.id
+        // (schema.ts:322). A versão anterior buscava `profiles` (o assinante do SaaS) por
+        // esse id — espaços de UUID distintos, então todo waiter caía no `continue` e
+        // ninguém era avisado da vaga. Uma query só, em vez de uma por waiter.
+        const clientIds = [...new Set(waiters.map((waiter) => waiter.clientId))];
+        const waitingCustomers = await db.query.customers.findMany({
+            where: and(
+                eq(customers.salonId, params.salonId),
+                inArray(customers.id, clientIds),
+                isNull(customers.optedOutAt)
+            ),
+            columns: { id: true, phone: true }
+        });
+
+        const recipients = [...new Set(
+            waitingCustomers
+                .map((customer) => toE164(customer.phone))
+                .filter((phone): phone is string => phone !== null)
+        )];
+
+        if (recipients.length === 0) {
+            console.log(`[Slot Filler] No reachable customer in waitlist (opt-out, other salon or missing phone).`);
+            return;
+        }
+
+        // Campanha temporária só depois de saber que há alguém para avisar.
         const [campaign] = await db.insert(campaigns).values({
             salonId: params.salonId,
             name: `Vaga Liberada - ${serviceName}`,
@@ -83,29 +115,18 @@ export async function processVacantSlot(params: {
             startsAt: new Date()
         }).returning({ id: campaigns.id });
 
-        for (const waiter of waiters) {
-            const profile = await db.query.profiles.findFirst({
-                where: eq(profiles.id, waiter.clientId),
-                columns: { phone: true }
-            });
-
-            if (!profile || !profile.phone) continue;
-
-            const digits = profile.phone.replace(/\D/g, '');
-            if (!digits) continue;
-            const normalizedNumber = digits.length >= 12 && digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
-
-            await db.insert(campaignMessages).values({
+        await db.insert(campaignMessages).values(
+            recipients.map((phoneNumber) => ({
                 campaignId: campaign.id,
-                phoneNumber: normalizedNumber,
+                phoneNumber,
                 messageSent: defaultMessage,
                 status: 'pending',
                 sentAt: new Date(),
-            });
+            }))
+        );
 
-            // Note: marking the waitingList status to notified or removing it is optional.
-            // keeping it active allows them to be notified again.
-        }
+        // Note: marking the waitingList status to notified or removing it is optional.
+        // keeping it active allows them to be notified again.
     } catch (err) {
         console.error(`[Slot Filler] Error processing vacant slot:`, err);
     }
