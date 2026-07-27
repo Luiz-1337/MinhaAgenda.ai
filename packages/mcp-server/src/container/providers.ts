@@ -27,6 +27,7 @@ import {
   CreateAppointmentUseCase,
   UpdateAppointmentUseCase,
   DeleteAppointmentUseCase,
+  ConfirmAppointmentUseCase,
   GetUpcomingAppointmentsUseCase,
 } from "../application/use-cases/appointment"
 
@@ -104,6 +105,7 @@ export const TOKENS = {
   CreateAppointmentUseCase: "CreateAppointmentUseCase",
   UpdateAppointmentUseCase: "UpdateAppointmentUseCase",
   DeleteAppointmentUseCase: "DeleteAppointmentUseCase",
+  ConfirmAppointmentUseCase: "ConfirmAppointmentUseCase",
   GetUpcomingAppointmentsUseCase: "GetUpcomingAppointmentsUseCase",
 
   // Use Cases - Availability
@@ -212,6 +214,10 @@ export function registerProviders(container: Container): void {
   ))
 
   container.singleton(TOKENS.DeleteAppointmentUseCase, () => new DeleteAppointmentUseCase(
+    container.resolve(TOKENS.AppointmentRepository)
+  ))
+
+  container.singleton(TOKENS.ConfirmAppointmentUseCase, () => new ConfirmAppointmentUseCase(
     container.resolve(TOKENS.AppointmentRepository)
   ))
 

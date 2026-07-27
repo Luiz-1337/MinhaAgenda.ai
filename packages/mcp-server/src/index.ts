@@ -47,6 +47,7 @@ export {
   createAppointmentSchema,
   updateAppointmentSchema,
   deleteAppointmentSchema,
+  confirmAppointmentSchema,
   getMyFutureAppointmentsSchema,
   checkAvailabilitySchema,
   getProfessionalAvailabilityRulesSchema,

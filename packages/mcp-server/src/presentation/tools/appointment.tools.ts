@@ -5,12 +5,14 @@ import {
   CreateAppointmentUseCase,
   UpdateAppointmentUseCase,
   DeleteAppointmentUseCase,
+  ConfirmAppointmentUseCase,
   GetUpcomingAppointmentsUseCase,
 } from "../../application/use-cases/appointment"
 import {
   createAppointmentSchema,
   updateAppointmentSchema,
   deleteAppointmentSchema,
+  confirmAppointmentSchema,
   getMyFutureAppointmentsSchema,
 } from "../schemas"
 import { AppointmentPresenter } from "../presenters"
@@ -78,6 +80,26 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
         return {
           success: true,
           appointmentId: data.appointmentId,
+          message: data.message,
+        }
+      },
+    }),
+
+    confirmAppointment: defineTool(ctx, {
+      description:
+        "Confirma a PRESENÇA do cliente em um agendamento existente (status vira 'confirmado'). Use quando o cliente responder ao lembrete dizendo que vai comparecer (ex.: 'SIM', 'confirmado', 'estarei lá'). REQUER appointmentId (obtido via getMyFutureAppointments). NÃO cria nem remarca nada — para isso use addAppointment/updateAppointment.",
+      inputSchema: confirmAppointmentSchema,
+      handler: async (input, { container, salonId }) => {
+        const result = await container
+          .resolve<ConfirmAppointmentUseCase>(TOKENS.ConfirmAppointmentUseCase)
+          .execute(input.appointmentId, salonId)
+
+        const data = unwrap(result)
+        return {
+          success: true,
+          appointmentId: data.appointmentId,
+          status: data.status,
+          alreadyConfirmed: data.alreadyConfirmed,
           message: data.message,
         }
       },

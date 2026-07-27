@@ -40,6 +40,17 @@ export const deleteAppointmentSchema = z.object({
 export type DeleteAppointmentInput = z.infer<typeof deleteAppointmentSchema>
 
 /**
+ * Schema para confirmação de presença.
+ */
+export const confirmAppointmentSchema = z.object({
+  appointmentId: uuidSchema.describe(
+    "ID do agendamento. Obtenha via getMyFutureAppointments"
+  ),
+})
+
+export type ConfirmAppointmentInput = z.infer<typeof confirmAppointmentSchema>
+
+/**
  * Schema para busca de agendamentos futuros.
  * O cliente é SEMPRE identificado pelo clientPhone do closure (número do WhatsApp
  * da sessão). Não expomos parâmetro de telefone para a IA: pedir/usar outro número

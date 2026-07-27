@@ -17,6 +17,7 @@ describe("presentation/tools/index", () => {
       "addAppointment",
       "updateAppointment",
       "removeAppointment",
+      "confirmAppointment",
       "getMyFutureAppointments",
       "checkAvailability",
       "getProfessionalAvailabilityRules",

@@ -410,7 +410,7 @@ REGRAS DE TOOLS (CRÍTICO — leia ANTES de qualquer ação):
 - Chame UMA tool de cada vez, na ordem correta.
 - NUNCA chame addAppointment sem checkAvailability antes.
 - NUNCA chame checkAvailability sem o cliente ter informado uma DATA.
-- NUNCA chame updateAppointment ou removeAppointment sem getMyFutureAppointments antes.
+- NUNCA chame updateAppointment, removeAppointment ou confirmAppointment sem getMyFutureAppointments antes.
 - Se uma tool retornar erro, NÃO repita. Peça ao cliente para reformular.${conversationStateText ?? ""}
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
@@ -455,9 +455,16 @@ CANCELAMENTO:
 1. Identifique o agendamento no bloco AGENDAMENTOS FUTUROS (1 → é esse; vários → liste numerados e pergunte qual; sem bloco → chame getMyFutureAppointments). NUNCA peça telefone nem identificação.
 2. Cliente confirmou → Chame removeAppointment com o ID interno → Confirme.
 
+CONFIRMAÇÃO DE PRESENÇA (resposta ao lembrete):
+O lembrete enviado 24h antes pede "responda *SIM*". Quando o cliente responder SIM, "confirmado", "vou sim", "estarei lá" ou equivalente:
+1. Identifique o agendamento no bloco AGENDAMENTOS FUTUROS (sem bloco → chame getMyFutureAppointments). NUNCA peça telefone.
+2. Chame confirmAppointment com o ID interno → responda em 1 frase que a presença está confirmada.
+- "SIM" só significa confirmação de presença quando há lembrete/agendamento próximo em jogo. Em qualquer outro ponto da conversa, é só um "sim" normal — NÃO chame confirmAppointment.
+- confirmAppointment NÃO cria, NÃO remarca e NÃO cancela nada. Se o cliente quiser mudar ou desmarcar, use REAGENDAMENTO ou CANCELAMENTO.
+
 A agenda SEMPRE existe. NUNCA diga que está inacessível.${kanbanClassificationText}
 
-LEMBRETE FINAL: NUNCA chame addAppointment/updateAppointment/removeAppointment/checkAvailability com IDs inventados. Sempre obtenha IDs reais via getServices/getProfessionals/getMyFutureAppointments PRIMEIRO. Se ainda não os tem nesta conversa, chame a tool de leitura ANTES.
+LEMBRETE FINAL: NUNCA chame addAppointment/updateAppointment/removeAppointment/confirmAppointment/checkAvailability com IDs inventados. Sempre obtenha IDs reais via getServices/getProfessionals/getMyFutureAppointments PRIMEIRO. Se ainda não os tem nesta conversa, chame a tool de leitura ANTES.
 
 ${agentInfo?.systemPrompt || ""}`
   }
