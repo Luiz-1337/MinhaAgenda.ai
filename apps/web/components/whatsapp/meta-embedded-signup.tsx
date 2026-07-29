@@ -209,6 +209,11 @@ export function MetaEmbeddedSignup({
     // existe para o fluxo PADRÃO, onde o número já veio e o envio pode cair no
     // token da plataforma.
     if (!signupDataRef.current.phoneNumberId) return
+    // Coexistência com número no evento (a Meta PODE mandar — visto em prod
+    // 29/jul): concluir sem code gravaria uma conexão MORTA (sem token não há
+    // subscribed_apps ⇒ painel "Conectado" e inbound que nunca chega). O
+    // fallback sem code é só do fluxo padrão/piloto.
+    if (flowRef.current === "coexistence") return
     if (!graceTimer.current) {
       graceTimer.current = setTimeout(() => fireSuccess(), CODE_GRACE_MS)
     }

@@ -144,7 +144,30 @@ async function registerPhoneNumber(phoneNumberId: string, token: string): Promis
     body: JSON.stringify({ messaging_product: "whatsapp", pin }),
   })
   if (!res.ok) {
-    throw new Error(`register falhou (HTTP ${res.status}).`)
+    // O corpo do erro da Graph (code/subcode/fbtrace) é o que diferencia um PIN
+    // errado de um número inelegível — sem ele o log fica só "HTTP 400" e o
+    // diagnóstico vira chute. Não carrega token nem code.
+    const body = await res.text().catch(() => "")
+    throw new Error(`register falhou (HTTP ${res.status}): ${body.slice(0, 300)}`)
+  }
+}
+
+/**
+ * Consulta se o número está em COEXISTÊNCIA (app WhatsApp Business ativo no
+ * mesmo número). É o discriminador documentado pela Meta para o pós-onboarding:
+ * nesses números o register é PROIBIDO — o QR já registrou, e re-registrar
+ * devolve 400 (PIN mismatch). `null` = não deu para saber (campo/req falhou).
+ */
+async function getIsOnBizApp(phoneNumberId: string, token: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}?fields=is_on_biz_app`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const json = (await res.json().catch(() => undefined)) as { is_on_biz_app?: boolean } | undefined
+    if (!res.ok || typeof json?.is_on_biz_app !== "boolean") return null
+    return json.is_on_biz_app
+  } catch {
+    return null
   }
 }
 
@@ -188,13 +211,10 @@ export async function connectWhatsAppCloud(
   // tem que vir pronto.
   if (!phoneNumberId && !input.code) return { error: "phone_number_id inválido" }
 
-  // Fato do SERVIDOR sobre qual fluxo a Meta realmente executou: se o número
-  // veio no evento, foi o PADRÃO (número dedicado); se vamos ter que resolvê-lo
-  // pela WABA, foi Coexistência (o evento de lá só traz o waba_id).
-  // Isso substitui `input.flow`, que é só o BOTÃO que o dono clicou — a Meta
-  // degrada de Coexistência para o fluxo padrão EM SILÊNCIO quando o número não
-  // é elegível, e nesse caso pular o register deixaria o número sem registro na
-  // Cloud API (envio quebrado) achando que era Coexistência.
+  // Se o número veio no evento do popup ou se vamos resolvê-lo pela WABA.
+  // NÃO é sinal confiável de qual fluxo rodou (a Coexistência PODE mandar o
+  // número no evento — aconteceu em prod 29/jul); serve só de fallback para a
+  // decisão do register quando a leitura de is_on_biz_app falhar.
   const numberCameFromEvent = phoneNumberId.length > 0
 
   const agent = await db.query.agents.findFirst({
@@ -232,11 +252,19 @@ export async function connectWhatsAppCloud(
         }
       }
 
+      // Registrar ou não: em número de COEXISTÊNCIA o register é proibido (o QR
+      // já registrou; repetir dá 400/PIN mismatch — doc manda pular). Em número
+      // DEDICADO ele é obrigatório (sem register o número não opera na Cloud
+      // API). A fonte da verdade é o campo documentado is_on_biz_app do próprio
+      // número — nem o botão clicado (a Meta degrada fluxo em silêncio) nem a
+      // forma do evento (a Coexistência pode mandar o número nele) são
+      // confiáveis. Fallback (campo ilegível): número resolvido pela WABA só
+      // existe no caminho da Coexistência => não registra.
+      const onBizApp = await getIsOnBizApp(phoneNumberId, clientToken)
+      const isCoexistenceNumber = onBizApp ?? !numberCameFromEvent
+
       await subscribeAppToWaba(input.wabaId, clientToken)
-      if (numberCameFromEvent) {
-        // Número dedicado: precisa de register na Cloud API. Na Coexistência
-        // (número resolvido pela WABA) ele já está registrado no app WhatsApp
-        // Business e o register é pulado.
+      if (!isCoexistenceNumber) {
         await registerPhoneNumber(phoneNumberId, clientToken)
       }
       encryptedToken = encryptSecret(clientToken)
