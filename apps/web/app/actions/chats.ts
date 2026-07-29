@@ -3,6 +3,7 @@
 import { db, chats, messages, customers, chatKanbanColumns, and, asc, desc, eq, inArray } from "@repo/db"
 import { getAuthUser, getSessionUserId } from "@/lib/supabase/auth"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
+import { formatPreviewTime } from "@/lib/utils/time.utils"
 import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
 import { saveMessage } from "@/lib/services/chat.service"
 import { getWhatsappMediaSignedUrl } from "@/lib/supabase/storage"
@@ -55,32 +56,6 @@ function formatMessageTime(date: Date): string {
 
   // Formato completo para datas mais antigas
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-}
-
-/**
- * Formata data para preview (última mensagem)
- */
-function formatPreviewTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 60) {
-    return `${diffMins}m`
-  }
-  if (diffHours < 24) {
-    return `${diffHours}h`
-  }
-  if (diffDays === 1) {
-    return "Ontem"
-  }
-  if (diffDays < 7) {
-    return `${diffDays}d`
-  }
-
-  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
 /**

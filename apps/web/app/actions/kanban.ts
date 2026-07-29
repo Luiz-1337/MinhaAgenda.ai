@@ -17,20 +17,7 @@ import {
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import type { KanbanBoardDTO, KanbanColumnDTO, KanbanChatCard } from "@/lib/types/kanban"
-
-function formatPreviewTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 60) return `${Math.max(diffMins, 0)}m`
-  if (diffHours < 24) return `${diffHours}h`
-  if (diffDays === 1) return "Ontem"
-  if (diffDays < 7) return `${diffDays}d`
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-}
+import { formatPreviewTime } from "@/lib/utils/time.utils"
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "")
