@@ -92,11 +92,6 @@ const META_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*facebook\.com$/
 // Libera os botões se nenhum evento de signup chegar (ex.: popup fechado sem concluir).
 const SIGNUP_TIMEOUT_MS = 90_000
 
-// Após receber os ids (postMessage), espera brevemente pelo `code` (callback do
-// FB.login) antes de concluir sem ele. Os dois chegam ~juntos no fim do fluxo,
-// em ordem imprevisível; sem code, conectamos mesmo assim (fallback = piloto).
-const CODE_GRACE_MS = 4_000
-
 export interface MetaEmbeddedSignupProps {
   salonId: string
   onSuccess: (data: {
@@ -178,22 +173,13 @@ export function MetaEmbeddedSignup({
   const signupDataRef = useRef<{ phoneNumberId?: string; wabaId: string } | null>(null)
   const flowRef = useRef<SignupFlow | null>(null)
   const firedRef = useRef(false)
-  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const clearGrace = useCallback(() => {
-    if (graceTimer.current) {
-      clearTimeout(graceTimer.current)
-      graceTimer.current = null
-    }
-  }, [])
-
-  // Dispara onSuccess UMA vez com o que tivermos (ids obrigatórios; code opcional).
+  // Dispara onSuccess UMA vez, só com as DUAS metades em mãos (ids + code).
   const fireSuccess = useCallback(() => {
     if (firedRef.current) return
     const data = signupDataRef.current
     if (!data) return
     firedRef.current = true
-    clearGrace()
     resetLoading()
     onSuccess({
       wabaId: data.wabaId,
@@ -201,38 +187,27 @@ export function MetaEmbeddedSignup({
       code: codeRef.current,
       flow: flowRef.current ?? undefined,
     })
-  }, [clearGrace, resetLoading, onSuccess])
+  }, [resetLoading, onSuccess])
 
-  // Conclui quando temos os ids: se o code já veio, dispara já; senão espera uma
-  // janela de graça pelo code e conclui mesmo sem ele (fallback = token plataforma).
+  // Conclui quando as duas metades chegaram — os ids (postMessage) e o `code`
+  // (callback do FB.login), em ordem imprevisível. Chamado dos dois lados, então
+  // quem chegar por último dispara.
+  //
+  // O `code` é OBRIGATÓRIO: é ele que vira o token do cliente, e é o token que
+  // assina nosso app na WABA dele (subscribed_apps) — o passo que faz a Meta
+  // entregar o inbound. Concluir sem code gravaria uma conexão MORTA: painel
+  // "Conectado" e nenhuma mensagem chegando. Se o code não vier, seguimos
+  // esperando e quem avisa o dono é o timeout de SIGNUP_TIMEOUT_MS.
   const tryComplete = useCallback(() => {
     if (firedRef.current || !signupDataRef.current) return
-    if (codeRef.current) {
-      fireSuccess()
-      return
-    }
-    // Sem phoneNumberId (Coexistência) o `code` é OBRIGATÓRIO: é ele que vira o
-    // token do cliente, e é o token que resolve o número na WABA. Concluir sem
-    // code aqui só geraria erro no servidor — então seguimos esperando, e quem
-    // avisa o dono é o timeout de SIGNUP_TIMEOUT_MS. A janela de graça abaixo
-    // existe para o fluxo PADRÃO, onde o número já veio e o envio pode cair no
-    // token da plataforma.
-    if (!signupDataRef.current.phoneNumberId) return
-    // Coexistência com número no evento (a Meta PODE mandar — visto em prod
-    // 29/jul): concluir sem code gravaria uma conexão MORTA (sem token não há
-    // subscribed_apps ⇒ painel "Conectado" e inbound que nunca chega). O
-    // fallback sem code é só do fluxo padrão/piloto.
-    if (flowRef.current === "coexistence") return
-    if (!graceTimer.current) {
-      graceTimer.current = setTimeout(() => fireSuccess(), CODE_GRACE_MS)
-    }
+    if (!codeRef.current) return
+    fireSuccess()
   }, [fireSuccess])
 
   // Limpa timeouts pendentes ao desmontar.
   useEffect(() => () => {
     clearSignupTimeout()
-    clearGrace()
-  }, [clearSignupTimeout, clearGrace])
+  }, [clearSignupTimeout])
 
   // Carrega o Facebook SDK (uma única vez por montagem)
   useEffect(() => {
@@ -365,7 +340,6 @@ export function MetaEmbeddedSignup({
       codeRef.current = undefined
       signupDataRef.current = null
       flowRef.current = flow
-      clearGrace()
 
       // Destrava os botões caso o signup não retorne nenhum evento (popup fechado etc.).
       clearSignupTimeout()
@@ -412,7 +386,7 @@ export function MetaEmbeddedSignup({
         }
       }, loginOptions)
     },
-    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, clearGrace, resetLoading, tryComplete, onError]
+    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, resetLoading, tryComplete, onError]
   )
 
   // Se não tem configuração, mostra erro

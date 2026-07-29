@@ -14,8 +14,12 @@
  * FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING), então o phone_number_id é resolvido
  * aqui, pela Graph API, depois da troca do code.
  *
- * Token de ENVIO = token da plataforma (env WHATSAPP_CLOUD_TOKEN); o dono
- * coloca só o NÚMERO, nunca um token.
+ * O `code` do Embedded Signup é OBRIGATÓRIO: só o token do cliente pode assinar
+ * nosso app na WABA dele (subscribed_apps), que é o que faz a Meta entregar o
+ * inbound. Sem ele a conexão seria gravada morta — painel "Conectado" e nenhuma
+ * mensagem chegando. Token de ENVIO = o token do cliente, cifrado em
+ * agents.whatsapp_cloud_token (fallback = WHATSAPP_CLOUD_TOKEN da plataforma,
+ * que só serve para o número do próprio piloto). O dono nunca digita um token.
  */
 
 import { createHmac } from "node:crypto"
@@ -196,9 +200,8 @@ export async function connectWhatsAppCloud(
     // phone_number_id no evento de sucesso — resolvemos pela WABA mais abaixo.
     phoneNumberId?: string
     wabaId?: string
-    // Embedded Signup self-service: authorization code a ser trocado pelo token
-    // do cliente + flow (dedicado x coexistência). Quando ausentes (caminho
-    // manual/piloto), pula a troca e o envio usa o token da plataforma.
+    // Embedded Signup: authorization code a ser trocado pelo token do cliente,
+    // e qual botão originou (dedicado x coexistência).
     code?: string
     flow?: "standard" | "coexistence"
   },
@@ -206,10 +209,25 @@ export async function connectWhatsAppCloud(
   const auth = await authorize(salonId)
   if ("error" in auth) return auth
 
+  // O `code` é OBRIGATÓRIO, e a recusa vem ANTES de qualquer escrita.
+  //
+  // É ele que vira o token do cliente, e é o token do cliente que assina nosso
+  // app na WABA dele (subscribed_apps) — o único passo que faz a Meta entregar o
+  // inbound. O token da plataforma não tem permissão na WABA de terceiro, então
+  // uma conexão gravada sem `code` é MORTA por construção: o painel mostra
+  // "Conectado", nenhuma mensagem chega, e não há nem alerta (o webhook nunca é
+  // chamado, então nem `cloud_number_not_mapped` dispara).
+  if (!input.code) {
+    return {
+      error:
+        'A Meta não devolveu a autorização necessária para receber mensagens. Clique em "Concluir" no popup da Meta e tente conectar novamente.',
+    }
+  }
+  if (!input.wabaId) {
+    return { error: "waba_id ausente no retorno do Embedded Signup. Tente conectar novamente." }
+  }
+
   let phoneNumberId = digitsOnly(input.phoneNumberId || "")
-  // Sem code (caminho manual/piloto) não há Graph API para consultar: o número
-  // tem que vir pronto.
-  if (!phoneNumberId && !input.code) return { error: "phone_number_id inválido" }
 
   // Se o número veio no evento do popup ou se vamos resolvê-lo pela WABA.
   // NÃO é sinal confiável de qual fluxo rodou (a Coexistência PODE mandar o
@@ -229,51 +247,45 @@ export async function connectWhatsAppCloud(
     return { error: "Este número já está conectado a outro salão." }
   }
 
-  // Embedded Signup self-service: troca o code pelo token DO CLIENTE, assina nosso
-  // app na WABA dele (habilita o inbound) e registra o número (só dedicado). Sem
-  // code (caminho manual/piloto), pula tudo e o envio usa o token da plataforma.
-  // Só gravamos o token/número APÓS o subscribed_apps dar certo (inbound é crítico).
+  // Troca o code pelo token DO CLIENTE, assina nosso app na WABA dele (habilita o
+  // inbound) e registra o número (só dedicado). Só gravamos o token/número APÓS o
+  // subscribed_apps dar certo — o inbound é crítico.
   let encryptedToken: string | null = null
-  if (input.code) {
-    if (!input.wabaId) {
-      return { error: "waba_id ausente no retorno do Embedded Signup. Tente conectar novamente." }
-    }
-    try {
-      const clientToken = await exchangeCodeForToken(input.code)
+  try {
+    const clientToken = await exchangeCodeForToken(input.code)
 
-      // Coexistência: é AQUI que o número finalmente aparece (o evento da Meta
-      // trouxe só a WABA).
-      if (!phoneNumberId) {
-        phoneNumberId = await resolveWabaPhoneNumberId(input.wabaId, clientToken)
-        // Primeira vez que sabemos qual é o número — o dedup tem que valer
-        // ANTES de assinar a WABA na Meta.
-        if (await isNumberTakenByAnotherSalon(phoneNumberId, salonId)) {
-          throw new OnboardingError("Este número já está conectado a outro salão.")
-        }
+    // Coexistência: é AQUI que o número finalmente aparece (o evento da Meta
+    // trouxe só a WABA).
+    if (!phoneNumberId) {
+      phoneNumberId = await resolveWabaPhoneNumberId(input.wabaId, clientToken)
+      // Primeira vez que sabemos qual é o número — o dedup tem que valer
+      // ANTES de assinar a WABA na Meta.
+      if (await isNumberTakenByAnotherSalon(phoneNumberId, salonId)) {
+        throw new OnboardingError("Este número já está conectado a outro salão.")
       }
-
-      // Registrar ou não: em número de COEXISTÊNCIA o register é proibido (o QR
-      // já registrou; repetir dá 400/PIN mismatch — doc manda pular). Em número
-      // DEDICADO ele é obrigatório (sem register o número não opera na Cloud
-      // API). A fonte da verdade é o campo documentado is_on_biz_app do próprio
-      // número — nem o botão clicado (a Meta degrada fluxo em silêncio) nem a
-      // forma do evento (a Coexistência pode mandar o número nele) são
-      // confiáveis. Fallback (campo ilegível): número resolvido pela WABA só
-      // existe no caminho da Coexistência => não registra.
-      const onBizApp = await getIsOnBizApp(phoneNumberId, clientToken)
-      const isCoexistenceNumber = onBizApp ?? !numberCameFromEvent
-
-      await subscribeAppToWaba(input.wabaId, clientToken)
-      if (!isCoexistenceNumber) {
-        await registerPhoneNumber(phoneNumberId, clientToken)
-      }
-      encryptedToken = encryptSecret(clientToken)
-    } catch (err) {
-      // NUNCA logar code/token; só o contexto seguro.
-      logger.error({ err, salonId, phoneNumberId, flow: input.flow }, "Onboarding Cloud (Embedded Signup) falhou")
-      if (err instanceof OnboardingError) return { error: err.message }
-      return { error: "Não foi possível concluir a conexão com a Meta. Tente novamente." }
     }
+
+    // Registrar ou não: em número de COEXISTÊNCIA o register é proibido (o QR
+    // já registrou; repetir dá 400/PIN mismatch — doc manda pular). Em número
+    // DEDICADO ele é obrigatório (sem register o número não opera na Cloud
+    // API). A fonte da verdade é o campo documentado is_on_biz_app do próprio
+    // número — nem o botão clicado (a Meta degrada fluxo em silêncio) nem a
+    // forma do evento (a Coexistência pode mandar o número nele) são
+    // confiáveis. Fallback (campo ilegível): número resolvido pela WABA só
+    // existe no caminho da Coexistência => não registra.
+    const onBizApp = await getIsOnBizApp(phoneNumberId, clientToken)
+    const isCoexistenceNumber = onBizApp ?? !numberCameFromEvent
+
+    await subscribeAppToWaba(input.wabaId, clientToken)
+    if (!isCoexistenceNumber) {
+      await registerPhoneNumber(phoneNumberId, clientToken)
+    }
+    encryptedToken = encryptSecret(clientToken)
+  } catch (err) {
+    // NUNCA logar code/token; só o contexto seguro.
+    logger.error({ err, salonId, phoneNumberId, flow: input.flow }, "Onboarding Cloud (Embedded Signup) falhou")
+    if (err instanceof OnboardingError) return { error: err.message }
+    return { error: "Não foi possível concluir a conexão com a Meta. Tente novamente." }
   }
 
   try {
