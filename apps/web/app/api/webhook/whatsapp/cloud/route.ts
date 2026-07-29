@@ -26,6 +26,12 @@ import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { RateLimitError } from '@/lib/errors';
 import { db, agents, messages, chats, eq } from '@repo/db';
+import {
+  extractCloudContent,
+  isCloudContentType,
+  getReactionTarget,
+  buildReactionLabel,
+} from '@/lib/services/messaging/cloud/content';
 
 export const maxDuration = 10;
 
@@ -265,41 +271,6 @@ async function resolveCloudTenant(
   return null;
 }
 
-/** Extrai conteúdo textual + flags de mídia de uma mensagem da Cloud API. */
-function extractContent(msg: any): {
-  body: string;
-  hasMedia: boolean;
-  mediaType?: 'image' | 'audio' | 'video' | 'document';
-  mediaId?: string;
-} {
-  switch (msg.type) {
-    case 'text':
-      return { body: msg.text?.body ?? '', hasMedia: false };
-    case 'image':
-      return { body: msg.image?.caption ?? '[imagem]', hasMedia: true, mediaType: 'image', mediaId: msg.image?.id };
-    case 'video':
-      return { body: msg.video?.caption ?? '[vídeo]', hasMedia: true, mediaType: 'video', mediaId: msg.video?.id };
-    case 'audio':
-      return { body: '[áudio]', hasMedia: true, mediaType: 'audio', mediaId: msg.audio?.id };
-    case 'document':
-      return {
-        body: msg.document?.caption ?? msg.document?.filename ?? '[documento]',
-        hasMedia: true,
-        mediaType: 'document',
-        mediaId: msg.document?.id,
-      };
-    case 'button':
-      return { body: msg.button?.text ?? '', hasMedia: false };
-    case 'interactive':
-      return {
-        body: msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title ?? '',
-        hasMedia: false,
-      };
-    default:
-      return { body: `[tipo ${msg.type} não suportado]`, hasMedia: false };
-  }
-}
-
 async function handleInboundMessage(
   msg: any,
   value: any,
@@ -344,8 +315,30 @@ async function handleInboundMessage(
   const { salonId, agentId } = tenant;
   const logger2 = reqLogger.child({ messageId, from: hashPhone(clientPhone), salonId, agentId });
 
-  // 4. Conteúdo.
-  const { body, hasMedia, mediaType, mediaId } = extractContent(msg);
+  // 4. Conteúdo, pela tabela única (mesma que decide o gate do eco).
+  const { body: rawBody, hasMedia, mediaType, mediaId, wakeAI, known } = extractCloudContent(msg);
+  if (!known) {
+    // Tipo que a Meta passou a mandar e a gente ainda não conhece: não é erro
+    // nosso, mas tem que ser visível.
+    reqLogger.warn({ type: msg.type }, 'Cloud: tipo de mensagem não reconhecido');
+    WebhookMetrics.unhandledField(`type:${msg.type ?? 'unknown'}`);
+  }
+
+  // 4b. Reação: o rótulo só é útil citando a mensagem reagida. Uma leitura
+  //     indexada por provider_message_id, e só neste tipo.
+  let body = rawBody;
+  const reaction = getReactionTarget(msg);
+  if (reaction) {
+    const original = await withTimeout(
+      db.query.messages.findFirst({
+        where: eq(messages.providerMessageId, reaction.messageId),
+        columns: { content: true },
+      }),
+      DB_TIMEOUT,
+      'findReactedMessage',
+    ).catch(() => null);
+    body = buildReactionLabel(reaction.emoji, original?.content);
+  }
 
   // 5. Customer + chat (paralelo).
   const [customer, chat] = await Promise.all([
@@ -353,47 +346,59 @@ async function handleInboundMessage(
     withTimeout(findOrCreateChat(clientPhone, salonId, agentId), DB_TIMEOUT, 'findOrCreateChat'),
   ]);
 
-  // 6. Salvar a mensagem do cliente (guardando o tipo de mídia p/ exibir no painel).
+  // 6. Salvar SEMPRE — inclusive o que não acorda a IA (reação, aviso de
+  //    sistema): o painel mostra e o contexto da IA registra.
+  //    providerMessageId agora é gravado no inbound também: sem o wamid do
+  //    cliente no banco, reação a mensagem DELE seria irresolvível.
   const userMessageId = await withTimeout(
-    saveMessage(chat.id, 'user', body, hasMedia && mediaType ? { mediaType } : undefined),
+    saveMessage(chat.id, 'user', body, {
+      providerMessageId: messageId,
+      ...(hasMedia && mediaType ? { mediaType } : {}),
+    }),
     DB_TIMEOUT,
     'saveMessage',
   );
 
-  // 7. Enfileirar (mesmo job da Evolution; campos Baileys recebem placeholders
-  //    no caminho Cloud — o reply via Cloud é wiring do B8).
-  await withTimeout(
-    enqueueMessage({
-      messageId,
-      userMessageId,
-      chatId: chat.id,
-      salonId,
-      agentId,
-      customerId: customer.id,
-      provider: 'cloud',
-      phoneNumberId,
-      instanceName: `cloud:${phoneNumberId}`,
-      remoteJid: clientPhone,
-      addressingMode: 'jid',
-      replyToJid: clientPhone,
-      clientPhone,
-      body,
-      hasMedia,
-      mediaType: mediaType ?? undefined,
-      mediaId, // Cloud: id da mídia p/ o worker baixar (B6)
-      mediaUrl: undefined,
-      receivedAt: new Date(Number(msg.timestamp) * 1000).toISOString(),
-      profileName,
-      customerName: customer.name,
-    }),
-    REDIS_TIMEOUT,
-    'enqueueMessage',
-  );
+  // 7. Enfileirar SÓ o que deve acordar a IA. Reação e aviso de sistema não são
+  //    pedido a responder — a IA respondendo a um 👍 é ruído para o cliente.
+  if (wakeAI) {
+    await withTimeout(
+      enqueueMessage({
+        messageId,
+        userMessageId,
+        chatId: chat.id,
+        salonId,
+        agentId,
+        customerId: customer.id,
+        provider: 'cloud',
+        phoneNumberId,
+        instanceName: `cloud:${phoneNumberId}`,
+        remoteJid: clientPhone,
+        addressingMode: 'jid',
+        replyToJid: clientPhone,
+        clientPhone,
+        body,
+        hasMedia,
+        mediaType: mediaType ?? undefined,
+        mediaId, // Cloud: id da mídia p/ o worker baixar (B6)
+        mediaUrl: undefined,
+        receivedAt: new Date(Number(msg.timestamp) * 1000).toISOString(),
+        profileName,
+        customerName: customer.name,
+      }),
+      REDIS_TIMEOUT,
+      'enqueueMessage',
+    );
+    WebhookMetrics.enqueued({ salonId });
+    logger2.info('Cloud inbound enfileirado');
+  } else {
+    logger2.info({ type: msg.type }, 'Cloud inbound registrado sem acordar a IA');
+  }
 
-  // 8. Marcar processado só após enqueue durável.
+  // 8. Marcar processado. INCONDICIONAL de propósito: é a idempotência do
+  //    webhook. Deixar de marcar o que não foi enfileirado faria a Meta re-tentar
+  //    e gravar a mesma reação várias vezes.
   await withTimeout(markMessageProcessed(messageId), REDIS_TIMEOUT, 'markMessageProcessed');
-  WebhookMetrics.enqueued({ salonId });
-  logger2.info('Cloud inbound enfileirado');
 }
 
 /**
@@ -424,14 +429,6 @@ async function handleStatus(st: any, reqLogger: ContextLogger) {
     ).catch((err) => reqLogger.warn({ err, wamid }, 'Falha ao marcar como failed'));
   }
 }
-
-/**
- * Tipos de eco que representam CONTEÚDO real enviado pela atendente (e que vale
- * persistir no histórico). edit/revoke/reaction/desconhecido NÃO geram bolha
- * nova — no máximo disparam o handoff — para não poluir o contexto da IA com
- * placeholders (extractContent foi escrito para INBOUND e cai num default genérico).
- */
-const ECHO_CONTENT_TYPES = new Set(['text', 'image', 'audio', 'video', 'document', 'button', 'interactive']);
 
 /**
  * Coexistence (B7): eco de uma mensagem que a ATENDENTE enviou pelo app do
@@ -500,12 +497,18 @@ async function handleEcho(echo: any, phoneNumberId: string | undefined, reqLogge
     'setChatManual',
   );
   // Persiste a fala do humano (role assistant = bolha de saída) SÓ para tipos de
-  // conteúdo real — edit/revoke/reaction não viram bolha (evita lixo no contexto).
-  // fromHuman separa esta fala das da IA dentro do mesmo role.
-  if (ECHO_CONTENT_TYPES.has(echo?.type)) {
-    const { body } = extractContent(echo);
+  // conteúdo real: edit/revoke/reaction disparam o handoff mas não viram bolha,
+  // para não poluir o contexto da IA. O gate vem da MESMA tabela do inbound
+  // (isCloudContentType), então acrescentar um tipo cobre os dois caminhos.
+  // fromHuman separa esta fala das da IA dentro do mesmo role, e o wamid do eco
+  // permite resolver uma reação a algo que a atendente mandou pelo celular.
+  if (isCloudContentType(echo?.type)) {
+    const { body } = extractCloudContent(echo);
     await withTimeout(
-      saveMessage(chat.id, 'assistant', body, { fromHuman: true }),
+      saveMessage(chat.id, 'assistant', body, {
+        fromHuman: true,
+        ...(echoId ? { providerMessageId: echoId } : {}),
+      }),
       DB_TIMEOUT,
       'saveEcho',
     );
