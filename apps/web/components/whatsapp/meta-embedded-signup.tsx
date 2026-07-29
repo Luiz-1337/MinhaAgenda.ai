@@ -92,6 +92,23 @@ const META_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*facebook\.com$/
 // Libera os botões se nenhum evento de signup chegar (ex.: popup fechado sem concluir).
 const SIGNUP_TIMEOUT_MS = 90_000
 
+/**
+ * Fluxo de número DEDICADO (Embedded Signup padrão) — DESLIGADO por decisão do
+ * dono em 29/jul. Só a Coexistência (QR) fica exposta na tela.
+ *
+ * O código NÃO foi removido de propósito: o fluxo padrão é o único caminho para
+ * um cliente terceiro que queira um número NOVO, sem WhatsApp Business no celular.
+ * Religar = virar esta constante para `true`; nada mais precisa mudar.
+ *
+ * Vale saber por que dava para desligar sem perder cobertura: a Meta decide a
+ * elegibilidade PELO NÚMERO e degrada para o fluxo padrão quando ele não serve
+ * para Coexistência (observado em 07/jul e 29/jul). E o servidor não depende mais
+ * de qual botão foi clicado — desde `d551841` ele decide o `register` pelo campo
+ * `is_on_biz_app` do próprio número. Ainda assim isso é comportamento observado,
+ * não documentado pela Meta: se o fluxo padrão precisar voltar, é aqui.
+ */
+const STANDARD_FLOW_ENABLED = false
+
 export interface MetaEmbeddedSignupProps {
   salonId: string
   onSuccess: (data: {
@@ -112,17 +129,20 @@ export interface MetaEmbeddedSignupProps {
 
 /**
  * Componente para Meta Embedded Signup
- * Permite conectar um número à WhatsApp Cloud API de duas formas:
+ * Permite conectar um número à WhatsApp Cloud API por dois fluxos — hoje só UM
+ * está exposto na tela (ver STANDARD_FLOW_ENABLED):
  *
  *  1. WhatsApp Business (padrão): seleciona/cria a WABA e registra um número
- *     dedicado na Cloud API.
+ *     dedicado na Cloud API. **DESLIGADO** desde 29/jul; código mantido porque é
+ *     o único caminho para quem quer número NOVO.
  *  2. QR Code (Coexistência): conecta o app do WhatsApp Business já existente
  *     escaneando um QR, mantendo app + Cloud API no MESMO número.
  *     Ativado por extras.featureType = "whatsapp_business_app_onboarding".
+ *     É o único visível hoje.
  *
  * Requisitos (.env):
  * - NEXT_PUBLIC_META_APP_ID
- * - NEXT_PUBLIC_META_CONFIG_ID
+ * - NEXT_PUBLIC_META_CONFIG_ID (só quando o fluxo padrão for religado)
  * - NEXT_PUBLIC_META_COEXISTENCE_CONFIG_ID (necessária p/ habilitar o botão QR;
  *   precisa de uma config do Embedded Signup preparada para "WhatsApp Business
  *   app onboarding" — NÃO usar a config padrão aqui)
@@ -322,6 +342,14 @@ export function MetaEmbeddedSignup({
         return
       }
 
+      // Trava real, não só visual: com o botão fora da tela, ninguém deveria
+      // chegar aqui com "standard" — se chegar, é bug de chamada, não pedido do
+      // dono, e abrir o funil errado é pior que não abrir.
+      if (flow === "standard" && !STANDARD_FLOW_ENABLED) {
+        toast.error("A conexão por número dedicado está desativada. Use o QR Code.")
+        return
+      }
+
       const cfgId = flow === "coexistence" ? coexistenceConfigId : configId
       if (!cfgId) {
         toast.error(
@@ -389,8 +417,9 @@ export function MetaEmbeddedSignup({
     [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, resetLoading, tryComplete, onError]
   )
 
-  // Se não tem configuração, mostra erro
-  if (!appId || !configId) {
+  // Sem app id não há SDK. O config do fluxo PADRÃO só é exigido quando ele está
+  // ligado — cobrar a env de um fluxo desligado travaria a tela por nada.
+  if (!appId || (STANDARD_FLOW_ENABLED && !configId)) {
     return (
       <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg text-sm text-amber-700 dark:text-amber-400">
         <AlertCircle size={16} />
@@ -401,33 +430,37 @@ export function MetaEmbeddedSignup({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Opção 1 — WhatsApp Business (número dedicado na Cloud API) */}
-      <div className="flex flex-col gap-1.5">
-        <button
-          type="button"
-          onClick={() => launchEmbeddedSignup("standard")}
-          disabled={disabled || isLoading || !sdkLoaded}
-          aria-busy={loadingFlow === "standard"}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-[#25D366] hover:bg-[#22c55e] text-white rounded-lg text-sm font-semibold shadow-md shadow-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loadingFlow === "standard" ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              <span>Conectando...</span>
-            </>
-          ) : (
-            <>
-              <MessageCircle size={18} />
-              <span>Conectar com WhatsApp Business</span>
-            </>
-          )}
-        </button>
-        <p className="text-xs text-muted-foreground px-1">
-          Use um número novo/dedicado. Você seleciona ou cria a conta e registra o número na Meta.
-        </p>
-      </div>
+      {/* Número DEDICADO — fora da tela enquanto STANDARD_FLOW_ENABLED for false.
+          O bloco fica aqui, e não deletado, porque é o único caminho para cliente
+          que quer número novo (ver a constante no topo do arquivo). */}
+      {STANDARD_FLOW_ENABLED && (
+        <div className="flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={() => launchEmbeddedSignup("standard")}
+            disabled={disabled || isLoading || !sdkLoaded}
+            aria-busy={loadingFlow === "standard"}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-[#25D366] hover:bg-[#22c55e] text-white rounded-lg text-sm font-semibold shadow-md shadow-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingFlow === "standard" ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span>Conectando...</span>
+              </>
+            ) : (
+              <>
+                <MessageCircle size={18} />
+                <span>Conectar com WhatsApp Business</span>
+              </>
+            )}
+          </button>
+          <p className="text-xs text-muted-foreground px-1">
+            Use um número novo/dedicado. Você seleciona ou cria a conta e registra o número na Meta.
+          </p>
+        </div>
+      )}
 
-      {/* Opção 2 — QR Code / Coexistência (usa o app WhatsApp Business atual) */}
+      {/* QR Code / Coexistência (usa o app WhatsApp Business atual) */}
       <div className="flex flex-col gap-1.5">
         <button
           type="button"

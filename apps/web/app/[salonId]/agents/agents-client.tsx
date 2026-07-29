@@ -441,7 +441,8 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
               sua conta da Meta e autoriza; não precisa digitar nenhum ID.
             </p>
             {/* Embedded Signup — ativo quando NEXT_PUBLIC_META_APP_ID/CONFIG_ID estiverem setados.
-                Renderiza 2 opções: WhatsApp Business (número novo) e QR Code (Coexistência). */}
+                Hoje expõe só o QR Code (Coexistência); o fluxo de número dedicado
+                está desligado por STANDARD_FLOW_ENABLED dentro do componente. */}
             <MetaEmbeddedSignup
               salonId={salonId}
               disabled={isConnecting}
