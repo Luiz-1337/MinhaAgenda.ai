@@ -2,7 +2,7 @@
 
 import { db, chats, messages, customers, chatKanbanColumns, salons, and, asc, desc, eq, inArray } from "@repo/db"
 import { revalidatePath } from "next/cache"
-import { getAuthUser, getSessionUserId } from "@/lib/supabase/auth"
+import { getSessionUserId } from "@/lib/supabase/auth"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { AI_RESUME_MIN_MINUTES, AI_RESUME_MAX_MINUTES } from "@/lib/services/chat/manual-mode"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
@@ -62,16 +62,52 @@ function formatMessageTime(date: Date): string {
 }
 
 /**
+ * Autorização por SALÃO. Estar logado não basta: o salonId chega do cliente, e
+ * sem escopo qualquer usuário autenticado leria (e escreveria) dados de outro
+ * salão passando o id dele.
+ */
+async function authorizeSalon(salonId: string): Promise<{ userId: string } | { error: string }> {
+  if (!salonId) return { error: "salonId é obrigatório" }
+  const userId = await getSessionUserId()
+  if (!userId) return { error: "Não autenticado" }
+  if (!(await hasSalonPermission(salonId, userId))) {
+    return { error: "Sem permissão para este salão" }
+  }
+  return { userId }
+}
+
+/**
+ * Autorização a partir do CHAT: resolve o salão dono do chat e valida a permissão
+ * nele. As actions que recebem só `chatId` não têm como se escopar sem este
+ * passo — e uma delas envia WhatsApp pelo número do salão.
+ *
+ * Devolve o salonId resolvido para o chamador não precisar reconsultar.
+ */
+async function authorizeChat(
+  chatId: string
+): Promise<{ salonId: string } | { error: string }> {
+  if (!chatId) return { error: "chatId é obrigatório" }
+  const userId = await getSessionUserId()
+  if (!userId) return { error: "Não autenticado" }
+
+  const chat = await db.query.chats.findFirst({
+    where: eq(chats.id, chatId),
+    columns: { salonId: true },
+  })
+  // Mensagem única para chat inexistente e chat de outro salão: distinguir os
+  // dois contaria a um estranho que aquele id existe.
+  if (!chat || !(await hasSalonPermission(chat.salonId, userId))) {
+    return { error: "Conversa não encontrada" }
+  }
+  return { salonId: chat.salonId }
+}
+
+/**
  * Busca todas as conversas (chats) de um salão
  */
 export async function getChatConversations(salonId: string): Promise<ChatConversation[] | { error: string }> {
-  if (!salonId) {
-    return { error: "salonId é obrigatório" }
-  }
-
-  if (!(await getSessionUserId())) {
-    return { error: "Não autenticado" }
-  }
+  const auth = await authorizeSalon(salonId)
+  if ("error" in auth) return auth
 
   try {
     // Busca todos os chats do salão
@@ -190,13 +226,8 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
  * Busca mensagens de um chat específico
  */
 export async function getChatMessages(chatId: string): Promise<ChatMessage[] | { error: string }> {
-  if (!chatId) {
-    return { error: "chatId é obrigatório" }
-  }
-
-  if (!(await getSessionUserId())) {
-    return { error: "Não autenticado" }
-  }
+  const auth = await authorizeChat(chatId)
+  if ("error" in auth) return auth
 
   try {
     // Busca todas as mensagens do chat (exceto system)
@@ -243,13 +274,8 @@ export async function setChatManualMode(
   chatId: string,
   isManual: boolean
 ): Promise<{ success: true } | { error: string }> {
-  if (!chatId) {
-    return { error: "chatId é obrigatório" }
-  }
-
-  if (!(await getAuthUser())) {
-    return { error: "Não autenticado" }
-  }
+  const auth = await authorizeChat(chatId)
+  if ("error" in auth) return auth
 
   try {
     const now = new Date()
@@ -282,13 +308,8 @@ export async function setChatManualMode(
 export async function getAIResumePolicy(
   salonId: string
 ): Promise<{ minutes: number | null } | { error: string }> {
-  if (!salonId) return { error: "salonId é obrigatório" }
-
-  const userId = await getSessionUserId()
-  if (!userId) return { error: "Não autenticado" }
-  if (!(await hasSalonPermission(salonId, userId))) {
-    return { error: "Sem permissão para este salão" }
-  }
+  const auth = await authorizeSalon(salonId)
+  if ("error" in auth) return auth
 
   try {
     const row = await db.query.salons.findFirst({
@@ -307,13 +328,8 @@ export async function setAIResumePolicy(input: {
   /** Minutos de silêncio do humano até a IA reassumir. null desliga a retomada. */
   minutes: number | null
 }): Promise<{ success: true } | { error: string }> {
-  if (!input.salonId) return { error: "salonId é obrigatório" }
-
-  const userId = await getSessionUserId()
-  if (!userId) return { error: "Não autenticado" }
-  if (!(await hasSalonPermission(input.salonId, userId))) {
-    return { error: "Sem permissão para este salão" }
-  }
+  const auth = await authorizeSalon(input.salonId)
+  if ("error" in auth) return auth
 
   // Valida ANTES de bater no banco: o CHECK da migration 024 rejeitaria fora da
   // faixa, mas com erro de Postgres cru na cara do dono.
@@ -348,13 +364,15 @@ export async function sendManualMessage(
   chatId: string,
   content: string
 ): Promise<{ success: true } | { error: string }> {
-  if (!chatId || !content.trim()) {
-    return { error: "chatId e content são obrigatórios" }
+  if (!content.trim()) {
+    return { error: "content é obrigatório" }
   }
 
-  if (!(await getAuthUser())) {
-    return { error: "Não autenticado" }
-  }
+  // Escopo por salão ANTES de qualquer coisa: esta action envia WhatsApp pelo
+  // número do salão, então sem ela um usuário de outro salão poderia falar com os
+  // clientes deste se passando por ele.
+  const auth = await authorizeChat(chatId)
+  if ("error" in auth) return auth
 
   try {
     // Busca o chat para obter o clientPhone e salonId
@@ -369,7 +387,7 @@ export async function sendManualMessage(
     })
 
     if (!chat) {
-      return { error: "Chat não encontrado" }
+      return { error: "Conversa não encontrada" }
     }
 
     if (!chat.isManual) {
@@ -402,9 +420,8 @@ export async function sendManualMessage(
  * Busca o risco de No-Show para o cliente do chat
  */
 export async function getNoShowRiskForChat(chatId: string): Promise<{ isHighRisk: boolean } | { error: string }> {
-  if (!chatId) return { error: "chatId obrigatório" };
-
-  if (!(await getSessionUserId())) return { error: "Não autenticado" }
+  const auth = await authorizeChat(chatId)
+  if ("error" in auth) return auth
 
   try {
     // Busca phone e salon
