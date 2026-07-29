@@ -77,6 +77,15 @@ const COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding"
 // silêncio (o número ficava conectado lá e o salão nunca era gravado).
 const COEXISTENCE_FINISH_EVENT = "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
 
+// Conclusão em que o cliente criou/selecionou a WABA mas NÃO anexou um número.
+// Também traz só o waba_id, então cai no mesmo tratamento da Coexistência: o
+// servidor tenta resolver o número pela WABA e, não achando nenhum, devolve a
+// mensagem certa ("a Meta conectou a conta, mas nenhum número apareceu nela").
+const ONLY_WABA_FINISH_EVENT = "FINISH_ONLY_WABA"
+
+// Eventos de conclusão cujo payload NÃO tem phone_number_id (só waba_id).
+const WABA_ONLY_FINISH_EVENTS = new Set<string>([COEXISTENCE_FINISH_EVENT, ONLY_WABA_FINISH_EVENT])
+
 // Origens aceitas no postMessage do signup: facebook.com e subdomínios, só https.
 const META_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*facebook\.com$/
 
@@ -283,14 +292,14 @@ export function MetaEmbeddedSignup({
           : event.data
 
         if (data.type === "WA_EMBEDDED_SIGNUP") {
-          const isCoexistenceFinish = data.event === COEXISTENCE_FINISH_EVENT
-          if ((data.event === "FINISH" || isCoexistenceFinish) && data.data) {
+          const isWabaOnlyFinish = WABA_ONLY_FINISH_EVENTS.has(data.event)
+          if ((data.event === "FINISH" || isWabaOnlyFinish) && data.data) {
             const { phone_number_id, waba_id } = data.data
 
-            // Coexistência: o waba_id sozinho basta — o phone_number_id é
-            // resolvido no servidor. No fluxo padrão os dois vêm no evento e
+            // Coexistência / só-WABA: o waba_id sozinho basta — o phone_number_id
+            // é resolvido no servidor. No fluxo padrão os dois vêm no evento e
             // exigimos ambos (sem waba_id não há como assinar o webhook).
-            if (waba_id && (phone_number_id || isCoexistenceFinish)) {
+            if (waba_id && (phone_number_id || isWabaOnlyFinish)) {
               // Bufferiza o que veio e tenta concluir (aguarda o `code` do callback).
               signupDataRef.current = { phoneNumberId: phone_number_id, wabaId: waba_id }
               tryComplete()
@@ -308,6 +317,18 @@ export function MetaEmbeddedSignup({
             const errorMsg = "Erro durante o processo de conexão"
             setError(errorMsg)
             onError?.(errorMsg)
+          } else {
+            // Evento novo ou renomeado pela Meta. SÓ log: o fluxo emite eventos
+            // intermediários de progresso (data.current_step), então mostrar erro
+            // aqui daria falso positivo no meio do funil. Quem avisa o dono
+            // quando o funil termina sem concluir é o timeout de 90s.
+            // Foi exatamente por não existir este ramo que a Coexistência ficou
+            // um dia conectando na Meta e morrendo calada aqui.
+            console.info(
+              "[EmbeddedSignup] evento não tratado:",
+              data.event,
+              data.data?.current_step ?? "",
+            )
           }
         }
       } catch {
