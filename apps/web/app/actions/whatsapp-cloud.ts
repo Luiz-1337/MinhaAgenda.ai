@@ -289,26 +289,33 @@ export async function connectWhatsAppCloud(
   }
 
   try {
-    // Garante UM ÚNICO agente Cloud por salão: limpa a config Cloud de qualquer
-    // outro agente do salão (evita split-brain se o agente ativo mudou) ANTES de
-    // gravar no agente ativo atual.
-    await db
-      .update(agents)
-      .set({ messagingProvider: "evolution", whatsappPhoneNumberId: null, whatsappWabaId: null, whatsappCloudToken: null, updatedAt: new Date() })
-      .where(and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")))
+    // As DUAS escritas em UMA transação. A primeira limpa a config Cloud dos
+    // outros agentes do salão; a segunda grava no agente ativo. Fora de
+    // transação, uma falha no meio deixa o salão SEM NÚMERO NENHUM — que é
+    // exatamente o estado em que o piloto ficou — e a tentativa de reconexão
+    // vira o próprio outage.
+    await db.transaction(async (tx) => {
+      // Garante UM ÚNICO agente Cloud por salão: limpa a config Cloud de qualquer
+      // outro agente do salão (evita split-brain se o agente ativo mudou) ANTES de
+      // gravar no agente ativo atual.
+      await tx
+        .update(agents)
+        .set({ messagingProvider: "evolution", whatsappPhoneNumberId: null, whatsappWabaId: null, whatsappCloudToken: null, updatedAt: new Date() })
+        .where(and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")))
 
-    await db
-      .update(agents)
-      .set({
-        messagingProvider: "cloud",
-        whatsappPhoneNumberId: phoneNumberId,
-        whatsappWabaId: input.wabaId ?? null,
-        whatsappCloudToken: encryptedToken,
-        whatsappStatus: "verified",
-        whatsappConnectedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(agents.id, agent.id))
+      await tx
+        .update(agents)
+        .set({
+          messagingProvider: "cloud",
+          whatsappPhoneNumberId: phoneNumberId,
+          whatsappWabaId: input.wabaId,
+          whatsappCloudToken: encryptedToken,
+          whatsappStatus: "verified",
+          whatsappConnectedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(agents.id, agent.id))
+    })
   } catch (err) {
     // Backstop do índice UNIQUE (corrida concorrente) -> mensagem amigável.
     // O catch é cego a QUALQUER outra falha de escrita, então loga o erro real:
