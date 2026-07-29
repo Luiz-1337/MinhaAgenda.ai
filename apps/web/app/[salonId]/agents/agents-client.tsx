@@ -175,7 +175,14 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
       }
       toast.success("WhatsApp conectado via Cloud API!")
       // Usa o número que o SERVIDOR resolveu: na Coexistência ele não vem do popup.
-      setCloudStatus({ connected: true, phoneNumberId: res.phoneNumberId, wabaId: data.wabaId ?? null })
+      // phoneNumber vem do servidor no próximo carregamento (router.refresh
+       // abaixo); o optimistic update não tem esse dado em mãos.
+      setCloudStatus({
+        connected: true,
+        phoneNumberId: res.phoneNumberId,
+        wabaId: data.wabaId ?? null,
+        phoneNumber: null,
+      })
       router.refresh()
     } catch {
       toast.error("Erro ao conectar. Tente novamente.")
@@ -193,7 +200,7 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
         return
       }
       toast.success("WhatsApp desconectado")
-      setCloudStatus({ connected: false, phoneNumberId: null, wabaId: null })
+      setCloudStatus({ connected: false, phoneNumberId: null, wabaId: null, phoneNumber: null })
       router.refresh()
     } catch {
       toast.error("Erro ao desconectar.")
@@ -399,8 +406,16 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <Phone size={16} className="text-muted-foreground" />
+              {/* Mostra o NÚMERO. O phone_number_id é um id opaco da Meta e não
+                  diz nada ao dono; só aparece como último recurso, enquanto o
+                  número não tiver sido preenchido (a primeira mensagem recebida
+                  já resolve, via metadata do webhook). */}
               <span className="text-sm font-medium text-foreground">
-                {cloudStatus.phoneNumberId ? `Cloud API · ${cloudStatus.phoneNumberId}` : "WhatsApp Cloud API"}
+                {cloudStatus.phoneNumber
+                  ? cloudStatus.phoneNumber
+                  : cloudStatus.phoneNumberId
+                    ? `Cloud API · ${cloudStatus.phoneNumberId}`
+                    : "WhatsApp Cloud API"}
               </span>
             </div>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">

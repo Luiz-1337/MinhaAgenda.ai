@@ -257,17 +257,19 @@ function verifySignature(raw: string, header: string, secret: string): boolean {
  */
 async function resolveCloudTenant(
   phoneNumberId: string | undefined,
-): Promise<{ salonId: string; agentId: string } | null> {
+): Promise<{ salonId: string; agentId: string; storedNumber: string | null } | null> {
   if (!phoneNumberId) return null;
   const agent = await withTimeout(
     db.query.agents.findFirst({
       where: eq(agents.whatsappPhoneNumberId, phoneNumberId),
-      columns: { id: true, salonId: true },
+      columns: { id: true, salonId: true, whatsappNumber: true },
     }),
     DB_TIMEOUT,
     'findAgentByPhoneNumberId',
   );
-  if (agent) return { salonId: agent.salonId, agentId: agent.id };
+  if (agent) {
+    return { salonId: agent.salonId, agentId: agent.id, storedNumber: agent.whatsappNumber };
+  }
   return null;
 }
 
@@ -314,6 +316,20 @@ async function handleInboundMessage(
   }
   const { salonId, agentId } = tenant;
   const logger2 = reqLogger.child({ messageId, from: hashPhone(clientPhone), salonId, agentId });
+
+  // 3b. O número legível do SALÃO chega no metadata de todo inbound e era jogado
+  //     fora. Guardar aqui é o que faz o painel mostrar "+55 11 ..." em vez do
+  //     phone_number_id — e alcança conexões feitas antes desta mudança, sem
+  //     exigir reconexão. Escreve só quando difere, para não bater no banco a
+  //     cada mensagem.
+  const displayPhoneNumber: string | undefined = value?.metadata?.display_phone_number;
+  if (displayPhoneNumber && displayPhoneNumber !== tenant.storedNumber) {
+    void withTimeout(
+      db.update(agents).set({ whatsappNumber: displayPhoneNumber }).where(eq(agents.id, agentId)),
+      DB_TIMEOUT,
+      'storeDisplayPhoneNumber',
+    ).catch((err) => logger2.warn({ err }, 'Falha ao guardar o número legível do salão'));
+  }
 
   // 4. Conteúdo, pela tabela única (mesma que decide o gate do eco).
   const { body: rawBody, hasMedia, mediaType, mediaId, wakeAI, known } = extractCloudContent(msg);

@@ -34,6 +34,12 @@ export interface WhatsAppCloudStatus {
   connected: boolean
   phoneNumberId: string | null
   wabaId: string | null
+  /**
+   * Número legível ("+55 11 98604-9295"). O painel mostra ISTO; o phone_number_id
+   * é um id opaco da Meta que não diz nada ao dono do salão. `null` enquanto
+   * nenhuma consulta à Graph nem inbound tiver preenchido.
+   */
+  phoneNumber: string | null
 }
 
 const GRAPH_BASE = `https://graph.facebook.com/${process.env.WHATSAPP_GRAPH_VERSION ?? "v25.0"}`
@@ -157,21 +163,36 @@ async function registerPhoneNumber(phoneNumberId: string, token: string): Promis
 }
 
 /**
- * Consulta se o número está em COEXISTÊNCIA (app WhatsApp Business ativo no
- * mesmo número). É o discriminador documentado pela Meta para o pós-onboarding:
- * nesses números o register é PROIBIDO — o QR já registrou, e re-registrar
- * devolve 400 (PIN mismatch). `null` = não deu para saber (campo/req falhou).
+ * Fatos do número, numa única chamada:
+ *
+ * - `isOnBizApp`: está em COEXISTÊNCIA (app WhatsApp Business ativo no mesmo
+ *   número)? É o discriminador documentado pela Meta para o pós-onboarding —
+ *   nesses números o register é PROIBIDO: o QR já registrou, e re-registrar
+ *   devolve 400 (PIN mismatch). `null` = não deu para saber.
+ * - `displayPhoneNumber`: o número legível ("+55 11 98604-9295"). O painel mostra
+ *   isso; o phone_number_id é um id opaco da Meta que não diz nada ao dono.
+ *
+ * Os dois campos vêm no MESMO GET de propósito — pedir o telefone à parte seria
+ * uma segunda ida à Graph dentro do onboarding sem ganho nenhum.
  */
-async function getIsOnBizApp(phoneNumberId: string, token: string): Promise<boolean | null> {
+async function getPhoneNumberFacts(
+  phoneNumberId: string,
+  token: string,
+): Promise<{ isOnBizApp: boolean | null; displayPhoneNumber: string | null }> {
   try {
-    const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}?fields=is_on_biz_app`, {
+    const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}?fields=is_on_biz_app,display_phone_number`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    const json = (await res.json().catch(() => undefined)) as { is_on_biz_app?: boolean } | undefined
-    if (!res.ok || typeof json?.is_on_biz_app !== "boolean") return null
-    return json.is_on_biz_app
+    const json = (await res.json().catch(() => undefined)) as
+      | { is_on_biz_app?: boolean; display_phone_number?: string }
+      | undefined
+    if (!res.ok) return { isOnBizApp: null, displayPhoneNumber: null }
+    return {
+      isOnBizApp: typeof json?.is_on_biz_app === "boolean" ? json.is_on_biz_app : null,
+      displayPhoneNumber: json?.display_phone_number ?? null,
+    }
   } catch {
-    return null
+    return { isOnBizApp: null, displayPhoneNumber: null }
   }
 }
 
@@ -251,6 +272,9 @@ export async function connectWhatsAppCloud(
   // inbound) e registra o número (só dedicado). Só gravamos o token/número APÓS o
   // subscribed_apps dar certo — o inbound é crítico.
   let encryptedToken: string | null = null
+  // Número legível para o painel mostrar. Vem da mesma consulta que decide o
+  // register, então não custa chamada extra.
+  let displayPhoneNumber: string | null = null
   try {
     const clientToken = await exchangeCodeForToken(input.code)
 
@@ -273,8 +297,9 @@ export async function connectWhatsAppCloud(
     // forma do evento (a Coexistência pode mandar o número nele) são
     // confiáveis. Fallback (campo ilegível): número resolvido pela WABA só
     // existe no caminho da Coexistência => não registra.
-    const onBizApp = await getIsOnBizApp(phoneNumberId, clientToken)
-    const isCoexistenceNumber = onBizApp ?? !numberCameFromEvent
+    const facts = await getPhoneNumberFacts(phoneNumberId, clientToken)
+    displayPhoneNumber = facts.displayPhoneNumber
+    const isCoexistenceNumber = facts.isOnBizApp ?? !numberCameFromEvent
 
     await subscribeAppToWaba(input.wabaId, clientToken)
     if (!isCoexistenceNumber) {
@@ -310,6 +335,9 @@ export async function connectWhatsAppCloud(
           whatsappPhoneNumberId: phoneNumberId,
           whatsappWabaId: input.wabaId,
           whatsappCloudToken: encryptedToken,
+          // Só sobrescreve se a Meta devolveu o número; não apaga o que já havia
+          // (o webhook também alimenta esta coluna pelo metadata do inbound).
+          ...(displayPhoneNumber ? { whatsappNumber: displayPhoneNumber } : {}),
           whatsappStatus: "verified",
           whatsappConnectedAt: new Date(),
           updatedAt: new Date(),
@@ -363,16 +391,17 @@ export async function getWhatsAppCloudStatus(salonId: string): Promise<WhatsAppC
   // É uma server action exposta -> precisa se AUTO-autorizar (não confiar só no
   // chamador). Sem permissão, devolve "não conectado" em vez de vazar o número.
   const auth = await authorize(salonId)
-  if ("error" in auth) return { connected: false, phoneNumberId: null, wabaId: null }
+  if ("error" in auth) return { connected: false, phoneNumberId: null, wabaId: null, phoneNumber: null }
 
   // Procura o agente do salão com config Cloud (independente de qual está ativo).
   const agent = await db.query.agents.findFirst({
     where: and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")),
-    columns: { whatsappPhoneNumberId: true, whatsappWabaId: true },
+    columns: { whatsappPhoneNumberId: true, whatsappWabaId: true, whatsappNumber: true },
   })
   return {
     connected: !!agent?.whatsappPhoneNumberId,
     phoneNumberId: agent?.whatsappPhoneNumberId ?? null,
     wabaId: agent?.whatsappWabaId ?? null,
+    phoneNumber: agent?.whatsappNumber ?? null,
   }
 }
