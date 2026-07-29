@@ -12,8 +12,9 @@ import { StageTimer } from "../lib/infra/stage-timer";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
 import { processMedia } from "../lib/services/ai/media-processor.service";
 import { saveMessage, setMessageMediaPath } from "../lib/services/chat.service";
-// Caminho RELATIVO: o worker roda via tsx e não resolve o alias @/.
+// Caminhos RELATIVOS: o worker roda via tsx e não resolve o alias @/.
 import { shouldResumeAI } from "../lib/services/chat/manual-mode";
+import { isPlaceholderBody } from "../lib/services/messaging/cloud/content";
 import { uploadWhatsappMedia } from "../lib/supabase/storage";
 import {
   isSessionError,
@@ -648,7 +649,11 @@ async function processMessage(
         timer.mark("media_processed_image");
         await persistInboundMedia(media, "image", job.data.userMessageId, salonId, chatId);
 
-        const caption = body && body !== "[IMAGE]" ? body : "";
+        // isPlaceholderBody em vez de comparar com o literal "[IMAGE]": aquele é o
+        // rótulo da EVOLUTION, e o caminho Cloud grava "[imagem]". A imagem sem
+        // legenda vinda do Cloud estava mandando a string do rótulo ao Vision como
+        // se fosse legenda do cliente, em vez da instrução de análise abaixo.
+        const caption = !isPlaceholderBody(body) ? body : "";
         const imageContext = caption
           ? caption
           : "O cliente enviou esta imagem. Analise o conteúdo e responda adequadamente.";
