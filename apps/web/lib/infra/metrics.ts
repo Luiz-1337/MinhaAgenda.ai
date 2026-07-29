@@ -252,6 +252,15 @@ export const WebhookMetrics = {
 
   connectionAnomaly: (status: string, tags?: Record<string, string>) =>
     incrementCounter("webhook.connection_anomaly", 1, { ...tags, status }),
+
+  /**
+   * Campo de webhook que a Meta mandou e a gente não trata. Contador PRÓPRIO, não
+   * `error()`: `webhook.error` é o indicador de saúde do pipeline, e "a Meta
+   * adicionou um campo novo" não é falha nossa — poluiria a taxa de erro e
+   * mascararia problema de verdade.
+   */
+  unhandledField: (field: string, tags?: Record<string, string>) =>
+    incrementCounter("webhook.unhandled_field", 1, { ...tags, field }),
 };
 
 export const WorkerMetrics = {

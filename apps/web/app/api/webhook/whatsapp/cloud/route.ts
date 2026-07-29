@@ -117,6 +117,21 @@ export async function POST(req: NextRequest) {
             await handleEcho(echo, phoneNumberId, reqLogger);
           }
         }
+
+        // Tudo o que NÃO for um dos três acima passava em silêncio, com 200.
+        //
+        // Os três `if` acima ficam intocados de propósito: NÃO trocar este
+        // dispatch por um `switch (change.field)`. Se a Meta rotular o eco com
+        // outro nome de campo, um switch DESCARTA mensagem — e foi exatamente
+        // "evento com nome inesperado" que deixou a Coexistência um dia sem
+        // conectar. Aqui só se acrescenta ao caminho que hoje é mudo.
+        const handledArrays =
+          Array.isArray(value.messages) ||
+          Array.isArray(value.statuses) ||
+          Array.isArray(value.message_echoes);
+        if (!handledArrays) {
+          await handleOtherField(change?.field, value, reqLogger);
+        }
       }
     }
 
@@ -132,6 +147,84 @@ export async function POST(req: NextRequest) {
     reqLogger.error({ err: error }, 'Cloud webhook: erro ao processar');
     WebhookMetrics.error('processing_error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * Campos do webhook que a Meta manda e que NÃO carregam mensagem: avisos sobre a
+ * conta e sobre o número. Antes caíam no vazio com 200 — e `account_update` é
+ * como a Meta avisa que o número foi desabilitado, restringido ou banido, o que
+ * jamais deveria ser silencioso num número de negócio em produção.
+ *
+ * Nunca lança: um aviso mal-parseado não pode virar 500 e fazer a Meta re-tentar.
+ */
+async function handleOtherField(
+  field: string | undefined,
+  value: Record<string, unknown>,
+  reqLogger: ContextLogger,
+): Promise<void> {
+  try {
+    // Erros de plataforma no nível do webhook. Distinto do `st.errors` que
+    // handleStatus já lê (aquele é por mensagem; este é da conta/número).
+    const errors = value.errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const first = errors[0] as { code?: number; title?: string } | undefined;
+      reqLogger.error({ field, code: first?.code, title: first?.title }, 'Cloud: erro de plataforma no webhook');
+      void recordAlert({
+        scope: 'global',
+        type: 'cloud_webhook_error',
+        severity: 'critical',
+        title: `Erro de plataforma da Meta: ${first?.title ?? 'sem título'}`,
+        detail: { field, code: first?.code, title: first?.title },
+      });
+      return;
+    }
+
+    if (field === 'account_update') {
+      const event = typeof value.event === 'string' ? value.event : undefined;
+      // Ban/restrição/desabilitação derrubam o canal inteiro — critical. Os
+      // demais account_update (ex.: mudança de nome aprovada) são informativos.
+      const grave =
+        !!value.ban_info ||
+        !!value.restriction_info ||
+        (event !== undefined &&
+          ['DISABLED_UPDATE', 'ACCOUNT_VIOLATION', 'ACCOUNT_RESTRICTION', 'PARTNER_APP_UNINSTALLED'].includes(event));
+      if (grave) {
+        reqLogger.error({ field, event }, 'Cloud: account_update grave');
+        void recordAlert({
+          scope: 'global',
+          type: 'cloud_account_update',
+          severity: 'critical',
+          title: `Conta WhatsApp com problema: ${event ?? 'restrição/ban'}`,
+          detail: { event, banInfo: value.ban_info, restrictionInfo: value.restriction_info },
+        });
+      } else {
+        reqLogger.info({ field, event }, 'Cloud: account_update informativo');
+      }
+      return;
+    }
+
+    if (field === 'phone_number_quality_update') {
+      const event = typeof value.event === 'string' ? value.event : undefined;
+      reqLogger.warn({ field, event, currentLimit: value.current_limit }, 'Cloud: qualidade do número mudou');
+      if (event === 'FLAGGED' || event === 'DOWNGRADE') {
+        void recordAlert({
+          scope: 'global',
+          type: 'cloud_quality_downgrade',
+          severity: 'warning',
+          title: `Qualidade do número caiu (${event})`,
+          detail: { event, currentLimit: value.current_limit },
+        });
+      }
+      return;
+    }
+
+    // Campo desconhecido: só log + contador. Não é erro nosso, e a Meta adiciona
+    // campos com frequência — o que importa é deixar de ser invisível.
+    reqLogger.warn({ field, valueKeys: Object.keys(value) }, 'Cloud: campo de webhook não tratado');
+    WebhookMetrics.unhandledField(field ?? 'unknown');
+  } catch (err) {
+    reqLogger.warn({ err, field }, 'Cloud: falha ao processar campo não-mensagem (ignorado)');
   }
 }
 
