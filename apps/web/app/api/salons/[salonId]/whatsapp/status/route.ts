@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
 import { getInstanceStatus, getConnectedPhoneNumber, mapEvolutionStatusToAgentStatus } from '@/lib/services/evolution/evolution-instance.service';
+import { isEvolutionEnabled } from '@/lib/services/evolution/evolution-enabled';
 import { logger } from '@/lib/infra/logger';
 
 /**
@@ -45,6 +46,17 @@ export async function GET(
     const hasAccess = await hasSalonPermission(salonId, user.id);
     if (!hasAccess) {
       return NextResponse.json({ error: 'Acesso negado a este salão' }, { status: 403 });
+    }
+
+    // Evolution desligada (default): não há o que consultar. Devolver vazio faz o
+    // painel mostrar o card do Embedded Signup, que é o caminho correto agora.
+    //
+    // ⚠️ Mudança de comportamento consciente: o fallback mapDatabaseStatus abaixo
+    // fazia o painel dizer "Conectado" para salões com whatsapp_status='verified'
+    // no banco e a instância Evolution morta — ou seja, mentia. Eles passam a ver
+    // o card de conexão.
+    if (!isEvolutionEnabled()) {
+      return NextResponse.json({ numbers: [] });
     }
 
     // If no Evolution instance configured, return empty array

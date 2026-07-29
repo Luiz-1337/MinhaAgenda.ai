@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db, agents, salons, eq } from '@repo/db';
 import { hasSalonPermission } from '@/lib/services/permissions.service';
 import { disconnectInstance } from '@/lib/services/evolution/evolution-instance.service';
+import { isEvolutionEnabled } from '@/lib/services/evolution/evolution-enabled';
 import { checkRateLimit } from '@/lib/infra/redis';
 import { logger } from '@/lib/infra/logger';
 
@@ -31,6 +32,23 @@ export async function DELETE(
       return NextResponse.json(
         { success: false, error: 'Não autenticado' },
         { status: 401 }
+      );
+    }
+
+    // Evolution desligada (default): recusar SEM ESCREVER NADA.
+    //
+    // Esta rota limpa whatsapp_number/status/connected_at/verified_at de TODOS os
+    // agentes do salão, gravando whatsapp_status='failed'. Com a Evolution morta,
+    // ela virou um botão que só destrói estado — inclusive de agentes que operam
+    // por Cloud API, cuja desconexão é a disconnectWhatsAppCloud, não esta.
+    if (!isEvolutionEnabled()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'A conexão por QR (Evolution) foi desativada. Use "Desconectar" no card do WhatsApp Cloud API.',
+        },
+        { status: 410 }
       );
     }
 

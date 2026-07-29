@@ -76,10 +76,14 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
   const whatsappNumbers = whatsappStatus.numbers
   const hasPendingVerification = whatsappNumbers.length > 0 && whatsappNumbers[0].status === "pending_verification"
 
-  // Fetch WhatsApp status on mount
+  // Busca o status da Evolution ao montar — mas só quando o salão NÃO está no
+  // Cloud API. Com a Evolution desligada essa rota devolve lista vazia de
+  // qualquer forma, então em salão Cloud a chamada era só uma ida ao servidor
+  // para não descobrir nada.
   useEffect(() => {
+    if (cloudStatus.connected) return
     fetchWhatsAppStatus()
-  }, [salonId])
+  }, [salonId, cloudStatus.connected])
 
   async function fetchWhatsAppStatus() {
     try {

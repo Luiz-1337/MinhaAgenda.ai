@@ -8,6 +8,7 @@ import {
   restartInstance,
   setInstanceWebhook,
 } from '@/lib/services/evolution/evolution-instance.service';
+import { isEvolutionEnabled } from '@/lib/services/evolution/evolution-enabled';
 import { checkRateLimit } from '@/lib/infra/redis';
 import { logger } from '@/lib/infra/logger';
 
@@ -38,6 +39,19 @@ export async function POST(
       return NextResponse.json(
         { success: false, error: 'Não autenticado' },
         { status: 401 }
+      );
+    }
+
+    // Evolution desligada (default): recusar com mensagem clara, em vez de deixar
+    // estourar lá dentro em getEvolutionClient() por falta de EVOLUTION_API_URL.
+    if (!isEvolutionEnabled()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'A conexão por QR (Evolution) foi desativada. Conecte pelo WhatsApp Cloud API na tela de Agentes.',
+        },
+        { status: 503 }
       );
     }
 
