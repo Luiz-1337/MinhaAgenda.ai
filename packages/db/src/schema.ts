@@ -131,6 +131,10 @@ export const salons = pgTable(
     extraCredits: bigint('extra_credits', { mode: 'number' }).default(0).notNull(),
     aiRetentionEnabled: boolean('ai_retention_enabled').default(false).notNull(),
     aiKanbanClassificationEnabled: boolean('ai_kanban_classification_enabled').default(false).notNull(),
+    // Minutos de silêncio do humano após os quais a IA reassume o chat sozinha.
+    // NULL = nunca retomar, que é o comportamento histórico (só o botão do painel
+    // devolvia a conversa). CHECK 5..20160 (5min a 14 dias) na migration 024.
+    aiResumeAfterMinutes: integer('ai_resume_after_minutes'),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
     // Evolution API fields
@@ -420,6 +424,14 @@ export const chats = pgTable(
     clientPhone: text('client_phone').notNull(),
     status: chatStatusEnum('status').default('active').notNull(),
     isManual: boolean('is_manual').default(false).notNull(),
+    // Quando o modo manual começou (NULL = automático) e o que o ligou. Sem isso
+    // `is_manual` é um booleano sem história: 3 caminhos o ligam e só o botão do
+    // painel o desliga, então um chat que virou manual por falha de entrega ficava
+    // parado para sempre. É a base da retomada automática por tempo.
+    manualSince: timestamp('manual_since'),
+    manualReason: text('manual_reason').$type<
+      'human_echo' | 'panel' | 'ai_exhausted' | 'delivery_failed'
+    >(),
     firstUserMessageAt: timestamp('first_user_message_at'),
     firstAgentResponseAt: timestamp('first_agent_response_at'),
     agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'set null' }),
@@ -437,6 +449,9 @@ export const chats = pgTable(
     index('chats_kanban_idx').on(table.salonId, table.kanbanColumnId),
     // FK chats.kanban_column_id (o composto acima começa por salonId) — HIG-4
     index('chats_kanban_column_idx').on(table.kanbanColumnId),
+    // Parcial (WHERE is_manual = true) na migration 024 — o Drizzle não expressa
+    // índice parcial aqui, então a definição real vive no SQL.
+    index('chats_manual_since_idx').on(table.manualSince),
     // Reflete UNIQUE constraint existente só no banco (reconciliação 21/jun — DRIFT-1)
     unique('chats_salon_id_client_phone_unique').on(table.salonId, table.clientPhone)
   ]
@@ -466,6 +481,10 @@ export const messages = pgTable(
     // bucket privado 'whatsapp-media' (Supabase Storage), servido via URL assinada.
     mediaType: text('media_type'),
     mediaPath: text('media_path'),
+    // role='assistant' cobre DOIS emissores: a IA e o humano (eco do app do
+    // WhatsApp Business, ou envio manual do painel). Sem distinguir, a IA relê a
+    // fala do humano como se fosse dela quando reassume a conversa.
+    fromHuman: boolean('from_human').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
