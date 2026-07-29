@@ -249,6 +249,13 @@ export async function saveMessage(
     deliveryStatus?: string
     /** Tipo da mídia recebida do cliente ('image' | 'audio' | 'video' | 'document'). */
     mediaType?: string
+    /**
+     * True quando a fala com role='assistant' é de um HUMANO — eco do app do
+     * WhatsApp Business, ou envio manual pelo painel. Sem essa marca a IA relê a
+     * fala do humano como se fosse dela ao reassumir o chat, e não há como datar
+     * a última fala humana (base da retomada automática).
+     */
+    fromHuman?: boolean
   }
 ): Promise<string> {
   // Append tool summary ao content para que o histórico tenha contexto de tools
@@ -268,6 +275,7 @@ export async function saveMessage(
     providerMessageId: options?.providerMessageId ?? null,
     deliveryStatus: options?.deliveryStatus ?? null,
     mediaType: options?.mediaType ?? null,
+    fromHuman: options?.fromHuman ?? false,
   }).returning({ id: messages.id })
 
   if (role === "assistant") {

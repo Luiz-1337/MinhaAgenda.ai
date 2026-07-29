@@ -974,7 +974,16 @@ async function processMessage(
         jobLogger.error({ err: sendError }, "Failed to send terminal fallback to client");
       }
       try {
-        await db.update(chats).set({ isManual: true, updatedAt: new Date() }).where(eq(chats.id, chatId));
+        const flippedAt = new Date();
+        await db
+          .update(chats)
+          .set({
+            isManual: true,
+            manualSince: flippedAt,
+            manualReason: "ai_exhausted",
+            updatedAt: flippedAt,
+          })
+          .where(eq(chats.id, chatId));
       } catch (flipErr) {
         jobLogger.error({ err: flipErr }, "Failed to flip chat to manual after exhaustion");
       }

@@ -25,7 +25,7 @@ import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/servi
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { RateLimitError } from '@/lib/errors';
-import { db, agents, messages, chats, eq, and } from '@repo/db';
+import { db, agents, messages, chats, eq } from '@repo/db';
 
 export const maxDuration = 10;
 
@@ -384,20 +384,38 @@ async function handleEcho(echo: any, phoneNumberId: string | undefined, reqLogge
     DB_TIMEOUT,
     'findOrCreateChat',
   );
-  // Handoff humano: pausa a IA nesse chat (só escreve se ainda não era manual,
-  // p/ não bater no banco / reordenar listas por updatedAt em todo eco).
+  // Handoff humano: pausa a IA nesse chat. `manual_since` é REFRESCADO em todo
+  // eco: o relógio da retomada automática tem que contar do ÚLTIMO que a
+  // atendente falou, senão a IA voltaria no meio de um atendimento em andamento.
+  //
+  // Isso substitui de propósito o guard `eq(isManual, false)` que existia aqui
+  // para evitar escrita repetida. A escrita passou a ser necessária (é o relógio),
+  // e o efeito colateral que o guard evitava — o chat subir na lista por
+  // updatedAt — é agora o comportamento desejado: a atendente acabou de falar
+  // ali, a conversa TEM que ir para o topo.
+  const now = new Date();
   await withTimeout(
     db.update(chats)
-      .set({ isManual: true, updatedAt: new Date() })
-      .where(and(eq(chats.id, chat.id), eq(chats.isManual, false))),
+      .set({
+        isManual: true,
+        manualSince: now,
+        manualReason: 'human_echo',
+        updatedAt: now,
+      })
+      .where(eq(chats.id, chat.id)),
     DB_TIMEOUT,
     'setChatManual',
   );
   // Persiste a fala do humano (role assistant = bolha de saída) SÓ para tipos de
   // conteúdo real — edit/revoke/reaction não viram bolha (evita lixo no contexto).
+  // fromHuman separa esta fala das da IA dentro do mesmo role.
   if (ECHO_CONTENT_TYPES.has(echo?.type)) {
     const { body } = extractContent(echo);
-    await withTimeout(saveMessage(chat.id, 'assistant', body), DB_TIMEOUT, 'saveEcho');
+    await withTimeout(
+      saveMessage(chat.id, 'assistant', body, { fromHuman: true }),
+      DB_TIMEOUT,
+      'saveEcho',
+    );
   }
 
   if (echoId) {

@@ -249,11 +249,17 @@ export async function setChatManualMode(
   }
 
   try {
+    const now = new Date()
     await db
       .update(chats)
       .set({
         isManual,
-        updatedAt: new Date()
+        // Assumir manualmente arma o relógio da retomada automática; devolver
+        // para a IA tem que LIMPAR os dois campos, senão o chat volta como
+        // automático mas carregando a data e o motivo de uma virada antiga.
+        manualSince: isManual ? now : null,
+        manualReason: isManual ? "panel" : null,
+        updatedAt: now
       })
       .where(eq(chats.id, chatId))
 
@@ -299,17 +305,19 @@ export async function sendManualMessage(
       return { error: "Chat não está em modo manual" }
     }
 
-    // Salva a mensagem como assistant (mensagem do agente humano)
-    await saveMessage(chat.id, "assistant", content.trim())
+    // Salva a mensagem como assistant (mensagem do agente humano). fromHuman a
+    // separa das falas da IA dentro do mesmo role.
+    await saveMessage(chat.id, "assistant", content.trim(), { fromHuman: true })
 
     // Envia via WhatsApp pelo provider do salão. Envio manual está num chat
     // ativo (geralmente dentro da janela de 24h) -> passa chatId para a checagem.
     await sendProactiveMessage({ salonId: chat.salonId, to: chat.clientPhone, text: content.trim(), chatId: chat.id })
 
-    // Atualiza updatedAt do chat
+    // Refresca o relógio da retomada: o dono acabou de falar, então a IA só deve
+    // reassumir contando a partir de AGORA — igual ao eco vindo do celular.
     await db
       .update(chats)
-      .set({ updatedAt: new Date() })
+      .set({ manualSince: new Date(), updatedAt: new Date() })
       .where(eq(chats.id, chatId))
 
     return { success: true }

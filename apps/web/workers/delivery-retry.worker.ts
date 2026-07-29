@@ -86,7 +86,16 @@ async function markDeliveryStatus(
 /** Final rung: stop retrying, hand the chat to a human, flag the message undelivered. */
 async function handoffToManual(d: DeliveryRetryJobData, log: LadderLogger): Promise<void> {
   try {
-    await db.update(chats).set({ isManual: true, updatedAt: new Date() }).where(eq(chats.id, d.chatId));
+    const flippedAt = new Date();
+    await db
+      .update(chats)
+      .set({
+        isManual: true,
+        manualSince: flippedAt,
+        manualReason: "delivery_failed",
+        updatedAt: flippedAt,
+      })
+      .where(eq(chats.id, d.chatId));
   } catch (err) {
     log.error({ err, chatId: d.chatId }, "Delivery ladder: failed to flip chat to manual mode");
   }
