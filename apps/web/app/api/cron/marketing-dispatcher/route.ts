@@ -1,6 +1,7 @@
 import { db, domainServices, logger, recoveryFlows, recoverySteps, sql } from '@repo/db'
-import { sendProactiveMessage } from '@/lib/services/messaging/proactive'
+import { sendProactiveMessage, ProactiveTemplateRequiredError } from '@/lib/services/messaging/proactive'
 import { requireCronAuth } from '@/lib/services/admin-auth.service'
+import { recordAlert } from '@/lib/services/alerts/alert.service'
 import { NextRequest } from 'next/server'
 import { runAiRetentionDispatcher } from '@/lib/services/marketing/ai-retention-dispatcher.service'
 
@@ -18,7 +19,28 @@ const sendMarketingMessage = async (
 ): Promise<void> => {
   // Roteia pelo provider do salão. Evolution: texto livre (msgs de IA ganham o
   // indicador de digitação). Cloud: exige template fora da janela de 24h.
-  await sendProactiveMessage({ salonId, to, text: body, withTyping: options?.generatedByAi })
+  try {
+    await sendProactiveMessage({ salonId, to, text: body, withTyping: options?.generatedByAi })
+  } catch (err) {
+    // O alerta mora AQUI, no wrapper, e não no dispatcher: ele vive em
+    // packages/db e a dependency rule proíbe packages/* importar de apps/*.
+    void recordAlert({
+      scope: 'salon',
+      salonId,
+      type:
+        err instanceof ProactiveTemplateRequiredError
+          ? 'campaign_template_missing'
+          : 'campaign_send_failed',
+      severity: err instanceof ProactiveTemplateRequiredError ? 'critical' : 'warning',
+      title:
+        err instanceof ProactiveTemplateRequiredError
+          ? 'Campanhas não estão saindo: falta template aprovado na Meta'
+          : 'Falha ao enviar mensagem de campanha',
+      detail: { reason: err instanceof Error ? err.message : String(err) },
+    })
+    // Re-lança: quem chama marca a mensagem como falha e controla o retry.
+    throw err
+  }
 }
 
 export async function GET(request: NextRequest) {

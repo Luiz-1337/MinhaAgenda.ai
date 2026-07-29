@@ -1,4 +1,7 @@
-import { db, appointments, salons, profiles, sql, and, eq, lte, gt, isNull } from "@repo/db"
+import { db, appointments, and, eq, lte, gt, isNull } from "@repo/db"
+// Relativos (padrão do repo p/ módulos que podem entrar no grafo do worker).
+import { recordAlert } from "./alerts/alert.service"
+import { ProactiveTemplateRequiredError } from "./messaging/proactive"
 
 export interface ReminderJobResult {
     queuedCount: number
@@ -114,6 +117,25 @@ Te esperamos lá! ✨`
             } catch (sendError) {
                 console.error(`Erro ao enviar lembrete para agendamento ${apt.id}:`, sendError)
                 failedCount++
+
+                // O erro morria aqui num console.error que ninguém lê. Em salão
+                // Cloud fora da janela de 24h isso significava lembrete NENHUM
+                // saindo, silenciosamente, todos os dias. recordAlert tem throttle
+                // de 1h e nunca lança, então não atrapalha o resto da fila.
+                const faltaTemplate = sendError instanceof ProactiveTemplateRequiredError
+                void recordAlert({
+                    scope: "salon",
+                    salonId: apt.salon.id,
+                    type: faltaTemplate ? "reminder_template_missing" : "reminder_send_failed",
+                    severity: faltaTemplate ? "critical" : "warning",
+                    title: faltaTemplate
+                        ? "Lembretes não estão saindo: falta template aprovado na Meta"
+                        : "Falha ao enviar lembrete de agendamento",
+                    detail: {
+                        appointmentId: apt.id,
+                        reason: sendError instanceof Error ? sendError.message : String(sendError),
+                    },
+                })
             }
         }
     } catch (err) {

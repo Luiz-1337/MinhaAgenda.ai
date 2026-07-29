@@ -11,11 +11,31 @@
  * grafo de serviços compartilhado com o worker.
  */
 
-import { db, messages, eq, and, desc } from '@repo/db';
+import { db, chats, messages, eq, and, desc, inArray } from '@repo/db';
 import { getProviderForSalon } from './index';
 import type { OutboundResult } from './provider';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Erro de quando a Cloud API exige template e não há um configurado.
+ *
+ * Tipado de propósito, em vez de string: o envio MANUAL do painel precisa que o
+ * erro chegue no dono (ele está ali esperando), enquanto os crons de lembrete e
+ * marketing precisam distinguir "faltou template" de uma falha de rede para
+ * decidir entre alertar e re-tentar.
+ */
+export class ProactiveTemplateRequiredError extends Error {
+  readonly salonId: string;
+
+  constructor(salonId: string) {
+    super(
+      'Envio proativo via WhatsApp Cloud fora da janela de 24h exige um template aprovado (ainda não configurado para este tipo de mensagem).',
+    );
+    this.name = 'ProactiveTemplateRequiredError';
+    this.salonId = salonId;
+  }
+}
 
 export interface ProactiveTemplate {
   templateName: string;
@@ -34,6 +54,29 @@ export interface SendProactiveArgs {
   withTyping?: boolean;
   /** Template HSM para o caso Cloud fora da janela de 24h. */
   template?: ProactiveTemplate;
+}
+
+/**
+ * Acha o chat de um telefone dentro do salão, para o caminho proativo poder
+ * checar a janela de 24h mesmo quando o chamador não tem o chatId em mãos (é o
+ * caso dos crons de lembrete e marketing).
+ *
+ * Duas formas de telefone de propósito: `chats.client_phone` está inconsistente
+ * em produção — a maioria é só-dígitos, mas parte das linhas tem o '+'. Um `eq()`
+ * ingênuo erraria justamente essas. O `inArray` mantém a busca no índice único
+ * (salon_id, client_phone).
+ */
+async function findChatIdByPhone(salonId: string, to: string): Promise<string | undefined> {
+  const digits = to.replace(/\D/g, '');
+  if (!digits) return undefined;
+
+  const row = await db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(and(eq(chats.salonId, salonId), inArray(chats.clientPhone, [digits, `+${digits}`])))
+    .limit(1);
+
+  return row[0]?.id;
 }
 
 /** True se a última mensagem RECEBIDA do cliente no chat foi há menos de 24h. */
@@ -60,7 +103,13 @@ export async function sendProactiveMessage(args: SendProactiveArgs): Promise<Out
   }
 
   // Cloud: dentro da janela de 24h pode mandar texto livre; fora exige template.
-  const insideWindow = args.chatId ? await isWithin24hWindow(args.chatId) : false;
+  //
+  // Quando o chamador não passou chatId (os crons de lembrete e marketing não
+  // têm), resolvemos pelo telefone. Sem isso a janela nunca era consultada e TODO
+  // envio proativo caía na exigência de template — inclusive os que estavam na
+  // janela grátis, que poderiam ser texto livre sem custo nenhum.
+  const chatId = args.chatId ?? (await findChatIdByPhone(args.salonId, args.to));
+  const insideWindow = chatId ? await isWithin24hWindow(chatId) : false;
   if (insideWindow) {
     return provider.sendText({ to: args.to, body: args.text, salonId: args.salonId, agentId: args.agentId });
   }
@@ -74,7 +123,5 @@ export async function sendProactiveMessage(args: SendProactiveArgs): Promise<Out
       bodyParams: args.template.bodyParams,
     });
   }
-  throw new Error(
-    'Envio proativo via WhatsApp Cloud fora da janela de 24h exige um template aprovado (ainda não configurado para este tipo de mensagem).',
-  );
+  throw new ProactiveTemplateRequiredError(args.salonId);
 }
