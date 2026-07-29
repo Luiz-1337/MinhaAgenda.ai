@@ -25,7 +25,7 @@ import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/servi
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { RateLimitError } from '@/lib/errors';
-import { db, agents, messages, chats, eq } from '@repo/db';
+import { db, agents, messages, chats, eq, and, or, ne, isNull } from '@repo/db';
 import {
   extractCloudContent,
   isCloudContentType,
@@ -107,6 +107,12 @@ export async function POST(req: NextRequest) {
         const value = change?.value ?? {};
         const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
 
+        // O número legível do salão vem no metadata de TODO payload — mensagem,
+        // status ou eco. Capturar AQUI, e não dentro de handleInboundMessage,
+        // porque o dono pode passar o dia respondendo pelo celular (só ecos) e o
+        // número nunca seria preenchido.
+        await captureDisplayPhoneNumber(phoneNumberId, value?.metadata?.display_phone_number, reqLogger);
+
         if (Array.isArray(value.messages)) {
           for (const msg of value.messages) {
             await handleInboundMessage(msg, value, phoneNumberId, reqLogger);
@@ -153,6 +159,48 @@ export async function POST(req: NextRequest) {
     reqLogger.error({ err: error }, 'Cloud webhook: erro ao processar');
     WebhookMetrics.error('processing_error');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * Guarda o número legível do salão ("+55 11 98604-9295"), que a Meta manda no
+ * `metadata` de TODO payload do webhook.
+ *
+ * O painel mostra isso; o phone_number_id é um id opaco que não diz nada ao dono.
+ * Fica no laço principal, e não dentro de handleInboundMessage, porque o dono pode
+ * passar o dia respondendo pelo celular — só ecos — e nesse caso o número nunca
+ * seria capturado.
+ *
+ * Escreve apenas quando difere do gravado, então em regime é uma leitura barata e
+ * ZERO escrita. Awaited de propósito: promise solta em função serverless morre
+ * quando a lambda congela após a resposta. Nunca lança — um rótulo de UI não pode
+ * derrubar o webhook e fazer a Meta re-tentar a mensagem.
+ */
+async function captureDisplayPhoneNumber(
+  phoneNumberId: string | undefined,
+  displayPhoneNumber: string | undefined,
+  reqLogger: ContextLogger,
+): Promise<void> {
+  if (!phoneNumberId || !displayPhoneNumber) return;
+  try {
+    await withTimeout(
+      db
+        .update(agents)
+        .set({ whatsappNumber: displayPhoneNumber })
+        .where(
+          and(
+            eq(agents.whatsappPhoneNumberId, phoneNumberId),
+            // isNull É OBRIGATÓRIO aqui: em SQL `NULL != 'x'` resulta em NULL, não
+            // em true, então um `ne` sozinho NUNCA atualizaria a linha ainda vazia
+            // — exatamente o caso que este código existe para resolver.
+            or(isNull(agents.whatsappNumber), ne(agents.whatsappNumber, displayPhoneNumber)),
+          ),
+        ),
+      DB_TIMEOUT,
+      'captureDisplayPhoneNumber',
+    );
+  } catch (err) {
+    reqLogger.warn({ err, phoneNumberId }, 'Falha ao guardar o número legível do salão (ignorado)');
   }
 }
 
@@ -257,19 +305,17 @@ function verifySignature(raw: string, header: string, secret: string): boolean {
  */
 async function resolveCloudTenant(
   phoneNumberId: string | undefined,
-): Promise<{ salonId: string; agentId: string; storedNumber: string | null } | null> {
+): Promise<{ salonId: string; agentId: string } | null> {
   if (!phoneNumberId) return null;
   const agent = await withTimeout(
     db.query.agents.findFirst({
       where: eq(agents.whatsappPhoneNumberId, phoneNumberId),
-      columns: { id: true, salonId: true, whatsappNumber: true },
+      columns: { id: true, salonId: true },
     }),
     DB_TIMEOUT,
     'findAgentByPhoneNumberId',
   );
-  if (agent) {
-    return { salonId: agent.salonId, agentId: agent.id, storedNumber: agent.whatsappNumber };
-  }
+  if (agent) return { salonId: agent.salonId, agentId: agent.id };
   return null;
 }
 
@@ -322,17 +368,6 @@ async function handleInboundMessage(
   //     phone_number_id — e alcança conexões feitas antes desta mudança, sem
   //     exigir reconexão. Escreve só quando difere, para não bater no banco a
   //     cada mensagem.
-  //     AWAIT, não fire-and-forget: em função serverless a lambda pode ser
-  //     congelada assim que a resposta sai, e uma promise solta morre sem gravar.
-  //     Custa uma ida ao banco só quando o valor difere — ou seja, uma vez.
-  const displayPhoneNumber: string | undefined = value?.metadata?.display_phone_number;
-  if (displayPhoneNumber && displayPhoneNumber !== tenant.storedNumber) {
-    await withTimeout(
-      db.update(agents).set({ whatsappNumber: displayPhoneNumber }).where(eq(agents.id, agentId)),
-      DB_TIMEOUT,
-      'storeDisplayPhoneNumber',
-    ).catch((err) => logger2.warn({ err }, 'Falha ao guardar o número legível do salão'));
-  }
 
   // 4. Conteúdo, pela tabela única (mesma que decide o gate do eco).
   const { body: rawBody, hasMedia, mediaType, mediaId, wakeAI, known } = extractCloudContent(msg);

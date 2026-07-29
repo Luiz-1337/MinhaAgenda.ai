@@ -26,6 +26,7 @@ import { createHmac } from "node:crypto"
 import { createClient } from "@/lib/supabase/server"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { encryptSecret } from "@/lib/infra/crypto"
+import { decodeCloudToken } from "@/lib/services/messaging/cloud/token-resolver"
 import { logger } from "@/lib/infra/logger"
 import { db, agents, eq, and } from "@repo/db"
 import { revalidatePath } from "next/cache"
@@ -384,8 +385,9 @@ export async function disconnectWhatsAppCloud(
 }
 
 /**
- * Status da conexão Cloud do salão (lê a COLUNA do banco — não bate em API
- * externa). Chamar na page.tsx (RSC) e passar por prop, evitando polling.
+ * Status da conexão Cloud do salão. Lê a COLUNA do banco — não bate em API
+ * externa, exceto na auto-cura descrita abaixo. Chamar na page.tsx (RSC) e passar
+ * por prop, evitando polling.
  */
 export async function getWhatsAppCloudStatus(salonId: string): Promise<WhatsAppCloudStatus> {
   // É uma server action exposta -> precisa se AUTO-autorizar (não confiar só no
@@ -396,12 +398,44 @@ export async function getWhatsAppCloudStatus(salonId: string): Promise<WhatsAppC
   // Procura o agente do salão com config Cloud (independente de qual está ativo).
   const agent = await db.query.agents.findFirst({
     where: and(eq(agents.salonId, salonId), eq(agents.messagingProvider, "cloud")),
-    columns: { whatsappPhoneNumberId: true, whatsappWabaId: true, whatsappNumber: true },
+    columns: {
+      id: true,
+      whatsappPhoneNumberId: true,
+      whatsappWabaId: true,
+      whatsappNumber: true,
+      whatsappCloudToken: true,
+    },
   })
+
+  // AUTO-CURA, uma vez só: conexões feitas antes de existir esta coluna ficaram
+  // sem o número, e o webhook só preenche quando chega tráfego — o que pode levar
+  // horas. Como o token do cliente está guardado, dá para perguntar à Meta agora e
+  // gravar. Roda APENAS quando a coluna está vazia, então é uma chamada na vida do
+  // número, não por page load. Falha em silêncio: o card cai no phone_number_id,
+  // que é o comportamento de antes, e a tela nunca quebra por causa de um rótulo.
+  let phoneNumber = agent?.whatsappNumber ?? null
+  if (agent?.whatsappPhoneNumberId && !phoneNumber) {
+    try {
+      const token = decodeCloudToken(agent.whatsappCloudToken)
+      if (token) {
+        const facts = await getPhoneNumberFacts(agent.whatsappPhoneNumberId, token)
+        if (facts.displayPhoneNumber) {
+          phoneNumber = facts.displayPhoneNumber
+          await db
+            .update(agents)
+            .set({ whatsappNumber: facts.displayPhoneNumber })
+            .where(eq(agents.id, agent.id))
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, salonId }, "Auto-cura do número legível falhou (segue com o id)")
+    }
+  }
+
   return {
     connected: !!agent?.whatsappPhoneNumberId,
     phoneNumberId: agent?.whatsappPhoneNumberId ?? null,
     wabaId: agent?.whatsappWabaId ?? null,
-    phoneNumber: agent?.whatsappNumber ?? null,
+    phoneNumber,
   }
 }
