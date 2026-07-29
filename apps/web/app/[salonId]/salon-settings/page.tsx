@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SalonEditForm, type SalonEditFormRef } from "@/components/dashboard/salon-edit-form"
+import { AIResumePolicyCard } from "@/components/dashboard/ai-resume-policy-card"
 import { getCurrentSalon } from "@/app/actions/salon"
 import { useSalon } from "@/contexts/salon-context"
 import type { SalonDetails } from "@/app/actions/salon"
@@ -164,12 +165,17 @@ export default function SalonSettingsPage() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : salonData && activeSalon ? (
-            <SalonEditForm
-              ref={formRef}
-              salon={salonData}
-              salonId={activeSalon.id}
-              onPendingChange={setIsPending}
-            />
+            <div className="space-y-6">
+              <SalonEditForm
+                ref={formRef}
+                salon={salonData}
+                salonId={activeSalon.id}
+                onPendingChange={setIsPending}
+              />
+              {/* Card independente: tem as próprias actions e o próprio Salvar, para
+                  não entrar no fluxo de submit do SalonEditForm. */}
+              <AIResumePolicyCard salonId={activeSalon.id} />
+            </div>
           ) : activeSalon && loadError ? (
             <div className="py-8 text-center flex flex-col items-center gap-3">
               <p className="text-sm text-muted-foreground">

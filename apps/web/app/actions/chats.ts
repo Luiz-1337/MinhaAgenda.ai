@@ -1,7 +1,10 @@
 "use server"
 
-import { db, chats, messages, customers, chatKanbanColumns, and, asc, desc, eq, inArray } from "@repo/db"
+import { db, chats, messages, customers, chatKanbanColumns, salons, and, asc, desc, eq, inArray } from "@repo/db"
+import { revalidatePath } from "next/cache"
 import { getAuthUser, getSessionUserId } from "@/lib/supabase/auth"
+import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { AI_RESUME_MIN_MINUTES, AI_RESUME_MAX_MINUTES } from "@/lib/services/chat/manual-mode"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatPreviewTime } from "@/lib/utils/time.utils"
 import { sendProactiveMessage } from "@/lib/services/messaging/proactive"
@@ -266,6 +269,74 @@ export async function setChatManualMode(
     return { success: true }
   } catch (error) {
     console.error("Erro ao atualizar modo manual do chat:", error)
+    return { error: error instanceof Error ? error.message : "Erro desconhecido" }
+  }
+}
+
+/**
+ * Política de retomada automática da IA, por salão.
+ *
+ * `null` = nunca retomar sozinho — só o botão "Passar para a IA" devolve a
+ * conversa. É o comportamento histórico e o default de todo salão.
+ */
+export async function getAIResumePolicy(
+  salonId: string
+): Promise<{ minutes: number | null } | { error: string }> {
+  if (!salonId) return { error: "salonId é obrigatório" }
+
+  const userId = await getSessionUserId()
+  if (!userId) return { error: "Não autenticado" }
+  if (!(await hasSalonPermission(salonId, userId))) {
+    return { error: "Sem permissão para este salão" }
+  }
+
+  try {
+    const row = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { aiResumeAfterMinutes: true }
+    })
+    return { minutes: row?.aiResumeAfterMinutes ?? null }
+  } catch (error) {
+    console.error("Erro ao buscar política de retomada da IA:", error)
+    return { error: error instanceof Error ? error.message : "Erro desconhecido" }
+  }
+}
+
+export async function setAIResumePolicy(input: {
+  salonId: string
+  /** Minutos de silêncio do humano até a IA reassumir. null desliga a retomada. */
+  minutes: number | null
+}): Promise<{ success: true } | { error: string }> {
+  if (!input.salonId) return { error: "salonId é obrigatório" }
+
+  const userId = await getSessionUserId()
+  if (!userId) return { error: "Não autenticado" }
+  if (!(await hasSalonPermission(input.salonId, userId))) {
+    return { error: "Sem permissão para este salão" }
+  }
+
+  // Valida ANTES de bater no banco: o CHECK da migration 024 rejeitaria fora da
+  // faixa, mas com erro de Postgres cru na cara do dono.
+  if (input.minutes !== null) {
+    if (!Number.isInteger(input.minutes)) {
+      return { error: "Informe o tempo em minutos inteiros." }
+    }
+    if (input.minutes < AI_RESUME_MIN_MINUTES || input.minutes > AI_RESUME_MAX_MINUTES) {
+      return {
+        error: `O tempo precisa ficar entre ${AI_RESUME_MIN_MINUTES} minutos e ${AI_RESUME_MAX_MINUTES / 1440} dias.`
+      }
+    }
+  }
+
+  try {
+    await db
+      .update(salons)
+      .set({ aiResumeAfterMinutes: input.minutes, updatedAt: new Date() })
+      .where(eq(salons.id, input.salonId))
+    revalidatePath(`/${input.salonId}/settings`)
+    return { success: true }
+  } catch (error) {
+    console.error("Erro ao salvar política de retomada da IA:", error)
     return { error: error instanceof Error ? error.message : "Erro desconhecido" }
   }
 }
