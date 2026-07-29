@@ -12,6 +12,8 @@ import { StageTimer } from "../lib/infra/stage-timer";
 import { generateAIResponse } from "../lib/services/ai/generate-response.service";
 import { processMedia } from "../lib/services/ai/media-processor.service";
 import { saveMessage, setMessageMediaPath } from "../lib/services/chat.service";
+// Caminho RELATIVO: o worker roda via tsx e não resolve o alias @/.
+import { shouldResumeAI } from "../lib/services/chat/manual-mode";
 import { uploadWhatsappMedia } from "../lib/supabase/storage";
 import {
   isSessionError,
@@ -475,28 +477,56 @@ async function processMessage(
       return { status: "success", chatId, messageId, duration: Date.now() - startTime };
     }
 
-    const chatRecord = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      columns: { isManual: true },
-    });
+    // Chat + salão em paralelo: a política de retomada vive no salão, então o
+    // gate de modo manual precisa dos dois. Antes eram duas idas sequenciais.
+    const [chatRecord, salonRecord] = await Promise.all([
+      db.query.chats.findFirst({
+        where: eq(chats.id, chatId),
+        columns: { isManual: true, manualSince: true },
+      }),
+      db.query.salons.findFirst({
+        where: eq(salonsTable.id, salonId),
+        columns: {
+          subscriptionStatus: true,
+          subscriptionStatusChangedAt: true,
+          aiResumeAfterMinutes: true,
+        },
+      }),
+    ]);
     timer.mark("chat_record_loaded");
 
     if (chatRecord?.isManual) {
-      jobLogger.info("Chat in manual mode, skipping AI processing");
-      timer.flush(jobLogger, { outcome: "manual_mode", queueWaitMs });
-      return {
-        status: "manual_mode",
-        chatId,
-        messageId,
-        duration: Date.now() - startTime,
-      };
-    }
+      // Retomada automática: se o humano ficou calado pelo prazo configurado no
+      // salão, a IA reassume agora. É avaliado AQUI, na chegada da mensagem, e
+      // não por cron — é o único instante em que a decisão muda alguma coisa.
+      const resumed = shouldResumeAI(
+        { isManual: true, manualSince: chatRecord.manualSince },
+        salonRecord?.aiResumeAfterMinutes,
+      );
 
-    // Check subscription status before processing
-    const salonRecord = await db.query.salons.findFirst({
-      where: eq(salonsTable.id, salonId),
-      columns: { subscriptionStatus: true, subscriptionStatusChangedAt: true },
-    });
+      if (!resumed) {
+        jobLogger.info("Chat in manual mode, skipping AI processing");
+        timer.flush(jobLogger, { outcome: "manual_mode", queueWaitMs });
+        return {
+          status: "manual_mode",
+          chatId,
+          messageId,
+          duration: Date.now() - startTime,
+        };
+      }
+
+      await db
+        .update(chats)
+        .set({ isManual: false, manualSince: null, manualReason: null, updatedAt: new Date() })
+        .where(eq(chats.id, chatId));
+      jobLogger.info(
+        {
+          manualSince: chatRecord.manualSince,
+          resumeAfterMinutes: salonRecord?.aiResumeAfterMinutes,
+        },
+        "Modo manual expirou por inatividade do humano — IA reassumindo o chat",
+      );
+    }
     timer.mark("subscription_checked");
 
     if (!salonRecord || salonRecord.subscriptionStatus === 'CANCELED') {
