@@ -322,9 +322,12 @@ async function handleInboundMessage(
   //     phone_number_id — e alcança conexões feitas antes desta mudança, sem
   //     exigir reconexão. Escreve só quando difere, para não bater no banco a
   //     cada mensagem.
+  //     AWAIT, não fire-and-forget: em função serverless a lambda pode ser
+  //     congelada assim que a resposta sai, e uma promise solta morre sem gravar.
+  //     Custa uma ida ao banco só quando o valor difere — ou seja, uma vez.
   const displayPhoneNumber: string | undefined = value?.metadata?.display_phone_number;
   if (displayPhoneNumber && displayPhoneNumber !== tenant.storedNumber) {
-    void withTimeout(
+    await withTimeout(
       db.update(agents).set({ whatsappNumber: displayPhoneNumber }).where(eq(agents.id, agentId)),
       DB_TIMEOUT,
       'storeDisplayPhoneNumber',
