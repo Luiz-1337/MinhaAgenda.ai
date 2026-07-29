@@ -81,7 +81,14 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
   // qualquer forma, então em salão Cloud a chamada era só uma ida ao servidor
   // para não descobrir nada.
   useEffect(() => {
-    if (cloudStatus.connected) return
+    if (cloudStatus.connected) {
+      // Não há status de Evolution a buscar — mas o loading PRECISA ser encerrado
+      // aqui: ele porteia os quatro cards de WhatsApp, inclusive o de conexão
+      // ativa com o botão de desconectar. Sair sem desligá-lo deixa o bloco
+      // inteiro em branco.
+      setWhatsappLoading(false)
+      return
+    }
     fetchWhatsAppStatus()
   }, [salonId, cloudStatus.connected])
 
