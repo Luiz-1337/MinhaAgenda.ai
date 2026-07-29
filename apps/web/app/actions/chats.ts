@@ -76,6 +76,14 @@ async function authorizeSalon(salonId: string): Promise<{ userId: string } | { e
   return { userId }
 }
 
+/** O que `authorizeChat` devolve: o chat já autorizado, com o que as actions usam. */
+type AuthorizedChat = {
+  id: string
+  salonId: string
+  clientPhone: string
+  isManual: boolean | null
+}
+
 /**
  * Autorização a partir do CHAT: resolve o salão dono do chat e valida a permissão
  * nele. As actions que recebem só `chatId` não têm como se escopar sem este
@@ -85,21 +93,24 @@ async function authorizeSalon(salonId: string): Promise<{ userId: string } | { e
  */
 async function authorizeChat(
   chatId: string
-): Promise<{ salonId: string } | { error: string }> {
+): Promise<{ chat: AuthorizedChat } | { error: string }> {
   if (!chatId) return { error: "chatId é obrigatório" }
   const userId = await getSessionUserId()
   if (!userId) return { error: "Não autenticado" }
 
+  // Traz de uma vez tudo que os chamadores usam depois (telefone, modo manual).
+  // Sem isso cada action refaz a mesma busca, e com o banco em us-west-2 o RTT é
+  // o custo dominante deste caminho.
   const chat = await db.query.chats.findFirst({
     where: eq(chats.id, chatId),
-    columns: { salonId: true },
+    columns: { id: true, salonId: true, clientPhone: true, isManual: true },
   })
   // Mensagem única para chat inexistente e chat de outro salão: distinguir os
   // dois contaria a um estranho que aquele id existe.
   if (!chat || !(await hasSalonPermission(chat.salonId, userId))) {
     return { error: "Conversa não encontrada" }
   }
-  return { salonId: chat.salonId }
+  return { chat }
 }
 
 /**
@@ -306,7 +317,10 @@ export async function setChatManualMode(
         manualReason: isManual ? "panel" : null,
         updatedAt: now
       })
-      .where(eq(chats.id, chatId))
+      // Defesa em profundidade: o guard já resolveu o salão deste chat, então o
+      // UPDATE também carrega o escopo. Se algum dia o guard for afrouxado, a
+      // escrita não vira o interruptor da IA no chat de outro salão.
+      .where(and(eq(chats.id, chatId), eq(chats.salonId, auth.chat.salonId)))
 
     return { success: true }
   } catch (error) {
@@ -390,22 +404,11 @@ export async function sendManualMessage(
   const auth = await authorizeChat(chatId)
   if ("error" in auth) return auth
 
+  // O guard já trouxe o chat (id, telefone, salão, modo manual) — reconsultar aqui
+  // custaria uma ida ao banco a mais por mensagem enviada.
+  const chat = auth.chat
+
   try {
-    // Busca o chat para obter o clientPhone e salonId
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      columns: {
-        id: true,
-        clientPhone: true,
-        salonId: true,
-        isManual: true,
-      },
-    })
-
-    if (!chat) {
-      return { error: "Conversa não encontrada" }
-    }
-
     if (!chat.isManual) {
       return { error: "Chat não está em modo manual" }
     }
@@ -423,7 +426,7 @@ export async function sendManualMessage(
     await db
       .update(chats)
       .set({ manualSince: new Date(), updatedAt: new Date() })
-      .where(eq(chats.id, chatId))
+      .where(and(eq(chats.id, chatId), eq(chats.salonId, chat.salonId)))
 
     return { success: true }
   } catch (error) {
@@ -439,14 +442,11 @@ export async function getNoShowRiskForChat(chatId: string): Promise<{ isHighRisk
   const auth = await authorizeChat(chatId)
   if ("error" in auth) return auth
 
-  try {
-    // Busca phone e salon
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, chatId),
-      columns: { clientPhone: true, salonId: true }
-    });
+  // Telefone e salão já vieram do guard.
+  const chat = auth.chat
 
-    if (!chat || !chat.clientPhone) return { isHighRisk: false };
+  try {
+    if (!chat.clientPhone) return { isHighRisk: false };
 
     // Busca cliente na tabela customers (não profiles)
     const customer = await db.query.customers.findFirst({
