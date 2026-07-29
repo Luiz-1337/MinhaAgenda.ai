@@ -69,6 +69,17 @@ type SignupFlow = "standard" | "coexistence"
 // (Coexistência / QR Code). O antigo "coexistence" foi descontinuado pela Meta.
 const COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding"
 
+// Evento de conclusão do fluxo de Coexistência. NÃO é o "FINISH" do fluxo
+// padrão, e o payload traz SÓ o waba_id — sem phone_number_id:
+//   { type: "WA_EMBEDDED_SIGNUP", event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+//     data: { waba_id: "..." }, version: 3 }
+// Tratar só "FINISH" fazia a Coexistência terminar na Meta e morrer aqui em
+// silêncio (o número ficava conectado lá e o salão nunca era gravado).
+const COEXISTENCE_FINISH_EVENT = "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+
+// Origens aceitas no postMessage do signup: facebook.com e subdomínios, só https.
+const META_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*facebook\.com$/
+
 // Libera os botões se nenhum evento de signup chegar (ex.: popup fechado sem concluir).
 const SIGNUP_TIMEOUT_MS = 90_000
 
@@ -81,7 +92,9 @@ export interface MetaEmbeddedSignupProps {
   salonId: string
   onSuccess: (data: {
     wabaId: string
-    phoneNumberId: string
+    // Ausente na Coexistência: a Meta não manda o phone_number_id no evento de
+    // conclusão. O servidor resolve pela WABA depois de trocar o `code`.
+    phoneNumberId?: string
     phoneNumber?: string
     // authorization code do Embedded Signup (trocado no servidor pelo token do
     // cliente). Ausente no caminho manual/legado => servidor usa token da plataforma.
@@ -153,7 +166,7 @@ export function MetaEmbeddedSignup({
   // onSuccess uma única vez (firedRef). flowRef guarda qual botão originou (não
   // depende do estado, que pode ter sido resetado no momento do disparo).
   const codeRef = useRef<string | undefined>(undefined)
-  const signupDataRef = useRef<{ phoneNumberId: string; wabaId: string } | null>(null)
+  const signupDataRef = useRef<{ phoneNumberId?: string; wabaId: string } | null>(null)
   const flowRef = useRef<SignupFlow | null>(null)
   const firedRef = useRef(false)
   const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -189,6 +202,13 @@ export function MetaEmbeddedSignup({
       fireSuccess()
       return
     }
+    // Sem phoneNumberId (Coexistência) o `code` é OBRIGATÓRIO: é ele que vira o
+    // token do cliente, e é o token que resolve o número na WABA. Concluir sem
+    // code aqui só geraria erro no servidor — então seguimos esperando, e quem
+    // avisa o dono é o timeout de SIGNUP_TIMEOUT_MS. A janela de graça abaixo
+    // existe para o fluxo PADRÃO, onde o número já veio e o envio pode cair no
+    // token da plataforma.
+    if (!signupDataRef.current.phoneNumberId) return
     if (!graceTimer.current) {
       graceTimer.current = setTimeout(() => fireSuccess(), CODE_GRACE_MS)
     }
@@ -244,8 +264,11 @@ export function MetaEmbeddedSignup({
   // Listener para capturar resultado do signup (compartilhado pelos dois fluxos)
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Valida origem
-      if (!event.origin.endsWith("facebook.com")) {
+      // Valida origem: tem que ser facebook.com ou um subdomínio dele, sempre
+      // https. `endsWith("facebook.com")` sozinho aceitava sósias registráveis
+      // (`https://evilfacebook.com`), e esta é a ÚNICA autenticação da mensagem
+      // — um FINISH forjado dispara a conexão.
+      if (!META_ORIGIN.test(event.origin)) {
         return
       }
 
@@ -255,11 +278,15 @@ export function MetaEmbeddedSignup({
           : event.data
 
         if (data.type === "WA_EMBEDDED_SIGNUP") {
-          if (data.event === "FINISH" && data.data) {
+          const isCoexistenceFinish = data.event === COEXISTENCE_FINISH_EVENT
+          if ((data.event === "FINISH" || isCoexistenceFinish) && data.data) {
             const { phone_number_id, waba_id } = data.data
 
-            if (phone_number_id && waba_id) {
-              // Bufferiza os ids e tenta concluir (aguarda o `code` do callback).
+            // Coexistência: o waba_id sozinho basta — o phone_number_id é
+            // resolvido no servidor. No fluxo padrão os dois vêm no evento e
+            // exigimos ambos (sem waba_id não há como assinar o webhook).
+            if (waba_id && (phone_number_id || isCoexistenceFinish)) {
+              // Bufferiza o que veio e tenta concluir (aguarda o `code` do callback).
               signupDataRef.current = { phoneNumberId: phone_number_id, wabaId: waba_id }
               tryComplete()
             } else {
@@ -316,7 +343,20 @@ export function MetaEmbeddedSignup({
 
       // Destrava os botões caso o signup não retorne nenhum evento (popup fechado etc.).
       clearSignupTimeout()
-      signupTimeout.current = setTimeout(() => setLoadingFlow(null), SIGNUP_TIMEOUT_MS)
+      signupTimeout.current = setTimeout(() => {
+        setLoadingFlow(null)
+        // A Meta deu sinal de vida (o `code` da autorização, ou o evento com os
+        // dados da conta) e ainda assim não foi possível concluir — falta a
+        // outra metade. Ficar calado aqui é o pior dos mundos: a conta aparece
+        // conectada na Meta e o painel não sabe de nada. Popup fechado no meio,
+        // sem sinal nenhum, é desistência — esse segue silencioso.
+        if (!firedRef.current && (codeRef.current || signupDataRef.current)) {
+          const msg =
+            'A Meta não devolveu tudo o que precisamos para concluir a conexão. Clique em "Concluir" no popup da Meta; se persistir, tente conectar novamente.'
+          setError(msg)
+          onError?.(msg)
+        }
+      }, SIGNUP_TIMEOUT_MS)
 
       const loginOptions: FacebookLoginOptions = {
         config_id: cfgId,
@@ -346,7 +386,7 @@ export function MetaEmbeddedSignup({
         }
       }, loginOptions)
     },
-    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, clearGrace, resetLoading, tryComplete]
+    [sdkLoaded, configId, coexistenceConfigId, solutionId, clearSignupTimeout, clearGrace, resetLoading, tryComplete, onError]
   )
 
   // Se não tem configuração, mostra erro

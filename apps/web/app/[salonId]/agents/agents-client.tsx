@@ -142,7 +142,8 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
 
   // WhatsApp Cloud (Meta) — Embedded Signup (mecanismo novo)
   async function handleCloudConnect(data: {
-    phoneNumberId: string
+    // Ausente na Coexistência — o servidor resolve o número pela WABA.
+    phoneNumberId?: string
     wabaId?: string
     // authorization code do Embedded Signup (self-service): o servidor troca pelo
     // token do cliente. Ausente no caminho manual => usa o token da plataforma.
@@ -162,7 +163,8 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
         return
       }
       toast.success("WhatsApp conectado via Cloud API!")
-      setCloudStatus({ connected: true, phoneNumberId: data.phoneNumberId, wabaId: data.wabaId ?? null })
+      // Usa o número que o SERVIDOR resolveu: na Coexistência ele não vem do popup.
+      setCloudStatus({ connected: true, phoneNumberId: res.phoneNumberId, wabaId: data.wabaId ?? null })
       router.refresh()
     } catch {
       toast.error("Erro ao conectar. Tente novamente.")

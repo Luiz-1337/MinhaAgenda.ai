@@ -4,10 +4,15 @@
  * Server Actions da conexão WhatsApp Cloud API (Meta) por salão.
  *
  * Espelha o "conectar WhatsApp" da Evolution, trocando o mecanismo: em vez de
- * QR/instância, o dono conecta o número via Embedded Signup (popup da Meta),
- * que devolve phone_number_id + waba_id. Persistimos no AGENTE ATIVO do salão
- * (messaging_provider='cloud' + whatsapp_phone_number_id), que é a chave de
- * resolução de tenant do webhook /cloud.
+ * QR/instância, o dono conecta o número via Embedded Signup (popup da Meta).
+ * Persistimos no AGENTE ATIVO do salão (messaging_provider='cloud' +
+ * whatsapp_phone_number_id), que é a chave de resolução de tenant do webhook
+ * /cloud.
+ *
+ * O fluxo padrão devolve phone_number_id + waba_id no evento de sucesso. A
+ * COEXISTÊNCIA devolve SÓ o waba_id (evento
+ * FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING), então o phone_number_id é resolvido
+ * aqui, pela Graph API, depois da troca do code.
  *
  * Token de ENVIO = token da plataforma (env WHATSAPP_CLOUD_TOKEN); o dono
  * coloca só o NÚMERO, nunca um token.
@@ -50,6 +55,63 @@ async function exchangeCodeForToken(code: string): Promise<string> {
     throw new Error(`Troca do code falhou (HTTP ${res.status}).`)
   }
   return json.access_token
+}
+
+/**
+ * Falha de onboarding cuja mensagem já é segura (e útil) para o dono ver. O
+ * catch-all de connectWhatsAppCloud repassa esta mensagem em vez de trocá-la
+ * pelo texto genérico — "tem 2 números nessa conta" é acionável, "não foi
+ * possível concluir" não é.
+ */
+class OnboardingError extends Error {}
+
+/**
+ * Resolve o phone_number_id a partir da WABA do cliente.
+ *
+ * Necessário na COEXISTÊNCIA: o evento de sucesso da Meta
+ * (FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING) traz só o waba_id, e é o
+ * phone_number_id que o webhook /cloud usa para achar o salão — sem ele a
+ * conexão "dá certo" na Meta e o inbound cai no vazio.
+ *
+ * Recusa em vez de chutar quando a WABA tem mais de um número: escolher errado
+ * faria a IA responder pela linha errada.
+ */
+async function resolveWabaPhoneNumberId(wabaId: string, token: string): Promise<string> {
+  const res = await fetch(`${GRAPH_BASE}/${wabaId}/phone_numbers?fields=id,display_phone_number`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const json = (await res.json().catch(() => undefined)) as
+    | { data?: Array<{ id?: string; display_phone_number?: string }> }
+    | undefined
+  if (!res.ok) {
+    throw new Error(`phone_numbers falhou (HTTP ${res.status}).`)
+  }
+  const [first, ...rest] = (json?.data ?? []).filter((n) => !!n.id)
+  if (!first?.id) {
+    throw new OnboardingError(
+      "A Meta conectou a conta, mas nenhum número apareceu nela. Confirme o número no WhatsApp Manager e tente de novo.",
+    )
+  }
+  if (rest.length > 0) {
+    throw new OnboardingError(
+      `Esta conta da Meta tem ${rest.length + 1} números e não é possível saber qual é o deste salão. ` +
+        `Deixe apenas o número do salão na conta e tente de novo.`,
+    )
+  }
+  return first.id
+}
+
+/**
+ * Dedup CROSS-SALÃO: o número não pode pertencer a OUTRO salão (isolamento de
+ * tenant; par com o índice UNIQUE no banco). Dentro do mesmo salão é permitido
+ * re-vincular.
+ */
+async function isNumberTakenByAnotherSalon(phoneNumberId: string, salonId: string): Promise<boolean> {
+  const existing = await db.query.agents.findFirst({
+    where: eq(agents.whatsappPhoneNumberId, phoneNumberId),
+    columns: { id: true, salonId: true },
+  })
+  return !!existing && existing.salonId !== salonId
 }
 
 /**
@@ -107,7 +169,9 @@ function digitsOnly(value: string): string {
 export async function connectWhatsAppCloud(
   salonId: string,
   input: {
-    phoneNumberId: string
+    // Opcional de propósito: na Coexistência a Meta não devolve o
+    // phone_number_id no evento de sucesso — resolvemos pela WABA mais abaixo.
+    phoneNumberId?: string
     wabaId?: string
     // Embedded Signup self-service: authorization code a ser trocado pelo token
     // do cliente + flow (dedicado x coexistência). Quando ausentes (caminho
@@ -115,12 +179,23 @@ export async function connectWhatsAppCloud(
     code?: string
     flow?: "standard" | "coexistence"
   },
-): Promise<{ success: true } | { error: string }> {
+): Promise<{ success: true; phoneNumberId: string } | { error: string }> {
   const auth = await authorize(salonId)
   if ("error" in auth) return auth
 
-  const phoneNumberId = digitsOnly(input.phoneNumberId || "")
-  if (!phoneNumberId) return { error: "phone_number_id inválido" }
+  let phoneNumberId = digitsOnly(input.phoneNumberId || "")
+  // Sem code (caminho manual/piloto) não há Graph API para consultar: o número
+  // tem que vir pronto.
+  if (!phoneNumberId && !input.code) return { error: "phone_number_id inválido" }
+
+  // Fato do SERVIDOR sobre qual fluxo a Meta realmente executou: se o número
+  // veio no evento, foi o PADRÃO (número dedicado); se vamos ter que resolvê-lo
+  // pela WABA, foi Coexistência (o evento de lá só traz o waba_id).
+  // Isso substitui `input.flow`, que é só o BOTÃO que o dono clicou — a Meta
+  // degrada de Coexistência para o fluxo padrão EM SILÊNCIO quando o número não
+  // é elegível, e nesse caso pular o register deixaria o número sem registro na
+  // Cloud API (envio quebrado) achando que era Coexistência.
+  const numberCameFromEvent = phoneNumberId.length > 0
 
   const agent = await db.query.agents.findFirst({
     where: and(eq(agents.salonId, salonId), eq(agents.isActive, true)),
@@ -130,13 +205,7 @@ export async function connectWhatsAppCloud(
     return { error: "Nenhum agente ativo neste salão. Crie/ative um agente antes de conectar." }
   }
 
-  // Dedup CROSS-SALÃO: o número não pode pertencer a OUTRO salão (isolamento de
-  // tenant). Dentro do mesmo salão é permitido re-vincular (limpeza abaixo).
-  const existing = await db.query.agents.findFirst({
-    where: eq(agents.whatsappPhoneNumberId, phoneNumberId),
-    columns: { id: true, salonId: true },
-  })
-  if (existing && existing.salonId !== salonId) {
+  if (phoneNumberId && (await isNumberTakenByAnotherSalon(phoneNumberId, salonId))) {
     return { error: "Este número já está conectado a outro salão." }
   }
 
@@ -151,15 +220,30 @@ export async function connectWhatsAppCloud(
     }
     try {
       const clientToken = await exchangeCodeForToken(input.code)
+
+      // Coexistência: é AQUI que o número finalmente aparece (o evento da Meta
+      // trouxe só a WABA).
+      if (!phoneNumberId) {
+        phoneNumberId = await resolveWabaPhoneNumberId(input.wabaId, clientToken)
+        // Primeira vez que sabemos qual é o número — o dedup tem que valer
+        // ANTES de assinar a WABA na Meta.
+        if (await isNumberTakenByAnotherSalon(phoneNumberId, salonId)) {
+          throw new OnboardingError("Este número já está conectado a outro salão.")
+        }
+      }
+
       await subscribeAppToWaba(input.wabaId, clientToken)
-      if (input.flow !== "coexistence") {
-        // Coexistência: o número já está registrado (app WhatsApp Business) — pula register.
+      if (numberCameFromEvent) {
+        // Número dedicado: precisa de register na Cloud API. Na Coexistência
+        // (número resolvido pela WABA) ele já está registrado no app WhatsApp
+        // Business e o register é pulado.
         await registerPhoneNumber(phoneNumberId, clientToken)
       }
       encryptedToken = encryptSecret(clientToken)
     } catch (err) {
       // NUNCA logar code/token; só o contexto seguro.
       logger.error({ err, salonId, phoneNumberId, flow: input.flow }, "Onboarding Cloud (Embedded Signup) falhou")
+      if (err instanceof OnboardingError) return { error: err.message }
       return { error: "Não foi possível concluir a conexão com a Meta. Tente novamente." }
     }
   }
@@ -185,13 +269,17 @@ export async function connectWhatsAppCloud(
         updatedAt: new Date(),
       })
       .where(eq(agents.id, agent.id))
-  } catch {
+  } catch (err) {
     // Backstop do índice UNIQUE (corrida concorrente) -> mensagem amigável.
+    // O catch é cego a QUALQUER outra falha de escrita, então loga o erro real:
+    // sem isso um timeout de banco viraria "já conectado a outro salão" e o
+    // erro de verdade se perderia (o catch nem tinha binding).
+    logger.error({ err, salonId, phoneNumberId, agentId: agent.id }, "Gravação da conexão Cloud falhou")
     return { error: "Este número já está conectado a outro agente/salão." }
   }
 
   revalidatePath(`/${salonId}/agents`)
-  return { success: true }
+  return { success: true, phoneNumberId }
 }
 
 /** Desconecta o Cloud do agente ativo (volta a flag para 'evolution'). */
