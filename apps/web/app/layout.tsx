@@ -6,6 +6,7 @@ import { LoadingProvider } from "@/contexts/loading-context";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { QueryProvider } from "@/app/providers";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const lexendDeca = Lexend_Deca({
@@ -64,6 +65,7 @@ export default function RootLayout({
           </QueryProvider>
         </ThemeProvider>
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
