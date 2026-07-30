@@ -55,7 +55,9 @@ export function RouteGuard() {
     }
 
     if (role === 'STAFF') {
-      const forbiddenSections = ['dashboard', 'settings', 'team', 'services', 'billing', 'contacts', 'agents']
+      // `contacts` saiu da lista: STAFF passa a ler a lista de contatos e a ficha
+      // do cliente (canReadCrm no servidor). As mutações seguem barradas lá.
+      const forbiddenSections = ['dashboard', 'settings', 'team', 'services', 'billing', 'agents']
       if (forbiddenSections.includes(section)) {
         toast.error("Acesso negado para seu nível de permissão.")
         router.replace(`/${activeSalon.id}/schedule`)

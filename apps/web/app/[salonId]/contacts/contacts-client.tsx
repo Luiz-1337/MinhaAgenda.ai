@@ -14,6 +14,7 @@ import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 import { TagPill } from "@/components/contacts/tag-pill"
 import { ManageTagsDialog } from "@/components/contacts/manage-tags-dialog"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
+import { useSalonAuth } from "@/contexts/salon-context"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -63,6 +64,7 @@ interface ContactsClientProps {
 
 export default function ContactsClient({ salonId, initialCustomers, initialTags }: ContactsClientProps) {
   const queryClient = useQueryClient()
+  const { isStaff } = useSalonAuth()
   const [query, setQuery] = useState("")
   const deferredQuery = useDeferredValue(query)
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
@@ -300,22 +302,31 @@ export default function ContactsClient({ salonId, initialCustomers, initialTags 
                   </DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setIsManageTagsOpen(true)}>
-                <Settings2 size={14} /> Gerenciar tags
-              </DropdownMenuItem>
+              {!isStaff && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setIsManageTagsOpen(true)}>
+                    <Settings2 size={14} /> Gerenciar tags
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            onClick={() => setIsCreateDialogOpen(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus size={16} />
-            Novo Contato
-          </Button>
+          {/* STAFF lê a base, não a edita. A trava real é o servidor
+              (canReadCrm na leitura, hasSalonPermission nas mutações); esconder
+              o botão é só para não oferecer o que vai ser recusado. */}
+          {!isStaff && (
+            <Button
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus size={16} />
+              Novo Contato
+            </Button>
+          )}
           <button
             onClick={handleExport}
             className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-border hover:bg-muted text-foreground rounded-xl text-sm font-medium transition-all"
@@ -393,10 +404,12 @@ export default function ContactsClient({ salonId, initialCustomers, initialTags 
                 </div>
 
                 <div className="md:col-span-1 flex justify-end md:pr-2 w-full md:w-auto">
-                  <ActionMenu
-                    onEdit={() => handleEditCustomer(contact)}
-                    onDelete={() => handleRemoveCustomer(contact)}
-                  />
+                  {!isStaff && (
+                    <ActionMenu
+                      onEdit={() => handleEditCustomer(contact)}
+                      onDelete={() => handleRemoveCustomer(contact)}
+                    />
+                  )}
                 </div>
               </div>
             ))

@@ -30,8 +30,11 @@ import type { ProfessionalRole } from "@/lib/types/professional"
 // Helper para verificar permissões de visualização
 function shouldShowItem(href: string, role: ProfessionalRole, isSolo: boolean) {
   // 1. Staff: Acesso restrito
+  // `contacts` entrou porque quem atende no balcão é justamente quem precisa
+  // saber quem é o cliente. STAFF LÊ a lista e a ficha; não cria, não edita, não
+  // exclui — a trava real é no servidor (canReadCrm vs hasSalonPermission).
   if (role === 'STAFF') {
-    const allowed = ['schedule', 'chat']
+    const allowed = ['schedule', 'chat', 'contacts']
     return allowed.includes(href)
   }
 

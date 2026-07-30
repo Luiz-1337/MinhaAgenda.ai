@@ -12,7 +12,7 @@ import {
   inArray,
 } from "@repo/db"
 import { ActionResult } from "@/lib/types/common"
-import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { hasSalonPermission, canReadCrm } from "@/lib/services/permissions.service"
 
 export type TagRow = {
   id: string
@@ -29,7 +29,12 @@ const DEFAULT_COLOR = "#94a3b8"
  * Retorna { userId } em caso de sucesso ou { error } caso contrário.
  */
 async function requireSalonAccess(
-  salonId: string
+  salonId: string,
+  /**
+   * `manage` (padrão) = Owner/Manager, para mutações.
+   * `read` também aceita STAFF ativo — só para leitura.
+   */
+  level: 'read' | 'manage' = 'manage'
 ): Promise<{ userId: string } | { error: string }> {
   if (!salonId) return { error: "salonId é obrigatório" }
 
@@ -40,7 +45,9 @@ async function requireSalonAccess(
 
   if (!user) return { error: "Não autenticado" }
 
-  const hasAccess = await hasSalonPermission(salonId, user.id)
+  const hasAccess = level === 'read'
+    ? await canReadCrm(salonId, user.id)
+    : await hasSalonPermission(salonId, user.id)
   if (!hasAccess) return { error: "Acesso negado a este salão" }
 
   return { userId: user.id }
@@ -55,7 +62,10 @@ function mapTag(t: { id: string; name: string; color: string; position: number }
  */
 export async function getSalonTags(salonId: string): Promise<ActionResult<TagRow[]>> {
   try {
-    const access = await requireSalonAccess(salonId)
+    // Leitura: a lista de contatos mostra as tags de cada contato, então STAFF
+    // precisa do catálogo para renderizar. Criar/editar/excluir tag e atribuir
+    // tag a contato continuam restritos a Owner/Manager.
+    const access = await requireSalonAccess(salonId, 'read')
     if ("error" in access) return { error: access.error }
 
     const tags = await db.query.customerTags.findMany({

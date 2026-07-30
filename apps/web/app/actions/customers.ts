@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { db, customers, eq, desc, and } from "@repo/db"
 import { ActionResult } from "@/lib/types/common"
 
-import { hasSalonPermission } from "@/lib/services/permissions.service"
+import { hasSalonPermission, canReadCrm } from "@/lib/services/permissions.service"
 
 export type CustomerRow = {
   id: string
@@ -51,8 +51,10 @@ export async function getSalonCustomers(salonId: string): Promise<ActionResult<C
     }
 
     // 2. Permission Check
-    // Verifica se o usuário tem acesso ao salão (Owner ou Manager)
-    const hasAccess = await hasSalonPermission(salonId, user.id)
+    // LEITURA: inclui STAFF ativo. Quem atende no balcão precisa saber quem é o
+    // cliente — até aqui esta tela vinha vazia justamente para essa pessoa.
+    // Criar/editar/excluir abaixo seguem em hasSalonPermission (Owner/Manager).
+    const hasAccess = await canReadCrm(salonId, user.id)
 
     if (!hasAccess) {
       return { error: "Acesso negado a este salão" }
