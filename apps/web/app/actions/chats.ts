@@ -1,6 +1,6 @@
 "use server"
 
-import { db, chats, messages, customers, chatKanbanColumns, salons, and, asc, desc, eq, inArray } from "@repo/db"
+import { db, chats, messages, customers, chatKanbanColumns, salons, and, asc, desc, eq, inArray, isNotNull } from "@repo/db"
 import { revalidatePath } from "next/cache"
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
@@ -110,30 +110,44 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
   if ("error" in auth) return auth
 
   try {
-    // Busca todos os chats do salão
+    // Ordena por `lastMessageAt` — o relógio da CONVERSA — e nunca por
+    // `updatedAt`, que é o relógio da LINHA: mover o cartão no kanban, ligar o
+    // modo manual ou atribuir o agente carimbam `updatedAt` sem que ninguém
+    // tenha falado nada, e era exatamente isso que jogava conversa de junho para
+    // cima de conversa de duas horas atrás. Ver migration 028.
+    //
+    // `isNotNull` faz em SQL o que antes era um filtro em JS depois da busca
+    // (NULL = chat sem nenhuma mensagem), então o LIMIT passa a trazer 100
+    // conversas de verdade em vez de 100 candidatas das quais algumas eram
+    // descartadas em seguida.
     const salonChats = await db.query.chats.findMany({
-      where: eq(chats.salonId, salonId),
-      orderBy: desc(chats.updatedAt),
+      where: and(eq(chats.salonId, salonId), isNotNull(chats.lastMessageAt)),
+      orderBy: desc(chats.lastMessageAt),
       limit: 100,
     })
 
-    // Busca a última mensagem de cada chat para o preview
+    // Última mensagem de cada chat, só para o texto do preview. DISTINCT ON
+    // devolve exatamente uma linha por chat. A versão anterior lia as 1000
+    // mensagens mais recentes do salão e ficava com a primeira de cada: um chat
+    // muito movimentado consumia a janela e os outros desapareciam da lista sem
+    // aviso — com 372 mensagens em produção ainda não mordia, mas era questão de
+    // volume, não de sorte.
     const chatIds = salonChats.map((chat) => chat.id)
-    const lastMessageByChat = new Map<string, typeof messages.$inferSelect>()
+    const lastMessageByChat = new Map<string, { content: string | null; createdAt: Date }>()
 
     if (chatIds.length > 0) {
-      // Busca mensagens de todos os chats do salão
-      const allMessages = await db.query.messages.findMany({
-        where: inArray(messages.chatId, chatIds),
-        orderBy: desc(messages.createdAt),
-        limit: 1000, // Limite alto para garantir que pegamos as últimas de cada chat
-      })
+      const lastMessages = await db
+        .selectDistinctOn([messages.chatId], {
+          chatId: messages.chatId,
+          content: messages.content,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .where(inArray(messages.chatId, chatIds))
+        .orderBy(messages.chatId, desc(messages.createdAt))
 
-      // Agrupa mensagens por chat e pega a última de cada
-      for (const msg of allMessages) {
-        if (!lastMessageByChat.has(msg.chatId)) {
-          lastMessageByChat.set(msg.chatId, msg)
-        }
+      for (const msg of lastMessages) {
+        lastMessageByChat.set(msg.chatId, { content: msg.content, createdAt: msg.createdAt })
       }
     }
 
@@ -181,9 +195,11 @@ export async function getChatConversations(salonId: string): Promise<ChatConvers
       }
     }
 
-    // Monta as conversas - FILTRA apenas chats que têm mensagens
+    // O filtro de "tem mensagem" agora é o `isNotNull` na query. Este `.filter`
+    // fica como rede: se um dia alguém apagar mensagem sem apagar o chat,
+    // `lastMessageAt` fica adiantado e o `.get()!` abaixo estouraria.
     const conversations: ChatConversation[] = salonChats
-      .filter((chat) => lastMessageByChat.has(chat.id)) // Só mostra chats com mensagens
+      .filter((chat) => lastMessageByChat.has(chat.id))
       .map((chat) => {
         const normalizedPhone = chat.clientPhone.replace(/\D/g, "")
         const customer = customerByPhone.get(normalizedPhone)

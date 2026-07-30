@@ -278,6 +278,11 @@ export async function saveMessage(
     fromHuman: options?.fromHuman ?? false,
   }).returning({ id: messages.id })
 
+  // `chats.lastMessageAt` NÃO é carimbado aqui de propósito: o trigger
+  // `messages_touch_chat_last_message_at` (migration 028) o escreve no INSERT
+  // acima, junto com o fato. É ele — e não `updatedAt` — que ordena a lista de
+  // conversas e o board do kanban. Não duplicar a escrita neste arquivo: um
+  // timestamp com dois escritores é o defeito que a 028 foi criada para matar.
   if (role === "assistant") {
     await db
       .update(chats)

@@ -12,6 +12,7 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   sql
 } from "@repo/db"
 import { getSessionUserId } from "@/lib/supabase/auth"
@@ -93,22 +94,29 @@ export async function listKanbanBoard(salonId: string): Promise<KanbanBoardDTO |
       orderBy: asc(chatKanbanColumns.position)
     })
 
+    // Mesma regra da lista de conversas (actions/chats.ts): ordena pelo relógio da
+    // CONVERSA, não pelo da linha. Aqui o defeito era circular — arrastar um
+    // cartão carimbava `updatedAt` e reordenava o próprio board.
     const salonChats = await db.query.chats.findMany({
-      where: eq(chats.salonId, salonId),
-      orderBy: desc(chats.updatedAt),
+      where: and(eq(chats.salonId, salonId), isNotNull(chats.lastMessageAt)),
+      orderBy: desc(chats.lastMessageAt),
       limit: 500
     })
 
     const chatIds = salonChats.map((c) => c.id)
-    const lastMessageByChat = new Map<string, typeof messages.$inferSelect>()
+    const lastMessageByChat = new Map<string, { content: string | null; createdAt: Date }>()
     if (chatIds.length > 0) {
-      const allMessages = await db.query.messages.findMany({
-        where: inArray(messages.chatId, chatIds),
-        orderBy: desc(messages.createdAt),
-        limit: 2000
-      })
-      for (const msg of allMessages) {
-        if (!lastMessageByChat.has(msg.chatId)) lastMessageByChat.set(msg.chatId, msg)
+      const lastMessages = await db
+        .selectDistinctOn([messages.chatId], {
+          chatId: messages.chatId,
+          content: messages.content,
+          createdAt: messages.createdAt
+        })
+        .from(messages)
+        .where(inArray(messages.chatId, chatIds))
+        .orderBy(messages.chatId, desc(messages.createdAt))
+      for (const msg of lastMessages) {
+        lastMessageByChat.set(msg.chatId, { content: msg.content, createdAt: msg.createdAt })
       }
     }
 

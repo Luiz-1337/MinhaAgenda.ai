@@ -440,6 +440,16 @@ export const chats = pgTable(
       .notNull(),
     kanbanColumnId: uuid('kanban_column_id').references(() => chatKanbanColumns.id, { onDelete: 'set null' }),
     kanbanPosition: numeric('kanban_position', { precision: 20, scale: 10 }),
+    // Relógio da CONVERSA: sempre igual a max(messages.created_at) do chat.
+    // NÃO é escrito pela aplicação — o trigger `messages_touch_chat_last_message_at`
+    // (migration 028) carimba no INSERT da mensagem, só para frente. Escrever daqui
+    // é recriar exatamente o defeito que a coluna existe para matar.
+    //
+    // `updatedAt` abaixo é o relógio da LINHA e não serve para ordenar conversa:
+    // mover cartão no kanban, ligar modo manual ou atribuir agente o mexem sem
+    // que ninguém tenha falado nada.
+    // NULL = chat sem nenhuma mensagem (não aparece na lista nem no board).
+    lastMessageAt: timestamp('last_message_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -452,6 +462,9 @@ export const chats = pgTable(
     // Parcial (WHERE is_manual = true) na migration 024 — o Drizzle não expressa
     // índice parcial aqui, então a definição real vive no SQL.
     index('chats_manual_since_idx').on(table.manualSince),
+    // Serve a lista de conversas e o board do kanban, que ordenam por
+    // last_message_at DESC dentro de um salão (migration 028).
+    index('chats_salon_last_message_idx').on(table.salonId, table.lastMessageAt.desc()),
     // Reflete UNIQUE constraint existente só no banco (reconciliação 21/jun — DRIFT-1)
     unique('chats_salon_id_client_phone_unique').on(table.salonId, table.clientPhone)
   ]
