@@ -11,6 +11,9 @@
 import { Queue, QueueEvents, Job } from "bullmq";
 import { getRedisClient, createRedisClientForBullMQ } from "../infra/redis";
 import { logger } from "../infra/logger";
+// Caminho RELATIVO obrigatório: este módulo entra no grafo de import do worker, que
+// roda via tsx e não resolve o alias `@/` (quebra só em runtime; o tsc passa).
+import type { AdReferral } from "../services/messaging/cloud/content";
 
 /**
  * Dados do job de processamento de mensagem
@@ -51,6 +54,15 @@ export interface MessageJobData {
   // Contexto adicional
   isNewCustomer?: boolean;
   customerName?: string;
+  /**
+   * Origem de anúncio (CTWA), quando a conversa nasceu de um clique em anúncio.
+   *
+   * Viaja no JOB, e não é lido do banco pelo worker, por dois motivos: o dado só
+   * existe no payload do webhook (a coluna `ad_referral` é da migration 031, e o
+   * código não pode depender dela para responder certo), e uma leitura a mais no
+   * caminho quente da primeira resposta é justamente o que se paga com RTT de banco.
+   */
+  adReferral?: AdReferral;
 }
 
 /**

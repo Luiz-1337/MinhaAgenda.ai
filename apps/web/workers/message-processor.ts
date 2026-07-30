@@ -248,6 +248,7 @@ async function processMessage(
     hasMedia,
     mediaType,
     customerName,
+    adReferral,
   } = job.data;
   // isNewCustomer pode vir do webhook (legado) ou ser calculado aqui no worker.
   // A partir desta versao calculamos no worker em paralelo com credits para nao
@@ -669,6 +670,7 @@ async function processMessage(
             customerId,
             customerName,
             isNewCustomer,
+            adReferral,
             media,
           }),
           AI_TIMEOUT_MS,
@@ -763,6 +765,7 @@ async function processMessage(
             customerId,
             customerName,
             isNewCustomer,
+            adReferral,
           }),
           AI_TIMEOUT_MS,
           "generateAIResponse"
@@ -838,6 +841,7 @@ async function processMessage(
         customerId,
         customerName,
         isNewCustomer,
+        adReferral,
       }),
       AI_TIMEOUT_MS,
       "generateAIResponse"

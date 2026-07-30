@@ -25,13 +25,15 @@ import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/servi
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { RateLimitError } from '@/lib/errors';
-import { db, agents, messages, chats, eq, and, or, ne, isNull } from '@repo/db';
+import { db, agents, messages, chats, eq, and, or, ne, isNull, notInArray, sql } from '@repo/db';
 import {
   extractCloudContent,
   isCloudContentType,
   getReactionTarget,
   buildReactionLabel,
+  extractAdReferral,
 } from '@/lib/services/messaging/cloud/content';
+import type { AdReferral } from '@/lib/services/messaging/cloud/content';
 
 export const maxDuration = 10;
 
@@ -201,6 +203,36 @@ async function captureDisplayPhoneNumber(
     );
   } catch (err) {
     reqLogger.warn({ err, phoneNumberId }, 'Falha ao guardar o número legível do salão (ignorado)');
+  }
+}
+
+/**
+ * Grava a origem de anúncio na mensagem que a carregou.
+ *
+ * Na MENSAGEM, e não no chat, de propósito: o fato é "esta mensagem nasceu deste
+ * anúncio". Guardar no chat obrigaria a escolher entre sobrescrever (perde o
+ * primeiro anúncio) e manter o primeiro (a IA perde o anúncio atual quando a
+ * cliente clica num segundo) — uma decisão que a mensagem não força.
+ *
+ * Nunca lança: ver o comentário no ponto de chamada. Atribuição não pode custar
+ * uma mensagem.
+ */
+async function persistAdReferral(
+  messageRowId: string,
+  referral: AdReferral,
+  reqLogger: ContextLogger,
+): Promise<void> {
+  try {
+    await withTimeout(
+      db.update(messages).set({ adReferral: referral }).where(eq(messages.id, messageRowId)),
+      DB_TIMEOUT,
+      'persistAdReferral',
+    );
+  } catch (err) {
+    reqLogger.warn(
+      { err, messageRowId },
+      'Falha ao gravar a origem do anúncio (ignorado — migration 031 aplicada?)',
+    );
   }
 }
 
@@ -378,6 +410,19 @@ async function handleInboundMessage(
     WebhookMetrics.unhandledField(`type:${msg.type ?? 'unknown'}`);
   }
 
+  // 4a. Origem da conversa: `referral` só vem quando a cliente clicou num anúncio
+  //     (CTWA) ou post. É a ÚNICA vez que a Meta manda o texto do anúncio — se for
+  //     descartado aqui, não há como recuperar depois, e a IA responde "sobre qual
+  //     serviço você quer saber?" a quem acabou de clicar num anúncio que já dizia
+  //     o serviço. Vai para o job (contexto da IA) e para o banco (atribuição).
+  const adReferral = extractAdReferral(msg);
+  if (adReferral) {
+    reqLogger.info(
+      { sourceType: adReferral.sourceType, sourceId: adReferral.sourceId, hasCtwaClid: !!adReferral.ctwaClid },
+      'Cloud inbound veio de anúncio/post (CTWA)',
+    );
+  }
+
   // 4b. Reação: o rótulo só é útil citando a mensagem reagida. Uma leitura
   //     indexada por provider_message_id, e só neste tipo.
   let body = rawBody;
@@ -413,6 +458,17 @@ async function handleInboundMessage(
     'saveMessage',
   );
 
+  // 6b. Origem do anúncio no banco. Escrita SEPARADA e não-fatal de propósito, em
+  //     vez de entrar no INSERT do saveMessage: a coluna `ad_referral` chega pela
+  //     migration 031, e o deploy do código não pode depender dela. Se a coluna
+  //     ainda não existir, isto loga e segue — enquanto se estivesse no INSERT,
+  //     todo lead de anúncio derrubaria o webhook com 500, a Meta re-tentaria em
+  //     vão e o lead pago seria perdido. Mesmo princípio de
+  //     captureDisplayPhoneNumber: atribuição não pode derrubar entrega.
+  if (adReferral) {
+    await persistAdReferral(userMessageId, adReferral, reqLogger);
+  }
+
   // 7. Enfileirar SÓ o que deve acordar a IA. Reação e aviso de sistema não são
   //    pedido a responder — a IA respondendo a um 👍 é ruído para o cliente.
   if (wakeAI) {
@@ -439,6 +495,9 @@ async function handleInboundMessage(
         receivedAt: new Date(Number(msg.timestamp) * 1000).toISOString(),
         profileName,
         customerName: customer.name,
+        // Contexto do anúncio pelo JOB, não pelo banco: é o que faz a correção
+        // valer no deploy, sem esperar a migration 031.
+        ...(adReferral ? { adReferral } : {}),
       }),
       REDIS_TIMEOUT,
       'enqueueMessage',
@@ -456,6 +515,24 @@ async function handleInboundMessage(
 }
 
 /**
+ * Escada de progresso da entrega. A Meta manda os três como eventos separados e
+ * eles significam coisas MUITO diferentes: `sent` é só "a Meta aceitou", `delivered`
+ * é "chegou no aparelho", `read` é "abriu".
+ *
+ * Isto existia achatado nos três → 'delivered'. O custo apareceu na primeira
+ * pergunta séria de negócio: com dois leads pagos calados, era impossível saber
+ * pelo banco se eles tinham recebido a resposta ou se a entrega falhou — a única
+ * coisa que se sabia era que a Meta não tinha reclamado.
+ *
+ * ELSE 0 cobre NULL e os estados da escada da Evolution ('retrying'): ambos são
+ * superados por qualquer evento da Meta, que é informação mais nova.
+ */
+const DELIVERY_PROGRESS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+
+/** Estados terminais de falha: nunca são sobrescritos por evento de progresso. */
+const DELIVERY_TERMINAL = ['failed', 'undelivered'];
+
+/**
  * Status de entrega (sent/delivered/read/failed). Sem escada de reenvio: a Cloud
  * API não tem o status:0 silencioso da Evolution — falha vem com código claro.
  */
@@ -463,12 +540,35 @@ async function handleStatus(st: any, reqLogger: ContextLogger) {
   const wamid: string = st.id;
   const status: string = st.status;
 
-  if (status === 'sent' || status === 'delivered' || status === 'read') {
+  const rank = DELIVERY_PROGRESS_RANK[status];
+  if (rank !== undefined) {
+    // Só AVANÇA. A Meta não garante ordem de entrega dos webhooks: um `delivered`
+    // atrasado chegando depois do `read` regrediria a tela de "lida" para
+    // "entregue", e um `sent` atrasado apagaria o aviso vermelho de falha. As duas
+    // guardas vão no WHERE, e não em ler-decidir-escrever, para que dois webhooks
+    // simultâneos não se atropelem.
     await withTimeout(
-      db.update(messages).set({ deliveryStatus: 'delivered' }).where(eq(messages.providerMessageId, wamid)),
+      db
+        .update(messages)
+        .set({ deliveryStatus: status })
+        .where(
+          and(
+            eq(messages.providerMessageId, wamid),
+            sql`case ${messages.deliveryStatus}
+                  when 'sent' then 1
+                  when 'delivered' then 2
+                  when 'read' then 3
+                  else 0
+                end < ${rank}`,
+            // O isNull é obrigatório junto do notInArray: em SQL, `NULL NOT IN (...)`
+            // resulta em NULL, não em true — sem ele a PRIMEIRA transição de uma
+            // mensagem ainda sem status nunca gravaria.
+            or(isNull(messages.deliveryStatus), notInArray(messages.deliveryStatus, DELIVERY_TERMINAL)),
+          ),
+        ),
       DB_TIMEOUT,
-      'markDelivered',
-    ).catch((err) => reqLogger.warn({ err, wamid }, 'Falha ao marcar entregue'));
+      'advanceDeliveryStatus',
+    ).catch((err) => reqLogger.warn({ err, wamid, status }, 'Falha ao avançar status de entrega'));
     return;
   }
 

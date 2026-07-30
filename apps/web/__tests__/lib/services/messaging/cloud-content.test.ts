@@ -5,6 +5,8 @@ import {
   isPlaceholderBody,
   getReactionTarget,
   buildReactionLabel,
+  extractAdReferral,
+  formatAdReferralText,
   type CloudInboundMessage,
 } from "@/lib/services/messaging/cloud/content"
 
@@ -181,5 +183,92 @@ describe("buildReactionLabel", () => {
 
   it("normaliza quebras de linha do original", () => {
     expect(buildReactionLabel("👍", "linha1\n\nlinha2")).toBe('[o cliente reagiu com 👍 a "linha1 linha2"]')
+  })
+})
+
+/**
+ * Motivação real: em 30/07 os dois primeiros leads pagos chegaram por anúncio com
+ * o texto pré-preenchido "Olá! Posso ter mais informações sobre isso?". O
+ * `referral` — única fonte do "isso" — era descartado, a IA respondeu "sobre qual
+ * serviço você quer saber mais?" e os dois abandonaram. A entrega estava OK; o que
+ * queimou o lead foi a primeira resposta.
+ */
+describe("extractAdReferral", () => {
+  it("mensagem comum não tem origem de anúncio", () => {
+    expect(extractAdReferral({ type: "text", text: { body: "Oi" } })).toBeNull()
+  })
+
+  it("extrai os campos do anúncio e o click id", () => {
+    const r = extractAdReferral({
+      type: "text",
+      text: { body: "Olá! Posso ter mais informações sobre isso?" },
+      referral: {
+        source_type: "ad",
+        source_id: "1200",
+        source_url: "https://fb.me/x",
+        headline: "Escova progressiva com 20% off",
+        body: "Agende sua escova essa semana",
+        media_type: "image",
+        ctwa_clid: "clid_abc",
+      },
+    })
+    expect(r).toEqual({
+      sourceType: "ad",
+      sourceId: "1200",
+      sourceUrl: "https://fb.me/x",
+      headline: "Escova progressiva com 20% off",
+      body: "Agende sua escova essa semana",
+      mediaType: "image",
+      ctwaClid: "clid_abc",
+    })
+  })
+
+  it("referral vazio ou só com strings brancas não vira objeto oco", () => {
+    expect(extractAdReferral({ type: "text", referral: {} })).toBeNull()
+    expect(extractAdReferral({ type: "text", referral: { headline: "   " } })).toBeNull()
+  })
+
+  it("trunca o corpo do anúncio — ele entraria em TODA mensagem da conversa", () => {
+    const r = extractAdReferral({ type: "text", referral: { body: "a".repeat(500) } })
+    expect(r?.body).toContain("…")
+    expect(r!.body!.length).toBeLessThanOrEqual(301)
+  })
+
+  it("normaliza espaços e quebras de linha do texto do anúncio", () => {
+    const r = extractAdReferral({ type: "text", referral: { headline: " Corte\n\n  e cor " } })
+    expect(r?.headline).toBe("Corte e cor")
+  })
+})
+
+describe("formatAdReferralText", () => {
+  it("sem anúncio, string vazia (concatena no prompt sem if)", () => {
+    expect(formatAdReferralText(null)).toBe("")
+    expect(formatAdReferralText(undefined)).toBe("")
+  })
+
+  it("proíbe explicitamente a pergunta em aberto que queimou os dois leads", () => {
+    const txt = formatAdReferralText({ sourceType: "ad", headline: "Escova progressiva 20% off" })
+    expect(txt).toContain("Escova progressiva 20% off")
+    expect(txt).toContain("qual serviço")
+    expect(txt).toContain("PRECEDÊNCIA")
+    // O bloco tem que se declarar acima do passo 1 do fluxo, senão o
+    // "Pergunte como pode ajudar" do FLUXO DE AGENDAMENTO ganha por vir depois.
+    expect(txt).toContain("FLUXO DE AGENDAMENTO")
+  })
+
+  it("anúncio sem texto cai numa instrução acolhedora, não na proibição", () => {
+    const txt = formatAdReferralText({ sourceType: "ad", sourceId: "1200" })
+    expect(txt).toContain("não chegou")
+    expect(txt).not.toContain("PROIBIDO")
+  })
+
+  it("distingue publicação orgânica de anúncio pago", () => {
+    expect(formatAdReferralText({ sourceType: "post", headline: "x" })).toContain("uma publicação")
+    expect(formatAdReferralText({ sourceType: "ad", headline: "x" })).toContain("um anúncio")
+  })
+
+  it("nunca vaza o click id de atribuição para o prompt", () => {
+    const txt = formatAdReferralText({ sourceType: "ad", headline: "x", ctwaClid: "clid_secreto" })
+    expect(txt).not.toContain("clid_secreto")
   })
 })

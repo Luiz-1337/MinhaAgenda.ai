@@ -13,7 +13,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft } from "lucide-react"
+import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft, Check, CheckCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, getNoShowRiskForChat, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
@@ -56,6 +56,37 @@ function getStatusBadge(status: ConversationStatus) {
     default:
       return null
   }
+}
+
+/**
+ * Recibo de entrega da nossa mensagem, na convenção que todo mundo já lê do
+ * WhatsApp: ✓ enviada, ✓✓ entregue, ✓✓ azul lida.
+ *
+ * Existe porque os três estados eram gravados como um só ('delivered') e a tela
+ * não mostrava nenhum. Quando dois leads de anúncio ficaram calados, não havia
+ * como saber pelo painel se tinham recebido a resposta — só dava para responder
+ * isso consultando o banco. `title` carrega o texto porque ✓✓ sozinho não ensina
+ * a diferença a quem abre o painel pela primeira vez.
+ */
+function DeliveryReceipt({ status }: { status?: string | null }) {
+  // O título vai no <span>, não no ícone: os componentes do lucide-react não
+  // aceitam a prop `title` (só props de SVG), e o tsc reprova.
+  const receipt =
+    status === "sent"
+      ? { label: "Enviada — a Meta aceitou, ainda sem confirmação do aparelho", icon: <Check size={13} /> }
+      : status === "delivered"
+        ? { label: "Entregue no aparelho do cliente", icon: <CheckCheck size={13} /> }
+        : status === "read"
+          ? { label: "Lida pelo cliente", icon: <CheckCheck size={13} className="text-sky-400" /> }
+          : null
+
+  if (!receipt) return null
+
+  return (
+    <span title={receipt.label} aria-label={receipt.label} className="inline-flex shrink-0">
+      {receipt.icon}
+    </span>
+  )
 }
 
 // Bolha de mensagem memoizada: evita re-render de toda a lista a cada poll/setMessages.
@@ -103,10 +134,12 @@ const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage })
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
           )}
           <span
-            className={`text-[10px] font-mono mt-1 block opacity-60 ${isClient ? "text-chat-user-foreground/60" : "text-chat-bot-foreground/60"
+            className={`text-[10px] font-mono mt-1 flex items-center gap-1 opacity-60 ${isClient ? "text-chat-user-foreground/60" : "text-chat-bot-foreground/60"
               }`}
           >
             {msg.time}
+            {/* Recibo só faz sentido no que NÓS enviamos: o inbound não tem status. */}
+            {!isClient && <DeliveryReceipt status={msg.deliveryStatus} />}
           </span>
           {!isClient && (msg.deliveryStatus === "failed" || msg.deliveryStatus === "undelivered") && (
             <span className="text-[10px] font-medium mt-0.5 block text-red-500">não entregue</span>

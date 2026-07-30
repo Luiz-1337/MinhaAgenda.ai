@@ -47,6 +47,8 @@ import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, customerTrinksProfile, professionals, salons, eq, and, sql } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 import type { ProcessedMedia } from "./media-processor.service";
+import { formatAdReferralText } from "../messaging/cloud/content";
+import type { AdReferral } from "../messaging/cloud/content";
 import type { TrinksProfileSnapshot, UpcomingAppointmentSnapshot } from "./system-prompt-builder.service";
 import { enqueueTrinksProfileSync } from "../../queues/trinks-sync-queue";
 
@@ -131,6 +133,8 @@ export interface GenerateResponseParams {
   customerId?: string;
   customerName?: string;
   isNewCustomer?: boolean;
+  /** Anúncio de origem (CTWA), quando a conversa nasceu de um clique. */
+  adReferral?: AdReferral;
   media?: ProcessedMedia;
 }
 
@@ -159,7 +163,7 @@ export interface GenerateResponseResult {
 export async function generateAIResponse(
   params: GenerateResponseParams
 ): Promise<GenerateResponseResult> {
-  const { chatId, salonId, clientPhone, userMessage, customerId, customerName, isNewCustomer } = params;
+  const { chatId, salonId, clientPhone, userMessage, customerId, customerName, isNewCustomer, adReferral } = params;
   const contextLogger = createContextLogger({ chatId, salonId, service: "ai-response" });
 
   // Fail-fast: salonId é o ID que propaga via closure para todas as tools MCP.
@@ -308,7 +312,10 @@ export async function generateAIResponse(
       soloProfessional, // Profissional único (null se 2+)
       conversationStateText, // Estado de tools de leitura já executadas
       trinksProfile, // Cliente 360° vindo do cache (null quando integração inativa ou cliente novo)
-      upcomingAppointments // Agendamentos futuros em aberto (injetados para remarcar/cancelar sem pedir telefone)
+      upcomingAppointments, // Agendamentos futuros em aberto (injetados para remarcar/cancelar sem pedir telefone)
+      // Origem em anúncio. Formatado aqui (e não dentro do builder) pela mesma
+      // convenção do conversationStateText: o builder recebe o bloco pronto.
+      formatAdReferralText(adReferral)
     );
     timer.mark("prompt_built");
 

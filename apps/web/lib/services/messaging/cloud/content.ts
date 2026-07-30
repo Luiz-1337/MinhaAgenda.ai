@@ -37,6 +37,123 @@ export interface CloudInboundMessage {
   system?: { body?: string; type?: string };
   button?: { text?: string };
   interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } };
+  /** Presente SÓ quando a conversa nasceu de um clique em anúncio (CTWA) ou post. */
+  referral?: {
+    source_type?: string;
+    source_id?: string;
+    source_url?: string;
+    headline?: string;
+    body?: string;
+    media_type?: string;
+    ctwa_clid?: string;
+  };
+}
+
+/**
+ * Origem de um lead que chegou por anúncio (Click-to-WhatsApp) ou post.
+ *
+ * A Meta manda isso em `messages[0].referral` na PRIMEIRA mensagem da conversa —
+ * junto com o texto pré-preenchido "Olá! Posso ter mais informações sobre isso?".
+ * O "isso" é o anúncio: sem estes campos a IA não tem como saber a que a cliente
+ * se refere, e abre a conversa perguntando exatamente o que o anúncio já disse.
+ * Foi o que aconteceu com os dois primeiros leads pagos (30/07), e os dois
+ * abandonaram depois de receber a resposta.
+ *
+ * `ctwaClid` não serve à conversa: é a chave de atribuição para devolver a
+ * conversão à Meta via Conversions API. Guardado agora porque só chega aqui, uma
+ * vez, e não há como recuperá-lo depois.
+ */
+export interface AdReferral {
+  /** 'ad' quando veio de anúncio; 'post' quando veio de publicação orgânica. */
+  sourceType?: string;
+  /** ID do anúncio/post na Meta — junta com o Gerenciador de Anúncios. */
+  sourceId?: string;
+  sourceUrl?: string;
+  /** Título do anúncio (o gancho que a cliente clicou). */
+  headline?: string;
+  /** Corpo do anúncio. */
+  body?: string;
+  mediaType?: string;
+  /** Click ID para atribuição de conversão (CAPI). Não entra no prompt. */
+  ctwaClid?: string;
+}
+
+/**
+ * Teto de caracteres para os textos do anúncio que entram no system prompt.
+ *
+ * O corpo de um anúncio pode ter parágrafos, e ele passaria a ser injetado em
+ * TODA mensagem da conversa — o custo de token é recorrente, não único. O gancho
+ * está sempre nas primeiras linhas.
+ */
+const AD_TEXT_MAX = 300;
+
+function trimAdText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const clean = value.trim().replace(/\s+/g, ' ');
+  if (clean.length === 0) return undefined;
+  return clean.length > AD_TEXT_MAX ? `${clean.slice(0, AD_TEXT_MAX)}…` : clean;
+}
+
+function asString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const clean = value.trim();
+  return clean.length > 0 ? clean : undefined;
+}
+
+/**
+ * Extrai a origem de anúncio de uma mensagem inbound. Null quando a conversa não
+ * nasceu de anúncio — o caso da esmagadora maioria das mensagens.
+ *
+ * Devolve null também quando o objeto veio vazio ou sem nenhum campo útil, para
+ * não gravar `{}` no banco e não injetar um bloco oco no prompt.
+ */
+export function extractAdReferral(msg: CloudInboundMessage): AdReferral | null {
+  const r = msg.referral;
+  if (!r || typeof r !== 'object') return null;
+
+  const referral: AdReferral = {
+    sourceType: asString(r.source_type),
+    sourceId: asString(r.source_id),
+    sourceUrl: asString(r.source_url),
+    headline: trimAdText(r.headline),
+    body: trimAdText(r.body),
+    mediaType: asString(r.media_type),
+    ctwaClid: asString(r.ctwa_clid),
+  };
+
+  const temAlgo = Object.values(referral).some((v) => v !== undefined);
+  return temAlgo ? referral : null;
+}
+
+/**
+ * Bloco de contexto do anúncio para o system prompt. String vazia quando não há
+ * anúncio, para concatenar sem `if` no template (mesma convenção dos outros
+ * blocos do prompt builder).
+ *
+ * Vive aqui, e não no prompt builder, porque este módulo é o que o worker
+ * importa sem passar pelo alias `@/` — e porque a tabela de campos e o texto que
+ * os apresenta divergem se ficarem em arquivos diferentes.
+ *
+ * A instrução final é o ponto todo desta mudança: sem ela o modelo recebe o
+ * contexto e ainda assim pergunta "sobre qual serviço você quer saber?", porque
+ * o FLUXO DE AGENDAMENTO manda perguntar isso no passo 1.
+ */
+export function formatAdReferralText(referral: AdReferral | null | undefined): string {
+  if (!referral) return '';
+
+  const origem = referral.sourceType === 'post' ? 'uma publicação' : 'um anúncio';
+  const linhas: string[] = [`- A cliente chegou clicando em ${origem} do salão.`];
+  if (referral.headline) linhas.push(`- Título do anúncio: "${referral.headline}"`);
+  if (referral.body) linhas.push(`- Texto do anúncio: "${referral.body}"`);
+
+  const temTexto = !!(referral.headline || referral.body);
+  linhas.push(
+    temTexto
+      ? '- REGRA (tem PRECEDÊNCIA sobre o passo 1 do FLUXO DE AGENDAMENTO): a primeira mensagem dela ("Posso ter mais informações sobre isso?") é texto PRONTO, preenchido pelo próprio WhatsApp ao clicar — não foi ela que escolheu essas palavras. O "isso" é o anúncio acima. É PROIBIDO responder com "sobre qual serviço você quer saber mais?" ou qualquer variação de pergunta em aberto: ela já disse a que veio ao clicar. Abra falando do que o anúncio oferece e faça UMA pergunta que avance o agendamento (ex.: confirmar o serviço do anúncio, ou já perguntar o dia).'
+      : '- REGRA: ela veio de anúncio, mas o texto do anúncio não chegou até aqui. Trate como interesse inicial e pergunte de forma acolhedora o que ela procura.'
+  );
+
+  return `\n\nORIGEM DA CONVERSA (contexto privado — nunca mencione "anúncio" como jargão técnico):\n${linhas.join('\n')}`;
 }
 
 export interface CloudContent {

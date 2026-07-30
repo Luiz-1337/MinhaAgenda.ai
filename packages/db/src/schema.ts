@@ -527,6 +527,12 @@ export const messages = pgTable(
     // WhatsApp Business, ou envio manual do painel). Sem distinguir, a IA relê a
     // fala do humano como se fosse dela quando reassume a conversa.
     fromHuman: boolean('from_human').default(false).notNull(),
+    // Origem de anúncio (Click-to-WhatsApp) da mensagem que a carregou — ver
+    // migration 031 e o tipo AdReferral em lib/services/messaging/cloud/content.ts.
+    // NULL na esmagadora maioria: a Meta só manda `referral` na primeira mensagem
+    // de uma conversa nascida de anúncio/post. Sem $type<AdReferral> de propósito:
+    // o tipo vive na app e o pacote db não deve importar de apps/web.
+    adReferral: jsonb('ad_referral'),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [

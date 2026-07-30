@@ -310,7 +310,13 @@ export class SystemPromptBuilder {
     soloProfessional?: { id: string; name: string } | null,
     conversationStateText?: string,
     trinksProfile?: TrinksProfileSnapshot | null,
-    upcomingAppointments?: UpcomingAppointmentSnapshot[] | null
+    upcomingAppointments?: UpcomingAppointmentSnapshot[] | null,
+    /**
+     * Bloco pronto de origem da conversa (anúncio/CTWA), ou "" quando não veio de
+     * anúncio. Recebido formatado, igual ao conversationStateText — quem monta é
+     * formatAdReferralText, ao lado da tabela de campos do referral.
+     */
+    adContextText?: string
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
@@ -415,7 +421,7 @@ REGRAS DE TOOLS (CRÍTICO — leia ANTES de qualquer ação):
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
 Hoje em ISO: ${isoDate} (fuso -03:00). Use HOJE como referência absoluta para datas relativas ("amanhã", "sexta que vem", "dia 30").
-DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
+DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${adContextText ?? ""}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
 ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
 - Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
@@ -483,7 +489,8 @@ export async function createSalonAssistantPrompt(
   soloProfessional?: { id: string; name: string } | null,
   conversationStateText?: string,
   trinksProfile?: TrinksProfileSnapshot | null,
-  upcomingAppointments?: UpcomingAppointmentSnapshot[] | null
+  upcomingAppointments?: UpcomingAppointmentSnapshot[] | null,
+  adContextText?: string
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -497,6 +504,7 @@ export async function createSalonAssistantPrompt(
     soloProfessional,
     conversationStateText,
     trinksProfile,
-    upcomingAppointments
+    upcomingAppointments,
+    adContextText
   )
 }
