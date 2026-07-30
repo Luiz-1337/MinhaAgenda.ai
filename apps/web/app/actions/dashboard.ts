@@ -1,10 +1,11 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, appointments, chats, aiUsageStats, agentStats, salons, profiles, sql, messages, agents, eq, and, gte, desc, asc, inArray } from "@repo/db"
+import { db, appointments, chats, aiUsageStats, agentStats, salons, profiles, sql, messages, agents, eq, and, gte, desc, asc, inArray, count } from "@repo/db"
 
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { calculateCredits } from "@/lib/utils/credits"
+import { startOfMonthBrazil } from "@/lib/utils/timezone.utils"
 
 export interface DashboardStats {
   planTier: 'SOLO' | 'PRO' | 'ENTERPRISE'
@@ -36,36 +37,54 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     return { error: "Não autenticado" }
   }
 
-  // Verifica acesso ao salão e busca todas as estatísticas em paralelo
+  // Autoriza ANTES de consultar. A versão anterior decidia o acesso só DEPOIS do
+  // Promise.all: as oito queries já tinham rodado contra o salonId que veio do
+  // cliente, e apenas o resultado era descartado.
+  //
+  // hasSalonPermission no lugar de comparar salons.ownerId: a action irmã
+  // initializeDashboardData já aceitava MANAGER, então gerente e dono viam coisas
+  // diferentes na mesma tela. Ela também cobre "salão não existe".
+  if (!(await hasSalonPermission(salonId, user.id))) {
+    return { error: "Acesso negado a este salão" }
+  }
+
+  // Início do mês em Brasília: appointments.date é timestamp SEM timezone
+  // guardando UTC, então cortar por mês sem converter joga as noites (21h-24h)
+  // do último dia para o mês seguinte.
+  const monthStart = startOfMonthBrazil(new Date())
+
   const [
-    salon,
     profileResult,
     completedAppointmentsResult,
     activeChatsResult,
     messagesResult,
-    chatsResult,
+    activeChatRows,
     creditsData,
     usageStatsData,
   ] = await Promise.all([
-    db.query.salons.findFirst({
-      where: eq(salons.id, salonId),
-      columns: {
-        id: true,
-        ownerId: true,
-      },
-    }),
     db.select({ tier: profiles.tier, fullName: profiles.fullName, firstName: profiles.firstName, email: profiles.email }).from(salons).innerJoin(profiles, eq(salons.ownerId, profiles.id)).where(eq(salons.id, salonId)).limit(1),
-    // Atendimentos concluídos = chats do WhatsApp com status 'completed'
-    supabase
-      .from("chats")
-      .select("id", { count: "exact", head: true })
-      .eq("salon_id", salonId)
-      .eq("status", "completed"),
-    supabase
-      .from("chats")
-      .select("id", { count: "exact", head: true })
-      .eq("salon_id", salonId)
-      .eq("status", "active"),
+    // Atendimentos realizados no mês corrente.
+    //
+    // Antes isto contava `chats` com status 'completed' — valor que NENHUM código
+    // de produto grava (o único writer do repo está em __tests__/eval/runner/seed.ts).
+    // O card "Atendimentos Concluídos" exibia 0 em todos os salões e continuaria
+    // exibindo 0 para sempre. Agora lê a fonte certa: `appointments`. Segue em 0
+    // enquanto nada gravar 'completed' ali, e passa a contar sozinho quando o
+    // desfecho de atendimento existir — sem precisar de um segundo deploy.
+    db
+      .select({ n: count() })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.salonId, salonId),
+          eq(appointments.status, "completed"),
+          gte(appointments.date, monthStart)
+        )
+      ),
+    db
+      .select({ n: count() })
+      .from(chats)
+      .where(and(eq(chats.salonId, salonId), eq(chats.status, "active"))),
     db.select({
       createdAt: messages.createdAt,
       role: messages.role,
@@ -75,11 +94,14 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       .where(eq(chats.salonId, salonId))
       .orderBy(desc(messages.createdAt))
       .limit(1000),
-    supabase
-      .from("chats")
-      .select("id, created_at")
-      .eq("salon_id", salonId)
-      .eq("status", "active")
+    // Chats ativos para o cálculo de fila. Estas três leituras eram as últimas da
+    // aplicação a passar pelo client Supabase (PostgREST, chave anon/publishable),
+    // e por isso `chats` seguia fora do lockdown de RLS do 014, com policy
+    // USING(true) para `authenticated`. Em Drizzle, a policy pode fechar.
+    db
+      .select({ id: chats.id, createdAt: chats.createdAt })
+      .from(chats)
+      .where(and(eq(chats.salonId, salonId), eq(chats.status, "active")))
       .limit(100),
     // Busca créditos por dia da tabela aiUsageStats
     db
@@ -112,12 +134,8 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       .groupBy(aiUsageStats.model),
   ])
 
-  if (!salon || salon.ownerId !== user.id) {
-    return { error: "Acesso negado a este salão" }
-  }
-
-  const completedAppointments = completedAppointmentsResult.count || 0
-  const activeChats = activeChatsResult.count || 0
+  const completedAppointments = completedAppointmentsResult[0]?.n ?? 0
+  const activeChats = activeChatsResult[0]?.n ?? 0
 
   // Calcula tempo médio de resposta usando first_user_message_at e first_agent_response_at
   let averageResponseTime = "0m"
@@ -176,9 +194,9 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
 
   // Calcula fila média usando uma query SQL eficiente (evita loop com await)
   let queueAverageTime = "0m"
-  if (chatsResult.data && chatsResult.data.length > 0) {
+  if (activeChatRows.length > 0) {
     // Busca primeira mensagem de cada chat em uma única query
-    const chatIds = chatsResult.data.map(c => c.id)
+    const chatIds = activeChatRows.map(c => c.id)
     const firstMessagesData = await db
       .select({
         createdAt: messages.createdAt,
@@ -207,11 +225,11 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     let totalQueueTime = 0
     let queueCount = 0
 
-    for (const chat of chatsResult.data) {
+    for (const chat of activeChatRows) {
       // Encontra a primeira mensagem correspondente pelo chatId
       const firstMessageTime = messagesByChat.get(chat.id)
       if (firstMessageTime) {
-        const timeDiff = firstMessageTime.getTime() - new Date(chat.created_at).getTime()
+        const timeDiff = firstMessageTime.getTime() - new Date(chat.createdAt).getTime()
         totalQueueTime += Math.abs(timeDiff)
         queueCount++
       }
