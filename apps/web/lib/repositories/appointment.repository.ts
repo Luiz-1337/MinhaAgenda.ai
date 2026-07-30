@@ -21,6 +21,22 @@ export interface AppointmentDTO {
   // (era aqui, no STATUS_LABELS do diálogo e no getStatusColor do mensal).
   status: AppointmentStatus
   notes: string | null
+  // --- Preço, para o diálogo de desfecho -----------------------------------
+  // Vem no MESMO select porque o join com `services` já existe: zero ida extra ao
+  // banco, e com o banco em us-west-2 o RTT é o custo dominante. Buscar o serviço
+  // ao abrir o diálogo custaria uma viagem por clique.
+  //
+  // Todos os numeric chegam como STRING do driver — use lib/utils/money.utils.
+  servicePrice: string | null
+  servicePriceType: string | null
+  servicePriceMin: string | null
+  servicePriceMax: string | null
+  servicePriceOnRequest: boolean | null
+  /** Valor efetivamente cobrado, quando o atendimento já foi concluído. */
+  priceCharged: string | null
+  completedAt: Date | null
+  noShowAt: Date | null
+  cancelledAt: Date | null
 }
 
 export interface ProfessionalDTO {
@@ -134,6 +150,15 @@ export async function getAppointmentsByRange({
         endTime: appointments.endTime,
         status: appointments.status,
         notes: appointments.notes,
+        servicePrice: services.price,
+        servicePriceType: services.priceType,
+        servicePriceMin: services.priceMin,
+        servicePriceMax: services.priceMax,
+        servicePriceOnRequest: services.priceOnRequest,
+        priceCharged: appointments.priceCharged,
+        completedAt: appointments.completedAt,
+        noShowAt: appointments.noShowAt,
+        cancelledAt: appointments.cancelledAt,
       })
       .from(appointments)
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
