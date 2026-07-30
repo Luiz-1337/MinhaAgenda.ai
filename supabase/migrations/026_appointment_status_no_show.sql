@@ -1,0 +1,32 @@
+-- 026_appointment_status_no_show.sql
+-- Adiciona 'no_show' ao enum public.status (o tipo da coluna appointments.status).
+--
+-- ARQUIVO SEPARADO DE PROPÓSITO: cada migration roda numa transação, e um valor
+-- novo de enum não pode ser USADO na mesma transação em que é criado. A 027, que
+-- referencia 'no_show' num índice parcial e num CHECK, precisa vir depois.
+--
+-- ⚠️ PORTA DE MÃO ÚNICA: Postgres não tem ALTER TYPE ... DROP VALUE. A grafia é
+-- decidida aqui e não volta atrás:
+--
+--   'no_show'  (underscore)  <- esta
+--   'no-show'  (hífen)       <- o que o enum PARALELO e morto em
+--                               packages/db/src/domain/integrations/enums/
+--                               appointment-status.enum.ts:9 declarava. Esse
+--                               arquivo tem zero consumidores e é apagado no
+--                               commit de código que acompanha a 027.
+--
+-- Underscore para casar com o padrão dos outros enums do banco (sync_status usa
+-- 'synced'/'failed'; professional_role usa 'MANAGER') e com as chaves de
+-- STATUS_LABELS no diálogo da agenda.
+--
+-- Estado antes desta migration (conferido em pg_enum):
+--   public.status = pending, confirmed, cancelled, completed
+--
+-- Idempotente via IF NOT EXISTS (Postgres 12+).
+
+ALTER TYPE public.status ADD VALUE IF NOT EXISTS 'no_show';
+
+-- Verificação:
+--   select enumlabel from pg_enum
+--    where enumtypid = 'public.status'::regtype order by enumsortorder;
+--   -> pending, confirmed, cancelled, completed, no_show
