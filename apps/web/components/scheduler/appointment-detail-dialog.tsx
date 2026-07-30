@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition, type ReactNode } from "react"
 import { toast } from "sonner"
 import { Calendar, Clock, User, Scissors, Trash2, X, FileText, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { deleteAppointment } from "@/app/actions/appointments"
+import { cancelAppointment } from "@/app/actions/appointments"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { appointmentStatusLabel } from "@/lib/utils/appointment-status"
@@ -40,7 +40,7 @@ export function AppointmentDetailDialog({
 
   function handleDelete(apt: DailyAppointment) {
     startTransition(async () => {
-      const res = await deleteAppointment(apt.id, salonId)
+      const res = await cancelAppointment(apt.id, salonId)
       if ("error" in res) {
         toast.error(res.error)
         return

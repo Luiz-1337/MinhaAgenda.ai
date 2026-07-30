@@ -46,7 +46,15 @@ export class DeleteAppointmentUseCase {
       return fail(transition.error)
     }
 
-    const result = await domainServices.deleteAppointmentService({ appointmentId, salonId })
+    // source='ai' e cancelledBy=null: foi o cliente pedindo pelo WhatsApp, não uma
+    // pessoa do salão. Sem isso o histórico não distingue "a recepção cancelou" de
+    // "o cliente cancelou", que é justamente a diferença que importa no CRM.
+    const result = await domainServices.cancelAppointmentService({
+      appointmentId,
+      salonId,
+      cancelledBy: null,
+      source: 'ai',
+    })
     if (!result.success) {
       // Mapeia o código do serviço para o erro de domínio correto (bug A2).
       return fail(mapServiceError(result.code, result.error))

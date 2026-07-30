@@ -560,24 +560,216 @@ export async function updateAppointmentService(input: {
   }
 }
 
+/** Quem produziu o desfecho. Grava em appointments.outcome_source. */
+export type OutcomeSource = 'panel' | 'cron' | 'ai' | 'google' | 'legacy'
+
 /**
- * Deleta um agendamento do sistema.
+ * CANCELA um agendamento.
  *
- * **Regras de Negócio:**
- * - Valida que o agendamento existe
- * - Deleta completamente do banco de dados (não apenas cancela)
+ * Antes isto era um DELETE físico ("Cancelar = HARD delete"). A linha desaparecia
+ * e com ela todo o histórico: o preditor de no-show passou anos contando
+ * exatamente as linhas que este método apagava, e taxa de cancelamento, motivo e
+ * "quem cancelou" eram impossíveis por construção.
  *
- * @param input - Dados do agendamento a ser deletado
- * @param input.appointmentId - ID do agendamento (UUID)
+ * Agora é SOFT: status='cancelled' + cancelled_at + motivo + autor.
  *
- * @returns Resultado da operação em caso de sucesso
+ * O que NÃO mudou, de propósito:
+ * - `fireAndForgetDelete` continua removendo o evento espelhado no Google/Trinks.
+ *   O horário fica livre na agenda externa e a linha fica no nosso banco — é isso
+ *   que se quer.
+ * - `processVacantSlot` continua tentando preencher a vaga pela fila de espera.
  *
- * @throws Não lança exceções, retorna erro via ActionResult
+ * Idempotente: cancelar duas vezes devolve sucesso sem reescrever `cancelled_at`
+ * nem redisparar o preenchimento de vaga (senão a fila seria avisada de novo).
+ *
+ * `deleteAppointmentService` segue exportado como alias, porque é o nome que os
+ * chamadores usam e o que este serviço faz do ponto de vista deles não mudou:
+ * o horário deixa de existir na agenda.
  */
-export async function deleteAppointmentService(input: {
+export async function cancelAppointmentService(input: {
   appointmentId: string
   salonId?: string
   skipExternalSync?: boolean
+  reason?: string
+  /** profiles.id de quem cancelou. Null quando foi a IA ou o Google. */
+  cancelledBy?: string | null
+  source?: OutcomeSource
+}): Promise<ActionResult<void>> {
+  const schema = z.object({
+    appointmentId: z.string().uuid(),
+    salonId: z.string().uuid().optional(),
+    reason: z.string().trim().max(500).optional(),
+    cancelledBy: z.string().uuid().nullable().optional(),
+  })
+
+  const parse = schema.safeParse(input)
+  if (!parse.success) {
+    return { success: false, error: formatZodError(parse.error) }
+  }
+
+  const scope = parse.data.salonId
+    ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+    : eq(appointments.id, parse.data.appointmentId)
+
+  // Verifica se o agendamento existe — quando salonId é fornecido, restringe ao
+  // salão do contexto (isolamento multi-tenant, bug C1: defesa em profundidade).
+  const existingAppointment = await db.query.appointments.findFirst({
+    where: scope,
+    columns: {
+      id: true, salonId: true, professionalId: true, serviceId: true, date: true, status: true,
+    },
+  })
+
+  if (!existingAppointment) {
+    return { success: false, error: "Agendamento não encontrado", code: "APPOINTMENT_NOT_FOUND" }
+  }
+
+  // Já cancelado: sucesso, sem tocar em nada. Reescrever cancelled_at perderia o
+  // instante real, e redisparar processVacantSlot avisaria a fila de espera duas
+  // vezes da mesma vaga.
+  if (existingAppointment.status === 'cancelled') {
+    return { success: true, data: undefined }
+  }
+
+  // Atendimento já realizado não se cancela — se aconteceu, aconteceu. Apagá-lo
+  // sumiria com receita já contabilizada.
+  if (existingAppointment.status === 'completed') {
+    return {
+      success: false,
+      error: "Não é possível cancelar um atendimento já concluído",
+      code: "APPOINTMENT_COMPLETED",
+    }
+  }
+
+  // Fire-and-forget: remove o evento espelhado ANTES de marcar no banco, para o
+  // horário abrir na agenda externa.
+  fireAndForgetDelete(parse.data.appointmentId, existingAppointment.salonId, input.skipExternalSync)
+
+  const now = new Date()
+  await db
+    .update(appointments)
+    .set({
+      status: 'cancelled',
+      cancelledAt: now,
+      cancelReason: parse.data.reason ?? null,
+      cancelledBy: parse.data.cancelledBy ?? null,
+      outcomeSource: input.source ?? 'panel',
+      updatedAt: now,
+    })
+    .where(scope)
+
+  // Tenta preencher a vaga (não trava o processo)
+  processVacantSlot({
+    salonId: existingAppointment.salonId,
+    professionalId: existingAppointment.professionalId,
+    serviceId: existingAppointment.serviceId,
+    dateUtc: existingAppointment.date
+  }).catch(console.error)
+
+  return { success: true, data: undefined }
+}
+
+/**
+ * Alias histórico. O nome fala de DELETE, o comportamento agora é soft cancel —
+ * mantido porque é o que os chamadores importam e a semântica para eles é a
+ * mesma: o horário sai da agenda.
+ */
+export const deleteAppointmentService = cancelAppointmentService
+
+/**
+ * Marca o atendimento como REALIZADO, com o valor cobrado.
+ *
+ * Este é o fato que o CRM inteiro deriva: última visita, frequência, LTV, ticket
+ * médio, taxa de retorno, receita por profissional e ROI de campanha. Até aqui
+ * `'completed'` existia no enum e NENHUM código de produto o gravava.
+ *
+ * `priceCharged` é obrigatório e o banco garante (CHECK
+ * appointments_completed_requires_price). Cortesia se registra com 0 explícito,
+ * nunca com null — "sem preço" e "não cobrei" são fatos diferentes.
+ *
+ * NÃO sincroniza com Google/Trinks: atendimento concluído continua ocupando o
+ * horário que ocupou. Não há o que mudar na agenda externa.
+ */
+export async function completeAppointmentService(input: {
+  appointmentId: string
+  salonId?: string
+  priceCharged: number
+  source?: OutcomeSource
+}): Promise<ActionResult<void>> {
+  const schema = z.object({
+    appointmentId: z.string().uuid(),
+    salonId: z.string().uuid().optional(),
+    // Sem teto artificial, mas nada negativo e nada não-finito.
+    priceCharged: z.number().finite().nonnegative(),
+  })
+
+  const parse = schema.safeParse(input)
+  if (!parse.success) {
+    return { success: false, error: formatZodError(parse.error) }
+  }
+
+  const scope = parse.data.salonId
+    ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+    : eq(appointments.id, parse.data.appointmentId)
+
+  const existing = await db.query.appointments.findFirst({
+    where: scope,
+    columns: { id: true, status: true, date: true },
+  })
+
+  if (!existing) {
+    return { success: false, error: "Agendamento não encontrado", code: "APPOINTMENT_NOT_FOUND" }
+  }
+
+  if (existing.status === 'cancelled') {
+    return {
+      success: false,
+      error: "Não é possível concluir um agendamento cancelado",
+      code: "APPOINTMENT_CANCELLED",
+    }
+  }
+
+  // Concluir algo que ainda não começou é sempre erro de clique. Concluir DURANTE
+  // o atendimento é permitido: quem está no balcão sabe que acabou mais cedo.
+  if (existing.date.getTime() > Date.now()) {
+    return {
+      success: false,
+      error: "Não é possível concluir um agendamento que ainda não começou",
+      code: "APPOINTMENT_NOT_STARTED",
+    }
+  }
+
+  const now = new Date()
+  await db
+    .update(appointments)
+    .set({
+      status: 'completed',
+      // Preserva o instante do primeiro fechamento numa reconclusão (correção de
+      // valor não é um atendimento novo).
+      completedAt: existing.status === 'completed' ? undefined : now,
+      priceCharged: parse.data.priceCharged.toFixed(2),
+      outcomeSource: input.source ?? 'panel',
+      updatedAt: now,
+    })
+    .where(scope)
+
+  return { success: true, data: undefined }
+}
+
+/**
+ * Marca que o cliente NÃO COMPARECEU.
+ *
+ * Não tem preço: não houve atendimento. Alimenta a taxa de falta e o preditor de
+ * no-show, que até aqui era falso-negativo por construção — contava
+ * cancelamentos, e cancelar apagava a linha.
+ *
+ * Também não sincroniza com Google/Trinks: o horário foi consumido de fato, o
+ * cliente é que não veio.
+ */
+export async function markNoShowService(input: {
+  appointmentId: string
+  salonId?: string
+  source?: OutcomeSource
 }): Promise<ActionResult<void>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
@@ -589,36 +781,55 @@ export async function deleteAppointmentService(input: {
     return { success: false, error: formatZodError(parse.error) }
   }
 
-  // Verifica se o agendamento existe — quando salonId é fornecido, restringe ao
-  // salão do contexto (isolamento multi-tenant, bug C1: defesa em profundidade).
-  const existingAppointment = await db.query.appointments.findFirst({
-    where: parse.data.salonId
-      ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
-      : eq(appointments.id, parse.data.appointmentId),
-    columns: { id: true, salonId: true, professionalId: true, serviceId: true, date: true },
+  const scope = parse.data.salonId
+    ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
+    : eq(appointments.id, parse.data.appointmentId)
+
+  const existing = await db.query.appointments.findFirst({
+    where: scope,
+    columns: { id: true, status: true, date: true, endTime: true },
   })
 
-  if (!existingAppointment) {
+  if (!existing) {
     return { success: false, error: "Agendamento não encontrado", code: "APPOINTMENT_NOT_FOUND" }
   }
 
-  // Fire-and-forget: Sync deletion to external calendars BEFORE deleting from DB
-  fireAndForgetDelete(parse.data.appointmentId, existingAppointment.salonId, input.skipExternalSync)
+  if (existing.status === 'cancelled') {
+    return {
+      success: false,
+      error: "Este agendamento foi cancelado, não é uma falta",
+      code: "APPOINTMENT_CANCELLED",
+    }
+  }
 
-  // Deleta o agendamento (escopado ao salão quando fornecido)
-  await db.delete(appointments).where(
-    parse.data.salonId
-      ? and(eq(appointments.id, parse.data.appointmentId), eq(appointments.salonId, parse.data.salonId))
-      : eq(appointments.id, parse.data.appointmentId)
-  )
+  if (existing.status === 'completed') {
+    return {
+      success: false,
+      error: "Este atendimento foi concluído, não é uma falta",
+      code: "APPOINTMENT_COMPLETED",
+    }
+  }
 
-  // Tenta preencher a vaga (não trava o processo)
-  processVacantSlot({
-    salonId: existingAppointment.salonId,
-    professionalId: existingAppointment.professionalId,
-    serviceId: existingAppointment.serviceId,
-    dateUtc: existingAppointment.date
-  }).catch(console.error)
+  // Falta só se sabe depois de o horário passar. Antes disso o cliente ainda pode
+  // chegar, e marcar falta cedo estragaria o histórico de quem chegou atrasado.
+  if (existing.endTime.getTime() > Date.now()) {
+    return {
+      success: false,
+      error: "Só é possível marcar falta depois do horário do atendimento",
+      code: "APPOINTMENT_NOT_ENDED",
+    }
+  }
+
+  const now = new Date()
+  await db
+    .update(appointments)
+    .set({
+      status: 'no_show',
+      noShowAt: existing.status === 'no_show' ? undefined : now,
+      outcomeSource: input.source ?? 'panel',
+      updatedAt: now,
+    })
+    .where(scope)
 
   return { success: true, data: undefined }
 }
@@ -683,9 +894,18 @@ export async function createBlockedTimeService(input: {
     placeholderCustomer = created
   }
 
-  // Verificar se já existe appointment com este googleEventId
+  // Verificar se já existe appointment ATIVO com este googleEventId.
+  //
+  // O `ne(status,'cancelled')` é essencial desde que cancelar deixou de apagar a
+  // linha: sem ele, um evento recriado no Google encontraria a linha cancelada,
+  // devolveria o id dela e o bloqueio voltaria a existir na agenda como se
+  // estivesse ativo — ressuscitando por reuso o que alguém cancelou. Com o
+  // filtro, um evento novo cria uma linha nova e a cancelada fica no histórico.
   const existing = await db.query.appointments.findFirst({
-    where: eq(appointments.googleEventId, googleEventId),
+    where: and(
+      eq(appointments.googleEventId, googleEventId),
+      ne(appointments.status, 'cancelled')
+    ),
     columns: { id: true },
   })
 

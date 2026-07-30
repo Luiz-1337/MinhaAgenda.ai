@@ -39,7 +39,12 @@ vi.mock("@repo/db", () => {
     domainServices: {
       createAppointmentService: vi.fn(),
       updateAppointmentService: vi.fn(),
+      // cancelAppointmentService substituiu o hard delete; deleteAppointmentService
+      // segue como alias no @repo/db real, então os dois existem no mock.
+      cancelAppointmentService: vi.fn(),
       deleteAppointmentService: vi.fn(),
+      completeAppointmentService: vi.fn(),
+      markNoShowService: vi.fn(),
     },
   }
 })

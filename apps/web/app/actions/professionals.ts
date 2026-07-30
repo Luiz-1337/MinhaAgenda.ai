@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { db, salons, professionalServices, appointments, profiles, professionals, eq } from "@repo/db"
+import { db, salons, professionalServices, appointments, profiles, professionals, eq, and, gte, ne, count } from "@repo/db"
 import { formatZodError } from "@/lib/services/validation.service"
 import { normalizeEmail, normalizeString, emptyStringToNull } from "@/lib/services/validation.service"
 import type { ProfessionalRow, UpsertProfessionalInput } from "@/lib/types/professional"
@@ -207,7 +207,11 @@ export async function upsertProfessional(
 }
 
 /**
- * Remove um profissional definitivamente (hard delete)
+ * Remove um profissional do salão.
+ *
+ * Hard delete só quando ele NUNCA atendeu. Com histórico, cancela os agendamentos
+ * futuros e DESATIVA o profissional — a FK appointments → professionals é RESTRICT
+ * e, mais importante, apagar quem atendeu apagaria a receita que ele gerou.
  */
 export async function deleteProfessional(id: string, salonId: string): Promise<ActionResult> {
   if (!salonId) {
@@ -253,8 +257,58 @@ export async function deleteProfessional(id: string, salonId: string): Promise<A
   }
 
   try {
-    // Remove primeiro os agendamentos relacionados
-    await db.delete(appointments).where(eq(appointments.professionalId, id))
+    const now = new Date()
+
+    // Cancela os agendamentos FUTUROS. Os passados ficam intactos.
+    //
+    // Antes isto era `db.delete(appointments).where(professionalId)` — apagava
+    // TODO o histórico do profissional, passado incluído. Quando um funcionário
+    // saía, os atendimentos que ele fez desapareciam do banco sem auditoria, e
+    // LTV de cliente, ticket médio e receita por profissional mudavam
+    // retroativamente.
+    await db
+      .update(appointments)
+      .set({
+        status: 'cancelled',
+        cancelledAt: now,
+        cancelReason: 'Profissional removido do salão',
+        outcomeSource: 'panel',
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(appointments.professionalId, id),
+          gte(appointments.date, now),
+          ne(appointments.status, 'cancelled')
+        )
+      )
+
+    // Se sobrou histórico, o profissional é DESATIVADO em vez de apagado.
+    //
+    // A FK appointments -> professionals é RESTRICT: o delete físico lá embaixo
+    // falharia com erro de FK cru na cara do dono ("Falha ao remover"). O delete
+    // dos agendamentos existia justamente para destravar isso — ao custo de
+    // queimar o histórico.
+    //
+    // Desativado significa: fora da agenda, fora do booking, fora da lista de
+    // profissionais atendendo. Continua existindo para que os atendimentos que
+    // ele fez tenham um nome.
+    const [{ n: historico }] = await db
+      .select({ n: count() })
+      .from(appointments)
+      .where(eq(appointments.professionalId, id))
+
+    if (historico > 0) {
+      await db
+        .update(professionals)
+        .set({ isActive: false })
+        .where(and(eq(professionals.id, id), eq(professionals.salonId, salonId)))
+
+      await db.delete(professionalServices).where(eq(professionalServices.professionalId, id))
+
+      revalidatePath(`/${salonId}/team`)
+      return { success: true }
+    }
 
     // Remove as associações com serviços
     await db.delete(professionalServices).where(eq(professionalServices.professionalId, id))

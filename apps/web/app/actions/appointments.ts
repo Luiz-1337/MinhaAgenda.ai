@@ -356,9 +356,11 @@ export async function getSchedulerHours(
  * Reusa `deleteAppointmentService` — o mesmo caminho que a IA usa: remove o evento
  * espelhado no Google Calendar e tenta preencher a vaga pela fila de espera.
  */
-export async function deleteAppointment(
+export async function cancelAppointment(
   appointmentId: string,
-  salonId: string
+  salonId: string,
+  /** Motivo opcional, digitado pelo dono na confirmação. Vai para o histórico. */
+  reason?: string
 ): Promise<ActionResult<void>> {
   if (!appointmentId || !salonId) {
     return { error: "Parâmetros obrigatórios ausentes" }
@@ -413,9 +415,14 @@ export async function deleteAppointment(
     return { error: "Você não tem permissão para apagar este agendamento" }
   }
 
-  const result = await sharedServices.deleteAppointmentService({
+  const result = await sharedServices.cancelAppointmentService({
     appointmentId,
     salonId: appointment.salonId,
+    reason: reason?.trim() || undefined,
+    // Quem cancelou, para o histórico do cliente poder dizer "cancelado pela
+    // recepção" em vez de só "cancelado".
+    cancelledBy: user.id,
+    source: 'panel',
   })
 
   if (!result.success) {

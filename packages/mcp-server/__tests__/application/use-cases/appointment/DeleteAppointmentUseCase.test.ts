@@ -35,9 +35,9 @@ describe("DeleteAppointmentUseCase", () => {
     vi.useRealTimers()
   })
 
-  it("cancela agendamento com hard delete via @repo/db", async () => {
+  it("cancela agendamento (soft) via @repo/db, registrando origem ai", async () => {
     appointmentRepo.findById.mockResolvedValue(makeFutureAppointment())
-    ;(domainServices.deleteAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ;(domainServices.cancelAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: true,
       data: undefined,
     })
@@ -49,11 +49,15 @@ describe("DeleteAppointmentUseCase", () => {
       expect(result.data.appointmentId).toBe(IDS.appointmentId)
       expect(result.data.message).toContain("cancelado")
     }
-    // Delega ao serviço centralizado (hard delete), sem soft delete local,
-    // propagando o salonId do contexto para isolamento multi-tenant.
-    expect(domainServices.deleteAppointmentService).toHaveBeenCalledWith({
+    // Delega ao serviço centralizado, propagando o salonId do contexto para
+    // isolamento multi-tenant. cancelledBy=null + source='ai' registram que foi o
+    // CLIENTE pelo WhatsApp, não alguém do salão — é a distinção que o histórico do
+    // CRM precisa fazer ("cancelado pela recepção" vs "o cliente desmarcou").
+    expect(domainServices.cancelAppointmentService).toHaveBeenCalledWith({
       appointmentId: IDS.appointmentId,
       salonId: IDS.salonId,
+      cancelledBy: null,
+      source: "ai",
     })
     expect(appointmentRepo.save).not.toHaveBeenCalled()
   })
@@ -67,7 +71,7 @@ describe("DeleteAppointmentUseCase", () => {
     if (!result.success) {
       expect(result.error.code).toBe("APPOINTMENT_NOT_FOUND")
     }
-    expect(domainServices.deleteAppointmentService).not.toHaveBeenCalled()
+    expect(domainServices.cancelAppointmentService).not.toHaveBeenCalled()
   })
 
   it("bloqueia cancelamento cross-salon (C1)", async () => {
@@ -82,7 +86,7 @@ describe("DeleteAppointmentUseCase", () => {
     if (!result.success) {
       expect(result.error.code).toBe("APPOINTMENT_NOT_FOUND")
     }
-    expect(domainServices.deleteAppointmentService).not.toHaveBeenCalled()
+    expect(domainServices.cancelAppointmentService).not.toHaveBeenCalled()
   })
 
   it("bloqueia cancelamento de agendamento passado", async () => {
@@ -104,12 +108,12 @@ describe("DeleteAppointmentUseCase", () => {
     if (!result.success) {
       expect(result.error.code).toBe("PAST_APPOINTMENT")
     }
-    expect(domainServices.deleteAppointmentService).not.toHaveBeenCalled()
+    expect(domainServices.cancelAppointmentService).not.toHaveBeenCalled()
   })
 
   it("retorna erro quando deleteAppointmentService falha", async () => {
     appointmentRepo.findById.mockResolvedValue(makeFutureAppointment())
-    ;(domainServices.deleteAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
+    ;(domainServices.cancelAppointmentService as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
       error: "Agendamento não encontrado",
       code: "APPOINTMENT_NOT_FOUND",

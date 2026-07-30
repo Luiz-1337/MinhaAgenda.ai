@@ -87,19 +87,27 @@ export class ServiceUseCase {
 
     const appointmentCount = await ServiceRepository.countAppointments(id, salonId)
 
-    // Tem agendamentos e não foi confirmado: avisa em vez de apagar.
+    // Tem histórico e não foi confirmado: avisa o que vai acontecer de verdade.
+    //
+    // A mensagem antiga prometia remover os agendamentos "permanentemente" e era
+    // literal: `deleteWithAppointments` apagava as linhas. Isso queimava a receita
+    // de todos os atendimentos daquele serviço — o histórico do cliente perdia as
+    // visitas e o ticket médio mudava retroativamente, sem auditoria.
     if (appointmentCount > 0 && !options.force) {
       return {
-        error: `O serviço "${existing.name}" possui ${appointmentCount} agendamento(s) vinculado(s). Excluí-lo também removerá esses agendamentos permanentemente. Deseja excluir mesmo assim?`,
+        error: `O serviço "${existing.name}" tem ${appointmentCount} agendamento(s) no histórico. Ele sai do catálogo e deixa de ser agendável, mas os atendimentos já feitos são preservados. Deseja continuar?`,
         code: "HAS_APPOINTMENTS",
       }
     }
 
     if (appointmentCount > 0) {
-      // Confirmado: remove agendamentos + serviço atomicamente.
-      await ServiceRepository.deleteWithAppointments(id, salonId)
+      // Confirmado: DESATIVA em vez de apagar. A FK appointments → services é
+      // RESTRICT, então o delete falharia de todo jeito; e mesmo que não
+      // falhasse, apagar não é o que o dono quer — ele quer parar de oferecer.
+      await ServiceRepository.deactivate(id, salonId)
+      await ServiceRepository.removeProfessionalAssociations(id)
     } else {
-      // Sem agendamentos: caminho simples (associações caem por CASCADE).
+      // Nunca foi agendado: pode sair do banco (associações caem por CASCADE).
       await ServiceRepository.removeProfessionalAssociations(id)
       await ServiceRepository.delete(id, salonId)
     }

@@ -183,19 +183,21 @@ export class ServiceRepository {
   }
 
   /**
-   * Remove o serviço E seus agendamentos atomicamente. Necessário porque a FK
-   * appointments→services é RESTRICT (NO ACTION); as demais dependências
-   * (professional_services, waiting_list) caem por CASCADE ao apagar o serviço.
+   * Tira o serviço do catálogo PRESERVANDO o histórico.
+   *
+   * Substitui `deleteWithAppointments`, que apagava os agendamentos do serviço
+   * para poder apagar o serviço (a FK appointments→services é RESTRICT). O preço
+   * disso era queimar a receita de todos os atendimentos daquele serviço: o
+   * histórico do cliente perdia visitas e o ticket médio mudava retroativamente.
+   *
+   * `isActive=false` já é o que esconde o serviço do catálogo, do booking e da IA
+   * — é o mesmo mecanismo usado pelos serviços placeholder do Google.
    */
-  static async deleteWithAppointments(serviceId: string, salonId: string): Promise<void> {
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(appointments)
-        .where(and(eq(appointments.serviceId, serviceId), eq(appointments.salonId, salonId)))
-      await tx
-        .delete(services)
-        .where(and(eq(services.id, serviceId), eq(services.salonId, salonId)))
-    })
+  static async deactivate(serviceId: string, salonId: string): Promise<void> {
+    await db
+      .update(services)
+      .set({ isActive: false })
+      .where(and(eq(services.id, serviceId), eq(services.salonId, salonId)))
   }
 
   /**
