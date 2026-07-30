@@ -656,6 +656,37 @@ export const customerTagAssignments = pgTable(
   ]
 )
 
+/**
+ * Notas de atendimento sobre o cliente, com AUTOR e DATA (migration 029).
+ *
+ * Substitui `customers.preferences->>'notes'`, que era um campo único
+ * SOBRESCRITO a cada edição, sem autor, sem data e sem histórico — e que dividia
+ * o mesmo jsonb com as chaves que a IA grava (favoriteProfessional, allergies),
+ * então salvar a nota pela tela com o campo vazio apagava o que o agente havia
+ * aprendido.
+ *
+ * Nota é registro de atendimento, não configuração: "pediu para não usar secador",
+ * "veio reclamando do corte anterior". Precisa acumular.
+ */
+export const customerNotes = pgTable(
+  'customer_notes',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    // SET NULL: a nota é do salão, não de quem digitou. Funcionário sai (e
+    // admin/users.ts apaga o profile), a informação sobre o cliente fica.
+    authorProfileId: uuid('author_profile_id').references(() => profiles.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('customer_notes_customer_idx').on(table.customerId, table.createdAt.desc()),
+    index('customer_notes_salon_idx').on(table.salonId, table.createdAt.desc())
+  ]
+)
+
 export const campaigns = pgTable('campaigns', {
   id: uuid('id').defaultRandom().primaryKey().notNull(),
   salonId: uuid('salon_id').references(() => salons.id).notNull(),
@@ -1051,7 +1082,14 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
     fields: [customers.id],
     references: [customerTrinksProfile.customerId]
   }),
-  tagAssignments: many(customerTagAssignments)
+  tagAssignments: many(customerTagAssignments),
+  notes: many(customerNotes)
+}))
+
+export const customerNotesRelations = relations(customerNotes, ({ one }) => ({
+  customer: one(customers, { fields: [customerNotes.customerId], references: [customers.id] }),
+  salon: one(salons, { fields: [customerNotes.salonId], references: [salons.id] }),
+  author: one(profiles, { fields: [customerNotes.authorProfileId], references: [profiles.id] })
 }))
 
 export const customerTagsRelations = relations(customerTags, ({ one, many }) => ({

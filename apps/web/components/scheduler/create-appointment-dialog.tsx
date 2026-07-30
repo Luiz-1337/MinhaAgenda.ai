@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from "react"
 import { toast } from "sonner"
 import { X, Calendar, User, Briefcase, Zap, FileText, Clock, Plus, Phone, Mail, Loader2 } from "lucide-react"
 import { createAppointment } from "@/app/actions/appointments"
-import { getSalonCustomers, createSalonCustomer, type CustomerRow } from "@/app/actions/customers"
+import { getSalonCustomerOptions, createSalonCustomer, type CustomerOption } from "@/app/actions/customers"
 import { getServices } from "@/app/actions/services"
 import type { ServiceRow } from "@/lib/types/service"
 import type { ProfessionalInfo } from "@/lib/types/appointments"
@@ -40,7 +40,7 @@ export function CreateAppointmentDialog({
   const [isPending, startTransition] = useTransition()
   
   // Estados para dados carregados
-  const [customers, setCustomers] = useState<CustomerRow[]>([])
+  const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [services, setServices] = useState<ServiceRow[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [loadingServices, setLoadingServices] = useState(false)
@@ -59,7 +59,7 @@ export function CreateAppointmentDialog({
       setLoadingServices(true)
       
       Promise.all([
-        getSalonCustomers(salonId),
+        getSalonCustomerOptions(salonId),
         getServices(salonId)
       ]).then(([customersResult, servicesResult]) => {
         if ("error" in customersResult) {
@@ -217,8 +217,12 @@ export function CreateAppointmentDialog({
       } else if (result.data) {
         const newCustomer = result.data
         toast.success("Cliente criado com sucesso!")
-        // Adiciona o novo cliente à lista
-        setCustomers((prev) => [...prev, newCustomer])
+        // Adiciona o novo cliente à lista do seletor (só os campos que ele usa —
+        // `createSalonCustomer` devolve a linha completa).
+        setCustomers((prev) => [
+          ...prev,
+          { id: newCustomer.id, name: newCustomer.name, phone: newCustomer.phone ?? "" },
+        ])
         // Seleciona o cliente recém-criado
         setClientId(newCustomer.id)
         // Limpa o formulário de criar cliente

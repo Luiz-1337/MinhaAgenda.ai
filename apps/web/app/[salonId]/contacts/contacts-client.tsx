@@ -1,12 +1,19 @@
 "use client"
 
-import { useDeferredValue, useMemo, useState, useTransition } from "react"
+import { useDeferredValue, useEffect, useState, useTransition } from "react"
 import dynamic from "next/dynamic"
+import Link from "next/link"
 import { Search, Download, User, Plus, Tag as TagIcon, Settings2 } from "lucide-react"
 import { toast } from "sonner"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { getSalonCustomers, deleteSalonCustomer, type CustomerRow } from "@/app/actions/customers"
+import {
+  getSalonCustomers,
+  deleteSalonCustomer,
+  exportSalonCustomersCsv,
+  type CustomerRow,
+  type SalonCustomersPage,
+} from "@/app/actions/customers"
 import { getSalonTags, type TagRow } from "@/app/actions/customer-tags"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
@@ -34,17 +41,7 @@ const EditContactDialog = dynamic(
   { ssr: false }
 )
 
-function exportCustomersToCSV(customers: CustomerRow[]) {
-  const headers = ["Nome", "Telefone", "E-mail", "Tags", "Preferências"]
-  const rows = customers.map((c) => {
-    const preferencesText = c.preferences?.notes
-      ? String(c.preferences.notes)
-      : (c.preferences ? JSON.stringify(c.preferences) : "")
-    const tagsText = (c.tags ?? []).map((t) => t.name).join("; ")
-    return [c.name, formatPhoneBR(c.phone), c.email || "", tagsText, preferencesText]
-  })
-  const csv = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))].join("\n")
-
+function downloadCsv(csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
   const link = document.createElement("a")
   const url = URL.createObjectURL(blob)
@@ -54,15 +51,16 @@ function exportCustomersToCSV(customers: CustomerRow[]) {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 interface ContactsClientProps {
   salonId: string
-  initialCustomers: CustomerRow[]
+  initialPage: SalonCustomersPage
   initialTags: TagRow[]
 }
 
-export default function ContactsClient({ salonId, initialCustomers, initialTags }: ContactsClientProps) {
+export default function ContactsClient({ salonId, initialPage, initialTags }: ContactsClientProps) {
   const queryClient = useQueryClient()
   const { isStaff } = useSalonAuth()
   const [query, setQuery] = useState("")
@@ -75,22 +73,46 @@ export default function ContactsClient({ salonId, initialCustomers, initialTags 
   const [isManageTagsOpen, setIsManageTagsOpen] = useState(false)
   const [customerToEdit, setCustomerToEdit] = useState<CustomerRow | null>(null)
   const [customerToDelete, setCustomerToDelete] = useState<CustomerRow | null>(null)
-  const pageSize = 20
+  const [isExporting, setIsExporting] = useState(false)
+  const pageSize = initialPage.pageSize
   const [, startTransition] = useTransition()
 
-  // react-query keyed no salonId da ROTA; o RSC entrega initialCustomers (sem cold-start).
-  const { data: customers = [], isFetching } = useQuery({
-    queryKey: ["customers", salonId],
+  const searchTerm = deferredQuery.trim()
+  // Chave estável: o array de tags viraria uma chave nova a cada render.
+  const tagKey = [...selectedTagIds].sort().join(",")
+
+  // Busca, filtro e página são estado de SERVIDOR agora. Antes tudo isso era
+  // useMemo sobre a base inteira, que precisava vir toda para o cliente.
+  // keepPreviousData evita a tela piscar em branco ao trocar de página ou digitar.
+  const { data: pageData, isFetching } = useQuery({
+    queryKey: ["customers", salonId, searchTerm, tagKey, page, pageSize],
     queryFn: async () => {
-      const result = await getSalonCustomers(salonId)
+      const result = await getSalonCustomers(salonId, {
+        q: searchTerm || undefined,
+        tagIds: selectedTagIds,
+        page,
+        pageSize,
+      })
       if ("error" in result) {
         toast.error(result.error)
-        return []
+        return { rows: [], total: 0, page, pageSize }
       }
-      return result.data || []
+      return result.data ?? { rows: [], total: 0, page, pageSize }
     },
-    initialData: initialCustomers,
+    initialData:
+      page === 1 && !searchTerm && selectedTagIds.length === 0 ? initialPage : undefined,
+    placeholderData: keepPreviousData,
   })
+
+  const customers = pageData?.rows ?? []
+  const total = pageData?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  // Voltar para a página 1 quando o filtro muda: a página 3 de um resultado com 1
+  // página só mostraria vazio.
+  useEffect(() => {
+    setPage(1)
+  }, [searchTerm, tagKey])
 
   // Catálogo de tags do salão (mesmo padrão: RSC semeia, react-query mantém).
   const { data: tags = [] } = useQuery({
@@ -106,34 +128,35 @@ export default function ContactsClient({ salonId, initialCustomers, initialTags 
     initialData: initialTags,
   })
 
-  const filtered = useMemo(() => {
-    const q = deferredQuery.trim().toLowerCase()
-    const qDigits = q.replace(/\D/g, "")
-    let list = customers
-    if (q) {
-      list = list.filter((c) => {
-        const byName = c.name.toLowerCase().includes(q)
-        const byEmail = c.email ? c.email.toLowerCase().includes(q) : false
-        const byPhone = qDigits ? (c.phone ? c.phone.replace(/\D/g, "").includes(qDigits) : false) : false
-        return byName || byEmail || byPhone
-      })
-    }
-    if (selectedTagIds.length > 0) {
-      list = list.filter((c) => (c.tags ?? []).some((t) => selectedTagIds.includes(t.id)))
-    }
-    const totalPages = Math.max(1, Math.ceil(list.length / pageSize))
-    const clampedPage = Math.min(page, totalPages)
-    const start = (clampedPage - 1) * pageSize
-    return { list: list.slice(start, start + pageSize), total: list.length, clampedPage, totalPages }
-  }, [customers, deferredQuery, selectedTagIds, page])
+  // O que a tela renderiza já vem paginado e filtrado do servidor.
+  const filtered = { list: customers, total, clampedPage: page, totalPages }
 
-  function handleExport() {
-    if (customers.length === 0) {
+  async function handleExport() {
+    if (total === 0) {
       toast.warning("Não há contatos para exportar")
       return
     }
-    exportCustomersToCSV(customers)
-    toast.success("Contatos exportados com sucesso")
+    setIsExporting(true)
+    try {
+      // Exporta o RESULTADO FILTRADO inteiro, não a página na tela — e não a base
+      // inteira ignorando os filtros, que era o comportamento anterior.
+      const res = await exportSalonCustomersCsv(salonId, {
+        q: searchTerm || undefined,
+        tagIds: selectedTagIds,
+      })
+      if ("error" in res) {
+        toast.error(res.error)
+        return
+      }
+      downloadCsv(res.data!.csv)
+      toast.success(
+        res.data!.truncated
+          ? `Exportados os primeiros ${res.data!.rowCount} contatos`
+          : `${res.data!.rowCount} contato(s) exportado(s)`
+      )
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   function handleEditCustomer(customer: CustomerRow) {
@@ -161,10 +184,10 @@ export default function ContactsClient({ salonId, initialCustomers, initialTags 
       }
 
       toast.success("Contato removido com sucesso!")
-      // Atualiza cache otimisticamente
-      queryClient.setQueryData<CustomerRow[]>(["customers", salonId], (old) =>
-        old ? old.filter((c) => c.id !== customerToDelete.id) : []
-      )
+      // Invalida em vez de mexer no cache na mão: com paginação no servidor, tirar
+      // uma linha do array local deixaria a página com 19 itens e o total errado —
+      // e a linha que deveria subir da página seguinte não apareceria.
+      void queryClient.invalidateQueries({ queryKey: ["customers", salonId] })
       setCustomerToDelete(null)
       setIsDeleteDialogOpen(false)
     })
@@ -378,7 +401,14 @@ export default function ContactsClient({ salonId, initialCustomers, initialTags 
                     {getInitials(contact.name)}
                   </div>
                   <div className="min-w-0">
-                    <span className="font-semibold text-foreground truncate block">{contact.name}</span>
+                    {/* Até aqui a lista não tinha UM link: o cliente era uma linha de
+                        tabela com 4 campos e ponto final. */}
+                    <Link
+                      href={`/${salonId}/contacts/${contact.id}`}
+                      className="font-semibold text-foreground truncate block hover:text-accent hover:underline transition-colors"
+                    >
+                      {contact.name}
+                    </Link>
                     {(contact.tags?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-1 mt-0.5">
                         {contact.tags.map((t) => (
