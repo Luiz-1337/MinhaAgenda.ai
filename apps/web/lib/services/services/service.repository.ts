@@ -2,7 +2,7 @@
  * Repository para serviços (INFRASTRUCTURE LAYER)
  */
 
-import { db, services, professionalServices, professionals, profiles, salons, appointments, and, asc, eq, inArray } from "@repo/db"
+import { db, services, professionalServices, professionals, profiles, salons, appointments, and, asc, eq, ne, inArray, count } from "@repo/db"
 import type { ServiceRow } from "@/lib/types/service"
 
 import type { PriceType } from "@/lib/types/service"
@@ -161,13 +161,25 @@ export class ServiceRepository {
 
   /**
    * Conta os agendamentos vinculados a um serviço (escopo do salão).
+   *
+   * Cancelados NÃO contam. Este número alimenta o aviso que empurra o dono para
+   * `deleteWithAppointments`, que é destrutivo: inflá-lo com linhas canceladas é
+   * empurrar para o caminho irreversível por um motivo que não existe.
+   *
+   * Também deixou de materializar todas as linhas só para tirar `.length`.
    */
   static async countAppointments(serviceId: string, salonId: string): Promise<number> {
-    const rows = await db.query.appointments.findMany({
-      where: and(eq(appointments.serviceId, serviceId), eq(appointments.salonId, salonId)),
-      columns: { id: true },
-    })
-    return rows.length
+    const [row] = await db
+      .select({ n: count() })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.serviceId, serviceId),
+          eq(appointments.salonId, salonId),
+          ne(appointments.status, "cancelled")
+        )
+      )
+    return row?.n ?? 0
   }
 
   /**

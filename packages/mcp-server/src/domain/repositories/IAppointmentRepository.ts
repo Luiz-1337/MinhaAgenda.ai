@@ -10,9 +10,14 @@ export interface IAppointmentRepository {
   findById(id: string): Promise<Appointment | null>
 
   /**
-   * Busca agendamentos de um cliente em um salão
+   * Busca agendamentos de um cliente em um salão.
+   * Cancelados ficam fora por padrão.
    */
-  findByCustomer(customerId: string, salonId: string): Promise<Appointment[]>
+  findByCustomer(
+    customerId: string,
+    salonId: string,
+    includeCancelled?: boolean
+  ): Promise<Appointment[]>
 
   /**
    * Busca agendamentos de um profissional em uma data
@@ -52,8 +57,9 @@ export interface IAppointmentRepository {
    */
   save(appointment: Appointment): Promise<void>
 
-  /**
-   * Remove um agendamento
-   */
-  delete(id: string): Promise<void>
+  // Não existe `delete` aqui de propósito. O cancelamento real passa por
+  // `domainServices.deleteAppointmentService` (@repo/db), que é o único lugar que
+  // sabe desfazer o evento espelhado no Google/Trinks e tentar preencher a vaga
+  // pela fila de espera. O método existia sem nenhum chamador e, depois do soft
+  // delete, seria a rota mais fácil para apagar histórico por engano.
 }

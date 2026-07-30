@@ -1,4 +1,4 @@
-import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, desc, inArray } from "@repo/db"
+import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, ne, desc, inArray } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
 
 // ============================================================================
@@ -85,11 +85,25 @@ export async function getAppointmentsByRange({
   professionalIds,
   startDate,
   endDate,
+  includeCancelled = false,
 }: {
   salonId?: string
   professionalIds?: string[]
   startDate: Date
   endDate: Date
+  /**
+   * Cancelados ficam FORA por padrão.
+   *
+   * Não é precaução para o futuro: `google-calendar-sync.ts` já grava
+   * `status='cancelled'` hoje, sempre que um evento é cancelado no Google. Como
+   * esta query não filtrava status e nem `daily-scheduler` nem `weekly-scheduler`
+   * leem `status` (nem para colorir), esses agendamentos apareciam na agenda
+   * indistinguíveis de um horário ativo, ocupando o slot visualmente.
+   *
+   * O flag existe para o dia em que a agenda ganhar um "mostrar cancelados" —
+   * aí é só passar true, sem tocar na query.
+   */
+  includeCancelled?: boolean
 }): Promise<AppointmentDTO[]> {
   const scopeCondition =
     professionalIds && professionalIds.length > 0
@@ -128,7 +142,8 @@ export async function getAppointmentsByRange({
           // A lógica original usava: lte(date, rangeEnd) E gte(endTime, rangeStart)
           // Isso captura qualquer agendamento que tenha intersecção com o intervalo.
           lte(appointments.date, endDate),
-          gte(appointments.endTime, startDate)
+          gte(appointments.endTime, startDate),
+          includeCancelled ? undefined : ne(appointments.status, "cancelled")
         )
       )
       .orderBy(asc(appointments.date))

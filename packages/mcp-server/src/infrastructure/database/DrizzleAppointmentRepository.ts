@@ -33,11 +33,18 @@ export class DrizzleAppointmentRepository implements IAppointmentRepository {
     })
   }
 
-  async findByCustomer(customerId: string, salonId: string): Promise<Appointment[]> {
+  async findByCustomer(
+    customerId: string,
+    salonId: string,
+    // Cancelado fora por padrão: histórico do cliente é o que aconteceu, não o
+    // que foi desmarcado. Quem quiser a linha do tempo completa pede explicitamente.
+    includeCancelled = false
+  ): Promise<Appointment[]> {
     const rows = await db.query.appointments.findMany({
       where: and(
         eq(appointments.clientId, customerId),
-        eq(appointments.salonId, salonId)
+        eq(appointments.salonId, salonId),
+        includeCancelled ? undefined : ne(appointments.status, "cancelled")
       ),
       orderBy: (appointments, { desc }) => [desc(appointments.date)],
     })
@@ -265,7 +272,4 @@ export class DrizzleAppointmentRepository implements IAppointmentRepository {
       })
   }
 
-  async delete(id: string): Promise<void> {
-    await db.delete(appointments).where(eq(appointments.id, id))
-  }
 }
