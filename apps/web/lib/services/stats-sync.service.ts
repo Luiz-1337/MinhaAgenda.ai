@@ -23,11 +23,19 @@ export async function syncRealUsageData(salonId: string): Promise<void> {
   //     de messages + agregação em JS. Filtros idênticos ao sync original.
   const usageRows = await db
     .select({
-      // AT TIME ZONE obrigatório: messages.created_at é timestamp sem timezone
-      // guardando UTC, e o Postgres roda em UTC. Sem converter, todo uso entre 21h
-      // e 24h de Brasília era contabilizado no DIA SEGUINTE — e essa coluna é o
-      // eixo x do gráfico de consumo do dashboard.
-      date: sql<string>`((${messages.createdAt} AT TIME ZONE ${BRAZIL_TIMEZONE})::date)::text`,
+      // DOIS saltos de fuso, e a ordem importa:
+      //   AT TIME ZONE 'UTC'  -> "este timestamp naive É UTC"  (naive -> timestamptz)
+      //   AT TIME ZONE 'SP'   -> "me dê a hora de parede em SP" (timestamptz -> naive)
+      //
+      // Um salto só está ERRADO aqui: sobre coluna `timestamp WITHOUT time zone`, o
+      // operador INTERPRETA o valor como hora de parede de São Paulo e devolve
+      // timestamptz — ou seja, SOMA 3h em vez de subtrair. Medido em produção: o
+      // salto único errava o dia em 11 das 111 linhas de appointments, contra 10 do
+      // `::date` cru que ele deveria consertar, e 0 do salto duplo.
+      //
+      // A confusão é fácil porque `now()` JÁ é timestamptz e aceita um salto só
+      // (ver chat.service.ts, onde está correto). Coluna naive exige dois.
+      date: sql<string>`((${messages.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${BRAZIL_TIMEZONE})::date)::text`,
       model: messages.model,
       credits: sql<number>`SUM(${w})::int`,
     })
@@ -41,7 +49,7 @@ export async function syncRealUsageData(salonId: string): Promise<void> {
         sql`${messages.totalTokens} > 0`
       )
     )
-    .groupBy(sql`(${messages.createdAt} AT TIME ZONE ${BRAZIL_TIMEZONE})::date`, messages.model)
+    .groupBy(sql`(${messages.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${BRAZIL_TIMEZONE})::date`, messages.model)
 
   // (B) Upsert em lote (overwrite, como o sync original) — chunk para limitar
   //     parâmetros por statement.

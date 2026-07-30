@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       const rows = await db.execute(sql`
         with recomputado as (
           select c.salon_id,
-                 (m.created_at at time zone 'America/Sao_Paulo')::date as dia,
+                 (m.created_at at time zone 'UTC' at time zone 'America/Sao_Paulo')::date as dia,
                  m.model,
                  sum(case lower(btrim(coalesce(m.model,'')))
                           when 'gpt-5.4-mini-2026-03-17'
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
           from messages m
           join chats c on c.id = m.chat_id
           where m.role = 'assistant' and m.model is not null and m.total_tokens > 0
-          group by c.salon_id, (m.created_at at time zone 'America/Sao_Paulo')::date, m.model
+          group by c.salon_id, (m.created_at at time zone 'UTC' at time zone 'America/Sao_Paulo')::date, m.model
         )
         select coalesce(s.name, '(sem salão)') as salon_name,
                coalesce(sum(a.credits), 0)::int as current_credits,

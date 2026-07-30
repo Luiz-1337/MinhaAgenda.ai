@@ -1,6 +1,17 @@
 import type { AppointmentStatus } from "@/lib/utils/appointment-status"
 
 /**
+ * Tamanho de página da listagem de contatos.
+ *
+ * Mora aqui e NÃO em `app/actions/customers.ts` por um motivo concreto: arquivo
+ * `"use server"` só pode exportar FUNÇÃO ASYNC. Não é só a regra do re-export de
+ * tipo — um `export const` de valor derruba o build com
+ * "Only async functions are allowed to be exported in a use server file".
+ * O `tsc` não pega; só o `next build` pega.
+ */
+export const CUSTOMERS_PAGE_SIZE = 20
+
+/**
  * Tipos da ficha do cliente.
  *
  * Vivem aqui e NÃO em `app/actions/customers.ts` porque aquele arquivo é

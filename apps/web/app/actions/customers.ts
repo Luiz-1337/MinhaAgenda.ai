@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql } from "@repo/db"
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service"
 import { ActionResult } from "@/lib/types/common"
+import { CUSTOMERS_PAGE_SIZE } from "@/lib/types/customer"
 import type { CustomerDetail, CustomerAppointmentRow, CustomerNoteRow } from "@/lib/types/customer"
 
 import { hasSalonPermission, canReadCrm } from "@/lib/services/permissions.service"
@@ -32,9 +33,6 @@ function mapCustomerTags(
     .sort((a, b) => a.tag.position - b.tag.position)
     .map((a) => ({ id: a.tag.id, name: a.tag.name, color: a.tag.color }))
 }
-
-/** Tamanho de página da listagem de contatos. */
-export const CUSTOMERS_PAGE_SIZE = 20
 
 /**
  * Filtros da listagem, resolvidos no SERVIDOR.
