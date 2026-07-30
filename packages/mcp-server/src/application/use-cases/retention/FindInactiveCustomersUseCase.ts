@@ -39,6 +39,10 @@ export class FindInactiveCustomersUseCase {
       cooldownDays: input.cooldownDays,
       limit,
       cursor: input.cursor,
+      // Sempre true em produção: quem nunca veio não é cliente inativo, é
+      // desconhecido. Explícito (e não embutido na SQL) para o teste poder
+      // provar que a trava chega ao repositório.
+      requireKnownVisit: true,
     })
 
     const items: InactiveCustomerDTO[] = rows.map((r) => ({

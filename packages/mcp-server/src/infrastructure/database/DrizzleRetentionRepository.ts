@@ -43,11 +43,26 @@ export class DrizzleRetentionRepository implements IRetentionRepository {
       cooldownDays,
       limit,
       cursor,
+      requireKnownVisit,
     } = opts
 
     const cursorLastVisit = cursor?.lastVisitAt ?? null
     const cursorCustomerId = cursor?.customerId ?? null
 
+    // "Inactive" means the customer came and stopped coming. With
+    // requireKnownVisit (the only mode production uses), a customer with no
+    // recorded visit is NOT inactive — they're unknown.
+    //
+    // This used to accept `lv.last_visit_at IS NULL`, and since no product code
+    // writes appointments.status='completed', the CTE was empty for everyone:
+    // the query returned the salon's ENTIRE opt-in base with days_since_visit
+    // null. The only thing holding the dispatch back was salons.ai_retention_enabled.
+    //
+    // With the branch gone, last_visit_at is never null in the result set, so the
+    // keyset degenerates to the simple non-null case and NULLS LAST is moot.
+    // Both are kept correct for requireKnownVisit=false, which exists only so a
+    // caller can opt into the old, wider behaviour deliberately.
+    //
     // The keyset predicate: produce rows that come AFTER the cursor in
     // ORDER BY last_visit DESC NULLS LAST, customer_id ASC.
     //
@@ -91,7 +106,7 @@ export class DrizzleRetentionRepository implements IRetentionRepository {
       where c.salon_id = ${salonId}
         and c.opted_out_at is null
         and (
-          lv.last_visit_at is null
+          ${requireKnownVisit ? sql`false` : sql`lv.last_visit_at is null`}
           or lv.last_visit_at < now() - make_interval(
             days => greatest(${minDaysSinceVisit}::int, coalesce(s.average_cycle_days, ${defaultCycleDays}::int))
           )

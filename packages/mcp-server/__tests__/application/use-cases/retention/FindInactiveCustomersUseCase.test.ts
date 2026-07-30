@@ -123,4 +123,24 @@ describe("FindInactiveCustomersUseCase", () => {
       expect.objectContaining({ cursor })
     )
   })
+
+  it("exige visita conhecida — quem nunca veio nao e cliente inativo", async () => {
+    // Guarda de regressao. A query aceitava `lv.last_visit_at IS NULL`, e como
+    // nenhum codigo de produto grava appointments.status='completed', a CTE de
+    // ultima visita vinha vazia para TODO mundo: findInactive devolvia a base
+    // inteira do salao com daysSinceVisit nulo -- que o dispatcher le como `?? 0`
+    // e viraria "faz 0 dias que voce nao vem" na mensagem da IA.
+    //
+    // O unico freio era salons.ai_retention_enabled (default false). Se alguem
+    // tirar esta flag, a reativacao volta a mirar quem nunca pisou no salao.
+    await useCase.execute({
+      salonId: IDS.salonId,
+      daysAfterInactivity: 30,
+      defaultCycleDays: 30,
+      cooldownDays: 14,
+    })
+    expect(repo.findInactive).toHaveBeenCalledWith(
+      expect.objectContaining({ requireKnownVisit: true })
+    )
+  })
 })

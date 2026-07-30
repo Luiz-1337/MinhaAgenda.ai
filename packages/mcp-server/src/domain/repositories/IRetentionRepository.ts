@@ -32,6 +32,21 @@ export interface FindInactiveOptions {
   cooldownDays: number
   limit: number
   cursor?: InactiveCursor
+  /**
+   * Exige visita CONHECIDA para o cliente ser considerado inativo.
+   *
+   * "Cliente inativo" significa "veio e sumiu", não "nunca veio". A versão
+   * anterior aceitava `lastVisitAt IS NULL` no LEFT JOIN, e como nenhum código de
+   * produto grava `appointments.status='completed'`, a CTE de última visita vinha
+   * vazia para TODO mundo — a query devolvia a base inteira do salão, com
+   * `daysSinceVisit` nulo (que o dispatcher lê como `?? 0` e viraria "faz 0 dias
+   * que você não vem" na mensagem da IA).
+   *
+   * O que segurava o disparo era só `salons.ai_retention_enabled` (default false).
+   * Com esta trava, a população cresce organicamente conforme os atendimentos
+   * passam a ser fechados, em vez de estourar de uma vez.
+   */
+  requireKnownVisit: boolean
 }
 
 export interface RecentRetentionInfo {
@@ -79,9 +94,10 @@ export interface MarkOptOutResult {
 
 export interface IRetentionRepository {
   /**
-   * Returns inactive customers for a salon using LEFT JOIN LATERAL on
-   * appointments.completed, ordered by (lastVisitAt DESC NULLS LAST, id ASC)
-   * with strict keyset pagination.
+   * Returns inactive customers for a salon using a last-visit CTE over
+   * appointments, ordered by (lastVisitAt DESC, id ASC) with strict keyset
+   * pagination. With `requireKnownVisit` (the only value production uses),
+   * customers with no known visit are excluded — see FindInactiveOptions.
    */
   findInactive(opts: FindInactiveOptions): Promise<InactiveCustomerRow[]>
 
