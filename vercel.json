@@ -25,6 +25,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/cron/close-appointments",
+      "schedule": "30 6 * * *"
+    },
+    {
       "path": "/api/cron/health-watch",
       "schedule": "*/5 * * * *"
     },

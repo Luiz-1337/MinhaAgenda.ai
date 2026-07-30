@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import dynamic from "next/dynamic"
-import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus } from "lucide-react"
+import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck } from "lucide-react"
 import { DailyScheduler } from "./daily-scheduler"
 import { WeeklyScheduler } from "./weekly-scheduler"
 import { MonthlyScheduler } from "./monthly-scheduler"
@@ -12,7 +12,7 @@ const CreateAppointmentDialog = dynamic(
   () => import("./create-appointment-dialog").then(m => ({ default: m.CreateAppointmentDialog })),
   { ssr: false }
 )
-import { getAppointments, getSchedulerHours } from "@/app/actions/appointments"
+import { getAppointments, getSchedulerHours, getPendingOutcomeCount } from "@/app/actions/appointments"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { AppointmentDetailDialog } from "./appointment-detail-dialog"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
@@ -104,6 +104,34 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   })
   const schedulerHours = hoursQuery.data ?? { startHour: 8, endHour: 22 }
 
+  // Atendimentos passados sem desfecho. É a metade SEMPRE LIGADA do fechamento: o
+  // cron é opt-in por salão e só fecha preço confiável, então sempre sobra o que
+  // uma pessoa precisa resolver. Sem este selo, "aguardando fechamento" seria um
+  // estado invisível e a receita ficaria incompleta sem ninguém saber.
+  //
+  // Fora do queryKey do range de propósito: não depende da data que está na tela.
+  // Compartilha o invalidate de 'scheduler-appointments' porque fechar um
+  // atendimento muda os dois.
+  const pendingQuery = useQuery({
+    queryKey: ['scheduler-pending-outcome', salonId],
+    queryFn: async () => {
+      const res = await getPendingOutcomeCount(salonId)
+      if ('error' in res) throw new Error(res.error)
+      return res.data ?? { count: 0, oldestAt: null }
+    },
+    enabled: !!salonId,
+    placeholderData: keepPreviousData,
+  })
+  const pendingOutcomeCount = pendingQuery.data?.count ?? 0
+  const oldestPendingAt = pendingQuery.data?.oldestAt ?? null
+
+  /** Leva a agenda para o dia mais antigo que está aguardando fechamento. */
+  const goToOldestPending = () => {
+    if (!oldestPendingAt) return
+    setViewType('daily')
+    setCurrentDate(new Date(oldestPendingAt))
+  }
+
   // Seleciona o primeiro profissional automaticamente se nenhum estiver selecionado
   useEffect(() => {
     if (professionals.length > 0 && !selectedProId) {
@@ -189,6 +217,8 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   // cancelar): invalida o cache do range e o refetch é automático.
   const handleAppointmentChanged = () => {
     void queryClient.invalidateQueries({ queryKey: ['scheduler-appointments', salonId] })
+    // O selo de pendências muda junto: fechar um atendimento tira ele da conta.
+    void queryClient.invalidateQueries({ queryKey: ['scheduler-pending-outcome', salonId] })
   }
 
   const getDateLabel = () => {
@@ -227,6 +257,21 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
             <ChevronRight size={18} />
           </button>
         </div>
+        {/* Selo de pendências: informa sem obrigar. Não é erro nem alerta — é
+            trabalho de balcão que ficou para trás, em âmbar como o próprio
+            "não compareceu". Clicar leva ao dia mais antigo que está esperando. */}
+        {pendingOutcomeCount > 0 && (
+          <button
+            onClick={goToOldestPending}
+            title="Ir para o atendimento mais antigo aguardando fechamento"
+            className="flex items-center justify-center gap-2 px-3 py-2 bg-amber-100 dark:bg-amber-600/20 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-600/40 rounded-lg text-xs sm:text-sm font-medium hover:bg-amber-200 dark:hover:bg-amber-600/30 transition-colors"
+          >
+            <ClipboardCheck size={15} />
+            {pendingOutcomeCount === 1
+              ? '1 atendimento aguardando fechamento'
+              : `${pendingOutcomeCount} atendimentos aguardando fechamento`}
+          </button>
+        )}
         <div className="flex gap-2">
           <button
             onClick={goToToday}

@@ -1,8 +1,10 @@
 "use server"
 
-import { db, domainServices as sharedServices, appointments, professionals, salons, profiles, and, eq } from "@repo/db"
+import { db, domainServices as sharedServices, appointments, professionals, salons, profiles, and, eq, sql } from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { getSessionUserId } from "@/lib/supabase/auth"
+import { canReadCrm } from "@/lib/services/permissions.service"
+import { startOfDayBrazil } from "@/lib/utils/timezone.utils"
 import type { ActionResult } from "@/lib/types/common"
 
 import {
@@ -499,6 +501,79 @@ export async function completeAppointment(
   }
 
   return { success: true, data: undefined }
+}
+
+/**
+ * Quantos atendimentos passados estão sem desfecho — o número do selo na agenda.
+ *
+ * É a metade SEMPRE LIGADA do fechamento: o cron é opt-in por salão e só fecha
+ * preço confiável, então sempre sobra o que uma pessoa precisa resolver. Sem este
+ * contador, "aguardando fechamento" seria um estado invisível e a receita ficaria
+ * incompleta sem ninguém saber.
+ *
+ * A janela aqui é 90 dias, DELIBERADAMENTE mais larga que a do cron (7 dias). As
+ * duas existem por motivos diferentes:
+ *
+ * - No cron, 7 dias é uma TRAVA: fechar automaticamente o histórico inteiro daria a
+ *   toda a base um `last_visit_at` antigo de uma vez e a primeira rodada de
+ *   reengajamento sairia em massa.
+ * - Aqui é uma pessoa clicando, uma a uma, por decisão própria. Esconder o atraso
+ *   não protege ninguém — só faz a receita ficar incompleta em silêncio. Medido em
+ *   produção: com janela de 7 dias este selo mostraria ZERO, com 48 atendimentos
+ *   passados sem desfecho no banco. A feature nasceria parecendo quebrada e sem
+ *   caminho para limpar o atraso.
+ *
+ * 90 dias e não "tudo" porque dois anos de pendência viram desânimo, não tarefa.
+ *
+ * Exclui placeholders internos, como o cron.
+ */
+export async function getPendingOutcomeCount(
+  salonId: string
+): Promise<ActionResult<{ count: number; oldestAt: Date | null }>> {
+  if (!salonId) {
+    return { error: "salonId é obrigatório" }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "Não autenticado" }
+  }
+
+  // Leitura de operação da agenda: STAFF também vê (é quem fecha no balcão).
+  if (!(await canReadCrm(salonId, user.id))) {
+    return { error: "Acesso negado a este salão" }
+  }
+
+  const cutoff = startOfDayBrazil(new Date())
+  const floor = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+
+  // `oldestAt` alimenta o clique do selo: leva o dono direto ao dia mais antigo que
+  // está esperando, em vez de deixá-lo caçar na agenda qual dia tem pendência.
+  const rows = await db.execute(sql`
+    select count(*)::int as n, min(a.date) as oldest
+      from appointments a
+      join services sv on sv.id = a.service_id
+      join customers c on c.id = a.client_id
+     where a.salon_id = ${salonId}
+       and a.status in ('pending', 'confirmed')
+       and a.end_time < ${cutoff}
+       and a.end_time > ${floor}
+       and sv.is_system = false
+       and c.is_system = false
+  `)
+
+  const oldest = rows[0]?.oldest
+  return {
+    success: true,
+    data: {
+      count: Number(rows[0]?.n ?? 0),
+      oldestAt: oldest ? new Date(String(oldest)) : null,
+    },
+  }
 }
 
 /**
