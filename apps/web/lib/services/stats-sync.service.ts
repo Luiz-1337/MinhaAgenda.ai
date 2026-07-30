@@ -1,4 +1,4 @@
-import { db, aiUsageStats, agentStats, agents, chats, messages, sql, eq, and, isNotNull } from "@repo/db"
+import { db, aiUsageStats, agentStats, agents, chats, messages, sql, eq, and, isNotNull, BRAZIL_TIMEZONE } from "@repo/db"
 import { weightedCreditsSql } from "@/lib/utils/credits-sql"
 
 const chunk = <T,>(arr: T[], size: number): T[][] =>
@@ -23,7 +23,11 @@ export async function syncRealUsageData(salonId: string): Promise<void> {
   //     de messages + agregação em JS. Filtros idênticos ao sync original.
   const usageRows = await db
     .select({
-      date: sql<string>`DATE(${messages.createdAt})::text`,
+      // AT TIME ZONE obrigatório: messages.created_at é timestamp sem timezone
+      // guardando UTC, e o Postgres roda em UTC. Sem converter, todo uso entre 21h
+      // e 24h de Brasília era contabilizado no DIA SEGUINTE — e essa coluna é o
+      // eixo x do gráfico de consumo do dashboard.
+      date: sql<string>`((${messages.createdAt} AT TIME ZONE ${BRAZIL_TIMEZONE})::date)::text`,
       model: messages.model,
       credits: sql<number>`SUM(${w})::int`,
     })
@@ -37,7 +41,7 @@ export async function syncRealUsageData(salonId: string): Promise<void> {
         sql`${messages.totalTokens} > 0`
       )
     )
-    .groupBy(sql`DATE(${messages.createdAt})`, messages.model)
+    .groupBy(sql`(${messages.createdAt} AT TIME ZONE ${BRAZIL_TIMEZONE})::date`, messages.model)
 
   // (B) Upsert em lote (overwrite, como o sync original) — chunk para limitar
   //     parâmetros por statement.

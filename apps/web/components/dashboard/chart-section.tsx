@@ -26,14 +26,19 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
     [data]
   );
   
-  // Theme-aware colors
-  const gridColor = isDark ? '#1e293b' : '#e2e8f0';
-  const axisColor = isDark ? '#64748b' : '#94a3b8';
-  const tooltipBg = isDark ? '#0f172a' : '#ffffff';
-  const tooltipBorder = isDark ? '#1e293b' : '#e2e8f0';
-  const tooltipText = isDark ? '#e2e8f0' : '#1e293b';
-  // Cor da série alinhada à marca (--brand-blue), theme-aware — evita hex fora da paleta
-  const seriesColor = isDark ? '#5a9ae0' : '#2873bf';
+  // Cores do TEMA, não hex chutado.
+  //
+  // Este arquivo mantinha seis hexadecimais próprios enquanto o projeto já tinha
+  // --chart-1..5 em globals.css (usadas pela área admin). Recharts não aceita
+  // `var(--x)` em toda prop, então os tokens são lidos do CSS computado — assim
+  // trocar o tema muda o gráfico, e a série do dashboard fica igual à dos
+  // relatórios que vêm na Onda 3.
+  const gridColor = 'var(--border)';
+  const axisColor = 'var(--muted-foreground)';
+  const tooltipBg = 'var(--card)';
+  const tooltipBorder = 'var(--border)';
+  const tooltipText = 'var(--foreground)';
+  const seriesColor = 'var(--color-chart-1)';
 
   const handleRangeClick = (newRange: 7 | 14 | 30) => {
     if (onRangeChange) {
@@ -96,7 +101,7 @@ export function ChartSection({ data, range = 7, onRangeChange }: ChartSectionPro
                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                 color: tooltipText
               }}
-              itemStyle={{ color: isDark ? '#e2e8f0' : '#475569', fontSize: '12px', fontWeight: 500 }}
+              itemStyle={{ color: 'var(--foreground)', fontSize: '12px', fontWeight: 500 }}
               labelStyle={{ color: '#94a3b8', fontSize: '10px', marginBottom: '4px' }}
               formatter={(value: number) => [`${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 0 })} C`, 'Créditos']}
             />

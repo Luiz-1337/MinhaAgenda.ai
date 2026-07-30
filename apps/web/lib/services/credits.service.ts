@@ -1,4 +1,10 @@
 import { db, aiUsageStats, salons, profiles, sql, eq, and, gte, lt } from "@repo/db"
+// Relativos OBRIGATORIAMENTE: este arquivo está no grafo de import do worker
+// (message-processor.ts o carrega por `import("../lib/services/credits.service")`),
+// e o worker roda via tsx, que NÃO resolve o alias `@/`. O tsc não pega isso —
+// quebra só em runtime, em produção.
+import { calculateCredits } from "../utils/credits"
+import { formatBrazilTime } from "../utils/timezone.utils"
 
 /**
  * Limites de créditos por plano (mensais)
@@ -86,8 +92,23 @@ export async function getSalonRemainingCredits(salonId: string): Promise<{ remai
 }
 
 /**
- * Debita créditos (tokens) do salão para o dia atual.
+ * Debita créditos do salão para o dia atual.
  * Usa upsert para acumular uso na linha do dia/modelo correspondente.
+ *
+ * ⚠️ Grava crédito PONDERADO por modelo (`calculateCredits`), não token bruto.
+ *
+ * Antes gravava `tokensUsed` cru, ignorando `MODEL_WEIGHTS` — que diz que o modelo
+ * mini vale 0,5 por token. Resultado: o salão era COBRADO EM DOBRO por todo uso do
+ * mini, e só voltava ao número certo se alguém abrisse o dashboard (o `after()`
+ * recalculava a tabela inteira, ponderado, sobrescrevendo). Ou seja: o saldo do
+ * cliente dependia de alguém ter visitado uma tela.
+ *
+ * Medido em produção antes da correção: Spettacolo Salone tinha 1.265.982 créditos
+ * gravados contra 604.520 no recálculo ponderado — mais que o dobro.
+ *
+ * O corte do dia usa Brasília, não UTC: `toISOString().slice(0,10)` jogava todo uso
+ * entre 21h e 24h para o dia seguinte, e a coluna `date` é o eixo do gráfico de
+ * consumo.
  */
 export async function debitSalonCredits(
     salonId: string,
@@ -96,7 +117,10 @@ export async function debitSalonCredits(
 ): Promise<void> {
     if (!tokensUsed || tokensUsed <= 0) return
 
-    const today = new Date().toISOString().slice(0, 10)
+    const credits = calculateCredits(tokensUsed, model)
+    if (credits <= 0) return
+
+    const today = formatBrazilTime(new Date(), "yyyy-MM-dd")
 
     await db
         .insert(aiUsageStats)
@@ -104,12 +128,12 @@ export async function debitSalonCredits(
             salonId,
             date: today,
             model,
-            credits: tokensUsed,
+            credits,
         })
         .onConflictDoUpdate({
             target: [aiUsageStats.salonId, aiUsageStats.date, aiUsageStats.model],
             set: {
-                credits: sql`${aiUsageStats.credits} + ${tokensUsed}`,
+                credits: sql`${aiUsageStats.credits} + ${credits}`,
                 updatedAt: sql`now()`,
             },
         })

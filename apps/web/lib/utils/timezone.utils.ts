@@ -1,118 +1,42 @@
-import { fromZonedTime, toZonedTime, format as formatTz } from "date-fns-tz"
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, type Locale } from "date-fns"
-import { ptBR } from "date-fns/locale/pt-BR"
-
-// Timezone do Brasil (America/Sao_Paulo = UTC-3)
-export const BRAZIL_TIMEZONE = "America/Sao_Paulo"
-
 /**
- * Converte uma data que está no horário de Brasília para UTC
- * Útil quando o usuário seleciona uma data/hora pensando no horário de Brasília
+ * Utilitários de fuso horário (Brasília).
+ *
+ * Este arquivo era uma CÓPIA quase idêntica de
+ * `packages/db/src/utils/timezone.utils.ts` — as 107 primeiras linhas eram byte a
+ * byte as mesmas, mais quatro funções extras no fim. Duas fontes da verdade para
+ * conversão de fuso, num sistema onde todo timestamp é gravado em UTC e exibido em
+ * Brasília: corrigir um bug numa cópia e não na outra é questão de tempo.
+ *
+ * Agora reexporta a fonte única e mantém APENAS o que é exclusivo daqui.
+ *
+ * Deep path `@repo/db/src/utils/...` e não `@repo/db`: o barrel do @repo/db só
+ * reexporta um subconjunto (faltam startOfDayBrazil, startOfMonthBrazil e as outras
+ * funções de janela), e o deep path também resolve no grafo do worker, que roda via
+ * tsx — precedente comprovado em `lib/services/ai/generate-response.service.ts`.
  */
-export function toBrazilTime(date: Date | string): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  // Trata a data como se estivesse no horário de Brasília e converte para UTC
-  return fromZonedTime(dateObj, BRAZIL_TIMEZONE)
-}
+export {
+  BRAZIL_TIMEZONE,
+  toBrazilTime,
+  fromBrazilTime,
+  getBrazilNow,
+  formatBrazilTime,
+  startOfDayBrazil,
+  endOfDayBrazil,
+  startOfWeekBrazil,
+  endOfWeekBrazil,
+  startOfMonthBrazil,
+  endOfMonthBrazil,
+} from "@repo/db/src/utils/timezone.utils"
 
-/**
- * Converte uma data UTC para o horário de Brasília
- */
-export function fromBrazilTime(date: Date | string): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  return toZonedTime(dateObj, BRAZIL_TIMEZONE)
-}
-
-/**
- * Obtém a data atual no horário de Brasília
- */
-export function getBrazilNow(): Date {
-  return toZonedTime(new Date(), BRAZIL_TIMEZONE)
-}
-
-/**
- * Formata uma data no horário de Brasília
- */
-export function formatBrazilTime(
-  date: Date | string,
-  formatStr: string,
-  options?: { locale?: Locale }
-): string {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  return formatTz(zonedDate, formatStr, {
-    timeZone: BRAZIL_TIMEZONE,
-    locale: options?.locale || ptBR,
-  })
-}
-
-/**
- * Obtém o início do dia no horário de Brasília
- */
-export function startOfDayBrazil(date: Date | string): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  const start = startOfDay(zonedDate)
-  return fromZonedTime(start, BRAZIL_TIMEZONE)
-}
-
-/**
- * Obtém o fim do dia no horário de Brasília
- */
-export function endOfDayBrazil(date: Date | string): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  const end = endOfDay(zonedDate)
-  return fromZonedTime(end, BRAZIL_TIMEZONE)
-}
-
-/**
- * Obtém o início da semana no horário de Brasília
- */
-export function startOfWeekBrazil(date: Date | string, options?: { weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6 }): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  const start = startOfWeek(zonedDate, options)
-  return fromZonedTime(start, BRAZIL_TIMEZONE)
-}
-
-/**
- * Obtém o fim da semana no horário de Brasília
- */
-export function endOfWeekBrazil(date: Date | string, options?: { weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6 }): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  const end = endOfWeek(zonedDate, options)
-  return fromZonedTime(end, BRAZIL_TIMEZONE)
-}
-
-/**
- * Obtém o início do mês no horário de Brasília
- */
-export function startOfMonthBrazil(date: Date | string): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  const start = startOfMonth(zonedDate)
-  return fromZonedTime(start, BRAZIL_TIMEZONE)
-}
-
-/**
- * Obtém o fim do mês no horário de Brasília
- */
-export function endOfMonthBrazil(date: Date | string): Date {
-  const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  const end = endOfMonth(zonedDate)
-  return fromZonedTime(end, BRAZIL_TIMEZONE)
-}
+import { toZonedTime } from "date-fns-tz"
+import { BRAZIL_TIMEZONE as TZ } from "@repo/db/src/utils/timezone.utils"
 
 /**
  * Obtém a hora no timezone de Brasília (0-23)
  */
 export function getBrazilHours(date: Date | string): number {
   const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  return zonedDate.getHours()
+  return toZonedTime(dateObj, TZ).getHours()
 }
 
 /**
@@ -120,8 +44,7 @@ export function getBrazilHours(date: Date | string): number {
  */
 export function getBrazilMinutes(date: Date | string): number {
   const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  return zonedDate.getMinutes()
+  return toZonedTime(dateObj, TZ).getMinutes()
 }
 
 /**
@@ -129,8 +52,7 @@ export function getBrazilMinutes(date: Date | string): number {
  */
 export function getBrazilDate(date: Date | string): number {
   const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  return zonedDate.getDate()
+  return toZonedTime(dateObj, TZ).getDate()
 }
 
 /**
@@ -138,7 +60,5 @@ export function getBrazilDate(date: Date | string): number {
  */
 export function getBrazilDay(date: Date | string): number {
   const dateObj = typeof date === "string" ? new Date(date) : date
-  const zonedDate = toZonedTime(dateObj, BRAZIL_TIMEZONE)
-  return zonedDate.getDay()
+  return toZonedTime(dateObj, TZ).getDay()
 }
-
