@@ -347,21 +347,26 @@ export async function getSchedulerHours(
 }
 
 /**
- * Apaga (hard delete) um agendamento a partir do painel.
+ * Autoriza uma ação de DESFECHO sobre um agendamento (cancelar, concluir, falta).
  *
- * Permissão: o dono do salão e gerentes podem apagar qualquer agendamento do salão;
- * profissionais (staff) só podem apagar os próprios. A autorização é feita contra o
- * salão REAL do agendamento (defesa contra IDOR entre tenants).
+ * Autoriza SEMPRE contra o salão REAL do agendamento, não contra o `salonId` que
+ * veio do cliente — é a defesa contra IDOR entre tenants. O `salonId` do contexto
+ * só serve para o erro genérico não contar a um estranho que aquele id existe.
  *
- * Reusa `deleteAppointmentService` — o mesmo caminho que a IA usa: remove o evento
- * espelhado no Google Calendar e tenta preencher a vaga pela fila de espera.
+ * Regra de papel: dono e gerente agem sobre qualquer agendamento do salão; STAFF
+ * só sobre os próprios. É o que faz sentido no balcão — a recepcionista fecha o
+ * atendimento que ela mesma prestou.
+ *
+ * Extraído porque as três actions de desfecho precisam exatamente disto, e
+ * duplicar 50 linhas de autorização é como se cria a quarta que esquece um pedaço.
  */
-export async function cancelAppointment(
+async function authorizeAppointmentOutcome(
   appointmentId: string,
-  salonId: string,
-  /** Motivo opcional, digitado pelo dono na confirmação. Vai para o histórico. */
-  reason?: string
-): Promise<ActionResult<void>> {
+  salonId: string
+): Promise<
+  | { userId: string; appointment: { id: string; salonId: string; professionalId: string } }
+  | { error: string }
+> {
   if (!appointmentId || !salonId) {
     return { error: "Parâmetros obrigatórios ausentes" }
   }
@@ -385,7 +390,6 @@ export async function cancelAppointment(
     return { error: "Agendamento não encontrado" }
   }
 
-  // Autoriza SEMPRE contra o salão real do agendamento (não o salonId do contexto).
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, appointment.salonId),
     columns: { id: true, ownerId: true },
@@ -394,9 +398,9 @@ export async function cancelAppointment(
     return { error: "Salão do agendamento não encontrado" }
   }
 
-  let canDelete = salon.ownerId === user.id // dono = gerente do próprio salão
+  let allowed = salon.ownerId === user.id // dono = gerente do próprio salão
 
-  if (!canDelete) {
+  if (!allowed) {
     const me = await db.query.professionals.findFirst({
       where: and(
         eq(professionals.salonId, appointment.salonId),
@@ -406,22 +410,113 @@ export async function cancelAppointment(
     })
     if (me) {
       const isManager = me.role === "OWNER" || me.role === "MANAGER"
-      // Gerente apaga qualquer um do salão; staff só o próprio.
-      canDelete = isManager || me.id === appointment.professionalId
+      allowed = isManager || me.id === appointment.professionalId
     }
   }
 
-  if (!canDelete) {
-    return { error: "Você não tem permissão para apagar este agendamento" }
+  if (!allowed) {
+    return { error: "Você não tem permissão para alterar este agendamento" }
   }
+
+  return { userId: user.id, appointment }
+}
+
+/**
+ * CANCELA um agendamento a partir do painel.
+ *
+ * Não apaga mais a linha: reusa `cancelAppointmentService`, o mesmo caminho que a
+ * IA usa. O evento espelhado sai do Google Calendar (o horário fica livre lá) e a
+ * fila de espera é avisada da vaga.
+ */
+export async function cancelAppointment(
+  appointmentId: string,
+  salonId: string,
+  /** Motivo opcional, digitado pelo dono na confirmação. Vai para o histórico. */
+  reason?: string
+): Promise<ActionResult<void>> {
+  const auth = await authorizeAppointmentOutcome(appointmentId, salonId)
+  if ("error" in auth) return { error: auth.error }
 
   const result = await sharedServices.cancelAppointmentService({
     appointmentId,
-    salonId: appointment.salonId,
+    salonId: auth.appointment.salonId,
     reason: reason?.trim() || undefined,
     // Quem cancelou, para o histórico do cliente poder dizer "cancelado pela
     // recepção" em vez de só "cancelado".
-    cancelledBy: user.id,
+    cancelledBy: auth.userId,
+    source: 'panel',
+  })
+
+  if (!result.success) {
+    return { error: result.error }
+  }
+
+  return { success: true, data: undefined }
+}
+
+/**
+ * Marca o atendimento como REALIZADO, com o valor cobrado.
+ *
+ * O valor é OBRIGATÓRIO e chega como número já interpretado pelo cliente
+ * (lib/utils/money.utils → parseBRL). Revalidado aqui: o cliente é sugestão, não
+ * autoridade. A rede final é o CHECK do banco
+ * (appointments_completed_requires_price).
+ *
+ * Cortesia se registra com 0 EXPLÍCITO — por isso o `isCourtesy`. Sem essa
+ * distinção, digitar 0 seria a rota de fuga do formulário e o KPI de receita
+ * nasceria mentindo, sem ninguém perceber.
+ */
+export async function completeAppointment(
+  appointmentId: string,
+  salonId: string,
+  priceCharged: number,
+  isCourtesy = false
+): Promise<ActionResult<void>> {
+  const auth = await authorizeAppointmentOutcome(appointmentId, salonId)
+  if ("error" in auth) return { error: auth.error }
+
+  if (!Number.isFinite(priceCharged) || priceCharged < 0) {
+    return { error: "Informe um valor válido para concluir o atendimento" }
+  }
+
+  // Zero só passa por cortesia declarada. Um 0 digitado sem marcar cortesia é, na
+  // esmagadora maioria dos casos, alguém que não sabia o preço e queria seguir.
+  if (priceCharged === 0 && !isCourtesy) {
+    return {
+      error: 'Para concluir sem cobrança, marque "Cortesia". Caso contrário, informe o valor cobrado.',
+    }
+  }
+
+  const result = await sharedServices.completeAppointmentService({
+    appointmentId,
+    salonId: auth.appointment.salonId,
+    priceCharged,
+    source: 'panel',
+  })
+
+  if (!result.success) {
+    return { error: result.error }
+  }
+
+  return { success: true, data: undefined }
+}
+
+/**
+ * Registra que o cliente NÃO COMPARECEU.
+ *
+ * Sem valor: não houve atendimento. Alimenta a taxa de falta e o preditor de
+ * no-show, que até aqui era falso-negativo por construção.
+ */
+export async function markAppointmentNoShow(
+  appointmentId: string,
+  salonId: string
+): Promise<ActionResult<void>> {
+  const auth = await authorizeAppointmentOutcome(appointmentId, salonId)
+  if ("error" in auth) return { error: auth.error }
+
+  const result = await sharedServices.markNoShowService({
+    appointmentId,
+    salonId: auth.appointment.salonId,
     source: 'panel',
   })
 

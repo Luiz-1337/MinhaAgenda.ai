@@ -185,8 +185,9 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     setCurrentDate(new Date())
   }
 
-  // Recarrega após criar agendamento: invalida o cache do range (refetch automático)
-  const handleAppointmentCreated = () => {
+  // Recarrega após criar OU dar desfecho a um agendamento (concluir, falta,
+  // cancelar): invalida o cache do range e o refetch é automático.
+  const handleAppointmentChanged = () => {
     void queryClient.invalidateQueries({ queryKey: ['scheduler-appointments', salonId] })
   }
 
@@ -363,7 +364,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
         onOpenChange={setIsCreateDialogOpen}
         salonId={salonId}
         professionals={professionals}
-        onSuccess={handleAppointmentCreated}
+        onSuccess={handleAppointmentChanged}
       />
 
       {/* Appointment Detail / Delete Dialog */}
@@ -372,7 +373,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
         open={!!selectedAppointment}
         onOpenChange={(o) => { if (!o) setSelectedAppointment(null) }}
         salonId={salonId}
-        onDeleted={handleAppointmentCreated}
+        onChanged={handleAppointmentChanged}
       />
     </div>
   )

@@ -68,3 +68,51 @@ export function appointmentStatusStyle(status: string | null | undefined): Appoi
 export function isTerminalStatus(status: string | null | undefined): boolean {
   return status === "completed" || status === "cancelled" || status === "no_show"
 }
+
+export interface AvailableOutcomes {
+  /** Marcar como realizado (exige valor cobrado). */
+  canComplete: boolean
+  /** Registrar que o cliente não apareceu. */
+  canMarkNoShow: boolean
+  /** Cancelar (o horário fica livre; o histórico fica). */
+  canCancel: boolean
+  /** Já tem desfecho: a tela mostra o fato em vez de oferecer ação. */
+  isSettled: boolean
+}
+
+/**
+ * Que desfechos cabem num agendamento agora.
+ *
+ * Fonte única da regra porque ela aparece em três lugares: os botões do diálogo, o
+ * selo "N atendimentos aguardando fechamento" na agenda e o cron de fechamento.
+ * Divergirem entre si seria o dono ver "3 pendentes" e não conseguir fechar 3.
+ *
+ * As janelas:
+ * - **Concluir** exige que o atendimento tenha COMEÇADO. Durante ele é permitido —
+ *   quem está no balcão sabe que acabou mais cedo. Antes de começar é sempre erro
+ *   de clique.
+ * - **Falta** exige que o horário tenha TERMINADO. Antes disso o cliente ainda pode
+ *   chegar, e marcar falta cedo estragaria o histórico de quem chegou atrasado.
+ * - **Cancelar** vale enquanto não houver desfecho, inclusive no passado: alguém
+ *   pode estar limpando a agenda de ontem.
+ *
+ * Os mesmos limites são reaplicados no servidor (completeAppointmentService /
+ * markNoShowService). Isto aqui é a camada que evita oferecer o que vai ser
+ * recusado, não a trava.
+ */
+export function availableOutcomes(
+  appointment: { status: string; startTime: Date; endTime: Date },
+  now: Date = new Date()
+): AvailableOutcomes {
+  if (isTerminalStatus(appointment.status)) {
+    return { canComplete: false, canMarkNoShow: false, canCancel: false, isSettled: true }
+  }
+
+  const t = now.getTime()
+  return {
+    canComplete: appointment.startTime.getTime() <= t,
+    canMarkNoShow: appointment.endTime.getTime() <= t,
+    canCancel: true,
+    isSettled: false,
+  }
+}
