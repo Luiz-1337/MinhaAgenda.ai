@@ -24,7 +24,7 @@ export interface PaginatedResult<T> {
 }
 
 /** Status de agendamento */
-export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed"
+export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed" | "no_show"
 
 /** Nível de interesse do lead */
 export type LeadInterest = "high" | "medium" | "low" | "none"

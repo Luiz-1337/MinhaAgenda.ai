@@ -1,5 +1,6 @@
 import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, ne, desc, inArray } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
+import type { AppointmentStatus } from "@/lib/utils/appointment-status"
 
 // ============================================================================
 // DTOs (Data Transfer Objects)
@@ -16,7 +17,9 @@ export interface AppointmentDTO {
   serviceDuration: number
   startTime: Date // UTC do banco
   endTime: Date   // UTC do banco
-  status: "pending" | "confirmed" | "cancelled" | "completed"
+  // Vem de lib/utils/appointment-status para não repetir a união em três lugares
+  // (era aqui, no STATUS_LABELS do diálogo e no getStatusColor do mensal).
+  status: AppointmentStatus
   notes: string | null
 }
 

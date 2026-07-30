@@ -37,7 +37,9 @@ export const vector = customType<{ data: number[] }>({
 export const systemRoleEnum = pgEnum('system_role', ['admin', 'user'])
 export const profileRoleEnum = pgEnum('profile_role', ['OWNER', 'PROFESSIONAL', 'CLIENT'])
 export const subscriptionTierEnum = pgEnum('subscription_tier', ['SOLO', 'PRO', 'ENTERPRISE'])
-export const statusEnum = pgEnum('status', ['pending', 'confirmed', 'cancelled', 'completed'])
+// 'no_show' (underscore) — grafia decidida na migration 026 e IRREVERSÍVEL
+// (Postgres não tem ALTER TYPE ... DROP VALUE).
+export const statusEnum = pgEnum('status', ['pending', 'confirmed', 'cancelled', 'completed', 'no_show'])
 export const leadStatusEnum = pgEnum('lead_status', ['new', 'cold', 'recently_scheduled'])
 export const chatStatusEnum = pgEnum('chat_status', ['active', 'completed'])
 export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant', 'system', 'tool'])
@@ -135,6 +137,12 @@ export const salons = pgTable(
     // NULL = nunca retomar, que é o comportamento histórico (só o botão do painel
     // devolvia a conversa). CHECK 5..20160 (5min a 14 dias) na migration 024.
     aiResumeAfterMinutes: integer('ai_resume_after_minutes'),
+    // Fechar sozinho os atendimentos passados que o balcão esqueceu (migration 027).
+    // Default false de propósito: fechar automaticamente um serviço cujo preço de
+    // catálogo é faixa ou "sob avaliação" gravaria receita errada, e relatório
+    // errado destrói a confiança mais rápido que relatório ausente. O caminho
+    // sempre-ligado é o selo de pendências na agenda.
+    autoCloseAppointments: boolean('auto_close_appointments').default(false).notNull(),
     settings: jsonb('settings'),
     workHours: jsonb('work_hours'),
     // Evolution API fields
@@ -305,6 +313,23 @@ export const appointments = pgTable(
     syncSource: syncSourceEnum('sync_source'),
     notes: text('notes'),
     reminderSentAt: timestamp('reminder_sent_at'),
+    // --- Desfecho do atendimento (migration 027) ---------------------------
+    // O fato "atendimento realizado, com valor". Sem estas colunas não existe
+    // LTV, ticket médio, taxa de retorno nem no-show — o sistema não sabia que
+    // um atendimento tinha acontecido.
+    completedAt: timestamp('completed_at'),
+    noShowAt: timestamp('no_show_at'),
+    // Cancelamento é SOFT: a linha fica, com quando/por quê/por quem.
+    cancelledAt: timestamp('cancelled_at'),
+    cancelReason: text('cancel_reason'),
+    cancelledBy: uuid('cancelled_by').references(() => profiles.id, { onDelete: 'set null' }),
+    // Valor efetivamente cobrado. NÃO é services.price (faixa/sob avaliação/0 em
+    // ~30% do catálogo, e editar o catálogo mudaria o histórico).
+    // numeric → o driver devolve STRING. Nunca fazer aritmética direto.
+    // CHECK no banco: status='completed' exige este campo não-nulo.
+    priceCharged: numeric('price_charged', { precision: 10, scale: 2 }),
+    // 'panel' | 'cron' | 'ai' | 'google' | 'legacy'
+    outcomeSource: text('outcome_source'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -314,7 +339,11 @@ export const appointments = pgTable(
     index('appt_google_event_idx').on(table.googleEventId),
     index('appt_trinks_event_idx').on(table.trinksEventId),
     index('appt_prof_time_idx').on(table.professionalId, table.date, table.endTime),
-    index('appt_service_idx').on(table.serviceId)
+    index('appt_service_idx').on(table.serviceId),
+    index('appt_salon_status_date_idx').on(table.salonId, table.status, table.date)
+    // appt_open_past_idx é PARCIAL (WHERE status IN ('pending','confirmed')) e vive
+    // só na migration 027 — o schema do Drizzle não expressa índice parcial, e
+    // declará-lo aqui sem o predicado faria `db:generate` propor recriá-lo cheio.
   ]
 )
 
