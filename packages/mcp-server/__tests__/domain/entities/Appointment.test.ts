@@ -250,9 +250,58 @@ describe("Appointment", () => {
   })
 
   describe("complete", () => {
-    it("marca como completado", () => {
+    // "Agora" está fixado em 2026-06-01 12:00; o fixture padrão começa em 06-15,
+    // ou seja, é FUTURO. Um atendimento já iniciado precisa de startsAt no passado.
+    const iniciado = () =>
+      makeProps({
+        startsAt: new Date("2026-06-01T10:00:00Z"),
+        endsAt: new Date("2026-06-01T11:00:00Z"),
+      })
+
+    it("marca como completado quando o atendimento já começou", () => {
+      const apt = Appointment.create(iniciado())
+      const result = apt.complete()
+
+      expect(result.success).toBe(true)
+      expect(apt.status).toBe("completed")
+    })
+
+    it("permite concluir durante o atendimento (acabou mais cedo)", () => {
+      // Começou 10:00, terminaria 13:00, agora são 12:00. Quem está no balcão
+      // sabe que acabou — não faz sentido esperar o relógio.
+      const apt = Appointment.create(
+        makeProps({
+          startsAt: new Date("2026-06-01T10:00:00Z"),
+          endsAt: new Date("2026-06-01T13:00:00Z"),
+        })
+      )
+      expect(apt.complete().success).toBe(true)
+      expect(apt.status).toBe("completed")
+    })
+
+    it("recusa concluir um agendamento que ainda nao comecou", () => {
       const apt = Appointment.create(makeProps())
-      apt.complete()
+      const result = apt.complete()
+
+      expect(result.success).toBe(false)
+      expect(apt.status).toBe("pending")
+    })
+
+    it("recusa concluir um agendamento cancelado", () => {
+      // Sem este guard, concluir em cima de um cancelamento ressuscitaria a linha
+      // em silêncio — e depois do soft delete a linha cancelada continua no banco.
+      const apt = Appointment.create({ ...iniciado(), status: "cancelled" })
+      const result = apt.complete()
+
+      expect(result.success).toBe(false)
+      expect(apt.status).toBe("cancelled")
+    })
+
+    it("e idempotente: concluir duas vezes nao e erro", () => {
+      // O balcão pode clicar de novo, e o cron de fechamento pode passar por cima
+      // do que o balcão já fechou.
+      const apt = Appointment.create({ ...iniciado(), status: "completed" })
+      expect(apt.complete().success).toBe(true)
       expect(apt.status).toBe("completed")
     })
   })

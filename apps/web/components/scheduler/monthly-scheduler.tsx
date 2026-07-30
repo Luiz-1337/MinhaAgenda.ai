@@ -5,6 +5,7 @@ import { eachDayOfInterval, isSameDay, isSameMonth } from "date-fns"
 import { formatBrazilTime, startOfMonthBrazil, endOfMonthBrazil, startOfWeekBrazil, endOfWeekBrazil, getBrazilNow } from "@/lib/utils/timezone.utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo } from "@/lib/types/appointments"
+import { appointmentStatusStyle } from "@/lib/utils/appointment-status"
 
 interface MonthlySchedulerProps {
   salonId: string
@@ -17,20 +18,9 @@ interface MonthlySchedulerProps {
   onDayClick?: (date: Date) => void
 }
 
-function getStatusColor(status: DailyAppointment["status"]): { bg: string; border: string; text: string } {
-  switch (status) {
-    case "confirmed":
-      return { bg: "bg-accent/20 dark:bg-accent/40", border: "border-accent", text: "text-accent" }
-    case "pending":
-      return { bg: "bg-rose-100 dark:bg-rose-500", border: "border-rose-400", text: "text-rose-600 dark:text-rose-300" }
-    case "cancelled":
-      return { bg: "bg-red-100 dark:bg-red-600", border: "border-red-600", text: "text-red-700 dark:text-red-200" }
-    case "completed":
-      return { bg: "bg-emerald-100 dark:bg-emerald-600", border: "border-emerald-600", text: "text-emerald-700 dark:text-emerald-200" }
-    default:
-      return { bg: "bg-blue-100 dark:bg-blue-600", border: "border-blue-600", text: "text-blue-700 dark:text-blue-200" }
-  }
-}
+// Rótulo e cor por status moram em lib/utils/appointment-status.ts — fonte única
+// compartilhada com o diálogo de detalhe e, adiante, com a ficha do cliente.
+const getStatusColor = appointmentStatusStyle
 
 export function MonthlyScheduler({ 
   salonId,

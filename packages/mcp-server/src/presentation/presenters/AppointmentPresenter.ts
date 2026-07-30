@@ -1,6 +1,27 @@
 import { AppointmentDTO, AppointmentListDTO } from "../../application/dtos"
 
 /**
+ * Status em pt-BR.
+ *
+ * O texto daqui chega ao CLIENTE FINAL no WhatsApp. A versão anterior imprimia o
+ * valor cru do banco quando não era 'pending' — "Agendamento completed: Corte com
+ * Michele". Com 'no_show' no enum, vazaria "Agendamento no_show".
+ */
+const STATUS_PT_BR: Record<string, string> = {
+  pending: "criado",
+  confirmed: "confirmado",
+  cancelled: "cancelado",
+  completed: "concluído",
+  no_show: "registrado como falta",
+}
+
+/** Nunca devolve o valor cru: status desconhecido cai num texto neutro. */
+function statusPtBr(status: string | null | undefined): string {
+  if (!status) return "atualizado"
+  return STATUS_PT_BR[status] ?? "atualizado"
+}
+
+/**
  * Presenter para formatação de dados de agendamento
  */
 export class AppointmentPresenter {
@@ -8,7 +29,7 @@ export class AppointmentPresenter {
    * Formata um agendamento para resposta legível
    */
   static format(dto: AppointmentDTO): string {
-    return `Agendamento ${dto.status === "pending" ? "criado" : dto.status}: ${dto.serviceName} com ${dto.professionalName} em ${dto.startsAt}`
+    return `Agendamento ${statusPtBr(dto.status)}: ${dto.serviceName} com ${dto.professionalName} em ${dto.startsAt}`
   }
 
   /**
@@ -76,6 +97,9 @@ export class AppointmentPresenter {
       startsAt: dto.startsAtISO,
       endsAt: dto.endsAtISO,
       status: dto.status,
+      // O valor cru fica (é útil para o modelo decidir), mas acompanhado do texto
+      // certo — senão a IA repete "completed"/"no_show" para o cliente.
+      statusLabel: statusPtBr(dto.status),
       notes: dto.notes,
       message: this.format(dto),
     }
@@ -94,6 +118,7 @@ export class AppointmentPresenter {
         startsAt: apt.startsAtISO,
         endsAt: apt.endsAtISO,
         status: apt.status,
+        statusLabel: statusPtBr(apt.status),
       })),
       total: dto.total,
       message: dto.message,

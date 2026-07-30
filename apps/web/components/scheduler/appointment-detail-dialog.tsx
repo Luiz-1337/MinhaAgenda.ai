@@ -7,13 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { deleteAppointment } from "@/app/actions/appointments"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import type { DailyAppointment } from "@/lib/types/appointments"
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pendente",
-  confirmed: "Confirmado",
-  cancelled: "Cancelado",
-  completed: "Concluído",
-}
+import { appointmentStatusLabel } from "@/lib/utils/appointment-status"
 
 interface AppointmentDetailDialogProps {
   appointment: DailyAppointment | null
@@ -69,7 +63,7 @@ export function AppointmentDetailDialog({
               {appointment.clientName || "Cliente"}
             </h2>
             <p className="text-[11px] uppercase font-bold tracking-wider text-muted-foreground">
-              {STATUS_LABELS[appointment.status] ?? appointment.status}
+              {appointmentStatusLabel(appointment.status)}
             </p>
           </div>
           <button

@@ -1,6 +1,6 @@
 import { Result, ok, fail } from "../../shared/types"
 import { AppointmentStatus } from "../../shared/types/common.types"
-import { PastAppointmentError } from "../errors"
+import { PastAppointmentError, AppointmentOperationError } from "../errors"
 import { DateRange } from "../value-objects"
 
 export interface AppointmentProps {
@@ -187,11 +187,45 @@ export class Appointment {
   }
 
   /**
-   * Marca como completo
+   * Marca o atendimento como REALIZADO.
+   *
+   * Estava sem guard nenhum e devolvia `void`, diferente das irmãs (cancel,
+   * confirm, reschedule), que devolvem `Result`. Enquanto era código morto isso
+   * passava; agora que existe um caminho de produção para concluir atendimento,
+   * um `complete()` silencioso em cima de um cancelamento seria ressuscitar a
+   * linha sem ninguém saber.
+   *
+   * O VALOR cobrado não mora aqui: quem grava `price_charged` é
+   * `completeAppointmentService` (@repo/db), que é o dono da regra de dinheiro e
+   * do CHECK do banco. Esta entidade só cuida da transição de estado.
    */
-  complete(): void {
+  complete(): Result<void, AppointmentOperationError> {
+    if (this._status === "cancelled") {
+      return fail(
+        new AppointmentOperationError("Não é possível concluir um agendamento cancelado")
+      )
+    }
+
+    // Idempotente: concluir duas vezes não é erro. O balcão pode clicar de novo,
+    // e o cron de fechamento pode passar por cima do que o balcão já fechou.
+    if (this._status === "completed") {
+      return ok(undefined)
+    }
+
+    // Concluir antes de o horário terminar é decisão de quem está no balcão (o
+    // atendimento pode ter acabado mais cedo), mas concluir algo que ainda NÃO
+    // COMEÇOU é sempre erro de clique.
+    if (this._startsAt.getTime() > Date.now()) {
+      return fail(
+        new AppointmentOperationError(
+          "Não é possível concluir um agendamento que ainda não começou"
+        )
+      )
+    }
+
     this._status = "completed"
     this._updatedAt = new Date()
+    return ok(undefined)
   }
 
   /**

@@ -13,13 +13,17 @@ export interface DeleteAppointmentResult {
 /**
  * DeleteAppointmentUseCase
  *
- * Cancelar = HARD delete. Delega ao serviço centralizado deleteAppointmentService
- * (@repo/db), igual a create/update, eliminando a divergência de antes. Esse serviço:
- *  - remove o agendamento do banco (não apenas marca como cancelado)
- *  - sincroniza a remoção com Google Calendar / Trinks (fire-and-forget)
+ * Delega ao serviço centralizado deleteAppointmentService (@repo/db), igual a
+ * create/update. Esse serviço:
+ *  - registra o cancelamento no banco
+ *  - sincroniza a remoção com Google Calendar / Trinks (fire-and-forget), para o
+ *    horário ficar livre na agenda externa
  *  - dispara o preenchimento da vaga liberada (slot-filler)
  *
- * Guard local: bloqueia o cancelamento de um agendamento passado.
+ * O guard de "agendamento passado" vem do DOMÍNIO (`Appointment.cancel()`), não
+ * duplicado aqui. Era a mesma regra escrita nos dois lugares, e o método do
+ * domínio não tinha nenhum chamador de produção — mudar a regra num só
+ * silenciosamente divergiria do outro.
  */
 export class DeleteAppointmentUseCase {
   constructor(private appointmentRepo: IAppointmentRepository) {}
@@ -34,8 +38,12 @@ export class DeleteAppointmentUseCase {
     if (!appointment || appointment.salonId !== salonId) {
       return fail(new AppointmentNotFoundError(appointmentId))
     }
-    if (appointment.isPast()) {
-      return fail(new PastAppointmentError("Não é possível cancelar um agendamento passado"))
+    // A transição roda no domínio primeiro: ele é o dono da regra (não cancelar
+    // passado) e é aqui que ela passa a ter um chamador de verdade. A persistência
+    // continua no serviço centralizado — a entidade não é salva.
+    const transition = appointment.cancel()
+    if (!transition.success) {
+      return fail(transition.error)
     }
 
     const result = await domainServices.deleteAppointmentService({ appointmentId, salonId })

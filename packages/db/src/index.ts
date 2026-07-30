@@ -93,7 +93,11 @@ export { AppointmentRepository } from './infrastructure/repositories/appointment
 export * from './domain/constants'
 export * from './domain/errors/domain-error'
 export * from './domain/errors/integration-error'
-export * from './domain/integrations/enums/appointment-status.enum'
+// appointment-status.enum removido: declarava um AppointmentStatus paralelo, com
+// 'no-show' (hífen) e 'in-progress' — valores que o pgEnum public.status
+// rejeitaria — e colidia de nome com o AppointmentStatus do mcp-server, que é o
+// vivo (shared/types/common.types.ts). Tinha zero consumidores.
+// A fonte da verdade do status é `statusEnum` no schema.
 export * from './domain/integrations/enums/integration-provider.enum'
 export * from './domain/integrations/value-objects/appointment-id'
 export * from './domain/integrations/value-objects/salon-id'
