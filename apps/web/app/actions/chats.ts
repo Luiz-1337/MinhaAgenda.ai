@@ -39,7 +39,19 @@ export interface ChatMessage {
   mediaType?: string | null
   /** URL assinada (temporária) da mídia no Storage; null enquanto o worker ainda processa. */
   mediaUrl?: string | null
+  /** True quando a mídia passou do prazo de upload e não chegou — falhou, não está vindo. */
+  mediaFailed?: boolean
 }
+
+/**
+ * Prazo de graça entre a mensagem chegar e o worker gravar `media_path`.
+ *
+ * Na prática o upload acontece em segundos (o worker já tem os bytes em mãos para
+ * o Vision/Whisper). Passado este prazo com folga, a mídia não está "chegando":
+ * ela falhou. A distinção existe porque o painel girava "Recebendo imagem…" para
+ * sempre — e foi assim que 7 semanas de upload quebrado passaram por "lentidão".
+ */
+const MEDIA_UPLOAD_GRACE_MS = 2 * 60 * 1000
 
 /**
  * Formata data para exibição
@@ -284,6 +296,11 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[] | {
           deliveryStatus: msg.role === "assistant" ? msg.deliveryStatus : undefined,
           mediaType: msg.mediaType ?? null,
           mediaUrl: msg.mediaPath ? await getWhatsappMediaSignedUrl(msg.mediaPath) : null,
+          // Mesma convenção de tempo do formatMessageTime acima (compara direto com o relógio local).
+          mediaFailed:
+            !!msg.mediaType &&
+            !msg.mediaPath &&
+            Date.now() - msg.createdAt.getTime() > MEDIA_UPLOAD_GRACE_MS,
         }))
     )
 

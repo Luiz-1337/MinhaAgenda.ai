@@ -15,7 +15,7 @@ import { saveMessage, setMessageMediaPath } from "../lib/services/chat.service";
 // Caminhos RELATIVOS: o worker roda via tsx e não resolve o alias @/.
 import { shouldResumeAI } from "../lib/services/chat/manual-mode";
 import { isPlaceholderBody } from "../lib/services/messaging/cloud/content";
-import { uploadWhatsappMedia } from "../lib/supabase/storage";
+import { uploadWhatsappMedia, missingStorageEnv } from "../lib/supabase/storage";
 import {
   isSessionError,
   getSessionErrorReason,
@@ -1154,8 +1154,40 @@ export function createMessageWorker(): Worker<MessageJobData, MessageJobResult> 
   return worker;
 }
 
+/**
+ * Avisa, no boot, quais capacidades estão DESLIGADAS por falta de variável.
+ *
+ * O worker roda via tsx e nunca passa pelo `instrumentation.ts` do Next — o único
+ * lugar que chama `validateEnv()`. Ele sobe feliz sem variáveis que o código
+ * assume existir, e a capacidade correspondente some sem barulho. Foi assim que
+ * a mídia do cliente passou 7 semanas sendo descartada: sem
+ * SUPABASE_SERVICE_ROLE_KEY na Railway, todo upload virava no-op mudo.
+ *
+ * Avisa em vez de derrubar, de propósito: faltar Storage degrada UMA capacidade
+ * (a mídia no painel), enquanto matar o worker calaria o WhatsApp inteiro. O que
+ * não pode voltar a acontecer é a ausência ser invisível.
+ */
+function warnDisabledCapabilities(): void {
+  const capabilities = [
+    {
+      name: "mídia do cliente no painel (upload ao Supabase Storage)",
+      missing: missingStorageEnv(),
+    },
+  ];
+
+  for (const cap of capabilities) {
+    if (cap.missing.length > 0) {
+      logger.error(
+        { capability: cap.name, missing: cap.missing },
+        "Worker sem variáveis de ambiente — CAPACIDADE DESATIVADA"
+      );
+    }
+  }
+}
+
 if (require.main === module) {
   logger.info("Starting message processor worker...");
+  warnDisabledCapabilities();
 
   const worker = createMessageWorker();
 

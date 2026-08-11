@@ -13,7 +13,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft, Check, CheckCheck } from "lucide-react"
+import { Search, MoreHorizontal, Send, Loader2, UserRound, ArrowLeft, Check, CheckCheck, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { getChatConversations, getChatMessages, setChatManualMode, sendManualMessage, getNoShowRiskForChat, type ChatConversation, type ChatMessage } from "@/app/actions/chats"
@@ -123,6 +123,17 @@ const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage })
               ) : (
                 <audio controls preload="none" src={msg.mediaUrl} className="mb-1 w-56 max-w-full" />
               )
+            ) : msg.mediaFailed ? (
+              // Sem este ramo o spinner abaixo gira para sempre. Uma mídia perdida
+              // há três semanas ficava indistinguível de uma chegando agora — foi
+              // exatamente assim que o upload quebrado passou despercebido.
+              <div
+                className="flex items-center gap-2 text-xs mb-1 text-amber-700 dark:text-amber-400"
+                title="O arquivo não chegou ao sistema. O texto e a resposta da IA não foram afetados."
+              >
+                <AlertTriangle size={14} className="shrink-0" />
+                {msg.mediaType === "image" ? "Imagem não recebida" : "Áudio não recebido"}
+              </div>
             ) : (
               <div className="flex items-center gap-2 text-xs opacity-70 mb-1">
                 <Loader2 size={14} className="animate-spin" />
@@ -271,7 +282,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         } else {
           setMessages(result)
           lastMessageCountRef.current = result.length
-          lastSignatureRef.current = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}:${m.mediaUrl ? "1" : "0"}`).join("|")
+          lastSignatureRef.current = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}:${m.mediaUrl ? "1" : "0"}:${m.mediaFailed ? "1" : "0"}`).join("|")
         }
       } catch (error) {
         if (!isMounted) return
@@ -317,7 +328,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
         if (!("error" in result)) {
           // Compara id+deliveryStatus de todas as mensagens: pega mudança de status
           // de entrega (ex.: "reenviando"→"não entregue") que o length ignora.
-          const signature = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}:${m.mediaUrl ? "1" : "0"}`).join("|")
+          const signature = result.map((m) => `${m.id}:${m.deliveryStatus ?? ""}:${m.mediaUrl ? "1" : "0"}:${m.mediaFailed ? "1" : "0"}`).join("|")
           if (signature !== lastSignatureRef.current) {
             setMessages(result)
             lastMessageCountRef.current = result.length
@@ -608,7 +619,7 @@ export default function ChatClient({ salonId }: { salonId: string }) {
            * é background-image; a adaptação ao tema fica na opacidade. */}
           <div
             aria-hidden
-            className="absolute inset-0 z-0 pointer-events-none opacity-[0.16] dark:opacity-[0.12]"
+            className="absolute inset-0 z-0 pointer-events-none opacity-[0.25] dark:opacity-[0.12]"
             style={{
               backgroundImage: "url('/chat-wallpaper.svg')",
               backgroundRepeat: "repeat",

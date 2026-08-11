@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import { logger } from "../infra/logger"
 
 /**
  * Helper de Storage para mídia recebida do WhatsApp (foto/áudio do cliente).
@@ -13,6 +14,13 @@ import { createClient } from "@supabase/supabase-js"
 
 const BUCKET = "whatsapp-media"
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 // 24h — sobrevive a uma sessão de visualização
+
+/** Variáveis sem as quais NÃO existe Storage. Exportada para o worker avisar no boot. */
+export const STORAGE_ENV_VARS = ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"] as const
+
+export function missingStorageEnv(): string[] {
+  return STORAGE_ENV_VARS.filter((key) => !process.env[key])
+}
 
 function getAdminStorage() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -51,9 +59,23 @@ interface UploadParams {
 /**
  * Sobe a mídia ao bucket privado e retorna o caminho (path) salvo, ou null em falha.
  * Nunca lança — falha de Storage não pode derrubar o processamento da mensagem.
+ *
+ * Mas LOGA todo caminho de falha, e isso não é zelo: entre 24/jun e 08/ago/2026 as
+ * 21 mídias recebidas em produção foram descartadas aqui sem deixar rastro. O
+ * worker da Railway não tinha SUPABASE_SERVICE_ROLE_KEY, `getAdminStorage()`
+ * devolvia null e o `return null` mudo fazia o resto. Não lançar é decisão de
+ * projeto; sumir calado era acidente.
  */
 export async function uploadWhatsappMedia(params: UploadParams): Promise<string | null> {
   try {
+    const missing = missingStorageEnv()
+    if (missing.length > 0) {
+      logger.error(
+        { missing, chatId: params.chatId, mediaType: params.mediaType },
+        "uploadWhatsappMedia: credenciais do Storage ausentes — mídia do cliente NÃO foi salva"
+      )
+      return null
+    }
     const storage = getAdminStorage()
     if (!storage) return null
     const ext = extensionFor(params.mediaType, params.mimeType)
@@ -63,9 +85,16 @@ export async function uploadWhatsappMedia(params: UploadParams): Promise<string 
       contentType,
       upsert: true,
     })
-    if (error) return null
+    if (error) {
+      logger.error(
+        { err: error, bucket: BUCKET, path, mediaType: params.mediaType },
+        "uploadWhatsappMedia: Storage recusou o upload — mídia do cliente NÃO foi salva"
+      )
+      return null
+    }
     return path
-  } catch {
+  } catch (err) {
+    logger.error({ err, chatId: params.chatId }, "uploadWhatsappMedia: erro inesperado ao salvar mídia")
     return null
   }
 }
