@@ -9,6 +9,7 @@ import { deleteAgent, toggleAgentActive, type AgentRow } from "@/app/actions/age
 import { AgentActionMenu } from "@/components/ui/agent-action-menu"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { connectWhatsAppCloud, disconnectWhatsAppCloud, type WhatsAppCloudStatus } from "@/app/actions/whatsapp-cloud"
+import { formatPhoneIntl } from "@/lib/utils/phone.utils"
 
 const QRCodeModal = dynamic(
   () => import("@/components/whatsapp/qrcode-modal").then(m => ({ default: m.QRCodeModal })),
@@ -360,14 +361,6 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
     return name.substring(0, 2).toUpperCase()
   }
 
-  // Helper para mascarar número
-  function maskPhone(p: string) {
-    const d = p.replace(/\D/g, "")
-    if (d.length >= 12 && p.startsWith("+55")) return `+55 ${d.slice(2, 4)} •••••-${d.slice(-4)}`
-    if (d.length >= 10) return `${p.slice(0, 6)} •••••-${p.slice(-4)}`
-    return p
-  }
-
   return (
     <div className="flex flex-col h-full gap-6 pt-[5px] pr-[5px] pl-[5px]">
       {/* Header */}
@@ -412,7 +405,7 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
                   já resolve, via metadata do webhook). */}
               <span className="text-sm font-medium text-foreground">
                 {cloudStatus.phoneNumber
-                  ? cloudStatus.phoneNumber
+                  ? formatPhoneIntl(cloudStatus.phoneNumber)
                   : cloudStatus.phoneNumberId
                     ? `Cloud API · ${cloudStatus.phoneNumberId}`
                     : "WhatsApp Cloud API"}
@@ -460,7 +453,7 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Phone size={16} className="text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground">{maskPhone(n.phoneNumber)}</span>
+                  <span className="text-sm font-medium text-foreground">{formatPhoneIntl(n.phoneNumber)}</span>
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                   <Clock size={12} />
@@ -504,7 +497,7 @@ export function AgentsClient({ salonId, initialAgents, initialCloudStatus }: Age
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Phone size={16} className="text-muted-foreground" />
-                <span className="text-sm font-medium text-foreground">{maskPhone(n.phoneNumber)}</span>
+                <span className="text-sm font-medium text-foreground">{formatPhoneIntl(n.phoneNumber)}</span>
               </div>
               {isVerified ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
