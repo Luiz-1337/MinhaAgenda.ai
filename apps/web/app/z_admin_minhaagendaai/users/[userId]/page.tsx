@@ -8,15 +8,10 @@ import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { CreditControlPanel } from "@/components/admin/users/credit-control-panel"
+import { getMonthlyCredits } from "@/lib/plans"
 import { AiRetentionToggle } from "@/components/admin/salons/ai-retention-toggle"
 
 export const dynamic = 'force-dynamic'
-
-const PLAN_CREDITS = {
-    SOLO: 1_000_000,
-    PRO: 5_000_000,
-    ENTERPRISE: 10_000_000,
-} as const
 
 export default async function UserDetailsPage({
     params,
@@ -34,8 +29,7 @@ export default async function UserDetailsPage({
     const salon = user.ownedSalons?.[0]
     const settings = salon?.settings as { custom_monthly_limit?: number } | null
     const currentLimit = settings?.custom_monthly_limit
-    const tier = user.tier as keyof typeof PLAN_CREDITS
-    const defaultLimit = PLAN_CREDITS[tier] || PLAN_CREDITS.SOLO
+    const defaultLimit = getMonthlyCredits(user.tier)
 
     return (
         <div className="space-y-6">

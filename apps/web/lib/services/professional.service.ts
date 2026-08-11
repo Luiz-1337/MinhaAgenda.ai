@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto"
 import { db, professionals, salons, profiles, eq, and, sql, isNotNull } from "@repo/db"
-import { canAddProfessional } from "@/lib/utils/permissions"
+import { canAddProfessional, getPlan, formatLimit } from "@/lib/plans"
 import type { UpsertProfessionalInput } from "@/lib/types/professional"
 import type { PlanTier } from "@/lib/types/salon"
 import { normalizeString, normalizeEmail, emptyStringToNull } from "@/lib/services/validation.service"
@@ -107,28 +107,28 @@ export class ProfessionalService {
     const tier = result[0].ownerTier as PlanTier
     const ownerId = result[0].ownerId
 
-    // 2. Bloqueio explícito para plano SOLO
-    // No plano SOLO, apenas o owner pode existir como profissional
-    if (tier === 'SOLO') {
-      // Se está tentando criar um profissional diferente do owner, bloquear
-      if (data.userId && data.userId !== ownerId) {
-        throw new Error("O plano SOLO permite apenas você como profissional. Não é possível adicionar outros usuários ao salão. Faça upgrade para adicionar membros à equipe.")
-      }
-
-      // Verifica se já existe algum profissional (deve ser apenas o owner)
-      const currentCount = await this.countActiveProfessionals(salonId)
-      if (currentCount >= 1) {
-        throw new Error("O plano SOLO permite apenas 1 profissional (você). Faça upgrade para o plano PRO ou ENTERPRISE para adicionar equipe.")
-      }
+    // 2. Regra exclusiva do SOLO: o único profissional pode ser o próprio dono.
+    // Não é teto numérico (esse vem do catálogo, logo abaixo) — é sobre QUEM pode
+    // ocupar a vaga, então continua aqui.
+    if (tier === 'SOLO' && data.userId && data.userId !== ownerId) {
+      throw new Error("O plano SOLO permite apenas você como profissional. Não é possível adicionar outros usuários ao salão. Faça upgrade para adicionar membros à equipe.")
     }
 
-    // 3. Verifica limites do plano para outros tiers
+    // 3. Teto de profissionais do plano, lido do catálogo (lib/plans.ts).
+    // Antes o SOLO tinha um `currentCount >= 1` próprio logo acima, que repetia
+    // este mesmo limite e pagava uma segunda ida ao banco para chegar na mesma
+    // conclusão.
     const currentCount = await this.countActiveProfessionals(salonId)
     if (!canAddProfessional(tier, currentCount)) {
-      throw new Error(`Limite de profissionais atingido para o plano ${tier}.`)
+      const limit = formatLimit(getPlan(tier).limits.professionalsPerSalon)
+      throw new Error(
+        tier === 'SOLO'
+          ? `O plano SOLO permite apenas ${limit} profissional (você). Faça upgrade para o plano PRO ou ENTERPRISE para adicionar equipe.`
+          : `Limite de profissionais atingido para o plano ${tier}. Máximo: ${limit} por salão.`
+      )
     }
 
-    // 3. Prepara dados
+    // 4. Prepara dados
     const payload = {
       salonId,
       userId: data.userId || null,

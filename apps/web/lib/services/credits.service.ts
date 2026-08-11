@@ -5,15 +5,7 @@ import { db, aiUsageStats, salons, profiles, sql, eq, and, gte, lt } from "@repo
 // quebra só em runtime, em produção.
 import { calculateCredits } from "../utils/credits"
 import { formatBrazilTime } from "../utils/timezone.utils"
-
-/**
- * Limites de créditos por plano (mensais)
- */
-export const PLAN_CREDITS = {
-    SOLO: 1_000_000, // 1 milhão
-    PRO: 5_000_000, // 5 milhões
-    ENTERPRISE: 10_000_000, // 10 milhões
-} as const
+import { getMonthlyCredits } from "../plans"
 
 /**
  * Retorna o início e o fim do mês atual em formato de data ISO (YYYY-MM-DD).
@@ -56,8 +48,7 @@ export async function getSalonRemainingCredits(salonId: string): Promise<{ remai
         const settings = salon.settings as { custom_monthly_limit?: number } | null
         const customLimit = settings?.custom_monthly_limit
 
-        const tier = profile.tier as keyof typeof PLAN_CREDITS
-        const planCredits = customLimit || PLAN_CREDITS[tier] || PLAN_CREDITS.SOLO
+        const planCredits = customLimit || getMonthlyCredits(profile.tier)
         const totalCredits = planCredits + (salon.extraCredits ?? 0)
 
         // Soma créditos usados no mês atual (filtro por data)

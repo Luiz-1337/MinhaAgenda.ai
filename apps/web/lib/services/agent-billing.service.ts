@@ -7,7 +7,7 @@
 
 import { db, salons, agents, profiles, eq } from '@repo/db'
 import { stripe, STRIPE_PRICE_EXTRA_AGENT } from '../stripe'
-import { ENTERPRISE_INCLUDED_AGENTS, getExtraAgentCount } from '../utils/permissions'
+import { getExtraAgentCount } from '../plans'
 import type { PlanTier } from '../types/salon'
 import { logger } from '../infra/logger'
 

@@ -6,7 +6,7 @@ import type { ActionResult } from "@/lib/types/common"
 import { agentSchema, createAgentSchema, updateAgentSchema, type AgentSchema } from "@/lib/schemas"
 import { db, agents, salons, profiles, eq, and, ne } from "@repo/db"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
-import { canAddAgent, getAgentLimit } from "@/lib/utils/permissions"
+import { canAddAgent, getPlan, formatLimit } from "@/lib/plans"
 import { syncExtraAgentBilling } from "@/lib/services/agent-billing.service"
 import type { PlanTier } from "@/lib/types/salon"
 
@@ -176,9 +176,9 @@ export async function createAgent(
     })
 
     if (!canAddAgent(planTier, existingAgents.length)) {
-      const limit = getAgentLimit(planTier)
+      const limit = getPlan(planTier).limits.agents
       return {
-        error: `Limite de agentes atingido para o plano ${planTier}. Máximo: ${limit} agente${limit > 1 ? 's' : ''}.`,
+        error: `Limite de agentes atingido para o plano ${planTier}. Máximo: ${formatLimit(limit)} agente${limit > 1 ? 's' : ''}.`,
       }
     }
 

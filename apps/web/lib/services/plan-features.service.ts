@@ -4,19 +4,16 @@ import type { PlanTier } from "@/lib/types/salon"
 /**
  * Features gateadas por plano.
  *
- * Este é o PRIMEIRO gate de feature-por-plano do projeto. Até aqui existiam apenas
- * limites numéricos (`PLAN_LIMITS`, `AGENT_LIMITS` em lib/utils/permissions.ts) e um
- * único `if` de tier, no dashboard. Nenhum helper de "esta tela exige plano X".
- *
  * Declarativo de propósito: adicionar uma feature é uma linha aqui, não um `if`
- * espalhado numa tela. Quando a segunda feature gateada aparecer, o formato já serve.
+ * espalhado numa tela.
  *
- * ⚠️ NÃO confunda com os LIMITES de plano, que estão em outro arquivo e hoje se
- * contradizem entre si (`PLAN_LIMITS.PRO = 7` salões contra "Até 3 Salões" na tela de
- * billing e "3 Salões" na tela admin; `PLAN_CREDITS.PRO = 5.000.000` contra
- * "25.000 Tokens/mês" na mesma tela admin; e `salon-plan.service.ts` declara um tier
- * fantasma `TEAM` que não existe em lugar nenhum). Essa bagunça é dívida separada e
- * de propósito NÃO é tocada aqui — este arquivo só lê SOLO | PRO | ENTERPRISE.
+ * Divisão com `lib/plans.ts`: lá ficam os NÚMEROS do plano (preço, limites,
+ * créditos); aqui fica o SIM/NÃO de acesso a uma tela ou recurso.
+ *
+ * A versão anterior deste comentário alertava que os limites de plano se
+ * contradiziam entre si — resolvido pelo catálogo único. Mas ele próprio repetia o
+ * engano central: dizia que `PLAN_LIMITS.PRO = 7` eram salões, quando sempre foram
+ * profissionais por salão. O plano PRO permite 3 salões e 7 profissionais em cada.
  */
 export type PlanFeature = 'advanced_reports'
 
