@@ -596,13 +596,23 @@ export default function ChatClient({ salonId }: { salonId: string }) {
           "flex-1 flex flex-col bg-muted/30 dark:bg-background relative",
           showConversationList && "hidden md:flex"
         )}>
-          {/* Background Grid Pattern */}
+          {/* Wallpaper de rabiscos, no lugar da antiga grade de 40px.
+           *
+           * Vem de /public e não inline: são 360 paths (~200KB de markup) que não
+           * têm por que entrar no bundle JS deste client component — como arquivo
+           * o navegador baixa uma vez e cacheia.
+           *
+           * Fica fora do scroll de propósito (absolute na coluna, irmão da lista):
+           * as mensagens deslizam por cima, o fundo não acompanha — igual WhatsApp.
+           * O traço é cinza fixo porque `currentColor` não herda nada quando o SVG
+           * é background-image; a adaptação ao tema fica na opacidade. */}
           <div
-            className="absolute inset-0 z-0 opacity-[0.03]"
+            aria-hidden
+            className="absolute inset-0 z-0 pointer-events-none opacity-[0.16] dark:opacity-[0.12]"
             style={{
-              backgroundImage:
-                "linear-gradient(to right, #808080 1px, transparent 1px), linear-gradient(to bottom, #808080 1px, transparent 1px)",
-              backgroundSize: "40px 40px",
+              backgroundImage: "url('/chat-wallpaper.svg')",
+              backgroundRepeat: "repeat",
+              backgroundSize: "374px 666px",
             }}
           />
 
