@@ -93,13 +93,16 @@ function DeliveryReceipt({ status }: { status?: string | null }) {
 const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isClient = msg.from === "cliente"
   const isMedia = msg.mediaType === "image" || msg.mediaType === "audio"
+  // O player nativo tem controles demais para caber em 224px: em bolha estreita
+  // o tempo e o volume ficam espremidos. Áudio ganha uma bolha mais larga.
+  const isAudio = msg.mediaType === "audio"
   // Esconde o placeholder "[imagem]"/"[áudio]" quando é mídia; mantém legenda real.
   const isPlaceholder = isMedia && /^\[[^\]]+\]$/.test((msg.text || "").trim())
   const showText = !!msg.text && !isPlaceholder
 
   return (
     <div className={`flex w-full ${isClient ? "justify-start" : "justify-end"}`}>
-      <div className="max-w-[85%] md:max-w-[70%] relative group">
+      <div className={`relative group ${isAudio ? "max-w-[92%] md:max-w-[80%]" : "max-w-[85%] md:max-w-[70%]"}`}>
         {/* Message Bubble */}
         <div
           className={`p-3 md:p-4 relative ${isClient
@@ -121,7 +124,7 @@ const MessageBubble = memo(function MessageBubble({ msg }: { msg: ChatMessage })
                   />
                 </a>
               ) : (
-                <audio controls preload="none" src={msg.mediaUrl} className="mb-1 w-56 max-w-full" />
+                <audio controls preload="none" src={msg.mediaUrl} className="mb-1 w-72 sm:w-80 md:w-96 max-w-full" />
               )
             ) : msg.mediaFailed ? (
               // Sem este ramo o spinner abaixo gira para sempre. Uma mídia perdida
