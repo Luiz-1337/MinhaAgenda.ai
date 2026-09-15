@@ -847,7 +847,7 @@ function buildToolSummary(steps: ResponsesRunnerStep[]): string {
 /**
  * Cria resumo compacto do resultado de uma tool (max ~300 chars por tool).
  */
-function summarizeToolResult(toolName: string, result: unknown): string {
+export function summarizeToolResult(toolName: string, result: unknown): string {
   if (result == null) return "(vazio)";
 
   try {
@@ -861,7 +861,7 @@ function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getServices" && Array.isArray(data.services)) {
       return data.services
         .slice(0, 10)
-        .map((s: any) => `${s.name}(id:${s.id},R$${s.price},${s.duration}min)`)
+        .map((s: any) => `${s.name}(id:${s.id},${s.priceFormatted ?? `R$${s.price}`},${s.duration}min)`)
         .join(", ");
     }
 
