@@ -1,9 +1,14 @@
 import * as z3 from "zod/v3"
 import * as z4 from "zod/v4"
 import { zodToJsonSchema } from "zod-to-json-schema"
+import type { ReasoningEffort } from "openai/resources/shared"
 import type { ToolSetDefinition } from "./tools/tool-definition"
 import { getOpenAIClient } from "./openai-client"
 import { describeSchemaValidationError } from "./assistant-output-guards"
+
+// Valores de reasoning.effort que o gpt-6-sol aceita (docs da OpenAI, set/2026).
+// "max" ainda nao esta no tipo do SDK 6.10, mas a API aceita.
+const SUPPORTED_REASONING_EFFORTS: readonly string[] = ["none", "low", "medium", "high", "xhigh", "max"]
 
 export interface ResponsesRunnerInputMessage {
   role: string
@@ -226,18 +231,21 @@ export async function runOpenAIResponses(
   let currentInput: unknown = toResponseInput(params.input)
   let rounds = 0
 
-  // Reasoning effort: default "medium" para reasoning models (gpt-5*, o-series).
+  // Reasoning effort: default "medium" para reasoning models (gpt-5*, gpt-6*, o-series).
   // "medium" da ao modelo orcamento de pensamento suficiente para seguir o fluxo
   // correto de tools (ex: chamar getServices antes de addAppointment) e evitar
   // alucinacao de IDs. Custa segundos a mais por resposta, mas reduz drasticamente
   // tool calls fora de ordem com placeholders inventados.
   // Override via env: AI_REASONING_EFFORT=low (mais rapido, mais erros) ou
   // AI_REASONING_EFFORT=high (mais lento, mais preciso).
-  const isGpt5 = /^gpt-5/.test(model)
-  const isOSeries = /^o\d/.test(model)
-  const isReasoningModel = isGpt5 || isOSeries
-  const reasoningEffort = (process.env.AI_REASONING_EFFORT
-    || "medium") as "minimal" | "low" | "medium" | "high"
+  // O gpt-6-sol aceita none | low | medium | high | xhigh | max. "minimal" (da
+  // familia gpt-5) NAO existe nele: a OpenAI devolveria 400 em TODA mensagem e o
+  // bot calaria. Valor fora da lista cai em "medium".
+  const isReasoningModel = /^(gpt-[56]|o\d)/.test(model)
+  const envEffort = process.env.AI_REASONING_EFFORT ?? ""
+  const reasoningEffort = (SUPPORTED_REASONING_EFFORTS.includes(envEffort)
+    ? envEffort
+    : "medium") as ReasoningEffort
 
   while (rounds < maxToolRounds) {
     const response = await openai.responses.create({
@@ -251,7 +259,7 @@ export async function runOpenAIResponses(
       // entao isto reduz o numero de roundtrips OpenAI quando a IA precisa de varios dados.
       parallel_tool_calls: true,
       max_output_tokens: parseInt(process.env.AI_MAX_OUTPUT_TOKENS ?? "4096", 10),
-      // temperature/top_p not supported by reasoning models (o-series) nor gpt-5
+      // temperature/top_p not supported by reasoning models (o-series) nor gpt-5/gpt-6
       ...(/^(gpt-4|gpt-3)/.test(model) ? {
         temperature: parseFloat(process.env.AI_TEMPERATURE ?? "0.2"),
         top_p: parseFloat(process.env.AI_TOP_P ?? "0.9"),

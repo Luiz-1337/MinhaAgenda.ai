@@ -7,6 +7,12 @@
  * a entrada). Exportada para credits-sql.ts reproduzir o cálculo em SQL.
  */
 export const MODEL_WEIGHTS: Record<string, number> = {
+  // Modelo atual. Mesmo peso do mini de propósito: trocar de modelo não muda o
+  // quanto o salão gasta por token. O gpt-6-sol custa ~2,2-2,7x mais na OpenAI
+  // (US$ 2 / 10 por 1M, contra 0,75 / 4,5 do mini) e, por decisão do dono em
+  // 23/09/2026, a plataforma absorve essa diferença por enquanto.
+  "gpt-6-sol": 0.5,
+  // Legado: fica para o recálculo do stats-sync pesar o histórico como foi cobrado.
   "gpt-5.4-mini-2026-03-17": 0.5,
 } as const
 

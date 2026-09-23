@@ -7,9 +7,15 @@ export const RAG_CONSTANTS = {
   DEFAULT_CONTEXT_LIMIT: 3,
 } as const
 
+/**
+ * O modelo do bot é da PLATAFORMA, não do salão: o bot (worker), o chat de teste
+ * e o formulário de agentes leem daqui. Trocar de modelo = mudar esta linha e dar
+ * o peso dele em MODEL_WEIGHTS (lib/utils/credits.ts) — sem peso, o salão passa a
+ * ser cobrado em 1,0 por token.
+ */
 export const AI_MODEL_CONSTANTS = {
-  DEFAULT_MODEL: "gpt-5.4-mini-2026-03-17",
-  DEFAULT_FULL_MODEL: "gpt-5.4-mini-2026-03-17",
+  DEFAULT_MODEL: "gpt-6-sol",
+  DEFAULT_FULL_MODEL: "gpt-6-sol",
 } as const
 
 export const SALON_CONSTANTS = {

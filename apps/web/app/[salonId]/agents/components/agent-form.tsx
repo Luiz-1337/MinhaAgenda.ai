@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import { Bot, MessageSquareText, BrainCircuit, Phone, Sparkles, Save, X, AlertCircle, HelpCircle, ArrowLeft, Cpu, AlertTriangle, FileText, Loader2 } from "lucide-react"
 import { agentSchema, createAgentSchema, type AgentSchema } from "@/lib/schemas"
+import { AI_MODEL_CONSTANTS } from "@/lib/constants/ai.constants"
 import { createAgent, updateAgent } from "@/app/actions/agents"
 import { getSystemPromptTemplates, updateSystemPromptTemplate } from "@/app/actions/system-prompt-templates"
 import type { SystemPromptTemplateRow } from "@/lib/types/system-prompt-template"
@@ -16,8 +17,10 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from "@/components/ui/select"
 
-// Modelo de IA fixado via variável de ambiente
-const FIXED_MODEL = (process.env.NEXT_PUBLIC_AI_MODEL || "gpt-5.4-mini-2026-03-17") as "gpt-5.4-mini-2026-03-17"
+// Modelo de IA é da plataforma: o mesmo que o bot chama (lib/constants/ai.constants.ts).
+// Não lê mais NEXT_PUBLIC_AI_MODEL — um valor antigo ali reprovaria o agentModelEnum
+// num campo que o formulário nem mostra, e o "Salvar" pararia sem erro visível.
+const FIXED_MODEL: AgentSchema["model"] = AI_MODEL_CONSTANTS.DEFAULT_MODEL
 function ToneTooltip() {
   const [isVisible, setIsVisible] = useState(false)
   const [mounted, setMounted] = useState(false)

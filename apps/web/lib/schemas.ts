@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { AI_MODEL_CONSTANTS } from "./constants/ai.constants"
 
 // Schema para horário de funcionamento de um dia
 const workHoursDaySchema = z.object({
@@ -80,9 +81,7 @@ export const agentConfigSchema = z.object({
 export type AgentConfigSchema = z.infer<typeof agentConfigSchema>
 
 // Schema para criação/edição de agentes
-export const agentModelEnum = z.enum([
-  "gpt-5.4-mini-2026-03-17"
-])
+export const agentModelEnum = z.enum([AI_MODEL_CONSTANTS.DEFAULT_MODEL])
 
 export const agentSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(255, "Nome muito longo"),

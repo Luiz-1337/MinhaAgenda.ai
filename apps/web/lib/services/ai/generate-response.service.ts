@@ -219,8 +219,7 @@ export async function generateAIResponse(
       throw new AIGenerationError("No active agent found", { retryable: false });
     }
 
-    const agentModel = agentInfo.model || "gpt-5.4-mini-2026-03-17";
-    const modelName = mapModelToOpenAI(agentModel);
+    const modelName = mapModelToOpenAI(agentInfo.model);
 
     if (AI_DEBUG) {
       console.log("\n🤖 ========== AI GENERATION START ==========");
@@ -472,7 +471,9 @@ export async function generateAIResponse(
         outputTokens: usage.outputTokens ?? 0,
         totalTokens: usage.totalTokens ?? 0,
       },
-      model: agentModel,
+      // O modelo que respondeu de fato, não o rótulo de agents.model (que pode ser
+      // legado): é o que vai para messages.model e o que pesa o crédito do salão.
+      model: modelName,
       stepsCount: steps.length,
       hasToolErrors,
       steps,

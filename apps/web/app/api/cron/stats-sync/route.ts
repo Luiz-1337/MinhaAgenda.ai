@@ -2,6 +2,7 @@ import { logger } from '@repo/db'
 import { db, salons, sql } from '@repo/db'
 import { requireCronAuth } from '@/lib/services/admin-auth.service'
 import { syncRealUsageData } from '@/lib/services/stats-sync.service'
+import { weightedCreditsSql } from '@/lib/utils/credits-sql'
 import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -60,10 +61,7 @@ export async function GET(request: NextRequest) {
           select c.salon_id,
                  (m.created_at at time zone 'UTC' at time zone 'America/Sao_Paulo')::date as dia,
                  m.model,
-                 sum(case lower(btrim(coalesce(m.model,'')))
-                          when 'gpt-5.4-mini-2026-03-17'
-                            then round((m.total_tokens * 0.5)::numeric)
-                          else m.total_tokens::numeric end)::int as credits
+                 sum(${weightedCreditsSql(sql`m.total_tokens`, sql`m.model`)})::int as credits
           from messages m
           join chats c on c.id = m.chat_id
           where m.role = 'assistant' and m.model is not null and m.total_tokens > 0

@@ -24,6 +24,13 @@ describe("getModelWeight", () => {
     expect(MODEL_WEIGHTS[MINI]).toBe(0.5)
   })
 
+  it("o gpt-6-sol vale o mesmo 0,5 — trocar de modelo nao muda a cobranca do salao", () => {
+    // Sem esta entrada ele cairia no 1,0 de modelo desconhecido e todo salao
+    // passaria a gastar o DOBRO de credito por token no dia da troca.
+    expect(getModelWeight("gpt-6-sol")).toBe(0.5)
+    expect(calculateCredits(1000, "gpt-6-sol")).toBe(500)
+  })
+
   it("modelo desconhecido vale 1,0 — nunca 0", () => {
     // Peso 0 faria uso real sair de graça e o saldo nunca baixar.
     expect(getModelWeight("gpt-4o")).toBe(1.0)
