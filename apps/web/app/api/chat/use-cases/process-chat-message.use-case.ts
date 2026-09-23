@@ -80,6 +80,7 @@ export class ProcessChatMessageUseCase {
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
         totalTokens: response.usage.totalTokens,
+        cachedTokens: response.usage.cachedInputTokens,
         model: modelName,
       }
     )

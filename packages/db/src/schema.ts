@@ -512,6 +512,9 @@ export const messages = pgTable(
     outputTokens: integer('output_tokens'),
     model: text('model'),
     totalTokens: integer('total_tokens'),
+    // Parte dos tokens de entrada que veio do cache de prompt da OpenAI (migration
+    // 032). Conta 1/10 no crédito do salão (ver calculateCredits). NULL = 0.
+    cachedTokens: integer('cached_tokens'),
     // Outbound delivery tracking (ver migration 0040). NULL para mensagens recebidas.
     // providerMessageId = key.id da Evolution; correlaciona o evento messages.update.
     providerMessageId: text('provider_message_id'),

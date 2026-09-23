@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
           select c.salon_id,
                  (m.created_at at time zone 'UTC' at time zone 'America/Sao_Paulo')::date as dia,
                  m.model,
-                 sum(${weightedCreditsSql(sql`m.total_tokens`, sql`m.model`)})::int as credits
+                 sum(${weightedCreditsSql(sql`m.total_tokens`, sql`m.model`, sql`m.cached_tokens`)})::int as credits
           from messages m
           join chats c on c.id = m.chat_id
           where m.role = 'assistant' and m.model is not null and m.total_tokens > 0

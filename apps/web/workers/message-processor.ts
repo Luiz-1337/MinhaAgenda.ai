@@ -688,6 +688,7 @@ async function processMessage(
           inputTokens: response.usage?.inputTokens,
           outputTokens: response.usage?.outputTokens,
           totalTokens: response.usage?.totalTokens,
+          cachedTokens: response.usage?.cachedInputTokens,
           model: response.model,
           toolSummary: response.toolSummary,
           providerMessageId,
@@ -696,7 +697,7 @@ async function processMessage(
 
         if (response.usage?.totalTokens && response.usage.totalTokens > 0) {
           const { debitSalonCredits } = await import("../lib/services/credits.service");
-          await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
+          await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown", response.usage.cachedInputTokens ?? 0);
         }
 
         jobLogger.info(
@@ -782,6 +783,7 @@ async function processMessage(
           inputTokens: response.usage?.inputTokens,
           outputTokens: response.usage?.outputTokens,
           totalTokens: response.usage?.totalTokens,
+          cachedTokens: response.usage?.cachedInputTokens,
           model: response.model,
           toolSummary: response.toolSummary,
           providerMessageId,
@@ -790,7 +792,7 @@ async function processMessage(
 
         if (response.usage?.totalTokens && response.usage.totalTokens > 0) {
           const { debitSalonCredits } = await import("../lib/services/credits.service");
-          await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
+          await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown", response.usage.cachedInputTokens ?? 0);
         }
         timer.mark("saved_and_debited");
 
@@ -858,6 +860,7 @@ async function processMessage(
       inputTokens: response.usage.inputTokens,
       outputTokens: response.usage.outputTokens,
       totalTokens: response.usage.totalTokens,
+      cachedTokens: response.usage.cachedInputTokens,
       model: response.model,
       requiresResponse,
       toolSummary: response.toolSummary,
@@ -868,7 +871,7 @@ async function processMessage(
     // Debita os tokens usados do saldo mensal do salão
     if (response.usage.totalTokens > 0) {
       const { debitSalonCredits } = await import("../lib/services/credits.service");
-      await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown");
+      await debitSalonCredits(salonId, response.usage.totalTokens, response.model ?? "unknown", response.usage.cachedInputTokens ?? 0);
     }
     timer.mark("saved_and_debited");
 

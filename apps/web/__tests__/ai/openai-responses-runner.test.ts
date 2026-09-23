@@ -117,6 +117,25 @@ describe("runOpenAIResponses — o system prompt vai em todo round", () => {
     expect(h.create.mock.calls[1][0].instructions).toBe(INSTRUCTIONS)
   })
 
+  it("soma os tokens de cache de todos os rounds", async () => {
+    h.create
+      .mockResolvedValueOnce({
+        id: "resp_1",
+        output: [functionCall],
+        usage: { input_tokens: 3000, input_tokens_details: { cached_tokens: 0 }, output_tokens: 20, total_tokens: 3020 },
+      })
+      .mockResolvedValueOnce({
+        id: "resp_2",
+        output_text: "ok",
+        output: [],
+        usage: { input_tokens: 3500, input_tokens_details: { cached_tokens: 2944 }, output_tokens: 60, total_tokens: 3560 },
+      })
+
+    const result = await runWithTools()
+
+    expect(result.usage).toEqual({ inputTokens: 6500, cachedInputTokens: 2944, outputTokens: 80, totalTokens: 6580 })
+  })
+
   it("a chamada final, no teto de rounds, também leva as instructions", async () => {
     h.create
       .mockResolvedValueOnce({ id: "resp_1", output: [functionCall], usage })

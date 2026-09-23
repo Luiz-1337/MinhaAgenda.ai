@@ -75,6 +75,34 @@ describe("calculateCredits", () => {
     expect(calculateCredits(1, MINI)).toBe(1)   // 0.5 -> 1
   })
 
+  it("token de cache vale 1/10 — o reenvio do system prompt quase nao pesa no credito", () => {
+    // 1000 tokens, 800 do cache: (200 + 80) x 0,5 = 140. Sem o desconto seriam 500.
+    expect(calculateCredits(1000, "gpt-6-sol", 800)).toBe(140)
+    expect(calculateCredits(1000, "gpt-4o", 800)).toBe(280)
+  })
+
+  it("sem informacao de cache, cobra como antes", () => {
+    expect(calculateCredits(1000, "gpt-6-sol")).toBe(500)
+    expect(calculateCredits(1000, "gpt-6-sol", 0)).toBe(500)
+    expect(calculateCredits(1000, "gpt-6-sol", null)).toBe(500)
+    expect(calculateCredits(1000, "gpt-6-sol", undefined)).toBe(500)
+  })
+
+  it("cache corrompido nao zera nem infla a cobranca", () => {
+    // Mais cache que tokens: trava no total (tudo com desconto), nunca negativo.
+    expect(calculateCredits(1000, "gpt-6-sol", 5000)).toBe(50)
+    // Negativo ou NaN: ignora.
+    expect(calculateCredits(1000, "gpt-6-sol", -300)).toBe(500)
+    expect(calculateCredits(1000, "gpt-6-sol", Number.NaN)).toBe(500)
+  })
+
+  it("com cache, arredonda igual ao SQL (decimos exatos, half away from zero)", () => {
+    // 3 tokens, 1 do cache: (2 + 0,1) x 0,5 = 1,05 -> 1
+    expect(calculateCredits(3, "gpt-6-sol", 1)).toBe(1)
+    // 11 tokens, 5 do cache, peso 1: 6 + 0,5 = 6,5 -> 7
+    expect(calculateCredits(11, "gpt-4o", 5)).toBe(7)
+  })
+
   it("zero e negativo nao geram credito", () => {
     expect(calculateCredits(0, MINI)).toBe(0)
     expect(calculateCredits(-100, MINI)).toBe(0)

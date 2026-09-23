@@ -240,6 +240,8 @@ export async function saveMessage(
     inputTokens?: number
     outputTokens?: number
     totalTokens?: number
+    /** Parte de inputTokens que veio do cache de prompt da OpenAI (migration 032). */
+    cachedTokens?: number
     model?: string
     requiresResponse?: boolean
     toolSummary?: string
@@ -271,6 +273,7 @@ export async function saveMessage(
     inputTokens: options?.inputTokens ?? null,
     outputTokens: options?.outputTokens ?? null,
     totalTokens: options?.totalTokens ?? null,
+    cachedTokens: options?.cachedTokens ?? null,
     model: options?.model ?? null,
     providerMessageId: options?.providerMessageId ?? null,
     deliveryStatus: options?.deliveryStatus ?? null,

@@ -10,6 +10,7 @@ export interface SaveMessageOptions {
   inputTokens?: number
   outputTokens?: number
   totalTokens?: number
+  cachedTokens?: number
   model?: string
   requiresResponse?: boolean
 }
@@ -62,6 +63,7 @@ export class SaveChatMessageUseCase {
         inputTokens: options?.inputTokens,
         outputTokens: options?.outputTokens,
         totalTokens: options?.totalTokens,
+        cachedTokens: options?.cachedTokens,
         model: options?.model,
         requiresResponse,
       }).catch((err) => {

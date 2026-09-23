@@ -17,7 +17,7 @@ const chunk = <T,>(arr: T[], size: number): T[][] =>
  * /api/cron/stats-sync.
  */
 export async function syncRealUsageData(salonId: string): Promise<void> {
-  const w = weightedCreditsSql(messages.totalTokens, messages.model)
+  const w = weightedCreditsSql(messages.totalTokens, messages.model, messages.cachedTokens)
 
   // (A) Agregado por (dia, modelo) direto no SQL — substitui o fetch integral
   //     de messages + agregação em JS. Filtros idênticos ao sync original.

@@ -19,6 +19,8 @@ export interface ResponsesRunnerInputMessage {
 
 export interface ResponsesRunnerUsage {
   inputTokens: number
+  /** Parte de inputTokens que veio do cache de prompt da OpenAI (conta 1/10 no crédito). */
+  cachedInputTokens: number
   outputTokens: number
   totalTokens: number
 }
@@ -215,6 +217,7 @@ export async function runOpenAIResponses(
 
   const usage: ResponsesRunnerUsage = {
     inputTokens: 0,
+    cachedInputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
   }
@@ -283,6 +286,7 @@ export async function runOpenAIResponses(
 
     if (response.usage) {
       usage.inputTokens += response.usage.input_tokens ?? 0
+      usage.cachedInputTokens += response.usage.input_tokens_details?.cached_tokens ?? 0
       usage.outputTokens += response.usage.output_tokens ?? 0
       usage.totalTokens += response.usage.total_tokens ?? 0
     }
@@ -409,6 +413,7 @@ export async function runOpenAIResponses(
 
   if (finalResponse.usage) {
     usage.inputTokens += finalResponse.usage.input_tokens ?? 0
+    usage.cachedInputTokens += finalResponse.usage.input_tokens_details?.cached_tokens ?? 0
     usage.outputTokens += finalResponse.usage.output_tokens ?? 0
     usage.totalTokens += finalResponse.usage.total_tokens ?? 0
   }

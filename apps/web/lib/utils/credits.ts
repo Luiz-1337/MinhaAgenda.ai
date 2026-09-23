@@ -33,20 +33,42 @@ export function getModelWeight(model: string | null | undefined): number {
 }
 
 /**
- * Calcula créditos aplicando o peso do modelo aos tokens brutos
- * @param tokens Número de tokens brutos
- * @param model Nome do modelo de IA
- * @returns Créditos calculados (tokens * peso do modelo)
+ * Um token de entrada lido do cache de prompt da OpenAI vale 1/CACHED_TOKEN_DIVISOR
+ * de um token normal no crédito — o mesmo desconto que a OpenAI dá no input
+ * cacheado (gpt-6-sol: US$ 0,20 contra US$ 2 por 1M). Decisão do dono (23/09/2026):
+ * o salão não paga pelo reenvio do system prompt a cada round de tool, que é
+ * justamente o que o cache cobre.
+ *
+ * Divisor inteiro de propósito: a conta é feita em décimos de token, para o JS e o
+ * SQL (credits-sql.ts) arredondarem igual, sem ruído de ponto flutuante.
  */
-export function calculateCredits(tokens: number, model: string | null | undefined): number {
+export const CACHED_TOKEN_DIVISOR = 10
+
+/**
+ * Calcula créditos aplicando o peso do modelo aos tokens, com os tokens de cache
+ * valendo 1/CACHED_TOKEN_DIVISOR
+ * @param tokens Total de tokens da resposta (entrada + saída, cache incluído)
+ * @param model Nome do modelo de IA
+ * @param cachedTokens Quantos dos tokens de entrada vieram do cache (ausente = 0)
+ * @returns Créditos calculados
+ */
+export function calculateCredits(
+  tokens: number,
+  model: string | null | undefined,
+  cachedTokens?: number | null
+): number {
   if (!tokens || tokens <= 0) {
     return 0
   }
 
+  // Cache fora de [0, tokens] só pode ser dado corrompido: não pode nem zerar nem
+  // inflar a cobrança.
+  const rawCached = typeof cachedTokens === "number" && Number.isFinite(cachedTokens) ? cachedTokens : 0
+  const cached = Math.min(Math.max(rawCached, 0), tokens)
+  const billableTenths = (tokens - cached) * CACHED_TOKEN_DIVISOR + cached
   const weight = getModelWeight(model)
-  const credits = tokens * weight
 
   // Arredonda para o inteiro mais próximo
-  return Math.round(credits)
+  return Math.round((billableTenths * weight) / CACHED_TOKEN_DIVISOR)
 }
 

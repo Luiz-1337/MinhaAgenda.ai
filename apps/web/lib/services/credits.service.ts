@@ -104,11 +104,13 @@ export async function getSalonRemainingCredits(salonId: string): Promise<{ remai
 export async function debitSalonCredits(
     salonId: string,
     tokensUsed: number,
-    model: string
+    model: string,
+    /** Parte de `tokensUsed` que veio do cache de prompt da OpenAI — conta 1/10. */
+    cachedTokens: number = 0
 ): Promise<void> {
     if (!tokensUsed || tokensUsed <= 0) return
 
-    const credits = calculateCredits(tokensUsed, model)
+    const credits = calculateCredits(tokensUsed, model, cachedTokens)
     if (credits <= 0) return
 
     const today = formatBrazilTime(new Date(), "yyyy-MM-dd")

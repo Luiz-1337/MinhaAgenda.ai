@@ -106,7 +106,27 @@ describe("processMessage", () => {
     expect(result.tokensUsed).toBe(150)
     expect(sendWhatsAppMessage).toHaveBeenCalled()
     expect(saveMessage).toHaveBeenCalled()
-    expect(debitSalonCredits).toHaveBeenCalledWith(IDS.salonId, 150, "gpt-4o-mini")
+    expect(debitSalonCredits).toHaveBeenCalledWith(IDS.salonId, 150, "gpt-4o-mini", 0)
+  })
+
+  it("tokens do cache seguem para o débito e para a mensagem gravada", async () => {
+    // O system prompt é reenviado a cada round de tool e cai no cache da OpenAI;
+    // o crédito tem que saber quanto veio de lá para cobrar 1/10 disso.
+    vi.mocked(generateAIResponse).mockResolvedValue({
+      text: "Claro! Posso ajudar com seu agendamento.",
+      usage: { inputTokens: 100, cachedInputTokens: 80, outputTokens: 50, totalTokens: 150 },
+      model: "gpt-6-sol",
+    } as any)
+
+    await processMessage(makeFakeJob() as any)
+
+    expect(debitSalonCredits).toHaveBeenCalledWith(IDS.salonId, 150, "gpt-6-sol", 80)
+    expect(saveMessage).toHaveBeenCalledWith(
+      IDS.chatId,
+      "assistant",
+      expect.any(String),
+      expect.objectContaining({ totalTokens: 150, cachedTokens: 80 })
+    )
   })
 
   it("lock contention: reagenda job quando lock não disponível", async () => {

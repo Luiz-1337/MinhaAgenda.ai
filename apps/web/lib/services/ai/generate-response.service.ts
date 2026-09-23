@@ -146,6 +146,8 @@ export interface GenerateResponseResult {
   toolSummary: string;
   usage: {
     inputTokens: number;
+    /** Parte de inputTokens que veio do cache de prompt da OpenAI (conta 1/10 no crédito). */
+    cachedInputTokens: number;
     outputTokens: number;
     totalTokens: number;
   };
@@ -468,6 +470,7 @@ export async function generateAIResponse(
       toolSummary,
       usage: {
         inputTokens: usage.inputTokens ?? 0,
+        cachedInputTokens: usage.cachedInputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0,
         totalTokens: usage.totalTokens ?? 0,
       },

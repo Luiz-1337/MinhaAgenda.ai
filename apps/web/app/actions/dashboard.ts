@@ -249,6 +249,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     .select({
       date: sql<string>`DATE(${messages.createdAt})::text`,
       totalTokens: messages.totalTokens,
+      cachedTokens: messages.cachedTokens,
       model: messages.model,
     })
     .from(messages)
@@ -274,7 +275,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   // Adiciona créditos de messages aplicando pesos
   messagesRaw.forEach((msg) => {
     if (!msg.date || !msg.totalTokens) return
-    const credits = calculateCredits(msg.totalTokens, msg.model)
+    const credits = calculateCredits(msg.totalTokens, msg.model, msg.cachedTokens)
     creditsMap.set(msg.date, (creditsMap.get(msg.date) || 0) + credits)
   })
 
@@ -315,6 +316,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       const agentMessages = await db
         .select({
           totalTokens: messages.totalTokens,
+      cachedTokens: messages.cachedTokens,
         })
         .from(messages)
         .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -330,7 +332,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
 
       // Calcula créditos ponderados para cada mensagem
       const credits = agentMessages.reduce((sum, msg) => {
-        return sum + calculateCredits(msg.totalTokens || 0, agent.model)
+        return sum + calculateCredits(msg.totalTokens || 0, agent.model, msg.cachedTokens)
       }, 0)
 
       return {
@@ -349,6 +351,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
     .select({
       model: messages.model,
       totalTokens: messages.totalTokens,
+      cachedTokens: messages.cachedTokens,
     })
     .from(messages)
     .innerJoin(chats, eq(messages.chatId, chats.id))
@@ -369,7 +372,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
   // Adiciona dados reais de messages aplicando pesos
   modelUsageRaw.forEach((msg) => {
     if (msg.model && msg.totalTokens) {
-      const credits = calculateCredits(msg.totalTokens, msg.model)
+      const credits = calculateCredits(msg.totalTokens, msg.model, msg.cachedTokens)
       modelMap.set(msg.model, (modelMap.get(msg.model) || 0) + credits)
     }
   })
