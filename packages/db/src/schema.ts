@@ -515,6 +515,10 @@ export const messages = pgTable(
     // Parte dos tokens de entrada que veio do cache de prompt da OpenAI (migration
     // 032). Conta 1/10 no crédito do salão (ver calculateCredits). NULL = 0.
     cachedTokens: integer('cached_tokens'),
+    // O que o RAG do Treinamento fez nesta resposta (migration 033): corte, teto e
+    // os itens mais parecidos com a nota de semelhança, entrando ou não. Só ids e
+    // notas, nunca o conteúdo. Base para calibrar o corte. NULL = sem Treinamento.
+    ragContext: jsonb('rag_context'),
     // Outbound delivery tracking (ver migration 0040). NULL para mensagens recebidas.
     // providerMessageId = key.id da Evolution; correlaciona o evento messages.update.
     providerMessageId: text('provider_message_id'),

@@ -107,9 +107,14 @@ export class CatalogPresenter {
       })),
       total: dto.total,
       message: dto.message,
+      // Só regra de segurança e de negócio aqui — NUNCA de formato (o que informar,
+      // quantos itens, como). O resultado da tool é o último texto que o modelo lê
+      // antes de escrever, então uma diretriz de estilo aqui vencia o prompt do dono:
+      // "Informe nome, preço e duração" contra "nunca informe a duração" (Liz,
+      // 23/09/2026). Formato é do system prompt, onde o salão tem precedência.
       _instrucao:
         "Os IDs são para uso interno das tools (ex: addAppointment, checkAvailability). NUNCA mostre IDs ao cliente. " +
-        "Informe nome, preço e duração. Se precoSobAvaliacao=true, diga que o valor é sob avaliação (não invente preço) e ainda assim ofereça agendar. " +
+        "Se precoSobAvaliacao=true, diga que o valor é sob avaliação (não invente preço) e ainda assim ofereça agendar. " +
         "Se houver diasAtendimento/horariosDeInicio, o serviço só pode ser agendado nesses dias/horários — use checkAvailability, que já respeita isso.",
     }
   }

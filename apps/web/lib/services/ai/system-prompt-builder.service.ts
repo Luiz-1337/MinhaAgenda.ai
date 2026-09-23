@@ -105,18 +105,25 @@ function formatPreferencesText(preferences?: Record<string, unknown>): string {
 }
 
 /**
- * Formata contexto RAG em texto
+ * Formata os itens do Treinamento que o RAG trouxe para ESTA mensagem.
+ *
+ * Entravam no meio dos blocos de dados, sob "CONTEXTO DE REGRAS DO SALÃO" e com um
+ * condicional ("se a pergunta estiver relacionada, priorize") — a instrução mais
+ * fraca do prompt, abaixo do estilo e do fluxo gerais. Agora entram dentro das
+ * INSTRUÇÕES DO SALÃO (formatSalonInstructionsText), com a mesma precedência.
+ * Continua sendo RAG: só chegam aqui os itens que bateram com a mensagem.
  */
 function formatKnowledgeContextText(knowledgeContext?: string): string {
-  if (!knowledgeContext || !knowledgeContext.trim()) {
-    return ""
-  }
+  const text = knowledgeContext?.trim()
+  if (!text) return ""
 
-  return `\n\nCONTEXTO DE REGRAS DO SALÃO:\n${knowledgeContext}\n\nUse essas informações para responder de forma precisa e consistente. Se a pergunta do cliente estiver relacionada a essas regras, priorize essas informações.`
+  return `TREINAMENTO DO SALÃO (itens que o dono cadastrou e que têm a ver com esta mensagem — valem com a mesma prioridade das instruções do salão; se algum contradisser as instruções acima, siga as instruções acima):
+${text}`
 }
 
 /**
- * Formata as instruções que o dono escreveu para o agente (agents.system_prompt).
+ * Formata as instruções que o dono escreveu para o agente (agents.system_prompt)
+ * e os itens do Treinamento que o RAG trouxe para esta mensagem.
  *
  * Elas entravam cruas no fim do prompt, sem nada dizendo que valiam mais que as
  * regras gerais — e várias regras gerais batem de frente com elas ("ofereça 2-3
@@ -129,17 +136,18 @@ function formatKnowledgeContextText(knowledgeContext?: string): string {
  * preço cheio que já tinha dado na mesma conversa, e "nunca invente preços" dava
  * margem para ler "a partir de" como mexer no valor. Daí as duas frases extras.
  */
-export function formatSalonInstructionsText(systemPrompt?: string | null): string {
+export function formatSalonInstructionsText(systemPrompt?: string | null, knowledgeContext?: string): string {
   const text = systemPrompt?.trim()
-  if (!text) return ""
+  const training = formatKnowledgeContextText(knowledgeContext)
+  if (!text && !training) return ""
 
-  return `INSTRUÇÕES DO SALÃO (escritas pelo dono do salão — PRIORIDADE MÁXIMA):
+  const header = `INSTRUÇÕES DO SALÃO (escritas pelo dono do salão — PRIORIDADE MÁXIMA):
 Estas instruções valem MAIS que as regras gerais de ESTILO DE COMUNICAÇÃO e do FLUXO DE AGENDAMENTO acima. Em qualquer conflito — saudação e apresentação, tamanho e formato das mensagens (listas inclusive), como apresentar preços, quantos horários oferecer, frases prontas (inclusive para o que estiver fora do escopo) — siga as do salão AO PÉ DA LETRA, com as frases e os formatos que elas pedirem.
 Elas valem também sobre as SUAS respostas anteriores nesta conversa: se alguma delas não seguiu estas instruções, NÃO repita o formato dela — responda agora do jeito que o salão pede.
 Só isto NÃO pode ser sobreposto: nunca inventar serviços, preços, profissionais, horários ou IDs (use só o que veio das tools ou dos blocos de dados deste prompt); sempre chamar checkAvailability antes de oferecer ou confirmar horário; nunca mostrar IDs ao cliente.
-Apresentar um preço real no formato que o salão pede (ex.: "a partir de R$ X", com o menor valor que a tool devolveu) NÃO é inventar preço: se o salão pedir esse formato, use-o em TODA resposta com preço, inclusive em listas.
+Apresentar um preço real no formato que o salão pede (ex.: "a partir de R$ X", com o menor valor que a tool devolveu) NÃO é inventar preço: se o salão pedir esse formato, use-o em TODA resposta com preço, inclusive em listas.`
 
-${text}`
+  return [header, text, training].filter(Boolean).join("\n\n")
 }
 
 /**
@@ -349,7 +357,6 @@ export class SystemPromptBuilder {
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
     const { formattedDate, formattedTime, isoDate } = formatDateTime()
     const preferencesText = formatPreferencesText(preferences)
-    const knowledgeContextText = formatKnowledgeContextText(knowledgeContext)
     const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer, noShowRisk)
     const trinksProfileText = formatTrinksProfileText(trinksProfile)
     const upcomingAppointmentsText = formatUpcomingAppointmentsText(upcomingAppointments)
@@ -448,7 +455,7 @@ REGRAS DE TOOLS (CRÍTICO — leia ANTES de qualquer ação):
 
 HOJE: ${formattedDate} | HORA: ${formattedTime}
 Hoje em ISO: ${isoDate} (fuso -03:00). Use HOJE como referência absoluta para datas relativas ("amanhã", "sexta que vem", "dia 30").
-DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${adContextText ?? ""}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
+DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${adContextText ?? ""}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}
 
 ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO, salvo quando as INSTRUÇÕES DO SALÃO, no fim deste prompt, pedirem diferente):
 - Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
@@ -499,7 +506,7 @@ A agenda SEMPRE existe. NUNCA diga que está inacessível.${kanbanClassification
 
 LEMBRETE FINAL: NUNCA chame addAppointment/updateAppointment/removeAppointment/confirmAppointment/checkAvailability com IDs inventados. Sempre obtenha IDs reais via getServices/getProfessionals/getMyFutureAppointments PRIMEIRO. Se ainda não os tem nesta conversa, chame a tool de leitura ANTES.
 
-${formatSalonInstructionsText(agentInfo?.systemPrompt)}`
+${formatSalonInstructionsText(agentInfo?.systemPrompt, knowledgeContext)}`
   }
 }
 

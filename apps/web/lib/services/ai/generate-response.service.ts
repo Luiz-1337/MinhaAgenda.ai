@@ -40,7 +40,7 @@ import {
 import type { ResponsesRunnerInputMessage, ResponsesRunnerStep } from "./openai-responses-runner.service";
 import type { ToolSetDefinition } from "./tools/tool-definition";
 import { getChatHistory } from "../chat.service";
-import { findRelevantContext, generateQueryEmbedding } from "./rag-context.service";
+import { findRelevantContext, generateQueryEmbedding, resolveRagSettings, type RagTrace } from "./rag-context.service";
 import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
@@ -154,6 +154,8 @@ export interface GenerateResponseResult {
   model: string;
   stepsCount: number;
   hasToolErrors: boolean;
+  /** O que o RAG fez nesta mensagem (null = agente sem Treinamento). Vai para messages.rag_context. */
+  ragTrace: RagTrace | null;
   /** Raw steps from the OpenAI runner. Exposed for eval/inspection — not used by the worker. */
   steps: ResponsesRunnerStep[];
 }
@@ -237,9 +239,12 @@ export async function generateAIResponse(
 
     // 2. RAG: Usa embedding especulativo (já pronto) se agente tiver knowledge base
     let knowledgeContext: string | undefined;
+    let ragTrace: RagTrace | null = null;
     if (agentInfo.id && agentInfo.hasKnowledgeBase) {
       if (AI_DEBUG) console.log("\n🔍 RAG: Searching for knowledge context...");
-      knowledgeContext = await fetchKnowledgeContext(agentInfo.id, userMessage, contextLogger, speculativeEmbedding);
+      const rag = await fetchKnowledgeContext(agentInfo.id, userMessage, contextLogger, speculativeEmbedding);
+      knowledgeContext = rag.text;
+      ragTrace = rag.trace;
 
       if (AI_DEBUG) {
         if (knowledgeContext) {
@@ -479,6 +484,7 @@ export async function generateAIResponse(
       model: modelName,
       stepsCount: steps.length,
       hasToolErrors,
+      ragTrace,
       steps,
     };
   } catch (error) {
@@ -504,19 +510,29 @@ export async function generateAIResponse(
 }
 
 /**
- * Busca contexto RAG relevante para a mensagem
+ * Busca os itens do Treinamento (RAG) relevantes para a mensagem.
+ *
+ * Devolve também o `trace` — o que a busca fez, com a nota de semelhança dos
+ * candidatos, entrando ou não — que vai para messages.rag_context e para um log
+ * `info`. Antes a busca era muda: erro de embedding ou de SQL só aparecia com
+ * AI_DEBUG, e não havia como saber quais itens entraram nem se o corte estava
+ * alto demais.
  */
 async function fetchKnowledgeContext(
   agentId: string,
   userMessage: string,
   contextLogger: Logger,
   precomputedEmbedding?: number[] | null
-): Promise<string | undefined> {
-  try {
-    // Configurações via env
-    const similarityThreshold = parseFloat(process.env.RAG_SIMILARITY_THRESHOLD || '0.65');
-    const maxResults = parseInt(process.env.RAG_MAX_RESULTS || '5'); // Padrão: 5 itens
+): Promise<{ text?: string; trace: RagTrace }> {
+  const settings = resolveRagSettings(process.env.RAG_SIMILARITY_THRESHOLD, process.env.RAG_MAX_RESULTS);
+  if (settings.invalid.length > 0) {
+    contextLogger.warn({ invalid: settings.invalid }, "RAG: env inválida, usando o padrão");
+  }
+  const similarityThreshold = settings.threshold;
+  const maxResults = settings.limit;
+  const trace: RagTrace = { outcome: "ok", threshold: similarityThreshold, limit: maxResults, candidates: [] };
 
+  try {
     if (AI_DEBUG) {
       console.log("🔍 RAG Query:", {
         agentId: agentId ? agentId.substring(0, 8) + "..." : "(no agentId)",
@@ -535,14 +551,19 @@ async function fetchKnowledgeContext(
     );
 
     if ("error" in contextResult) {
+      trace.outcome = contextResult.reason;
       if (AI_DEBUG) console.log("❌ RAG Error:", contextResult.error);
-      return undefined;
+      contextLogger.warn({ rag: trace, error: contextResult.error }, "RAG falhou, seguindo sem Treinamento");
+      return { trace };
     }
 
-    if (!contextResult.data || contextResult.data.length === 0) {
-      if (AI_DEBUG) console.log("📭 RAG: No results (similarity < 0.7 or empty database)");
-      contextLogger.debug("No relevant RAG context found");
-      return undefined;
+    trace.candidates = contextResult.candidates;
+
+    if (contextResult.data.length === 0) {
+      trace.outcome = "abaixo_do_corte";
+      if (AI_DEBUG) console.log(`📭 RAG: nenhum item passou do corte (${similarityThreshold})`);
+      contextLogger.info({ rag: trace }, "RAG context");
+      return { trace };
     }
 
     // Log detalhado dos resultados
@@ -565,19 +586,14 @@ async function fetchKnowledgeContext(
       .map((item) => item.content)
       .join("\n\n");
 
-    contextLogger.debug(
-      {
-        itemsCount: contextResult.data.length,
-        threshold: similarityThreshold,
-      },
-      "RAG context found"
-    );
+    contextLogger.info({ rag: trace }, "RAG context");
 
-    return knowledgeContext;
+    return { text: knowledgeContext, trace };
   } catch (error) {
+    trace.outcome = "erro_busca";
     if (AI_DEBUG) console.log("❌ RAG Exception:", error);
-    contextLogger.warn({ err: error }, "Error fetching RAG context, continuing without");
-    return undefined;
+    contextLogger.warn({ err: error, rag: trace }, "Error fetching RAG context, continuing without");
+    return { trace };
   }
 }
 

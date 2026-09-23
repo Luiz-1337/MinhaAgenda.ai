@@ -112,10 +112,17 @@ describe("processMessage", () => {
   it("tokens do cache seguem para o débito e para a mensagem gravada", async () => {
     // O system prompt é reenviado a cada round de tool e cai no cache da OpenAI;
     // o crédito tem que saber quanto veio de lá para cobrar 1/10 disso.
+    const ragTrace = {
+      outcome: "abaixo_do_corte",
+      threshold: 0.65,
+      limit: 5,
+      candidates: [{ id: "kb-duracao", similarity: 0.52, included: false }],
+    }
     vi.mocked(generateAIResponse).mockResolvedValue({
       text: "Claro! Posso ajudar com seu agendamento.",
       usage: { inputTokens: 100, cachedInputTokens: 80, outputTokens: 50, totalTokens: 150 },
       model: "gpt-6-sol",
+      ragTrace,
     } as any)
 
     await processMessage(makeFakeJob() as any)
@@ -125,7 +132,8 @@ describe("processMessage", () => {
       IDS.chatId,
       "assistant",
       expect.any(String),
-      expect.objectContaining({ totalTokens: 150, cachedTokens: 80 })
+      // O trace do RAG vai junto: é o que permite calibrar o corte do Treinamento.
+      expect.objectContaining({ totalTokens: 150, cachedTokens: 80, ragContext: ragTrace })
     )
   })
 

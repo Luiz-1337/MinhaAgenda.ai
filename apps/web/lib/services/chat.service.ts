@@ -4,6 +4,7 @@
 
 import { db, chats, messages, salons, profiles, customers, and, desc, eq, gte, sql, BRAZIL_TIMEZONE } from "@repo/db"
 import type { ChatMessage } from "../types/chat"
+import type { RagTrace } from "./ai/rag-context.service"
 import { logger } from "../infra/logger"
 
 /**
@@ -242,6 +243,8 @@ export async function saveMessage(
     totalTokens?: number
     /** Parte de inputTokens que veio do cache de prompt da OpenAI (migration 032). */
     cachedTokens?: number
+    /** O que o RAG do Treinamento fez nesta resposta (migration 033). */
+    ragContext?: RagTrace | null
     model?: string
     requiresResponse?: boolean
     toolSummary?: string
@@ -274,6 +277,7 @@ export async function saveMessage(
     outputTokens: options?.outputTokens ?? null,
     totalTokens: options?.totalTokens ?? null,
     cachedTokens: options?.cachedTokens ?? null,
+    ragContext: options?.ragContext ?? null,
     model: options?.model ?? null,
     providerMessageId: options?.providerMessageId ?? null,
     deliveryStatus: options?.deliveryStatus ?? null,

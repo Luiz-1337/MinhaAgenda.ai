@@ -150,8 +150,10 @@ export class AvailabilityPresenter {
         earliest,
         totalAvailable: available.length,
         message: dto.message,
+        // Sem "quantos horários oferecer": isso é formato, e é do system prompt, onde
+        // o salão tem precedência (a Liz oferece 4; esta linha mandava 2-3).
         _instrucao:
-          "Prefira o ESPECIALISTA (isSpecialist=true) e ofereça 2-3 horários. " +
+          "Prefira o ESPECIALISTA (isSpecialist=true). " +
           "Se o cliente pedir outro profissional capaz, use os horários dele. NUNCA mostre IDs.",
       }
     }
@@ -165,7 +167,7 @@ export class AvailabilityPresenter {
       })),
       totalAvailable: dto.totalAvailable,
       message: dto.message,
-      _instrucao: "Apresente apenas 2-3 horários ao cliente. NUNCA mostre IDs.",
+      _instrucao: "NUNCA mostre IDs.",
     }
   }
 }

@@ -93,6 +93,30 @@ describe("instruções do salão no system prompt", () => {
     expect(text).toContain("use-o em TODA resposta com preço, inclusive em listas")
   })
 
+  it("o Treinamento que o RAG trouxe entra DENTRO das instruções do salão, depois do prompt", async () => {
+    // Antes entrava no meio dos blocos de dados, como "CONTEXTO DE REGRAS DO SALÃO",
+    // com "se a pergunta estiver relacionada, priorize" — abaixo do estilo geral.
+    const ITEM = "Nunca coloque quanto tempo dura cada procedimento, a não ser que a cliente pergunte."
+    const prompt = await createSalonAssistantPrompt(
+      "salon-1", undefined, ITEM, "Cliente", "cust-1", false, agent(LIZ_RULE)
+    )
+    const training = prompt.indexOf("TREINAMENTO DO SALÃO")
+
+    expect(training).toBeGreaterThan(prompt.indexOf(SALON_HEADER))
+    expect(training).toBeGreaterThan(prompt.indexOf(LIZ_RULE))
+    expect(prompt.slice(training)).toContain("se algum contradisser as instruções acima, siga as instruções acima")
+    expect(prompt.endsWith(ITEM)).toBe(true)
+    expect(prompt).not.toContain("CONTEXTO DE REGRAS DO SALÃO")
+  })
+
+  it("salão só com Treinamento, sem prompt, também ganha o cabeçalho de prioridade", () => {
+    const text = formatSalonInstructionsText("", "O salão possui estacionamento no local.")
+
+    expect(text.startsWith(SALON_HEADER)).toBe(true)
+    expect(text).toContain("TREINAMENTO DO SALÃO")
+    expect(text.endsWith("O salão possui estacionamento no local.")).toBe(true)
+  })
+
   it("o estilo geral avisa que o salão pode mudá-lo", async () => {
     const prompt = await build(LIZ_RULE)
     expect(prompt).toContain("ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO, salvo quando as INSTRUÇÕES DO SALÃO")
