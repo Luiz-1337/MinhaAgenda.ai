@@ -250,7 +250,13 @@ export async function runOpenAIResponses(
   while (rounds < maxToolRounds) {
     const response = await openai.responses.create({
       model,
-      instructions: previousResponseId ? undefined : instructions ?? null,
+      // Reenviado em TODO round. A OpenAI NAO carrega `instructions` pelo
+      // previous_response_id ("the instructions from a previous response will not
+      // be carried over"): mandando so no round 0, toda resposta escrita depois de
+      // uma tool saia sem o system prompt — sem as regras do salao, sem "sem
+      // markdown". Foi assim que a Liz mandou tabela Markdown com preco cheio e
+      // duracao, numa conversa limpa, em 23/09/2026.
+      instructions: instructions ?? null,
       input: currentInput as any,
       previous_response_id: previousResponseId,
       tools: responseTools as any,
@@ -394,6 +400,7 @@ export async function runOpenAIResponses(
 
   const finalResponse = await openai.responses.create({
     model,
+    instructions: instructions ?? null,
     previous_response_id: previousResponseId,
     input: currentInput as any,
     tools: responseTools as any,
