@@ -124,6 +124,10 @@ function formatKnowledgeContextText(knowledgeContext?: string): string {
  * "sem listas" × "lista completa"). No conflito o modelo escolhia sozinho, cada
  * vez de um jeito. Aqui o salão ganha a precedência em estilo e fluxo; só as
  * travas de segurança (não inventar dado, checar agenda, esconder ID) ficam acima.
+ *
+ * Só a precedência não bastou: com ela no ar, o gpt-6-sol repetiu a resposta de
+ * preço cheio que já tinha dado na mesma conversa, e "nunca invente preços" dava
+ * margem para ler "a partir de" como mexer no valor. Daí as duas frases extras.
  */
 export function formatSalonInstructionsText(systemPrompt?: string | null): string {
   const text = systemPrompt?.trim()
@@ -131,7 +135,9 @@ export function formatSalonInstructionsText(systemPrompt?: string | null): strin
 
   return `INSTRUÇÕES DO SALÃO (escritas pelo dono do salão — PRIORIDADE MÁXIMA):
 Estas instruções valem MAIS que as regras gerais de ESTILO DE COMUNICAÇÃO e do FLUXO DE AGENDAMENTO acima. Em qualquer conflito — saudação e apresentação, tamanho e formato das mensagens (listas inclusive), como apresentar preços, quantos horários oferecer, frases prontas (inclusive para o que estiver fora do escopo) — siga as do salão AO PÉ DA LETRA, com as frases e os formatos que elas pedirem.
+Elas valem também sobre as SUAS respostas anteriores nesta conversa: se alguma delas não seguiu estas instruções, NÃO repita o formato dela — responda agora do jeito que o salão pede.
 Só isto NÃO pode ser sobreposto: nunca inventar serviços, preços, profissionais, horários ou IDs (use só o que veio das tools ou dos blocos de dados deste prompt); sempre chamar checkAvailability antes de oferecer ou confirmar horário; nunca mostrar IDs ao cliente.
+Apresentar um preço real no formato que o salão pede (ex.: "a partir de R$ X", com o menor valor que a tool devolveu) NÃO é inventar preço: se o salão pedir esse formato, use-o em TODA resposta com preço, inclusive em listas.
 
 ${text}`
 }

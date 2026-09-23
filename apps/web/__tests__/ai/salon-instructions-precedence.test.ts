@@ -79,6 +79,20 @@ describe("instruções do salão no system prompt", () => {
     expect(text).toContain("nunca mostrar IDs ao cliente")
   })
 
+  it("manda corrigir o formato de respostas anteriores em vez de repeti-lo", () => {
+    // Com a precedência no ar, o gpt-6-sol repetiu a lista de preço cheio que já
+    // tinha dado na mesma conversa (23/09, 12:32).
+    expect(formatSalonInstructionsText(LIZ_RULE)).toContain(
+      "valem também sobre as SUAS respostas anteriores nesta conversa"
+    )
+  })
+
+  it("deixa claro que 'a partir de' não é inventar preço", () => {
+    const text = formatSalonInstructionsText(LIZ_RULE)
+    expect(text).toContain('"a partir de R$ X", com o menor valor que a tool devolveu) NÃO é inventar preço')
+    expect(text).toContain("use-o em TODA resposta com preço, inclusive em listas")
+  })
+
   it("o estilo geral avisa que o salão pode mudá-lo", async () => {
     const prompt = await build(LIZ_RULE)
     expect(prompt).toContain("ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO, salvo quando as INSTRUÇÕES DO SALÃO")
