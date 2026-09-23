@@ -116,6 +116,27 @@ function formatKnowledgeContextText(knowledgeContext?: string): string {
 }
 
 /**
+ * Formata as instruções que o dono escreveu para o agente (agents.system_prompt).
+ *
+ * Elas entravam cruas no fim do prompt, sem nada dizendo que valiam mais que as
+ * regras gerais — e várias regras gerais batem de frente com elas ("ofereça 2-3
+ * horários" × "sempre 4", "apresente nome e preço" × "sempre 'a partir de'",
+ * "sem listas" × "lista completa"). No conflito o modelo escolhia sozinho, cada
+ * vez de um jeito. Aqui o salão ganha a precedência em estilo e fluxo; só as
+ * travas de segurança (não inventar dado, checar agenda, esconder ID) ficam acima.
+ */
+export function formatSalonInstructionsText(systemPrompt?: string | null): string {
+  const text = systemPrompt?.trim()
+  if (!text) return ""
+
+  return `INSTRUÇÕES DO SALÃO (escritas pelo dono do salão — PRIORIDADE MÁXIMA):
+Estas instruções valem MAIS que as regras gerais de ESTILO DE COMUNICAÇÃO e do FLUXO DE AGENDAMENTO acima. Em qualquer conflito — saudação e apresentação, tamanho e formato das mensagens (listas inclusive), como apresentar preços, quantos horários oferecer, frases prontas (inclusive para o que estiver fora do escopo) — siga as do salão AO PÉ DA LETRA, com as frases e os formatos que elas pedirem.
+Só isto NÃO pode ser sobreposto: nunca inventar serviços, preços, profissionais, horários ou IDs (use só o que veio das tools ou dos blocos de dados deste prompt); sempre chamar checkAvailability antes de oferecer ou confirmar horário; nunca mostrar IDs ao cliente.
+
+${text}`
+}
+
+/**
  * Formats Cliente 360° (Trinks) profile as a private context block.
  *
  * Goals:
@@ -423,7 +444,7 @@ HOJE: ${formattedDate} | HORA: ${formattedTime}
 Hoje em ISO: ${isoDate} (fuso -03:00). Use HOJE como referência absoluta para datas relativas ("amanhã", "sexta que vem", "dia 30").
 DATA EM TOOLS (OBRIGATÓRIO): checkAvailability, addAppointment e updateAppointment exigem data em ISO 8601 completo com fuso — AAAA-MM-DDTHH:MM:SS-03:00. SEMPRE converta o que o cliente disser para esse formato ANTES de chamar a tool, usando ${isoDate} como base. NUNCA passe texto natural como "sexta às 10h" ou "amanhã". Sem horário informado, use T00:00:00-03:00.${customerInfoText}${adContextText ?? ""}${trinksProfileText}${upcomingAppointmentsText}${preferencesText}${salonInfoText}${soloProfessionalText}${knowledgeContextText}
 
-ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO):
+ESTILO DE COMUNICAÇÃO (OBRIGATÓRIO, salvo quando as INSTRUÇÕES DO SALÃO, no fim deste prompt, pedirem diferente):
 - Seja SUCINTO. Máximo 2 frases por mensagem. Responda APENAS o que foi perguntado.
 - Faça UMA pergunta por vez. NUNCA acumule várias perguntas na mesma mensagem.
 - NUNCA peça telefone, CPF ou "confirmação de identidade" — o cliente já está identificado pelo número do WhatsApp, inclusive para remarcar/cancelar.
@@ -472,7 +493,7 @@ A agenda SEMPRE existe. NUNCA diga que está inacessível.${kanbanClassification
 
 LEMBRETE FINAL: NUNCA chame addAppointment/updateAppointment/removeAppointment/confirmAppointment/checkAvailability com IDs inventados. Sempre obtenha IDs reais via getServices/getProfessionals/getMyFutureAppointments PRIMEIRO. Se ainda não os tem nesta conversa, chame a tool de leitura ANTES.
 
-${agentInfo?.systemPrompt || ""}`
+${formatSalonInstructionsText(agentInfo?.systemPrompt)}`
   }
 }
 
