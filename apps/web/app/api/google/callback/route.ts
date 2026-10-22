@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { getRawOAuth2Client } from '@/lib/google'
 import { createClient } from '@/lib/supabase/server'
-import { db, salonIntegrations, salons, eq } from '@repo/db'
+import { db, salonIntegrations, salons, and, eq } from '@repo/db'
 import { setupWatchChannelsForSalon } from '@repo/db/services/google-calendar-sync'
 
 /**
@@ -184,8 +184,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Salva ou atualiza integração no banco
+    // Só a linha do Google: o salão pode ter outras (Belasis, Trinks). Sem o filtro,
+    // reconectar o Google sobrescrevia a credencial de outro provedor com tokens do
+    // Google — e a linha continuava marcada com o provider antigo.
     const existingIntegration = await db.query.salonIntegrations.findFirst({
-      where: eq(salonIntegrations.salonId, salonId),
+      where: and(eq(salonIntegrations.salonId, salonId), eq(salonIntegrations.provider, 'google')),
     })
 
     const expiresAt = tokens.expiry_date ? Math.floor(tokens.expiry_date / 1000) : null

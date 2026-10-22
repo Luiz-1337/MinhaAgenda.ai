@@ -9,7 +9,7 @@
 import { google } from 'googleapis';
 import type { calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { db, appointments, professionals, services, profiles, salonIntegrations, salons, customers } from '../index'
 import { logger as defaultLogger, type ILogger } from '../infrastructure/logger'
@@ -152,8 +152,12 @@ export class GoogleCalendarService {
     client: OAuth2Client
     email: string | null
   } | null> {
+    // Filtra por provider: o salão pode ter uma linha por provedor (Google, Belasis,
+    // Trinks). Sem o filtro, o findFirst pegava QUALQUER uma — e, ao tentar dar
+    // refresh com o token de outro provedor, o invalid_grant abaixo apagava a linha
+    // errada.
     const integration = await db.query.salonIntegrations.findFirst({
-      where: eq(salonIntegrations.salonId, salonId),
+      where: and(eq(salonIntegrations.salonId, salonId), eq(salonIntegrations.provider, 'google')),
     })
 
     if (!integration || !integration.refreshToken || integration.isActive === false) {
