@@ -229,6 +229,26 @@ describe("CheckAvailabilityUseCase", () => {
     }
   })
 
+  it("passa o salonId para a agenda oficial em cada consulta (use case singleton, vários salões em paralelo)", async () => {
+    availabilityRepo.generateSlots.mockResolvedValue(makeSlots(3))
+    externalScheduler.isConfigured.mockResolvedValue(true)
+    externalScheduler.getBusySlots.mockResolvedValue([])
+
+    await useCase.execute({
+      salonId: IDS.salonId,
+      date: "2026-06-15T12:00:00Z",
+      professionalId: IDS.professionalId,
+    })
+
+    expect(externalScheduler.isConfigured).toHaveBeenCalledWith(IDS.salonId)
+    expect(externalScheduler.getBusySlots).toHaveBeenCalledWith(
+      IDS.salonId,
+      IDS.professionalId,
+      expect.any(Date),
+      expect.any(Date)
+    )
+  })
+
   it("trata erros do Google Calendar graciosamente (não quebra)", async () => {
     const slots = makeSlots(3)
     availabilityRepo.generateSlots.mockResolvedValue(slots)

@@ -395,6 +395,34 @@ export const salonIntegrations = pgTable(
   ]
 )
 
+// De-para entre IDs locais e IDs de um sistema externo (migration 034). Primeiro
+// uso: a agenda oficial do salão (Belasis) — profissional, serviço, cliente e
+// agendamento daqui ↔ os de lá. Uma tabela só, em vez de uma coluna `<provider>_id`
+// por tabela a cada integração nova. `internal_id` é polimórfico (sem FK): aponta
+// para professionals/services/customers/appointments conforme `entity_type`.
+export const integrationExternalRefs = pgTable(
+  'integration_external_refs',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    provider: text('provider').notNull(),
+    // 'professional' | 'service' | 'customer' | 'appointment' (CHECK no banco)
+    entityType: text('entity_type').notNull(),
+    internalId: uuid('internal_id').notNull(),
+    externalId: text('external_id').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('integration_external_refs_internal_unique').on(
+      table.salonId, table.provider, table.entityType, table.internalId
+    ),
+    uniqueIndex('integration_external_refs_external_unique').on(
+      table.salonId, table.provider, table.entityType, table.externalId
+    )
+  ]
+)
+
 // ============================================================================
 // TABLES - Google Calendar Sync
 // ============================================================================

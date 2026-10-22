@@ -1201,7 +1201,14 @@ if (require.main === module) {
   // connection, lower concurrency, no impact on message-processing throughput.
   let trinksWorker: { close(): Promise<void> } | null = null;
   let deliveryRetryWorker: { close(): Promise<void> } | null = null;
+  let agendaSyncWorker: { close(): Promise<void> } | null = null;
   (async () => {
+    try {
+      const { createAgendaSyncWorker } = await import("./agenda-sync.worker");
+      agendaSyncWorker = createAgendaSyncWorker();
+    } catch (err) {
+      logger.error({ err }, "Failed to start agenda sync worker");
+    }
     try {
       const { createTrinksProfileSyncWorker } = await import("./trinks-profile-sync.worker");
       trinksWorker = createTrinksProfileSyncWorker();
@@ -1221,6 +1228,7 @@ if (require.main === module) {
     await worker.close();
     if (trinksWorker) await trinksWorker.close();
     if (deliveryRetryWorker) await deliveryRetryWorker.close();
+    if (agendaSyncWorker) await agendaSyncWorker.close();
     process.exit(0);
   };
 

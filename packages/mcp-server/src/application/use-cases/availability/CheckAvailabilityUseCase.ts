@@ -12,7 +12,7 @@ import {
   ISalonRepository,
   IServiceRepository,
 } from "../../../domain/repositories"
-import { ICalendarService, IExternalScheduler } from "../../ports"
+import { ICalendarService, IExternalBusySource } from "../../ports"
 import { AvailabilityDTO, CheckAvailabilityDTO, TimeSlotDTO } from "../../dtos"
 
 /** Regras de agenda do serviço (dias permitidos / horários de início específicos). */
@@ -25,7 +25,8 @@ export class CheckAvailabilityUseCase {
     private salonRepo: ISalonRepository,
     private serviceRepo: IServiceRepository,
     private calendarService?: ICalendarService,
-    private externalScheduler?: IExternalScheduler,
+    /** Agenda oficial externa do salão (ex.: Belasis) — ver IExternalBusySource. */
+    private externalScheduler?: IExternalBusySource,
     private professionalRepo?: IProfessionalRepository
   ) { }
 
@@ -107,7 +108,8 @@ export class CheckAvailabilityUseCase {
 
   /**
    * Calcula os slots de UM profissional: gera a partir das regras de trabalho,
-   * subtrai os agendamentos da PESSOA (cross-salão) e o free/busy do Google/Trinks.
+   * subtrai os agendamentos da PESSOA (cross-salão) e o ocupado do Google e da
+   * agenda oficial externa.
    * Não filtra horários passados — isso é feito em {@link buildDTO}.
    */
   private async computeProfessionalSlots(
@@ -142,7 +144,9 @@ export class CheckAvailabilityUseCase {
       }
     }
 
-    // Free/busy externo (Google Calendar e Trinks) — fail-open
+    // Free/busy externo (Google Calendar e agenda oficial) — fail-open. Para a
+    // agenda oficial isso é seguro porque o agendamento em si checa de novo e
+    // trava sem resposta (createAppointmentService → checkAgendaSlot).
     const { startOfDay, endOfDay } = await import("../../../shared/utils/date.utils")
     const dayStart = startOfDay(date)
     const dayEnd = endOfDay(date)
@@ -176,7 +180,7 @@ export class CheckAvailabilityUseCase {
           try {
             const isConfigured = await this.externalScheduler!.isConfigured(salonId)
             if (isConfigured) {
-              const busySlots = await this.externalScheduler!.getBusySlots(professionalId, dayStart, dayEnd)
+              const busySlots = await this.externalScheduler!.getBusySlots(salonId, professionalId, dayStart, dayEnd)
               for (const busy of busySlots) {
                 for (const slot of baseSlots) {
                   if (slot.overlaps(busy)) {
@@ -186,7 +190,7 @@ export class CheckAvailabilityUseCase {
               }
             }
           } catch (error) {
-            console.warn("[AVAILABILITY] Erro ao buscar Trinks:", error)
+            console.warn("[AVAILABILITY] Erro ao buscar a agenda oficial do salão:", error)
           }
         })()
       )

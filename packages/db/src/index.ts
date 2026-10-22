@@ -107,6 +107,18 @@ export * from './domain/integrations/interfaces/external-sync.interface'
 export * from './domain/integrations/interfaces/oauth2-client.interface'
 export * from './domain/integrations/interfaces/appointment-repository.interface'
 
+// Agenda oficial externa (Belasis): contrato, erro e os tipos da tela de integração.
+export * from './domain/integrations/interfaces/agenda-provider.interface'
+export * from './domain/errors/agenda-provider-error'
+export type {
+  AgendaSetupStatus,
+  AgendaSetupResult,
+  AgendaLinkRow,
+  AgendaLinkingData,
+  AgendaLinksInput,
+} from './services/agenda-setup.service'
+export type { AgendaImportSummary } from './services/agenda-import.service'
+
 // Re-export use cases - Trinks integration
 export { CreateTrinksAppointmentUseCase } from './application/use-cases/trinks/create-trinks-appointment.use-case'
 export { UpdateTrinksAppointmentUseCase } from './application/use-cases/trinks/update-trinks-appointment.use-case'

@@ -1,5 +1,6 @@
 import { getCurrentProfile } from "@/app/actions/profile"
 import { getTrinksIntegration, getTrinksProfilesStats } from "@/app/actions/integrations"
+import { getBelasisStatus } from "@/app/actions/belasis"
 import { IntegrationsClient } from "./integrations-client"
 
 export default async function IntegrationsPage({
@@ -10,15 +11,17 @@ export default async function IntegrationsPage({
   const { salonId } = await params
 
   // Tudo buscado no servidor EM PARALELO — elimina o waterfall profile→trinks→stats.
-  const [profileRes, trinksRes, statsRes] = await Promise.all([
+  const [profileRes, trinksRes, statsRes, belasisRes] = await Promise.all([
     getCurrentProfile(),
     getTrinksIntegration(salonId),
     getTrinksProfilesStats(salonId),
+    getBelasisStatus(salonId),
   ])
 
   const initialProfile = "error" in profileRes ? null : profileRes
   const initialTrinksStatus = "error" in trinksRes ? null : trinksRes.data ?? null
   const initialTrinksStats = "error" in statsRes ? null : statsRes.data ?? null
+  const initialBelasisStatus = "error" in belasisRes ? null : belasisRes.data ?? null
 
   return (
     <IntegrationsClient
@@ -27,6 +30,7 @@ export default async function IntegrationsPage({
       initialProfile={initialProfile}
       initialTrinksStatus={initialTrinksStatus}
       initialTrinksStats={initialTrinksStats}
+      initialBelasisStatus={initialBelasisStatus}
     />
   )
 }

@@ -98,6 +98,12 @@ Dentro de `packages/mcp-server` e `packages/db` vale Clean Architecture:
    de dados em `@repo/db`. Tools **não** escrevem Drizzle cru (ver CONVENTIONS).
 5. Resposta volta pela Evolution API ao cliente.
 
+> **Agenda oficial externa (Belasis):** quando o salão tiver uma conectada,
+> `createAppointmentService`/`updateAppointmentService` consultam e gravam nela
+> de forma **síncrona** (fail-closed, com a reserva local desfeita se ela
+> recusar) — diferente do Google, que é espelho em segundo plano. Só roda para
+> o salão que conectou e ativou em Integrações. Ver `docs/INTEGRACAO-Belasis.md`.
+
 > Há 3 modos de falha silenciosa nesse caminho (URL de webhook obsoleta no
 > Evolution, referência de instância órfã, agente inativo). Ao depurar "o bot
 > não responde", verifique esses três antes do código.

@@ -45,6 +45,9 @@ vi.mock("@repo/db", () => {
       deleteAppointmentService: vi.fn(),
       completeAppointmentService: vi.fn(),
       markNoShowService: vi.fn(),
+      // Agenda oficial externa (AgendaBusySource).
+      hasActiveAgendaProvider: vi.fn(),
+      getAgendaBusyIntervals: vi.fn(),
     },
   }
 })

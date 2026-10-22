@@ -1,4 +1,4 @@
-import { db, appointments, and, eq, lte, gt, isNull } from "@repo/db"
+import { db, appointments, and, eq, lte, gt, isNull, domainServices } from "@repo/db"
 // Relativos (padrão do repo p/ módulos que podem entrar no grafo do worker).
 import { recordAlert } from "./alerts/alert.service"
 import { ProactiveTemplateRequiredError } from "./messaging/proactive"
@@ -90,6 +90,39 @@ export async function dispatchDailyReminders(
                 continue
             }
 
+            // Agenda oficial externa (Belasis): a recepção pode ter cancelado ou
+            // mudado o horário lá, e a Belasis não avisa (não tem webhook). Sem
+            // esta conferência, o cliente recebia lembrete de um horário que não
+            // existe mais. Salão sem agenda oficial: `not_linked`, nada muda.
+            let when = apt.date
+            const inAgenda = await domainServices.checkAppointmentInAgenda(apt.salon.id, apt)
+            if (inAgenda.state === 'cancelled') {
+                await domainServices.cancelAppointmentService({
+                    appointmentId: apt.id,
+                    salonId: apt.salon.id,
+                    reason: 'Cancelado na agenda oficial do salão',
+                    source: 'belasis',
+                    skipAgendaSync: true,
+                })
+                continue
+            }
+            if (inAgenda.state === 'moved') {
+                await domainServices.applyAgendaMoveService({
+                    appointmentId: apt.id,
+                    salonId: apt.salon.id,
+                    start: inAgenda.start,
+                    end: inAgenda.end,
+                })
+                // Saiu da janela do lembrete: ele volta a ser lembrado quando entrar.
+                if (inAgenda.start <= startWindow || inAgenda.start > endWindow) continue
+                when = inAgenda.start
+            }
+            // A agenda oficial já manda o lembrete deste (ex.: marcado na recepção
+            // com lembrete ligado lá): dois lembretes para o mesmo horário, não.
+            if ((inAgenda.state === 'same' || inAgenda.state === 'moved') && inAgenda.remindedByProvider) {
+                continue
+            }
+
             // Formatando data baseada na convenção brasileira
             const formatterOptions: Intl.DateTimeFormatOptions = {
                 weekday: 'long',
@@ -100,7 +133,7 @@ export async function dispatchDailyReminders(
                 timeZone: 'America/Sao_Paulo'
             }
 
-            const aptDateFormatted = new Date(apt.date).toLocaleString('pt-BR', formatterOptions)
+            const aptDateFormatted = new Date(when).toLocaleString('pt-BR', formatterOptions)
 
             const messageBody = buildReminderMessage({
                 firstName: apt.client.name.split(' ')[0],

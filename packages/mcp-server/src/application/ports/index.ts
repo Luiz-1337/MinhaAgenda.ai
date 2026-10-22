@@ -1,4 +1,5 @@
 export * from "./ICalendarService"
 export * from "./IExternalScheduler"
+export * from "./IExternalBusySource"
 export * from "./ITrinksService"
 export * from "./ITrinksCustomerService"

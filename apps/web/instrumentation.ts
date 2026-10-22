@@ -37,6 +37,7 @@ export async function register() {
         const { createMessageWorker } = await import("./workers/message-processor");
         const { createTrinksProfileSyncWorker } = await import("./workers/trinks-profile-sync.worker");
         const { createDeliveryRetryWorker } = await import("./workers/delivery-retry.worker");
+        const { createAgendaSyncWorker } = await import("./workers/agenda-sync.worker");
 
         // Evita criar múltiplos workers durante hot reload
         const globalAny = global as any;
@@ -57,6 +58,13 @@ export async function register() {
                 globalAny._deliveryRetryWorker = createDeliveryRetryWorker();
             } catch (err) {
                 logger.error({ err }, "Failed to start delivery-retry worker");
+            }
+        }
+        if (!globalAny._agendaSyncWorker) {
+            try {
+                globalAny._agendaSyncWorker = createAgendaSyncWorker();
+            } catch (err) {
+                logger.error({ err }, "Failed to start agenda sync worker");
             }
         }
     }

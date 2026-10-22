@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import type { AgendaSetupStatus } from "@repo/db"
 import { GoogleCalendarIntegration } from "@/components/dashboard/google-calendar-integration"
+import { BelasisIntegration } from "@/components/integrations/belasis-integration"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import {
@@ -22,6 +24,7 @@ interface IntegrationsClientProps {
   initialProfile: ProfileDetails | null
   initialTrinksStatus: TrinksStatus | null
   initialTrinksStats: TrinksStats | null
+  initialBelasisStatus: AgendaSetupStatus | null
 }
 
 export function IntegrationsClient({
@@ -29,6 +32,7 @@ export function IntegrationsClient({
   initialProfile,
   initialTrinksStatus,
   initialTrinksStats,
+  initialBelasisStatus,
 }: IntegrationsClientProps) {
   const [profileData] = useState<ProfileDetails | null>(initialProfile)
   const [trinksToken, setTrinksToken] = useState("")
@@ -149,6 +153,11 @@ export function IntegrationsClient({
         <div className="max-w-3xl space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
           {/* Google Calendar Integration */}
           {profileData ? <GoogleCalendarIntegration profile={profileData} /> : null}
+
+          {/* Belasis — agenda oficial do salão */}
+          {initialBelasisStatus?.available ? (
+            <BelasisIntegration salonId={salonId} initialStatus={initialBelasisStatus} />
+          ) : null}
 
           {/* Integração Trinks */}
           <div className="bg-card border border-border rounded-md p-6">

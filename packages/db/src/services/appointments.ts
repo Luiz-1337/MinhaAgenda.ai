@@ -15,9 +15,17 @@ import {
 import { getPersonProfessionalIdsByKey } from "./person"
 import { needsConflictCheck, isPastBooking } from "./appointment-rules"
 import { fireAndForgetCreate, fireAndForgetUpdate, fireAndForgetDelete } from "./integration-sync"
+import {
+  prepareAgendaSync,
+  checkAgendaSlot,
+  pushAppointmentToAgenda,
+  cancelAppointmentInAgenda,
+  type AgendaSyncContext,
+} from "./agenda-sync.service"
 import { processVacantSlot } from "./slot-filler.service"
 import { getGoogleFreeBusyForProfessional } from "./google-calendar"
 import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } from "../domain/constants"
+import type { AgendaProviderId } from "../domain/integrations/interfaces/agenda-provider.interface"
 
 /**
  * Tipo de resultado padronizado para operações de serviço.
@@ -217,6 +225,25 @@ export async function createAppointmentService(input: {
     }
   }
 
+  // Agenda OFICIAL externa (ex.: Belasis), quando o salão tem uma conectada: o
+  // horário precisa estar livre LÁ, onde a recepção agenda. Ao contrário do Google
+  // acima, é fail-closed — sem resposta da agenda oficial, não agenda (ver
+  // agenda-sync.service.ts). Sem agenda oficial, `agendaCtx` fica null e nada muda.
+  let agendaCtx: AgendaSyncContext | null = null
+  if (!input.skipExternalSync) {
+    const agenda = await prepareAgendaSync(salonId)
+    if (!agenda.ok) {
+      return { success: false, error: agenda.error, code: agenda.code }
+    }
+    agendaCtx = agenda.ctx
+    if (agendaCtx) {
+      const slot = await checkAgendaSlot(agendaCtx, { professionalId, start: startUtc, end: endUtc })
+      if (!slot.ok) {
+        return { success: false, error: slot.error, code: slot.code }
+      }
+    }
+  }
+
   // Chave de lock por PESSOA (cross-salão). A LISTA de profissionais da pessoa é
   // resolvida DENTRO da transação, após o lock (ver abaixo), para fechar a janela
   // TOCTOU em que um profissional recém-criado com o mesmo person_key escaparia
@@ -266,6 +293,28 @@ export async function createAppointmentService(input: {
 
       return { appointmentId: newAppointment.id }
     })
+
+    // Agenda oficial: grava lá AGORA, não em segundo plano. Se lá recusar, a
+    // reserva daqui é desfeita — ninguém soube dela ainda (o espelho do Google só
+    // dispara abaixo) e o cliente não pode receber confirmação de um horário que
+    // não existe na agenda que a recepção usa.
+    if (agendaCtx) {
+      const pushed = await pushAppointmentToAgenda(agendaCtx, 'create', {
+        appointmentId: result.appointmentId,
+        clientId,
+        professionalId,
+        serviceId: service.id,
+        start: startUtc,
+        end: endUtc,
+        notes: parse.data.notes,
+      })
+      if (!pushed.ok) {
+        await db
+          .delete(appointments)
+          .where(and(eq(appointments.id, result.appointmentId), eq(appointments.salonId, salonId)))
+        return { success: false, error: pushed.error, code: pushed.code }
+      }
+    }
 
     // Fire-and-forget: Sync to external calendars (Google Calendar, Trinks)
     fireAndForgetCreate(result.appointmentId, salonId, input.skipExternalSync)
@@ -341,6 +390,7 @@ export async function updateAppointmentService(input: {
     columns: {
       id: true,
       salonId: true,
+      clientId: true,
       professionalId: true,
       serviceId: true,
       date: true,
@@ -488,6 +538,41 @@ export async function updateAppointmentService(input: {
     }
   }
 
+  // Verifica conflitos se a data, o profissional OU o serviço mudou.
+  // Incluir a mudança de serviço é essencial: a nova duração altera o
+  // horário de término e pode invadir o próximo agendamento (bug C2).
+  const needsCheck = needsConflictCheck({
+    dateChanged: parse.data.date !== undefined,
+    professionalChanged: finalProfessionalId !== existingAppointment.professionalId,
+    serviceChanged: finalServiceId !== existingAppointment.serviceId,
+  })
+
+  // Agenda oficial externa (ex.: Belasis): o horário novo precisa estar livre lá
+  // (fail-closed, mesma regra do create). Só quando o horário de fato muda — nota
+  // editada não vai para a agenda externa.
+  let agendaCtx: AgendaSyncContext | null = null
+  if (!input.skipExternalSync && needsCheck) {
+    const agenda = await prepareAgendaSync(existingAppointment.salonId)
+    if (!agenda.ok) {
+      return { success: false, error: agenda.error, code: agenda.code }
+    }
+    agendaCtx = agenda.ctx
+    if (agendaCtx) {
+      const sameProfessional = finalProfessionalId === existingAppointment.professionalId
+      const slot = await checkAgendaSlot(agendaCtx, {
+        professionalId: finalProfessionalId,
+        start: startUtc,
+        end: endUtc,
+        // Na agenda do MESMO profissional, o próprio agendamento ocupa o horário
+        // atual — não é conflito consigo mesmo.
+        current: sameProfessional ? { appointmentId: existingAppointment.id } : undefined,
+      })
+      if (!slot.ok) {
+        return { success: false, error: slot.error, code: slot.code }
+      }
+    }
+  }
+
   // Chave de lock por PESSOA (cross-salão). A LISTA de profissionais da pessoa é
   // resolvida DENTRO da transação, após o lock, para fechar a janela TOCTOU (bug A1).
   const personLockKey = professional.personKey ?? finalProfessionalId
@@ -495,15 +580,6 @@ export async function updateAppointmentService(input: {
   // TRANSAÇÃO: Advisory lock + verificação de conflito + atualização atômica
   try {
     await db.transaction(async (tx) => {
-      // Verifica conflitos se a data, o profissional OU o serviço mudou.
-      // Incluir a mudança de serviço é essencial: a nova duração altera o
-      // horário de término e pode invadir o próximo agendamento (bug C2).
-      const needsCheck = needsConflictCheck({
-        dateChanged: parse.data.date !== undefined,
-        professionalChanged: finalProfessionalId !== existingAppointment.professionalId,
-        serviceChanged: finalServiceId !== existingAppointment.serviceId,
-      })
-
       if (needsCheck) {
         // Advisory lock na pessoa — previne modificações concorrentes (em qualquer salão)
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${personLockKey}))`)
@@ -548,6 +624,36 @@ export async function updateAppointmentService(input: {
         )
     })
 
+    // Agenda oficial: leva a remarcação para lá agora. Se lá recusar, volta a
+    // linha daqui ao horário anterior — o cliente continua com o que já tinha.
+    if (agendaCtx) {
+      const pushed = await pushAppointmentToAgenda(agendaCtx, 'reschedule', {
+        appointmentId: existingAppointment.id,
+        clientId: existingAppointment.clientId,
+        professionalId: finalProfessionalId,
+        serviceId: finalServiceId,
+        start: startUtc,
+        end: endUtc,
+        notes: finalNotes,
+      })
+      if (!pushed.ok) {
+        await db
+          .update(appointments)
+          .set({
+            professionalId: existingAppointment.professionalId,
+            serviceId: existingAppointment.serviceId,
+            date: existingAppointment.date,
+            endTime: existingAppointment.endTime,
+            notes: existingAppointment.notes,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(eq(appointments.id, existingAppointment.id), eq(appointments.salonId, existingAppointment.salonId))
+          )
+        return { success: false, error: pushed.error, code: pushed.code }
+      }
+    }
+
     // Fire-and-forget: Sync updates to external calendars
     fireAndForgetUpdate(parse.data.appointmentId, existingAppointment.salonId, input.skipExternalSync)
 
@@ -561,7 +667,7 @@ export async function updateAppointmentService(input: {
 }
 
 /** Quem produziu o desfecho. Grava em appointments.outcome_source. */
-export type OutcomeSource = 'panel' | 'cron' | 'ai' | 'google' | 'legacy'
+export type OutcomeSource = 'panel' | 'cron' | 'ai' | 'google' | 'legacy' | AgendaProviderId
 
 /**
  * CANCELA um agendamento.
@@ -594,6 +700,11 @@ export async function cancelAppointmentService(input: {
   /** profiles.id de quem cancelou. Null quando foi a IA ou o Google. */
   cancelledBy?: string | null
   source?: OutcomeSource
+  /**
+   * Não cancela na agenda oficial — o cancelamento VEIO de lá. Diferente de
+   * `skipExternalSync`, mantém o espelho do Google em dia.
+   */
+  skipAgendaSync?: boolean
 }): Promise<ActionResult<void>> {
   const schema = z.object({
     appointmentId: z.string().uuid(),
@@ -658,6 +769,20 @@ export async function cancelAppointmentService(input: {
     })
     .where(scope)
 
+  // Agenda oficial externa (ex.: Belasis): cancela lá também. Nunca bloqueia o
+  // cancelamento — o cliente pediu. Se não chegou lá, marca a linha e um alerta no
+  // painel avisa que o horário continua ocupado na agenda externa.
+  if (!input.skipExternalSync && !input.skipAgendaSync) {
+    const reachedAgenda = await cancelAppointmentInAgenda({
+      salonId: existingAppointment.salonId,
+      appointmentId: existingAppointment.id,
+      reason: parse.data.reason,
+    })
+    if (!reachedAgenda) {
+      await db.update(appointments).set({ syncStatus: 'failed', updatedAt: new Date() }).where(scope)
+    }
+  }
+
   // Tenta preencher a vaga (não trava o processo)
   processVacantSlot({
     salonId: existingAppointment.salonId,
@@ -675,6 +800,33 @@ export async function cancelAppointmentService(input: {
  * mesma: o horário sai da agenda.
  */
 export const deleteAppointmentService = cancelAppointmentService
+
+/**
+ * A recepção mudou o horário na agenda OFICIAL (Belasis): o daqui passa a ser o
+ * de lá, sem as validações de expediente/conflito — quem manda é a agenda oficial,
+ * e ela já aceitou. O espelho do Google acompanha.
+ */
+export async function applyAgendaMoveService(input: {
+  appointmentId: string
+  salonId: string
+  start: Date
+  end: Date
+  /** Quando mudou lá também a profissional (ou o serviço) e há par para ela aqui. */
+  professionalId?: string
+  serviceId?: string
+}): Promise<void> {
+  await db
+    .update(appointments)
+    .set({
+      date: input.start,
+      endTime: input.end,
+      ...(input.professionalId ? { professionalId: input.professionalId } : {}),
+      ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(appointments.id, input.appointmentId), eq(appointments.salonId, input.salonId)))
+  fireAndForgetUpdate(input.appointmentId, input.salonId)
+}
 
 /**
  * Marca o atendimento como REALIZADO, com o valor cobrado.

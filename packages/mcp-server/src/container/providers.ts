@@ -16,6 +16,7 @@ import {
 
 // Infrastructure - External
 import { GoogleCalendarService } from "../infrastructure/external/google-calendar"
+import { AgendaBusySource } from "../infrastructure/external/agenda"
 import { TrinksSchedulerService, TrinksCustomerService } from "../infrastructure/external/trinks"
 import { TrinksServiceAdapter } from "../infrastructure/external/trinks/TrinksServiceAdapter"
 
@@ -95,6 +96,7 @@ export const TOKENS = {
   // External Services
   CalendarService: "ICalendarService",
   ExternalScheduler: "IExternalScheduler",
+  ExternalBusySource: "IExternalBusySource",
   TrinksService: "ITrinksService",
 
   // Application Services
@@ -172,6 +174,8 @@ export function registerProviders(container: Container): void {
 
   container.register(TOKENS.CalendarService, () => new GoogleCalendarService())
   container.register(TOKENS.ExternalScheduler, () => new TrinksSchedulerService())
+  // Agenda oficial do salão (ex.: Belasis). Sem estado — o salão vem em cada chamada.
+  container.singleton(TOKENS.ExternalBusySource, () => new AgendaBusySource())
   // TrinksService é criado por salonId, então não pode ser singleton global
   // Será criado sob demanda nos use cases
 
@@ -232,13 +236,17 @@ export function registerProviders(container: Container): void {
   // Use Cases - Availability (Singletons - todos stateless)
   // ==========================================================================
 
+  // A fonte externa de ocupado é a agenda oficial (AgendaBusySource). Até aqui
+  // era o TrinksSchedulerService, que devolvia [] sempre: chamava
+  // getTrinksBusySlots com os argumentos deslocados (o salonId recebia o id do
+  // profissional) e a função filtra por um campo que a API do Trinks não tem.
   container.singleton(TOKENS.CheckAvailabilityUseCase, () => new CheckAvailabilityUseCase(
     container.resolve(TOKENS.AppointmentRepository),
     container.resolve(TOKENS.AvailabilityRepository),
     container.resolve(TOKENS.SalonRepository),
     container.resolve(TOKENS.ServiceRepository),
     container.resolve(TOKENS.CalendarService),
-    container.resolve(TOKENS.ExternalScheduler),
+    container.resolve(TOKENS.ExternalBusySource),
     container.resolve(TOKENS.ProfessionalRepository)
   ))
 
