@@ -151,6 +151,34 @@ Apresentar um preço real no formato que o salão pede (ex.: "a partir de R$ X",
 }
 
 /**
+ * Formata as Configurações do Salão que a IA lê em toda mensagem: tolerância de
+ * atraso e as chaves "Aceita Cartão" e "Estacionamento".
+ *
+ * As duas chaves eram gravadas e nunca chegavam à IA. Só o `true` entra: o
+ * formulário e o onboarding gravam `false` por padrão, então `false` não separa
+ * "o salão não tem" de "o dono nunca mexeu na chave". Em 28/10/2026 o Salão TOP
+ * estava com estacionamento `false` e um item do Treinamento mandando dizer que
+ * tem. Sem a linha, a IA segue o Treinamento ou diz que vai confirmar; com um
+ * "não" errado, ela afasta o cliente.
+ */
+export function formatSalonSettingsText(salonSettings: Record<string, unknown>): string {
+  const lines: string[] = []
+
+  const toleranceMinutes = salonSettings.late_tolerance_minutes
+  if (typeof toleranceMinutes === "number") {
+    lines.push(`- Tolerância para atrasos: ${toleranceMinutes} minutos`)
+  }
+  if (salonSettings.accepts_card === true) {
+    lines.push("- Aceita cartão de crédito e débito.")
+  }
+  if (salonSettings.parking === true) {
+    lines.push("- Tem estacionamento próprio.")
+  }
+
+  return lines.length > 0 ? `\n\nCONFIGURAÇÕES DO SALÃO:\n${lines.join("\n")}` : ""
+}
+
+/**
  * Formats Cliente 360° (Trinks) profile as a private context block.
  *
  * Goals:
@@ -380,10 +408,7 @@ Você pode mover este chat entre colunas do kanban usando a tool setChatKanbanCo
 - 'pending' quando volta a ser uma pergunta inicial sem ação concreta.
 NÃO chame se a categoria não mudou — evite mover o chat repetidamente na mesma conversa.`
       : ""
-    const toleranceMinutes = salonSettings.late_tolerance_minutes as number | undefined
-    const salonInfoText = toleranceMinutes !== undefined
-      ? `\n\nCONFIGURAÇÕES DO SALÃO:\n- Tolerância para atrasos: ${toleranceMinutes} minutos`
-      : ""
+    const salonInfoText = formatSalonSettingsText(salonSettings)
 
     // Configuração de pagamento antecipado
     const advancePayment = salonSettings.advance_payment as {
