@@ -23,16 +23,20 @@ function formatLogArgs(args: unknown[]): string {
     .join(" ")
 }
 
-vi.mock("@repo/db", () => {
+vi.mock("@repo/db", async () => {
   const toBrazilTime = vi.fn((value: Date) => value)
   const fromBrazilTime = vi.fn((value: Date) => value)
   const getBrazilNow = vi.fn(() => new Date("2026-01-01T12:00:00.000Z"))
+  // Regras de agenda por serviço: funções puras, sem banco — vale a real.
+  const schedule = await import("@repo/db/src/utils/service-schedule.utils")
 
   return {
     BRAZIL_TIMEZONE: "America/Sao_Paulo",
     toBrazilTime,
     fromBrazilTime,
     getBrazilNow,
+    isWeekdayAllowed: schedule.isWeekdayAllowed,
+    timeToMinutes: schedule.timeToMinutes,
     db: {
       query: {},
     },

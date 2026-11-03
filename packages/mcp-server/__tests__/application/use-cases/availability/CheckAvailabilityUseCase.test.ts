@@ -105,7 +105,8 @@ describe("CheckAvailabilityUseCase", () => {
     expect(availabilityRepo.generateSlots).toHaveBeenCalledWith(
       IDS.professionalId,
       expect.any(Date),
-      15 // SLOT_DURATION padrão
+      15, // SLOT_DURATION padrão
+      undefined // sem serviço, sem regras de agenda por serviço
     )
   })
 
@@ -124,7 +125,8 @@ describe("CheckAvailabilityUseCase", () => {
     expect(availabilityRepo.generateSlots).toHaveBeenCalledWith(
       IDS.professionalId,
       expect.any(Date),
-      30 // duração do serviço
+      30, // duração do serviço
+      expect.any(Object) // regras de agenda do serviço (getScheduleConfig)
     )
   })
 
