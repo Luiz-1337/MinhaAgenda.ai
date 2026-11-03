@@ -97,6 +97,7 @@ O token fica **cifrado** (AES-256-GCM, `ENCRYPTION_KEY`). Trocar o token num sal
 | De-para de IDs | tabela `integration_external_refs` — `supabase/migrations/034_integration_external_refs.sql` (**não aplicada**) |
 | Conexão e vínculo | `services/agenda-setup.service.ts`, `apps/web/app/actions/belasis.ts`, `apps/web/components/integrations/belasis-integration.tsx` |
 | Disponibilidade da IA | `IExternalBusySource` + `AgendaBusySource` (mcp-server), com o `salonId` em cada chamada |
+| Falha lá → motivo certo para a IA | os 4 códigos `EXTERNAL_AGENDA_*` viram erros próprios em `appointment-error.mapper.ts` (criar e remarcar); a mensagem que a IA lê está no `ErrorPresenter`. Para esses códigos, `handleToolErrors` (`generate-response.service.ts`) não troca a resposta da IA pelo texto pronto que pedia data e horário de novo |
 | Lembrete confere a agenda oficial (e não duplica o lembrete de lá) | `apps/web/lib/services/reminders.service.ts` |
 | Sincronização Belasis → MinhaAgenda | `services/agenda-import.service.ts`; fila `apps/web/lib/queues/agenda-sync-queue.ts`; worker `apps/web/workers/agenda-sync.worker.ts`; cron `apps/web/app/api/cron/agenda-sync` (de hora em hora, `vercel.json`); botão no card |
 | Diagnóstico com chave real (só leitura) | `scripts/diagnose-belasis.ts` |
