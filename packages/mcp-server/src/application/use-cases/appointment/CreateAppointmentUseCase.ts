@@ -12,6 +12,8 @@ import {
   IServiceRepository,
 } from "../../../domain/repositories"
 import { AppointmentDTO, CreateAppointmentDTO } from "../../dtos"
+import { mapKnownServiceError } from "./appointment-error.mapper"
+import { checkCustomerNameForAgenda } from "./agenda-customer-name.service"
 import { domainServices } from "@repo/db"
 
 /**
@@ -55,6 +57,18 @@ export class CreateAppointmentUseCase {
       return fail(new AppointmentCreationError("Serviço não encontrado"))
     }
 
+    // Com agenda oficial ativa, o cliente é cadastrado lá pelo nome: sem nenhuma
+    // letra no nome, a IA pergunta o nome antes de agendar.
+    const nameError = await checkCustomerNameForAgenda({
+      salonId: input.salonId,
+      customerId: customer.id,
+      customerName: customer.name,
+      operation: "create",
+    })
+    if (nameError) {
+      return fail(nameError)
+    }
+
     // 4. Delega para o serviço centralizado que executa todas as validações:
     //    - Verifica se profissional executa o serviço
     //    - Valida horário dentro do expediente (availability)
@@ -71,7 +85,10 @@ export class CreateAppointmentUseCase {
     })
 
     if (!result.success) {
-      return fail(new AppointmentCreationError(result.error))
+      // Cada recusa com código leva o motivo próprio (horário ocupado, fora do
+      // expediente, agenda oficial fora do ar…). Sem código sobram os dados
+      // inválidos (serviço/profissional inativo, data ilegível): falha de criação.
+      return fail(mapKnownServiceError(result.code, result.error) ?? new AppointmentCreationError(result.error))
     }
 
     // 5. Busca o agendamento criado para calcular endTime

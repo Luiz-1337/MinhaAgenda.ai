@@ -124,12 +124,13 @@ O token fica **cifrado** (AES-256-GCM, `ENCRYPTION_KEY`). Trocar o token num sal
 | De-para de IDs | tabela `integration_external_refs` — `supabase/migrations/034_integration_external_refs.sql` (**não aplicada**) |
 | Conexão e vínculo | `services/agenda-setup.service.ts`, `apps/web/app/actions/belasis.ts`, `apps/web/components/integrations/belasis-integration.tsx` |
 | Disponibilidade da IA | `IExternalBusySource` + `AgendaBusySource` (mcp-server), com o `salonId` em cada chamada |
+| Falha lá → motivo certo para a IA | os 4 códigos `EXTERNAL_AGENDA_*` viram erros próprios em `appointment-error.mapper.ts` (criar e remarcar); a mensagem que a IA lê está no `ErrorPresenter`. Para esses códigos, `handleToolErrors` (`generate-response.service.ts`) não troca a resposta da IA pelo texto pronto que pedia data e horário de novo |
 | Lembrete confere a agenda oficial (e não duplica o lembrete de lá) | `apps/web/lib/services/reminders.service.ts` |
 | Sincronização Belasis → MinhaAgenda | `services/agenda-import.service.ts`; fila `apps/web/lib/queues/agenda-sync-queue.ts`; worker `apps/web/workers/agenda-sync.worker.ts`; cron `apps/web/app/api/cron/agenda-sync` (de hora em hora, `vercel.json`); botão no card |
 | Diagnóstico com chave real (só leitura) | `scripts/diagnose-belasis.ts` |
 
 **Testes:** `packages/db` 201/201 (Belasis: conversões 27, transporte 22, provedor 31; orquestração 38; sincronização 16; ligação em `appointments.ts` 12; vínculo 7; credencial 12); `apps/web` 451/451; mcp-server 284 verdes. As regras críticas foram validadas quebrando o código de propósito. tsc limpo em db, mcp-server e web; lint limpo nos arquivos novos.
-4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) **já falhavam antes** (desde `25ec1ca`, 8/jun) — sem relação; há tarefa separada.
+Os 4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) que falhavam desde `25ec1ca` (8/jun) foram acertados em 03/nov: faltavam `isWeekdayAllowed`/`timeToMinutes` no mock do `@repo/db` e o 4º argumento de `generateSlots` nas expectativas. mcp-server 362/362 (03/nov).
 
 ---
 
@@ -144,6 +145,7 @@ O token fica **cifrado** (AES-256-GCM, `ENCRYPTION_KEY`). Trocar o token num sal
 7. **Fuso de Brasília** para `date`/`HH:MM` (a doc não diz; é o que o resto do sistema assume).
 8. **Lembrete de agendamento trazido da recepção:** se a Belasis já vai lembrar (lembrete ligado lá), o MinhaAgenda não manda o dele.
 9. **Sincronização em segundo plano a 15 chamadas/min**, para nunca tirar a vez da IA na cota de 30.
+10. **Cliente sem nome → a IA pergunta o nome antes de agendar ou remarcar** (decisão de 03/nov). Vale quando o nome daqui não tem nenhuma letra (só emoji, como "💤", ou o telefone). O cadastro lá é feito por esse nome e não se corrige depois. A trava fica no mcp-server (`agenda-customer-name.service.ts`, erro `CUSTOMER_NAME_REQUIRED`). Na remarcação, só vale quando muda horário, profissional ou serviço. Sem agenda oficial, nada muda; o painel não passa por ela.
 
 ---
 

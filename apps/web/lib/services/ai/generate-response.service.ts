@@ -15,6 +15,7 @@ import {
   TOKENS as MCP_TOKENS,
   registerProviders,
   isOk,
+  AI_GUIDED_ERROR_CODES,
 } from "@repo/mcp-server";
 import type { AppointmentListDTO, Result } from "@repo/mcp-server";
 import { createSalonAssistantPrompt } from "./system-prompt-builder.service";
@@ -717,18 +718,23 @@ const INTERNAL_TOOL_NAMES = new Set<string>([
  * Trata erros de tools e retorna mensagem apropriada
  * NÃO faz segunda chamada à AI - usa templates pré-definidos
  */
-function handleToolErrors(steps: unknown[], contextLogger: Logger): string | null {
+export function handleToolErrors(steps: unknown[], contextLogger: Pick<Logger, "warn">): string | null {
   const allErrors = extractToolErrors(steps);
   if (allErrors.length === 0) return null;
 
   contextLogger.warn(
-    { errorCount: allErrors.length, tools: allErrors.map((e) => e.toolName) },
+    { errorCount: allErrors.length, tools: allErrors.map((e) => e.toolName), codes: allErrors.map((e) => e.code) },
     "Tool errors detected"
   );
 
   // Erros de tools internas não devem sequestrar a resposta real ao cliente
   // (ex: setChatKanbanColumn falha → cliente recebia "dificuldade técnica").
-  const errors = allErrors.filter((e) => !INTERNAL_TOOL_NAMES.has(e.toolName));
+  // Nem erros cuja mensagem já diz à IA o que responder (ex.: horário ocupado,
+  // fora do expediente, agenda oficial do salão fora do ar): em 03/nov/2026 o
+  // template abaixo pediu ao cliente data e horário de novo, que estavam certos.
+  const errors = allErrors.filter(
+    (e) => !INTERNAL_TOOL_NAMES.has(e.toolName) && !(e.code && AI_GUIDED_ERROR_CODES.has(e.code))
+  );
   if (errors.length === 0) return null;
 
   const errorTypes = [...new Set(errors.map((e) => e.toolName))];
@@ -770,8 +776,8 @@ function handleToolErrors(steps: unknown[], contextLogger: Logger): string | nul
 /**
  * Extrai erros dos steps de execução
  */
-function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: string }> {
-  const errors: Array<{ toolName: string; error: string }> = [];
+function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: string; code?: string }> {
+  const errors: Array<{ toolName: string; error: string; code?: string }> = [];
 
   if (!Array.isArray(steps)) return errors;
 
@@ -813,6 +819,9 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
         errors.push({
           toolName: result.toolName || "Unknown",
           error: String(errorMessage).substring(0, 200),
+          code: toolOutput && typeof toolOutput === "object" && typeof toolOutput.code === "string"
+            ? toolOutput.code
+            : undefined,
         });
       }
     });

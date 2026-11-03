@@ -13,6 +13,7 @@ import {
 } from "../../../domain/repositories"
 import { AppointmentDTO, UpdateAppointmentDTO } from "../../dtos"
 import { mapServiceError } from "./appointment-error.mapper"
+import { checkCustomerNameForAgenda } from "./agenda-customer-name.service"
 import { domainServices } from "@repo/db"
 
 /**
@@ -61,6 +62,23 @@ export class UpdateAppointmentUseCase {
       this.professionalRepo.findById(input.professionalId || appointment.professionalId),
       this.serviceRepo.findById(input.serviceId || appointment.serviceId),
     ])
+
+    // Mudar horário, profissional ou serviço vai para a agenda oficial, e lá a
+    // remarcação pode cadastrar o cliente pelo nome (agendamento sem par lá, par
+    // apagado, ou troca de dia/profissional/serviço com cliente ainda sem
+    // vínculo). Daqui não dá para saber qual é o caso: sem nenhuma letra no nome,
+    // a IA pergunta o nome antes. Mudar só a observação não vai para lá.
+    if (customer && (input.startsAt || input.professionalId || input.serviceId)) {
+      const nameError = await checkCustomerNameForAgenda({
+        salonId: input.salonId,
+        customerId: customer.id,
+        customerName: customer.name,
+        operation: "reschedule",
+      })
+      if (nameError) {
+        return fail(nameError)
+      }
+    }
 
     // 4. Delega para o serviço centralizado que executa todas as validações:
     //    - Valida que o agendamento existe e não está cancelado

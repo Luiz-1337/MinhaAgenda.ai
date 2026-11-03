@@ -123,7 +123,7 @@ export async function createAppointmentService(input: {
     columns: { id: true },
   })
   if (!proService) {
-    return { success: false, error: "Profissional não executa este serviço" }
+    return { success: false, error: "Profissional não executa este serviço", code: "PROFESSIONAL_CANNOT_PERFORM_SERVICE" }
   }
 
   // Parse da data usando o módulo centralizado
@@ -135,7 +135,7 @@ export async function createAppointmentService(input: {
 
   // Bloqueia criação de agendamento no passado (bug C3).
   if (isPastBooking(startUtc)) {
-    return { success: false, error: "Não é possível agendar em um horário que já passou" }
+    return { success: false, error: "Não é possível agendar em um horário que já passou", code: "PAST_APPOINTMENT" }
   }
 
   // Calcula horário de término — reserva o MAIOR tempo da faixa (duration_max ?? duration).
@@ -186,7 +186,7 @@ export async function createAppointmentService(input: {
   const workSpans = proDayRules.filter((r) => !r.isBreak)
 
   if (workSpans.length === 0) {
-    return { success: false, error: "Profissional não possui horários cadastrados neste dia" }
+    return { success: false, error: "Profissional não possui horários cadastrados neste dia", code: "PROFESSIONAL_NOT_AVAILABLE" }
   }
 
   const withinWork = workSpans.some((span) => {
@@ -199,7 +199,7 @@ export async function createAppointmentService(input: {
   })
 
   if (!withinWork) {
-    return { success: false, error: "Horário fora do expediente do profissional" }
+    return { success: false, error: "Horário fora do expediente do profissional", code: "PROFESSIONAL_NOT_AVAILABLE" }
   }
 
   // Trava de conflito com o Google Calendar (FreeBusy ao vivo).
@@ -215,7 +215,7 @@ export async function createAppointmentService(input: {
         (b) => b.start.getTime() < endUtc.getTime() && b.end.getTime() > startUtc.getTime()
       )
       if (overlapsGoogle) {
-        return { success: false, error: "Horário indisponível (conflito com Google Calendar)" }
+        return { success: false, error: "Horário indisponível (conflito com Google Calendar)", code: "APPOINTMENT_CONFLICT" }
       }
     } catch (error) {
       console.warn(
@@ -323,7 +323,7 @@ export async function createAppointmentService(input: {
   } catch (error) {
     // Se o erro veio da verificação de conflito, retorna mensagem amigável
     if (error instanceof Error && error.message === "Horário indisponível (conflito de agenda)") {
-      return { success: false, error: error.message }
+      return { success: false, error: error.message, code: "APPOINTMENT_CONFLICT" }
     }
     // Outros erros (ex: banco indisponível)
     throw error
