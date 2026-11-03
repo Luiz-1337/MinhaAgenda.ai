@@ -233,9 +233,22 @@ export class BelasisClient {
     return this.listAll<BelasisService>('/api/v1/inventory/services', { active: options.active })
   }
 
-  /** Busca parcial em nome, apelido, telefone, celular e CPF. */
-  searchClients(search: string): Promise<BelasisClientRecord[]> {
-    return this.listAll<BelasisClientRecord>('/api/v1/clients', { search }, 5)
+  /**
+   * Busca parcial em nome, apelido, telefone, celular e CPF. Lê no máximo
+   * `maxPages` páginas: um termo curto numa base grande bate em centenas de
+   * registros, e isso não é a Belasis fora do ar — `complete: false` diz que
+   * havia mais do que foi lido.
+   */
+  async searchClients(
+    search: string,
+    options: { maxPages?: number } = {}
+  ): Promise<{ clients: BelasisClientRecord[]; complete: boolean }> {
+    const { items, complete } = await this.listPages<BelasisClientRecord>(
+      '/api/v1/clients',
+      { search },
+      options.maxPages ?? 5
+    )
+    return { clients: items, complete }
   }
 
   getClient(id: number): Promise<BelasisClientRecord> {
@@ -281,11 +294,26 @@ export class BelasisClient {
   // Transporte
   // ==========================================================================
 
+  /** Listagem que precisa vir inteira (catálogo, agendamentos): cortada é erro. */
   private async listAll<T>(
     path: string,
     query: Record<string, QueryValue>,
     maxPages = DEFAULT_MAX_PAGES
   ): Promise<T[]> {
+    const { items, complete } = await this.listPages<T>(path, query, maxPages)
+    if (complete) return items
+    throw new BelasisApiError(`Listagem ${path} passou de ${maxPages} páginas`, 'unavailable', {
+      method: 'GET',
+      path,
+    })
+  }
+
+  /** Até `maxPages` páginas; `complete: false` se havia mais. */
+  private async listPages<T>(
+    path: string,
+    query: Record<string, QueryValue>,
+    maxPages: number
+  ): Promise<{ items: T[]; complete: boolean }> {
     const items: T[] = []
     for (let page = 1; page <= maxPages; page++) {
       const result = await this.request<BelasisPage<T>>('GET', path, {
@@ -294,12 +322,9 @@ export class BelasisClient {
       const data = Array.isArray(result?.data) ? result.data : []
       items.push(...data)
       const limit = result?.limit || PAGE_LIMIT
-      if (data.length < limit || page * limit >= (result?.total ?? 0)) return items
+      if (data.length < limit || page * limit >= (result?.total ?? 0)) return { items, complete: true }
     }
-    throw new BelasisApiError(`Listagem ${path} passou de ${maxPages} páginas`, 'unavailable', {
-      method: 'GET',
-      path,
-    })
+    return { items, complete: false }
   }
 
   private buildUrl(path: string, query?: Record<string, QueryValue>): string {

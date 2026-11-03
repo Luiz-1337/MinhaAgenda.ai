@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   belasisObservation,
+  belasisPhoneSearchTerms,
   belasisReferenceMarker,
   freeTimesToBusyIntervals,
   fromBelasisWallClock,
@@ -172,6 +173,12 @@ describe('telefone', () => {
   it('sem DDD não dá para casar', () => {
     expect(phoneMatchKey('91054646')).toBeNull()
     expect(phonesMatch('91054646', '91054646')).toBe(false)
+  })
+
+  it('termos de busca: 8 últimos, 8 últimos com hífen e, por último, os 4 últimos', () => {
+    const terms = { specific: ['91054646', '9105-4646'], broad: '4646' }
+    expect(belasisPhoneSearchTerms('5547991054646')).toEqual(terms)
+    expect(belasisPhoneSearchTerms('554791054646')).toEqual(terms) // sem o 9: os 8 últimos são os mesmos
   })
 })
 

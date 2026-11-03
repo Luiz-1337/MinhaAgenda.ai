@@ -1,6 +1,6 @@
 # Integração Belasis — Diagnóstico, Implementação e Ativação
 
-**Atualizado:** 21 de outubro de 2026 (sincronização Belasis → MinhaAgenda)
+**Atualizado:** 3 de novembro de 2026 (busca do cliente por telefone — seção 2.0)
 **Escopo:** agendamentos feitos pela IA do WhatsApp (e pelo painel) caírem na agenda da Belasis, com conexão fácil para o dono do salão.
 **Decisão do dono (14/out):** a **Belasis é a agenda oficial** do salão — a recepção agenda direto lá.
 **Estado:** cliente implementado contra a documentação oficial; tela de conexão e vínculo prontas; **nada commitado**. Falta, nesta ordem: aplicar a migration 034, validar com uma chave real (`scripts/diagnose-belasis.ts`) e o piloto num salão.
@@ -40,7 +40,7 @@ O Google Calendar é **espelho** (cópia em segundo plano; se falhar, o agendame
 |---|---|---|
 | IA sugere horários | subtrai o que está ocupado na grade `free_times` (cache de 45 s) | segue sem ela (a checagem do agendamento trava) |
 | Antes de reservar | confere o horário na grade, sem cache | **não agenda** (fail-closed) |
-| Depois de reservar aqui | acha o cliente pelo telefone (ou cadastra) e grava lá **na hora** | **desfaz a reserva local**; a IA oferece outro horário |
+| Depois de reservar aqui | acha o cliente pelo telefone (ou cadastra — seção 2.0) e grava lá **na hora** | **desfaz a reserva local**; a IA oferece outro horário |
 | Remarcar no mesmo dia/profissional/serviço | PATCH da hora | volta a linha local ao horário anterior |
 | Remarcar para outro dia/profissional/serviço | cria o novo, depois cancela o antigo | idem; se só o cancelamento do antigo falhar, alerta |
 | Cancelar | `/cancel` lá | cancela aqui mesmo assim; alerta no painel |
@@ -51,6 +51,26 @@ O Google Calendar é **espelho** (cópia em segundo plano; se falhar, o agendame
 O cliente **nunca recebe confirmação de um horário que não existe na agenda oficial**.
 
 O que conta como ocupado (`freeTimesToBusyIntervals`): **só está livre o que a Belasis marca como `available`**; o resto do dia — inclusive o que ela nem lista, como fora do expediente — está ocupado. Dia sem horários = dia inteiro ocupado.
+
+### 2.0 Achar o cliente lá pelo telefone
+
+Cliente que já tem vínculo (`integration_external_refs`, entidade `customer`) vai direto pelo id guardado. Sem vínculo, `findClientByPhone` (no provedor) procura pelo telefone. A busca da API (`GET /clients?search=`) é **parcial e casa em vários campos** (nome, apelido, telefone, celular, CPF), e o telefone pode estar guardado só com dígitos, sem DDI ou formatado — então busca do termo mais específico ao mais amplo e, em cada um, compara normalizado (DDD + 8 últimos dígitos, `phonesMatch`). Para no primeiro que achar:
+
+| # | Termo (`belasisPhoneSearchTerms`) | Pega | Páginas lidas |
+|---|---|---|---|
+| 1 | 8 últimos dígitos (`91054646`) | só dígitos, com ou sem DDI, com ou sem o 9 — inclusive o que o MinhaAgenda cadastra | 1 |
+| 2 | 8 últimos com hífen (`9105-4646`) | formatado (`(47) 99105-4646`) | 1 |
+| 3 | 4 últimos (`4646`) | qualquer outro formato | até 5 |
+
+O número nacional inteiro não é um termo: tudo o que ele acharia, os 8 últimos acham.
+
+Os 4 dígitos sozinhos, numa base grande, batem em **centenas** de registros (produção, Spettacolo, 03/nov: um sufixo passou de 5 páginas). Isso **não** é "Belasis fora do ar": lidas as 5 páginas sem achar, é "não achei". Antes de 03/nov era `unavailable` — a reserva local era desfeita e a IA respondia "Não foi possível confirmar na agenda do salão agora" **para sempre** para aquele cliente.
+
+Não achou → cadastra (`POST /clients`, telefone só dígitos com DDI). A Belasis recusa celular repetido com 422 ("Celular já está em uso"); aí repete **só os termos 1 e 2** (pega quem acabou de ser cadastrado por outro caminho, como a sincronização — os 4 dígitos dariam o mesmo de antes) e:
+- achou → usa esse;
+- não achou → `rejected` com mensagem clara ("a Belasis diz que o celular já está cadastrado, mas a busca por telefone não achou o cadastro"). Tentar de novo não resolve: o cadastro lá tem o telefone num formato que a busca não pega. Saída: corrigir o telefone do cliente na Belasis, ou gravar o vínculo `customer` à mão.
+
+Custo na cota (30/min): cliente com o telefone só em dígitos, **1** chamada; formatado, 2; cliente novo, 2 + 1 a 5 (os 4 dígitos) + 1 (o cadastro). Para ver qual termo acha um telefone real: `scripts/diagnose-belasis.ts --phone` (seção 6).
 
 Alertas no painel (`system_alerts`, um aberto por tipo): `agenda_auth_failed` e `agenda_unavailable` (críticos — reconectar), `agenda_not_linked`, `agenda_rejected`, `agenda_write_uncertain`, `agenda_cancel_failed`, `agenda_ref_not_saved`, `agenda_conflict`.
 
@@ -130,7 +150,7 @@ Só leitura, ~6 requisições, não imprime a chave. Conferir:
 
 1. **Estabelecimento:** os profissionais listados são os do salão? (a chave "vale para todos os estabelecimentos" e não há parâmetro — se a conta tiver mais de um, pode misturar.)
 2. **Grade:** o passo inferido e o que aparece fora do expediente; os agendamentos do dia caem nos horários `✗`? (confirma o fuso.)
-3. **Telefone:** o formato guardado nos clientes (o exemplo da doc vem sem DDI e às vezes formatado).
+3. **Telefone:** o formato guardado nos clientes (o exemplo da doc vem sem DDI e às vezes formatado). O `--phone` roda os três termos da busca (seção 2.0), diz quantos candidatos cada um trouxe, se cortou em páginas e qual acha o cliente — com os números mascarados.
 4. **No piloto:** a Belasis recusa agendamento em horário ocupado? Qual o texto do 422? (o cliente reconhece "indisponível/ocupado/conflito".)
 
 ---
@@ -145,7 +165,7 @@ Só leitura, ~6 requisições, não imprime a chave. Conferir:
 | 4 | Confirmação do cliente (resposta ao lembrete) → `confirm` na Belasis | hoje a confirmação não sincroniza com ninguém (decisão antiga de `ConfirmAppointmentUseCase`) |
 | 5 | Mudança feita na recepção chega aqui em até 1 hora (sincronização) ou antes do lembrete | webhook não existe; o botão "Sincronizar agora" traz na hora |
 | 6 | Cancelamento em massa ao remover profissional (`actions/professionals.ts`) não avisa a agenda oficial | |
-| 7 | Volume: 30 req/min por salão | cada agendamento gasta ~4 requisições; a sugestão de horários, 1 por profissional por dia (com cache); a sincronização usa no máximo 15/min |
+| 7 | Volume: 30 req/min por salão | cada agendamento gasta ~4 requisições (cliente novo: até ~10, seção 2.0); a sugestão de horários, 1 por profissional por dia (com cache); a sincronização usa no máximo 15/min |
 
 ---
 

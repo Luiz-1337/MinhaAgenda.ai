@@ -55,6 +55,24 @@ function makeProvider(routes: Parameters<typeof fakeApi>[0], now = () => Date.UT
 
 const paged = (data: unknown[]) => ({ status: 200, body: { data, page: 1, limit: 100, total: data.length } })
 
+/** Busca de clientes que responde por termo; termo não listado → nada. */
+const clientSearch =
+  (byTerm: Record<string, unknown[]>): Handler =>
+  (call) =>
+    paged(byTerm[call.query.search] ?? [])
+
+/** Sufixo de 4 dígitos "popular": 900 registros que não são a cliente, 100 por página. */
+const crowdedPage = (call: Call) => {
+  const page = Number(call.query.page)
+  const data: Array<{ id: number; name: string; cellphone?: string }> = Array.from({ length: 100 }, (_, i) => ({
+    id: 10_000 + page * 100 + i,
+    name: `Cliente ${page}-${i}`,
+  }))
+  return { status: 200, body: { data, page, limit: 100, total: 900 } }
+}
+
+const searchTerms = (calls: Call[]) => calls.filter((c) => c.path === '/api/v1/clients' && c.method === 'GET').map((c) => c.query.search)
+
 /** 10:00 → 11:00 em Brasília, dia 10/11/2026. */
 const input: AgendaAppointmentInput = {
   idempotencyKey: APPOINTMENT,
@@ -146,21 +164,21 @@ describe('BelasisAgendaProvider.getBusyIntervals', () => {
 })
 
 describe('BelasisAgendaProvider.createAppointment', () => {
-  it('cliente já existe (telefone guardado formatado e sem DDI) → cria o agendamento com ele', async () => {
+  it('cliente já existe (telefone guardado formatado e sem DDI) → acha pelo hífen e cria o agendamento com ele', async () => {
     const { provider, calls } = makeProvider({
-      'GET /api/v1/clients': () =>
-        paged([
+      'GET /api/v1/clients': clientSearch({
+        '9105-4646': [
           { id: 12, name: 'Outra', phone: '(11) 99105-4646' }, // mesmo final, outro DDD
           { id: 88, name: 'Maria Souza', phone: '(47) 99105-4646', active: true },
-        ]),
+        ],
+      }),
       'POST /api/v1/schedule_groups': () => ({ status: 201, body: group() }),
     })
 
     const created = await provider.createAppointment(input)
 
     expect(created).toEqual({ externalId: '501', externalCustomerId: '88' })
-    const search = calls.find((c) => c.path === '/api/v1/clients')!
-    expect(search.query.search).toBe('4646') // 4 últimos dígitos: contíguos em qualquer formato
+    expect(searchTerms(calls)).toEqual(['91054646', '9105-4646']) // achou: nem chega nos 4 dígitos
     const post = calls.find((c) => c.method === 'POST')!
     expect(post.body).toEqual({
       client_id: 88,
@@ -183,8 +201,101 @@ describe('BelasisAgendaProvider.createAppointment', () => {
     const created = await provider.createAppointment({ ...input, customer: { name: 'Maria Souza', phone: '+55 47 99105-4646' } })
 
     expect(created.externalCustomerId).toBe('140')
+    expect(searchTerms(calls)).toEqual(['91054646', '9105-4646', '4646']) // do mais específico ao mais amplo
     const newClient = calls.find((c) => c.method === 'POST' && c.path === '/api/v1/clients')!
     expect(newClient.body).toEqual({ name: 'Maria Souza', phone: '5547991054646', cellphone: '5547991054646' })
+  })
+
+  it('achado pelos 8 últimos dígitos → uma busca só', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/clients': clientSearch({ '91054646': [{ id: 88, name: 'Maria Souza', cellphone: '47991054646' }] }),
+      'POST /api/v1/schedule_groups': () => ({ status: 201, body: group() }),
+    })
+
+    const created = await provider.createAppointment(input)
+
+    expect(created.externalCustomerId).toBe('88')
+    expect(searchTerms(calls)).toEqual(['91054646'])
+    expect(calls.find((c) => c.path === '/api/v1/clients')!.query).toMatchObject({ page: '1' })
+  })
+
+  it('sufixo de 4 dígitos comum (mais de 5 páginas) e cliente novo → não estoura: cadastra e agenda', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/clients': (call) => (call.query.search === '4646' ? crowdedPage(call) : paged([])),
+      'POST /api/v1/clients': () => ({ status: 201, body: { id: 140, name: 'Maria Souza', cellphone: '5547991054646' } }),
+      'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ client_id: 140 }) }),
+    })
+
+    const created = await provider.createAppointment(input)
+
+    expect(created).toEqual({ externalId: '501', externalCustomerId: '140' })
+    // 5 páginas dos 4 dígitos e para (não lê as 9), e segue para o cadastro
+    expect(searchTerms(calls)).toEqual(['91054646', '9105-4646', '4646', '4646', '4646', '4646', '4646'])
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([
+      '/api/v1/clients',
+      '/api/v1/schedule_groups',
+    ])
+  })
+
+  it('cliente nas páginas lidas dos 4 dígitos (formato que os termos específicos não pegam) → acha', async () => {
+    const { provider } = makeProvider({
+      'GET /api/v1/clients': (call) => {
+        if (call.query.search !== '4646') return paged([])
+        const page = crowdedPage(call)
+        if (call.query.page === '3') page.body.data[42] = { id: 88, name: 'Maria Souza', cellphone: '47 99105 4646' }
+        return page
+      },
+      'POST /api/v1/schedule_groups': () => ({ status: 201, body: group() }),
+    })
+
+    await expect(provider.createAppointment(input)).resolves.toEqual({ externalId: '501', externalCustomerId: '88' })
+  })
+
+  it('cadastro recusado ("Celular já está em uso") e nenhuma busca acha → rejected com erro claro, não unavailable', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/clients': (call) => (call.query.search === '4646' ? crowdedPage(call) : paged([])),
+      'POST /api/v1/clients': () => ({ status: 422, body: ['Celular já está em uso'] }),
+    })
+
+    const error = await provider.createAppointment(input).catch((e: unknown) => e)
+
+    expect(error).toMatchObject({
+      kind: 'rejected',
+      message: expect.stringContaining('a busca por telefone não achou o cadastro'),
+      detail: expect.objectContaining({ httpStatus: 422, messages: ['Celular já está em uso'] }),
+    })
+    expect(String((error as Error).message)).not.toContain('4646') // nada do cliente na mensagem (vai para log e alerta)
+    // Depois do 422 repete só os termos específicos: os 4 dígitos dariam o mesmo
+    const postAt = calls.findIndex((c) => c.method === 'POST')
+    expect(searchTerms(calls.slice(postAt))).toEqual(['91054646', '9105-4646'])
+    expect(calls.some((c) => c.path === '/api/v1/schedule_groups')).toBe(false)
+  })
+
+  it('cadastro recusado porque acabou de ser cadastrado por outro caminho → a nova busca acha', async () => {
+    let created = false
+    const { provider } = makeProvider({
+      'GET /api/v1/clients': (call) =>
+        paged(created && call.query.search === '91054646' ? [{ id: 88, name: 'Maria', cellphone: '5547991054646' }] : []),
+      'POST /api/v1/clients': () => {
+        created = true // a sincronização cadastrou no meio do caminho
+        return { status: 422, body: ['Celular já está em uso'] }
+      },
+      'POST /api/v1/schedule_groups': () => ({ status: 201, body: group() }),
+    })
+
+    await expect(provider.createAppointment(input)).resolves.toEqual({ externalId: '501', externalCustomerId: '88' })
+  })
+
+  it('cadastro recusado por outro motivo → o 422 da Belasis sobe como está', async () => {
+    const { provider } = makeProvider({
+      'GET /api/v1/clients': () => paged([]),
+      'POST /api/v1/clients': () => ({ status: 422, body: ['Nome não pode ficar em branco'] }),
+    })
+
+    await expect(provider.createAppointment(input)).rejects.toMatchObject({
+      kind: 'rejected',
+      message: expect.stringContaining('Nome não pode ficar em branco'),
+    })
   })
 
   it('telefone que não é telefone (id interno do WhatsApp) → recusa sem tocar na API', async () => {
