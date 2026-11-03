@@ -387,7 +387,7 @@ describe('BelasisAgendaProvider.createAppointment', () => {
 })
 
 describe('BelasisAgendaProvider.rescheduleAppointment', () => {
-  it('mesmo dia, profissional e serviço → PATCH só da hora, mesmo id', async () => {
+  it('mesmo dia, profissional e serviço → PATCH da hora, com serviço e profissional do item, mesmo id', async () => {
     const { provider, calls } = makeProvider({
       'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
       'PATCH /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
@@ -401,7 +401,10 @@ describe('BelasisAgendaProvider.rescheduleAppointment', () => {
 
     expect(moved).toEqual({ externalId: '501' })
     const patch = calls.find((c) => c.method === 'PATCH')!
-    expect(patch.body).toEqual({ calendars_attributes: [{ id: 9001, start_hour: '14:00', end_hour: '15:00' }] })
+    // Sem o serviço a API real recusa: 422 "Calendars calendar products product é obrigatório(a)".
+    expect(patch.body).toEqual({
+      calendars_attributes: [{ id: 9001, inventory_product_id: 33, employee_id: 7, start_hour: '14:00', end_hour: '15:00' }],
+    })
   })
 
   it('outro dia → a API não move: cria o novo e cancela o antigo', async () => {

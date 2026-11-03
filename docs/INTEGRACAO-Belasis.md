@@ -23,7 +23,7 @@ Fonte: https://belasis-api.readme.io (OpenAPI 3.0.1 "Belasis API v1"), lida pág
 | Status do agendamento | `confirmed`, `unconfirmed` (padrão), `disconfirm` (cancelado), `waiting` |
 | Disponibilidade | `GET /employees/{id}/free_times?date=` → grade `{ hour: "HH:MM", label: available\|unavailable }` |
 | Agendamento | "schedule group": `client_id` + `date` + itens (`calendars`) com profissional, serviço, `start_hour`/`end_hour` ("HH:MM", hora de parede) |
-| Remarcar | o PATCH só muda a **hora** de um item — não muda data, profissional nem serviço. A doc indica remarcação como "cancela o antigo e cria novo" |
+| Remarcar | o PATCH só muda a **hora** de um item — não muda data, profissional nem serviço. A doc indica remarcação como "cancela o antigo e cria novo". **Fora da doc:** o item do PATCH precisa levar o serviço (`inventory_product_id`) que já tem; só `id` + hora dá 422 "Calendars calendar products product é obrigatório(a)" (API real, 03/nov) |
 | Cancelar | `PATCH /schedule_groups/{id}/cancel` (mantém histórico; há também DELETE) |
 | Erros | 401 chave inválida/sem recurso; 404; 422 com array de strings (ex.: "Celular já está em uso") |
 | Idempotência / webhooks | **não existem** |
@@ -41,7 +41,7 @@ O Google Calendar é **espelho** (cópia em segundo plano; se falhar, o agendame
 | IA sugere horários | subtrai o que está ocupado na grade `free_times` (cache de 45 s) | segue sem ela (a checagem do agendamento trava) |
 | Antes de reservar | confere o horário na grade, sem cache | **não agenda** (fail-closed) |
 | Depois de reservar aqui | acha o cliente pelo telefone (ou cadastra — seção 2.0) e grava lá **na hora** | **desfaz a reserva local**; a IA oferece outro horário |
-| Remarcar no mesmo dia/profissional/serviço | PATCH da hora | volta a linha local ao horário anterior |
+| Remarcar no mesmo dia/profissional/serviço | PATCH da hora (com o serviço e o profissional do item — seção 1) | volta a linha local ao horário anterior |
 | Remarcar para outro dia/profissional/serviço | cria o novo, depois cancela o antigo | idem; se só o cancelamento do antigo falhar, alerta |
 | Cancelar | `/cancel` lá | cancela aqui mesmo assim; alerta no painel |
 | Antes do lembrete (24–48 h antes) | confere o agendamento lá | cancelado lá → cancela aqui e não lembra; mudou lá → corrige aqui e lembra o horário certo; a Belasis já vai lembrar → o daqui não sai |

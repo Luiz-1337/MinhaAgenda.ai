@@ -119,12 +119,19 @@ export interface BelasisCreateScheduleGroupBody {
  * ou serviço de um item: só a hora (e remover itens). Por isso remarcar para outro
  * dia/profissional é "criar o novo e cancelar o antigo" — o que a própria doc
  * indica no status `disconfirm`.
+ *
+ * Mudar a hora de um item exige mandar junto o serviço (e o profissional) que ele
+ * já tem, embora a doc liste só `id`/hora: sem isso, 422 "Calendars calendar
+ * products product é obrigatório(a)" (API real, 03/nov).
  */
 export interface BelasisUpdateScheduleGroupBody {
   status?: BelasisScheduleStatus
   observation?: string
   calendars_attributes?: Array<{
     id: number
+    /** Obrigatório na prática ao mudar a hora; o mesmo serviço que o item já tem. */
+    inventory_product_id?: number
+    employee_id?: number
     start_hour?: string
     end_hour?: string
     reminder?: boolean

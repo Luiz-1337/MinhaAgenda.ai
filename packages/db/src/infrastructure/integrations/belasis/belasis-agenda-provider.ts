@@ -400,8 +400,17 @@ export class BelasisAgendaProvider implements AgendaProvider {
       item.inventory_product_id === serviceId
 
     if (movableInPlace) {
+      // Serviço e profissional vão iguais aos do item: sem eles a Belasis recusa (ver o tipo).
       await this.client.updateScheduleGroup(group.id, {
-        calendars_attributes: [{ id: item!.id!, start_hour: when.startHour, end_hour: when.endHour }],
+        calendars_attributes: [
+          {
+            id: item!.id!,
+            inventory_product_id: serviceId,
+            employee_id: employeeId,
+            start_hour: when.startHour,
+            end_hour: when.endHour,
+          },
+        ],
       })
       this.forget(employeeId, when.date)
       return { externalId }
