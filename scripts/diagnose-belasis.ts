@@ -11,8 +11,8 @@
  *   3. se os agendamentos do dia batem com os horários indisponíveis (fuso);
  *   4. o formato do telefone guardado nos clientes (com/sem DDI, formatado).
  *
- * NÃO cria, altera nem cancela nada. NÃO imprime a chave. Faz ~6 requisições
- * (o limite da Belasis é 30 por minuto por chave).
+ * NÃO cria, altera nem cancela nada. NÃO imprime a chave. Faz ~6 requisições,
+ * mais 3 a 7 com --phone (o limite da Belasis é 30 por minuto por chave).
  *
  * Uso (a partir da raiz do repo):
  *   BELASIS_TOKEN=bpk_... pnpm --filter @repo/db exec tsx ../../scripts/diagnose-belasis.ts \
@@ -25,6 +25,7 @@ import { BelasisClient } from '../packages/db/src/infrastructure/integrations/be
 import { isBelasisApiError } from '../packages/db/src/infrastructure/integrations/belasis/belasis-errors'
 import {
   BELASIS_TIME_ZONE,
+  belasisPhoneSearchTerms,
   freeTimesToBusyIntervals,
   inferSlotMinutes,
   nextLocalDate,
@@ -119,11 +120,28 @@ async function main(): Promise<void> {
       console.log('   ❌ isso não é um telefone no formato DDI + DDD + número')
       return
     }
-    const candidates = await client.searchClients(phone.slice(-4))
-    console.log(`   busca por "${phone.slice(-4)}": ${candidates.length} candidato(s)`)
-    for (const c of candidates.slice(0, 20)) {
-      const match = phonesMatch(c.cellphone, phone) || phonesMatch(c.phone, phone)
-      console.log(`   - #${c.id} phone=${shape(c.phone)} cellphone=${shape(c.cellphone)}${match ? ' ← É ESTE' : ''}`)
+    // Os mesmos termos, na mesma ordem e com o mesmo teto de páginas, que o
+    // provedor usa — mas aqui roda todos, para mostrar qual acha.
+    const terms = belasisPhoneSearchTerms(phone)
+    const searches = [
+      ...terms.specific.map((term) => ({ term, maxPages: 1 })),
+      { term: terms.broad, maxPages: 5 },
+    ]
+    for (const { term, maxPages } of searches) {
+      try {
+        const { clients, complete } = await client.searchClients(term, { maxPages })
+        const isMatch = (c: (typeof clients)[number]) => phonesMatch(c.cellphone, phone) || phonesMatch(c.phone, phone)
+        const matches = clients.filter(isMatch)
+        console.log(
+          `   busca por "${shape(term)}": ${clients.length} candidato(s)${complete ? '' : ` (cortada em ${maxPages} página(s))`}, ${matches.length} com este telefone`
+        )
+        // Os que batem primeiro; os outros mostram o formato guardado lá.
+        for (const c of [...matches, ...clients.filter((c) => !isMatch(c))].slice(0, 10)) {
+          console.log(`   - #${c.id} phone=${shape(c.phone)} cellphone=${shape(c.cellphone)}${isMatch(c) ? ' ← É ESTE' : ''}`)
+        }
+      } catch (error) {
+        console.log(`   ❌ ${explain(error)}`)
+      }
     }
   }
 }

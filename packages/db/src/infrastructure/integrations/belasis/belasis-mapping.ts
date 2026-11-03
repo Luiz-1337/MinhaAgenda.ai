@@ -194,6 +194,58 @@ export const toBelasisPhone = toE164Digits
  */
 export { phoneMatchKey, phonesMatch }
 
+/**
+ * O que procurar na busca de clientes da API (parcial: casa em nome, apelido,
+ * telefone, celular e CPF) para achar um telefone, do mais específico ao mais
+ * amplo:
+ * - `specific`: os 8 últimos dígitos ("91054646") — o guardado só com dígitos,
+ *   com ou sem DDI, com ou sem o 9, e o que o MinhaAgenda cadastra; e os 8
+ *   últimos com hífen ("9105-4646") — o formatado ("(47) 99105-4646");
+ * - `broad`: os 4 últimos ("4646") — contíguos em quase qualquer formato, mas
+ *   numa base grande batem em centenas de registros.
+ *
+ * O número nacional inteiro não entra: tudo o que ele acharia, os 8 últimos acham.
+ */
+export function belasisPhoneSearchTerms(phone: string): { specific: string[]; broad: string } {
+  const last8 = phone.replace(/\D/g, '').slice(-8)
+  return {
+    specific: [last8, `${last8.slice(0, 4)}-${last8.slice(4)}`],
+    broad: last8.slice(-4),
+  }
+}
+
+// ============================================================================
+// Nome do cliente
+// ============================================================================
+
+/** Nome para cadastrar lá quando o do cliente não serve. Só letras: a Belasis aceita. */
+export const BELASIS_FALLBACK_CLIENT_NAME = 'Cliente WhatsApp'
+
+const LATIN_LETTER = /^(?=\p{L})\p{Script=Latin}$/u
+/** Acento solto e caractere invisível (junção de emoji, seletor de variação): somem. */
+const DROPPED = /^[\p{M}\p{Cf}]$/u
+
+/**
+ * O nome do cliente como a Belasis aceita. Por um caractere só, ela recusa o
+ * cadastro inteiro (422 "Nome possui carácter inválido") — e o nome daqui vem do
+ * perfil do WhatsApp ("💤", "Ana 💇‍♀️ Silva", "𝓜𝓪𝓻𝓲𝓪"). Não se sabe o que mais
+ * ela recusa, então só passa o que com certeza passa:
+ * - NFKC antes: letra estilizada ou de largura cheia vira letra comum;
+ * - letra latina, com ou sem acento, fica; acento solto e caractere invisível
+ *   somem; todo o resto (emoji, símbolo, dígito, pontuação) vira espaço —
+ *   "Ana Carolina (Sheronn)" → "Ana Carolina Sheronn", "D'Ávila" → "D Ávila";
+ * - sem nenhuma letra → `BELASIS_FALLBACK_CLIENT_NAME`.
+ *
+ * É só o que vai para lá: o nome do cliente no MinhaAgenda não muda.
+ */
+export function toBelasisClientName(raw: string | null | undefined): string {
+  const kept = Array.from((raw ?? '').normalize('NFKC'), (char) =>
+    LATIN_LETTER.test(char) ? char : DROPPED.test(char) ? '' : ' '
+  ).join('')
+  const name = kept.replace(/\s+/g, ' ').trim()
+  return name || BELASIS_FALLBACK_CLIENT_NAME
+}
+
 // ============================================================================
 // Referência nossa no agendamento de lá
 // ============================================================================

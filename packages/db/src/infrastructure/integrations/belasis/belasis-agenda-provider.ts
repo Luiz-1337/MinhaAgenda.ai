@@ -32,14 +32,17 @@ import type {
 import { BelasisClient, belasisBackgroundOptions } from './belasis-client'
 import { BelasisApiError, isBelasisApiError } from './belasis-errors'
 import {
+  BELASIS_FALLBACK_CLIENT_NAME,
   BELASIS_TIME_ZONE,
   belasisObservation,
+  belasisPhoneSearchTerms,
   belasisReferenceMarker,
   freeTimesToBusyIntervals,
   fromBelasisWallClock,
   localDatesBetween,
   parseBelasisReferenceMarker,
   phonesMatch,
+  toBelasisClientName,
   toBelasisPhone,
   toBelasisWallClock,
   type TimeRange,
@@ -51,6 +54,12 @@ const FREE_TIMES_TTL_MS = 45_000
 const FREE_TIMES_CACHE_MAX = 1_000
 
 const freeTimesCache = new Map<string, { expiresAt: number; slots: BelasisFreeTime[] }>()
+
+/** 422 de cadastro de cliente que diz que o telefone já existe lá ("Celular já está em uso"). */
+const PHONE_TAKEN = /em uso|j[aá] (est[aá] )?cadastrad/i
+
+/** 422 de cadastro de cliente que recusa o nome ("Nome possui carácter inválido."). */
+const NAME_REJECTED = /^\s*(nome|nickname|apelido)\b|car[aá]ctere?s? inv[aá]lid/i
 
 /** Para testes. */
 export function clearBelasisFreeTimesCache(): void {
@@ -219,13 +228,49 @@ export class BelasisAgendaProvider implements AgendaProvider {
 
   /**
    * Acha o cliente pelo telefone. A busca da API é parcial e o telefone pode estar
-   * guardado formatado ("(11) 99999-8888") ou sem DDI — então busca pelos 4
-   * últimos dígitos (contíguos em qualquer formato) e compara normalizado.
+   * guardado só com dígitos, sem DDI ou formatado ("(11) 99999-8888") — então
+   * busca do termo mais específico ao mais amplo (`belasisPhoneSearchTerms`), uma
+   * página cada, e compara normalizado. Só sem nada nos específicos cai nos 4
+   * últimos dígitos, até 5 páginas; se o cliente não estiver nelas, é "não achei"
+   * (quem chama cadastra; a Belasis recusa celular repetido), nunca "fora do ar".
+   *
+   * `broad: false` pula os 4 dígitos.
    */
-  private async findClientByPhone(phone: string): Promise<BelasisClientRecord | null> {
-    const candidates = await this.client.searchClients(phone.slice(-4))
-    const matches = candidates.filter((c) => phonesMatch(c.cellphone, phone) || phonesMatch(c.phone, phone))
-    return matches.find((c) => c.active !== false) ?? matches[0] ?? null
+  private async findClientByPhone(
+    phone: string,
+    options: { broad?: boolean } = {}
+  ): Promise<BelasisClientRecord | null> {
+    const terms = belasisPhoneSearchTerms(phone)
+    const searches = [
+      ...terms.specific.map((term) => ({ term, maxPages: 1 })),
+      ...(options.broad === false ? [] : [{ term: terms.broad, maxPages: 5 }]),
+    ]
+    for (const { term, maxPages } of searches) {
+      const { clients } = await this.client.searchClients(term, { maxPages })
+      const matches = clients.filter((c) => phonesMatch(c.cellphone, phone) || phonesMatch(c.phone, phone))
+      const found = matches.find((c) => c.active !== false) ?? matches[0]
+      if (found) return found
+    }
+    return null
+  }
+
+  /**
+   * Cadastra o cliente lá. Se a Belasis recusar o nome mesmo limpo (422 sobre o
+   * nome ou o apelido, que ela tira do nome), tenta uma vez com o nome padrão:
+   * melhor "Cliente WhatsApp" com o telefone certo do que o cliente sem horário.
+   */
+  private async createClient(name: string, phone: string): Promise<BelasisClientRecord> {
+    try {
+      return await this.client.createClient({ name, phone, cellphone: phone })
+    } catch (error) {
+      const nameRejected =
+        name !== BELASIS_FALLBACK_CLIENT_NAME &&
+        isBelasisApiError(error) &&
+        error.httpStatus === 422 &&
+        error.messages.some((m) => NAME_REJECTED.test(m))
+      if (!nameRejected) throw error
+      return this.client.createClient({ name: BELASIS_FALLBACK_CLIENT_NAME, phone, cellphone: phone })
+    }
   }
 
   private async resolveClientId(customer: AgendaAppointmentInput['customer']): Promise<number> {
@@ -242,18 +287,24 @@ export class BelasisAgendaProvider implements AgendaProvider {
     if (existing) return existing.id
 
     try {
-      const created = await this.client.createClient({
-        name: customer.name.trim() || 'Cliente',
-        phone,
-        cellphone: phone,
-      })
+      const created = await this.createClient(toBelasisClientName(customer.name), phone)
       return created.id
     } catch (error) {
-      // "Celular já está em uso": o cliente existe (criado agora por outro
-      // caminho, ou guardado num formato que a busca não pegou). Mais uma busca.
+      // "Celular já está em uso": o cliente existe. Se foi cadastrado agora por
+      // outro caminho, os termos específicos o acham; os 4 dígitos já foram lidos
+      // e repetir daria o mesmo resultado.
       if (isBelasisApiError(error) && error.httpStatus === 422) {
-        const again = await this.findClientByPhone(phone)
+        const again = await this.findClientByPhone(phone, { broad: false })
         if (again) return again.id
+        if (error.messages.some((m) => PHONE_TAKEN.test(m))) {
+          // Tentar de novo não muda nada: o cadastro lá tem o telefone num
+          // formato que a busca não pega (ou está perdido numa base grande).
+          throw new BelasisApiError(
+            'A Belasis diz que o celular do cliente já está cadastrado, mas a busca por telefone não achou o cadastro (telefone guardado lá num formato diferente?). Confira o cadastro do cliente na Belasis',
+            'rejected',
+            error.detail
+          )
+        }
       }
       throw error
     }
