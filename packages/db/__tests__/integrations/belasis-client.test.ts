@@ -118,6 +118,15 @@ describe('BelasisClient — transporte', () => {
     expect(calls[0].url.pathname).toBe('/api/v1/schedule_groups/9/cancel')
   })
 
+  it('remover é DELETE no agendamento (204, sem corpo)', async () => {
+    const { client, calls } = makeClient([response(204)])
+
+    await expect(client.deleteScheduleGroup(9)).resolves.toBeUndefined()
+
+    expect(calls[0].method).toBe('DELETE')
+    expect(calls[0].url.pathname).toBe('/api/v1/schedule_groups/9')
+  })
+
   it('204 / corpo vazio → undefined', async () => {
     const { client } = makeClient([response(204)])
     await expect(client.cancelScheduleGroup(9)).resolves.toBeUndefined()

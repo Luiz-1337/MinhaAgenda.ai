@@ -24,7 +24,7 @@ Fonte: https://belasis-api.readme.io (OpenAPI 3.0.1 "Belasis API v1"), lida pág
 | Disponibilidade | `GET /employees/{id}/free_times?date=` → grade `{ hour: "HH:MM", label: available\|unavailable }` |
 | Agendamento | "schedule group": `client_id` + `date` + itens (`calendars`) com profissional, serviço, `start_hour`/`end_hour` ("HH:MM", hora de parede) |
 | Remarcar | o PATCH só muda a **hora** de um item — não muda data, profissional nem serviço. A doc indica remarcação como "cancela o antigo e cria novo". **Fora da doc:** o item do PATCH precisa levar o serviço (`inventory_product_id`) que já tem; só `id` + hora dá 422 "Calendars calendar products product é obrigatório(a)" (API real, 03/nov) |
-| Cancelar | `PATCH /schedule_groups/{id}/cancel` (mantém histórico; há também DELETE) |
+| Cancelar | `PATCH /schedule_groups/{id}/cancel` (mantém histórico; há também DELETE). **Fora da doc:** o cancelado (`disconfirm`) continua ocupando o horário — `free_times` o marca `unavailable` (API real, 03/nov). Só o `DELETE` libera (decisão 11) |
 | Erros | 401 chave inválida/sem recurso; 404; 422 com array de strings (ex.: "Celular já está em uso") |
 | Idempotência / webhooks | **não existem** |
 
@@ -42,8 +42,8 @@ O Google Calendar é **espelho** (cópia em segundo plano; se falhar, o agendame
 | Antes de reservar | confere o horário na grade, sem cache | **não agenda** (fail-closed) |
 | Depois de reservar aqui | acha o cliente pelo telefone (ou cadastra — seção 2.0) e grava lá **na hora** | **desfaz a reserva local**; a IA oferece outro horário |
 | Remarcar no mesmo dia/profissional/serviço | PATCH da hora (com o serviço e o profissional do item — seção 1) | volta a linha local ao horário anterior |
-| Remarcar para outro dia/profissional/serviço | cria o novo, depois cancela o antigo | idem; se só o cancelamento do antigo falhar, alerta |
-| Cancelar | `/cancel` lá | cancela aqui mesmo assim; alerta no painel |
+| Remarcar para outro dia/profissional/serviço | cria o novo, depois remove o antigo | idem; se só a remoção do antigo falhar, alerta |
+| Cancelar | remove lá (`DELETE`; se ela não deixar remover, `/cancel`). Já cancelado lá fica como está | cancela aqui mesmo assim; alerta no painel |
 | Antes do lembrete (24–48 h antes) | confere o agendamento lá | cancelado lá → cancela aqui e não lembra; mudou lá → corrige aqui e lembra o horário certo; a Belasis já vai lembrar → o daqui não sai |
 | Sincronizar (botão ou de hora em hora) | traz para cá os próximos 30 dias da agenda de lá (seção 2.1) | a rodada falha inteira e tenta de novo na próxima hora |
 | Escrita sem resposta (timeout) | procura pela referência gravada na observação | não achou → falha + alerta para conferir a agenda |
@@ -146,6 +146,7 @@ Os 4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) que falhavam desd
 8. **Lembrete de agendamento trazido da recepção:** se a Belasis já vai lembrar (lembrete ligado lá), o MinhaAgenda não manda o dele.
 9. **Sincronização em segundo plano a 15 chamadas/min**, para nunca tirar a vez da IA na cota de 30.
 10. **Cliente sem nome → a IA pergunta o nome antes de agendar ou remarcar** (decisão de 03/nov). Vale quando o nome daqui não tem nenhuma letra (só emoji, como "💤", ou o telefone). O cadastro lá é feito por esse nome e não se corrige depois. A trava fica no mcp-server (`agenda-customer-name.service.ts`, erro `CUSTOMER_NAME_REQUIRED`). Na remarcação, só vale quando muda horário, profissional ou serviço. Sem agenda oficial, nada muda; o painel não passa por ela.
+11. **Cancelar daqui remove o agendamento lá** (decisão do dono, 03/nov). Cancelado (`disconfirm`) continua ocupando o horário na Belasis (seção 1): o salão via o horário preso e a IA não o oferecia de novo. Vale também para o antigo de uma remarcação para outro dia/profissional/serviço. O histórico do cancelamento fica no MinhaAgenda; lá o registro some. Se a Belasis não deixar remover (422), cai no `/cancel`. Agendamento já cancelado lá (pela recepção) não é tocado. Os cancelados daqui antes desta decisão continuam lá ocupando o horário — a recepção exclui na Belasis.
 
 ---
 

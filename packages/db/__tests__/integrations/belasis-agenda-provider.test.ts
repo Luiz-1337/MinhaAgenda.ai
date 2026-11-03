@@ -407,12 +407,12 @@ describe('BelasisAgendaProvider.rescheduleAppointment', () => {
     })
   })
 
-  it('outro dia → a API não move: cria o novo e cancela o antigo', async () => {
+  it('outro dia → a API não move: cria o novo e remove o antigo', async () => {
     const { provider, calls } = makeProvider({
       'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
       'GET /api/v1/clients': () => paged([{ id: 88, name: 'Maria', cellphone: '5547991054646' }]),
       'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ id: 777, date: '2026-11-11' }) }),
-      'PATCH /api/v1/schedule_groups/501/cancel': () => ({ status: 200, body: group({ status: 'disconfirm' }) }),
+      'DELETE /api/v1/schedule_groups/501': () => ({ status: 204 }),
     })
 
     const moved = await provider.rescheduleAppointment('501', {
@@ -426,16 +426,16 @@ describe('BelasisAgendaProvider.rescheduleAppointment', () => {
       'GET /api/v1/schedule_groups/501',
       'GET /api/v1/clients',
       'POST /api/v1/schedule_groups',
-      'PATCH /api/v1/schedule_groups/501/cancel',
+      'DELETE /api/v1/schedule_groups/501',
     ])
   })
 
-  it('outro dia e o antigo não cancela → devolve o novo e aponta o antigo', async () => {
+  it('outro dia e o antigo não sai → devolve o novo e aponta o antigo', async () => {
     const { provider } = makeProvider({
       'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
       'GET /api/v1/clients': () => paged([{ id: 88, name: 'Maria', cellphone: '5547991054646' }]),
       'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ id: 777 }) }),
-      'PATCH /api/v1/schedule_groups/501/cancel': () => ({ status: 503 }),
+      'DELETE /api/v1/schedule_groups/501': () => ({ status: 503 }),
     })
 
     const moved = await provider.rescheduleAppointment('501', {
@@ -456,7 +456,7 @@ describe('BelasisAgendaProvider.rescheduleAppointment', () => {
 
     await provider.rescheduleAppointment('501', input)
 
-    expect(calls.some((c) => c.path.endsWith('/cancel'))).toBe(false)
+    expect(calls.some((c) => c.method === 'DELETE' || c.path.endsWith('/cancel'))).toBe(false)
   })
 
   it('agendamento sumiu lá → not_found (a orquestração recria)', async () => {
@@ -628,16 +628,19 @@ describe('BelasisAgendaProvider — sincronização de volta (Belasis → MinhaA
       expect(patch.body).toEqual({ calendars_attributes: [{ id: 2, _destroy: true }] })
     })
 
-    it('cancelar o único item que sobrou cancela o agendamento inteiro', async () => {
+    it('cancelar o único item que sobrou remove o agendamento inteiro', async () => {
       const lone = group({ id: 620, calendars: [{ id: 2, employee_id: 12, inventory_product_id: 40, start_hour: '11:00', end_hour: '11:30' }] })
       const { provider, calls } = makeProvider({
         'GET /api/v1/schedule_groups/620': () => ({ status: 200, body: lone }),
-        'PATCH /api/v1/schedule_groups/620/cancel': () => ({ status: 200, body: { ...lone, status: 'disconfirm' } }),
+        'DELETE /api/v1/schedule_groups/620': () => ({ status: 204 }),
       })
 
       await provider.cancelAppointment('620:2')
 
-      expect(calls.some((c) => c.path === '/api/v1/schedule_groups/620/cancel')).toBe(true)
+      expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+        'GET /api/v1/schedule_groups/620',
+        'DELETE /api/v1/schedule_groups/620',
+      ])
     })
 
     it('conferir um item olha só o horário dele', async () => {
@@ -659,14 +662,66 @@ describe('BelasisAgendaProvider — sincronização de volta (Belasis → MinhaA
 })
 
 describe('BelasisAgendaProvider — cancelar, conferir, catálogo', () => {
-  it('cancela pelo /cancel', async () => {
+  // Lá o cancelado (disconfirm) continua ocupando o horário na grade (API real, 03/nov).
+  it('cancelar remove lá (DELETE), não só marca como cancelado', async () => {
     const { provider, calls } = makeProvider({
+      'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
+      'DELETE /api/v1/schedule_groups/501': () => ({ status: 204 }),
+    })
+
+    await provider.cancelAppointment('501')
+
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'GET /api/v1/schedule_groups/501',
+      'DELETE /api/v1/schedule_groups/501',
+    ])
+  })
+
+  it('cancelar descarta a grade guardada daquele dia: a sugestão seguinte já vê o horário livre', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/employees/7/free_times': () => ({ status: 200, body: [{ hour: '10:00', label: 'available' }] }),
+      'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
+      'DELETE /api/v1/schedule_groups/501': () => ({ status: 204 }),
+    })
+    const window = {
+      externalProfessionalId: '7',
+      start: new Date('2026-11-10T12:00:00.000Z'),
+      end: new Date('2026-11-10T15:00:00.000Z'),
+    }
+
+    await provider.getBusyIntervals(window)
+    await provider.cancelAppointment('501')
+    await provider.getBusyIntervals(window)
+
+    expect(calls.filter((c) => c.path.endsWith('/free_times'))).toHaveLength(2)
+  })
+
+  it('a Belasis não deixa remover (422) → ao menos cancela pelo /cancel', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group() }),
+      'DELETE /api/v1/schedule_groups/501': () => ({ status: 422, body: ['Falha ao remover agendamento'] }),
       'PATCH /api/v1/schedule_groups/501/cancel': () => ({ status: 200, body: group({ status: 'disconfirm' }) }),
     })
 
     await provider.cancelAppointment('501')
 
-    expect(calls).toEqual([expect.objectContaining({ method: 'PATCH', path: '/api/v1/schedule_groups/501/cancel' })])
+    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', path: '/api/v1/schedule_groups/501/cancel' })
+  })
+
+  it('já cancelado lá (pela recepção) → não mexe no registro', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group({ status: 'disconfirm' }) }),
+    })
+
+    await provider.cancelAppointment('501')
+
+    expect(calls.map((c) => c.method)).toEqual(['GET'])
+  })
+
+  it('não existe mais lá → not_found (a orquestração dá como cancelado)', async () => {
+    const { provider } = makeProvider({ 'GET /api/v1/schedule_groups/501': () => ({ status: 404 }) })
+
+    await expect(provider.cancelAppointment('501')).rejects.toMatchObject({ kind: 'not_found' })
   })
 
   it('confere escrita incerta pela referência na observação + dia + hora + profissional', async () => {

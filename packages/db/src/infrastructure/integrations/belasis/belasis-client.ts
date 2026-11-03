@@ -285,9 +285,21 @@ export class BelasisClient {
     return this.request<BelasisScheduleGroup>('PATCH', `/api/v1/schedule_groups/${id}`, { body })
   }
 
-  /** Cancelar (status `disconfirm`) em vez de remover: o salão mantém o histórico. */
+  /**
+   * Cancela (status `disconfirm`). Lá o cancelado continua ocupando o horário;
+   * para liberar, `deleteScheduleGroup`.
+   */
   cancelScheduleGroup(id: number): Promise<BelasisScheduleGroup> {
     return this.request<BelasisScheduleGroup>('PATCH', `/api/v1/schedule_groups/${id}/cancel`)
+  }
+
+  /**
+   * Remove o agendamento (204). É o que libera o horário: o cancelado
+   * (`disconfirm`) continua `unavailable` na grade `free_times`, ao contrário do
+   * que a doc diz (API real, 03/nov).
+   */
+  deleteScheduleGroup(id: number): Promise<void> {
+    return this.request<void>('DELETE', `/api/v1/schedule_groups/${id}`)
   }
 
   // ==========================================================================

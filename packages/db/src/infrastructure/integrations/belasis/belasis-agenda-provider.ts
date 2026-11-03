@@ -359,7 +359,8 @@ export class BelasisAgendaProvider implements AgendaProvider {
 
   /**
    * Tira um item de um agendamento de vários serviços (os outros continuam lá);
-   * se ele era o único, cancela o agendamento inteiro.
+   * se ele era o único, remove o agendamento inteiro. Remove em vez de cancelar:
+   * lá o cancelado continua ocupando o horário (decisão do dono, 03/nov).
    */
   private async removeItem(group: BelasisScheduleGroup, calendarId: number | undefined): Promise<void> {
     const calendars = group.calendars ?? []
@@ -368,9 +369,19 @@ export class BelasisAgendaProvider implements AgendaProvider {
         calendars_attributes: [{ id: calendarId, _destroy: true }],
       })
     } else {
-      await this.client.cancelScheduleGroup(group.id)
+      await this.removeGroup(group.id)
     }
     for (const c of calendars) this.forget(c.employee_id, group.date)
+  }
+
+  /** Remove lá; se a Belasis não deixar remover (422), ao menos cancela. */
+  private async removeGroup(groupId: number): Promise<void> {
+    try {
+      await this.client.deleteScheduleGroup(groupId)
+    } catch (error) {
+      if (!isBelasisApiError(error) || error.kind !== 'rejected') throw error
+      await this.client.cancelScheduleGroup(groupId)
+    }
   }
 
   async rescheduleAppointment(
@@ -455,14 +466,13 @@ export class BelasisAgendaProvider implements AgendaProvider {
     }
   }
 
+  /** 404 sobe como not_found: a orquestração trata como "já não existe lá". */
   async cancelAppointment(externalId: string): Promise<void> {
     const ref = parseScheduleRef(externalId)
-    if (ref.calendarId === undefined) {
-      const group = await this.client.cancelScheduleGroup(ref.groupId)
-      for (const c of group?.calendars ?? []) this.forget(c.employee_id, group.date)
-      return
-    }
-    await this.removeItem(await this.client.getScheduleGroup(ref.groupId), ref.calendarId)
+    const group = await this.client.getScheduleGroup(ref.groupId)
+    // Já cancelado lá (pela recepção, por exemplo): o registro fica como está.
+    if (group.status === 'disconfirm') return
+    await this.removeItem(group, ref.calendarId)
   }
 
   // ==========================================================================
