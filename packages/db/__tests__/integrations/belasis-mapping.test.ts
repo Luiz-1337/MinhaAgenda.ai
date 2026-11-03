@@ -10,6 +10,7 @@ import {
   localDatesBetween,
   phoneMatchKey,
   phonesMatch,
+  toBelasisClientName,
   toBelasisPhone,
   toBelasisWallClock,
 } from '../../src/infrastructure/integrations/belasis/belasis-mapping'
@@ -173,6 +174,22 @@ describe('telefone', () => {
   it('sem DDD não dá para casar', () => {
     expect(phoneMatchKey('91054646')).toBeNull()
     expect(phonesMatch('91054646', '91054646')).toBe(false)
+  })
+
+  it.each([
+    ['💤', 'Cliente WhatsApp'], // só emoji → padrão
+    ['', 'Cliente WhatsApp'],
+    ['Ana 💇‍♀️ Silva', 'Ana Silva'], // emoji com junção e seletor de variação
+    ['Thaíssa Giovanna Valverde Campos', 'Thaíssa Giovanna Valverde Campos'], // acento fica
+    ['José́', 'José'], // acento solto some, sem virar espaço
+    ['𝓜𝓪𝓻𝓲𝓪 Ｓｏｕｚａ', 'Maria Souza'], // letra estilizada e de largura cheia → comum
+    ['M̷a̷r̷i̷a̷', 'Maria'],
+    ['Ana Carolina (Sheronn)', 'Ana Carolina Sheronn'], // pontuação vira espaço
+    ["D'Ávila", 'D Ávila'],
+    ['Maria 2 ✨', 'Maria'],
+    ['Дмитрий', 'Cliente WhatsApp'], // fora do alfabeto latino: na dúvida, padrão
+  ])('toBelasisClientName(%j) → %j', (raw, expected) => {
+    expect(toBelasisClientName(raw)).toBe(expected)
   })
 
   it('termos de busca: 8 últimos, 8 últimos com hífen e, por último, os 4 últimos', () => {

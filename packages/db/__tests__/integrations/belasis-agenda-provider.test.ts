@@ -287,14 +287,67 @@ describe('BelasisAgendaProvider.createAppointment', () => {
   })
 
   it('cadastro recusado por outro motivo → o 422 da Belasis sobe como está', async () => {
-    const { provider } = makeProvider({
+    const { provider, calls } = makeProvider({
       'GET /api/v1/clients': () => paged([]),
-      'POST /api/v1/clients': () => ({ status: 422, body: ['Nome não pode ficar em branco'] }),
+      'POST /api/v1/clients': () => ({ status: 422, body: ['Telefone não é válido'] }),
     })
 
     await expect(provider.createAppointment(input)).rejects.toMatchObject({
       kind: 'rejected',
-      message: expect.stringContaining('Nome não pode ficar em branco'),
+      message: expect.stringContaining('Telefone não é válido'),
+    })
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1) // não é o nome: não tenta o padrão
+  })
+
+  describe('nome do cliente no cadastro (vem do perfil do WhatsApp)', () => {
+    const newClient = () =>
+      makeProvider({
+        'GET /api/v1/clients': () => paged([]),
+        'POST /api/v1/clients': () => ({ status: 201, body: { id: 140, name: 'x', cellphone: '5547991054646' } }),
+        'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ client_id: 140 }) }),
+      })
+
+    it.each([
+      ['💤', 'Cliente WhatsApp'], // só emoji (produção, 03/nov): sobraria nada
+      ['Ana 💇‍♀️ Silva', 'Ana Silva'],
+      ['Thaíssa Giovanna Simão', 'Thaíssa Giovanna Simão'], // acento fica
+      ['  Ana Carolina (Sheronn) ', 'Ana Carolina Sheronn'],
+    ])('%j → cadastra lá como %j', async (name, expected) => {
+      const { provider, calls } = newClient()
+
+      await provider.createAppointment({ ...input, customer: { name, phone: input.customer.phone } })
+
+      const post = calls.find((c) => c.method === 'POST' && c.path === '/api/v1/clients')!
+      expect(post.body).toMatchObject({ name: expected })
+    })
+
+    it('a Belasis recusa o nome mesmo limpo (422 de caractere inválido) → tenta uma vez com o nome padrão', async () => {
+      const { provider, calls } = makeProvider({
+        'GET /api/v1/clients': () => paged([]),
+        'POST /api/v1/clients': [
+          { status: 422, body: ['Nome possui carácter inválido.', 'Nickname possui carácter inválido.'] },
+          { status: 201, body: { id: 140, name: 'Cliente WhatsApp', cellphone: '5547991054646' } },
+        ],
+        'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ client_id: 140 }) }),
+      })
+
+      const created = await provider.createAppointment({ ...input, customer: { name: 'Ana Ŧ Silva', phone: input.customer.phone } })
+
+      expect(created.externalCustomerId).toBe('140')
+      const names = calls.filter((c) => c.method === 'POST' && c.path === '/api/v1/clients').map((c) => c.body?.name)
+      expect(names).toEqual(['Ana Ŧ Silva', 'Cliente WhatsApp'])
+    })
+
+    it('o nome padrão também recusado → não insiste: uma tentativa só, e o 422 sobe', async () => {
+      const { provider, calls } = makeProvider({
+        'GET /api/v1/clients': () => paged([]),
+        'POST /api/v1/clients': () => ({ status: 422, body: ['Nome possui carácter inválido.'] }),
+      })
+
+      await expect(
+        provider.createAppointment({ ...input, customer: { name: '💤', phone: input.customer.phone } })
+      ).rejects.toMatchObject({ kind: 'rejected' })
+      expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
     })
   })
 

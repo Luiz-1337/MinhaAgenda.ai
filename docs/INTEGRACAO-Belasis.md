@@ -70,6 +70,13 @@ Não achou → cadastra (`POST /clients`, telefone só dígitos com DDI). A Bela
 - achou → usa esse;
 - não achou → `rejected` com mensagem clara ("a Belasis diz que o celular já está cadastrado, mas a busca por telefone não achou o cadastro"). Tentar de novo não resolve: o cadastro lá tem o telefone num formato que a busca não pega. Saída: corrigir o telefone do cliente na Belasis, ou gravar o vínculo `customer` à mão.
 
+**Nome no cadastro** (`toBelasisClientName`). Por um caractere só, a Belasis recusa o cadastro inteiro: `422 "Nome possui carácter inválido."; "Nickname possui carácter inválido."` (o apelido não é enviado; ela o tira do nome). Produção, Spettacolo, 03/nov: cliente com nome "💤", copiado do perfil do WhatsApp, ficou sem horário. Como não se sabe tudo o que ela recusa, só vai o que com certeza passa:
+- NFKC antes: letra estilizada ou de largura cheia vira comum ("𝓜𝓪𝓻𝓲𝓪" → "Maria");
+- letra latina, com ou sem acento, fica ("Thaíssa", "Simão"); acento solto e caractere invisível (junção de emoji) somem; **todo o resto vira espaço**: emoji, símbolo, dígito e também pontuação ("Ana 💇‍♀️ Silva" → "Ana Silva", "Ana Carolina (Sheronn)" → "Ana Carolina Sheronn", "D'Ávila" → "D Ávila"). Pontuação sai porque não sabemos qual a Belasis aceita;
+- sem nenhuma letra latina → **"Cliente WhatsApp"**.
+
+Se mesmo assim vier 422 sobre o nome (mensagem que começa com "Nome"/"Nickname" ou fala em caractere inválido), tenta **uma vez** com "Cliente WhatsApp". Melhor esse cadastro, com o telefone certo, do que o cliente sem horário. O nome do cliente no MinhaAgenda não muda; só o que vai para lá. Cliente que já existe lá (achado pela busca) não é cadastrado de novo, e o nome dele lá não é tocado.
+
 Custo na cota (30/min): cliente com o telefone só em dígitos, **1** chamada; formatado, 2; cliente novo, 2 + 1 a 5 (os 4 dígitos) + 1 (o cadastro). Para ver qual termo acha um telefone real: `scripts/diagnose-belasis.ts --phone` (seção 6).
 
 Alertas no painel (`system_alerts`, um aberto por tipo): `agenda_auth_failed` e `agenda_unavailable` (críticos — reconectar), `agenda_not_linked`, `agenda_rejected`, `agenda_write_uncertain`, `agenda_cancel_failed`, `agenda_ref_not_saved`, `agenda_conflict`.

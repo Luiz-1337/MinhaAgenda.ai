@@ -32,6 +32,7 @@ import type {
 import { BelasisClient, belasisBackgroundOptions } from './belasis-client'
 import { BelasisApiError, isBelasisApiError } from './belasis-errors'
 import {
+  BELASIS_FALLBACK_CLIENT_NAME,
   BELASIS_TIME_ZONE,
   belasisObservation,
   belasisPhoneSearchTerms,
@@ -41,6 +42,7 @@ import {
   localDatesBetween,
   parseBelasisReferenceMarker,
   phonesMatch,
+  toBelasisClientName,
   toBelasisPhone,
   toBelasisWallClock,
   type TimeRange,
@@ -55,6 +57,9 @@ const freeTimesCache = new Map<string, { expiresAt: number; slots: BelasisFreeTi
 
 /** 422 de cadastro de cliente que diz que o telefone já existe lá ("Celular já está em uso"). */
 const PHONE_TAKEN = /em uso|j[aá] (est[aá] )?cadastrad/i
+
+/** 422 de cadastro de cliente que recusa o nome ("Nome possui carácter inválido."). */
+const NAME_REJECTED = /^\s*(nome|nickname|apelido)\b|car[aá]ctere?s? inv[aá]lid/i
 
 /** Para testes. */
 export function clearBelasisFreeTimesCache(): void {
@@ -249,6 +254,25 @@ export class BelasisAgendaProvider implements AgendaProvider {
     return null
   }
 
+  /**
+   * Cadastra o cliente lá. Se a Belasis recusar o nome mesmo limpo (422 sobre o
+   * nome ou o apelido, que ela tira do nome), tenta uma vez com o nome padrão:
+   * melhor "Cliente WhatsApp" com o telefone certo do que o cliente sem horário.
+   */
+  private async createClient(name: string, phone: string): Promise<BelasisClientRecord> {
+    try {
+      return await this.client.createClient({ name, phone, cellphone: phone })
+    } catch (error) {
+      const nameRejected =
+        name !== BELASIS_FALLBACK_CLIENT_NAME &&
+        isBelasisApiError(error) &&
+        error.httpStatus === 422 &&
+        error.messages.some((m) => NAME_REJECTED.test(m))
+      if (!nameRejected) throw error
+      return this.client.createClient({ name: BELASIS_FALLBACK_CLIENT_NAME, phone, cellphone: phone })
+    }
+  }
+
   private async resolveClientId(customer: AgendaAppointmentInput['customer']): Promise<number> {
     const phone = toBelasisPhone(customer.phone)
     if (!phone) {
@@ -263,11 +287,7 @@ export class BelasisAgendaProvider implements AgendaProvider {
     if (existing) return existing.id
 
     try {
-      const created = await this.client.createClient({
-        name: customer.name.trim() || 'Cliente',
-        phone,
-        cellphone: phone,
-      })
+      const created = await this.createClient(toBelasisClientName(customer.name), phone)
       return created.id
     } catch (error) {
       // "Celular já está em uso": o cliente existe. Se foi cadastrado agora por
