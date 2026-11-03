@@ -88,7 +88,7 @@ Decisão do dono (21/out): só nesse sentido, próximos 30 dias, botão "Sincron
 Para cada agendamento lá no período:
 - **já existe aqui** (criado pela IA ou trazido antes) → cancelado lá cancela aqui; horário/profissional mudou lá corrige aqui; confirmado lá confirma aqui. Atendimento já concluído/falta aqui não é desfeito;
 - **não existe aqui** (marcado na recepção) → cria aqui com o de-para ao contrário (nº 7 → Ana) e a cliente achada pelo telefone (ou cadastrada). Entra sem as travas de expediente/conflito — lá já aceitou; se bater com algo daqui, entra mesmo assim e abre `agenda_conflict`;
-- **profissional ou serviço sem par** → fica de fora ("sem vínculo" no resumo);
+- **profissional ou serviço sem par** → fica de fora ("sem vínculo" no resumo). A Belasis devolve a agenda do salão inteiro: os itens de profissionais de lá sem par aqui são descartados logo no começo (uma consulta por profissional, não por item) e não entram no "Sincronizando… X de Y" — a barra conta só o que pode mexer em algo daqui. Exceções que ainda passam: agendamento já ligado a um daqui (a recepção pode tê-lo passado para outro profissional) e o que tem a marca `[MinhaAgenda <id>]`;
 - **visita com vários serviços** (corte com a Ana + escova com a Bia) → um agendamento aqui por serviço, com referência `grupo:item`; cancelar/remarcar um deles pela IA mexe só naquele item lá.
 
 E o contrário: o que foi para lá e não veio na lista (apagado, ou remarcado para fora do período) é conferido um a um.
