@@ -204,6 +204,26 @@ describe('importAgendaAppointments — trazer para cá o que está na agenda ofi
 
     expect(onProgress.mock.calls).toEqual([[1, 2], [2, 2]])
   })
+
+  it('profissionais de lá que não atendem por aqui saem antes do laço: fora da barra, direto em "sem vínculo"', async () => {
+    const { ctx, deps, refs } = setup({
+      items: [
+        remote({ externalId: '610' }),
+        remote({ externalId: '611', externalProfessionalId: '99' }),
+        remote({ externalId: '612', externalProfessionalId: '99', start: at('20:00'), end: at('21:00') }),
+        remote({ externalId: '613', externalProfessionalId: '98', status: 'cancelled' }),
+      ],
+    })
+    const onProgress = vi.fn()
+
+    const summary = await importAgendaAppointments(ctx, deps, { ...window, onProgress })
+
+    expect(summary).toMatchObject({ total: 4, imported: 1, skippedUnlinked: 3, unchanged: 0 })
+    expect(onProgress.mock.calls).toEqual([[1, 1]])
+    // Um par por profissional, não um por item; e nada de procurar agendamento dos outros.
+    expect(refs.getInternalId.mock.calls.filter(([entity, id]) => entity === 'professional' && id === '99')).toHaveLength(1)
+    expect(refs.getInternalId).not.toHaveBeenCalledWith('appointment', '611')
+  })
 })
 
 describe('importAgendaAppointments — o que já existe dos dois lados', () => {
@@ -268,6 +288,33 @@ describe('importAgendaAppointments — o que já existe dos dois lados', () => {
 
     expect(summary).toMatchObject({ unchanged: 1, cancelled: 0 })
     expect(deps.cancelAppointment).not.toHaveBeenCalled()
+  })
+
+  it('a recepção passou para um profissional que não atende por aqui → ainda confere (sem chamada extra)', async () => {
+    const { ctx, deps, provider } = setup({
+      items: [remote({ externalId: '501', externalProfessionalId: '99', start: at('20:00'), end: at('21:00') })],
+      refs: linked,
+      local: { [OURS]: localRow() },
+      linkedLocal: [{ ...localRow(), externalId: '501' }],
+    })
+
+    const summary = await importAgendaAppointments(ctx, deps, window)
+
+    expect(summary).toMatchObject({ updated: 1, skippedUnlinked: 0 })
+    expect(deps.moveAppointment).toHaveBeenCalledWith(OURS, { start: at('20:00'), end: at('21:00') })
+    expect(provider.getAppointment).not.toHaveBeenCalled()
+  })
+
+  it('criado pela IA para um profissional que não atende por aqui → a marca ainda liga os dois', async () => {
+    const { ctx, deps, refs } = setup({
+      items: [remote({ externalId: '501', externalProfessionalId: '99', createdByUsId: OURS })],
+      local: { [OURS]: localRow() },
+    })
+
+    const summary = await importAgendaAppointments(ctx, deps, window)
+
+    expect(summary).toMatchObject({ imported: 0, unchanged: 1, skippedUnlinked: 0 })
+    expect(refs.store.get(`appointment:${OURS}`)).toBe('501')
   })
 
   it('criado pela IA mas sem o par salvo → a marca na observação liga os dois (não duplica)', async () => {

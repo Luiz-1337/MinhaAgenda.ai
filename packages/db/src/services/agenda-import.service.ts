@@ -43,12 +43,13 @@ import type { AgendaSetupResult } from './agenda-setup.service'
 export const AGENDA_SYNC_DAYS = 30
 
 export interface AgendaImportSummary {
-  /** Itens lá no período (um por serviço). */
+  /** Itens lá no período (um por serviço), de todos os profissionais de lá. */
   total: number
   imported: number
   updated: number
   cancelled: number
   unchanged: number
+  /** Profissional ou serviço sem par aqui — inclui os profissionais de lá que não atendem por aqui. */
   skippedUnlinked: number
   skippedNoPhone: number
   /** Trazidos de lá em cima de algo que já existia aqui no mesmo horário. */
@@ -109,15 +110,37 @@ export async function importAgendaAppointments(
   }
 
   // Lança se a listagem falhar (token, fora do ar): sem a lista, não há o que sincronizar.
-  const remote = await provider.listAppointments({ start: input.start, end: input.end })
+  const listed = await provider.listAppointments({ start: input.start, end: input.end })
+
+  const internal = (entity: 'professional' | 'service', externalId: string | undefined) =>
+    externalId ? ctx.refs.getInternalId(entity, externalId) : Promise.resolve(null)
+
+  // A lista vem com o salão inteiro lá — todos os profissionais, inclusive os que
+  // não atendem por aqui (já houve 684 itens para 1 profissional vinculado).
+  // Só segue para o laço, e para a barra de progresso, o que pode mexer em algo
+  // daqui: profissional com par, marca da IA na observação, ou agendamento já
+  // ligado a um daqui (a recepção pode tê-lo passado para outro profissional lá).
+  // O resto vai direto para "sem vínculo", sem consulta item a item.
+  const linkedLocal = await deps.listLinkedLocalAppointments({ start: input.start, end: input.end })
+  const linkedExternalIds = new Set(linkedLocal.map((local) => local.externalId))
+  const professionalHasPair = new Map<string, boolean>()
+  for (const externalProfessionalId of new Set(listed.map((item) => item.externalProfessionalId))) {
+    professionalHasPair.set(externalProfessionalId, (await internal('professional', externalProfessionalId)) !== null)
+  }
+  const remote = listed.filter(
+    (item) =>
+      professionalHasPair.get(item.externalProfessionalId) === true ||
+      item.createdByUsId !== null ||
+      linkedExternalIds.has(item.externalId)
+  )
 
   const summary: AgendaImportSummary = {
-    total: remote.length,
+    total: listed.length,
     imported: 0,
     updated: 0,
     cancelled: 0,
     unchanged: 0,
-    skippedUnlinked: 0,
+    skippedUnlinked: listed.length - remote.length,
     skippedNoPhone: 0,
     conflicts: 0,
     failed: 0,
@@ -125,9 +148,6 @@ export async function importAgendaAppointments(
   const seen = new Set<string>()
   const claimed = new Set<string>()
   const customerCache = new Map<string, string | null>()
-
-  const internal = (entity: 'professional' | 'service', externalId: string | undefined) =>
-    externalId ? ctx.refs.getInternalId(entity, externalId) : Promise.resolve(null)
 
   async function resolveCustomer(externalCustomerId: string): Promise<string | null> {
     if (customerCache.has(externalCustomerId)) return customerCache.get(externalCustomerId) ?? null
@@ -253,9 +273,10 @@ export async function importAgendaAppointments(
   }
 
   // O que foi para lá e não veio na lista: apagado lá, ou remarcado para fora do período.
+  // A lista do começo basta: o que o laço tocou está em `seen`/`claimed`, e o que
+  // ele criou já nasceu com par.
   if (provider.getAppointment) {
-    const linked = await deps.listLinkedLocalAppointments({ start: input.start, end: input.end })
-    for (const local of linked) {
+    for (const local of linkedLocal) {
       if (seen.has(local.externalId) || claimed.has(local.id)) continue
       try {
         const snapshot = await provider.getAppointment(local.externalId)
