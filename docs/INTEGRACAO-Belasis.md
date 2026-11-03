@@ -97,6 +97,23 @@ Ritmo: no máximo **15 chamadas por minuto** em segundo plano — metade da cota
 
 **Pausar** = o MinhaAgenda não fala com a Belasis: a IA agenda só aqui, sem consultar nem gravar lá, e a sincronização também para. Token e vínculos continuam salvos; **Ativar** volta tudo.
 
+### 2.2 Agendamentos que já existiam antes da ativação
+
+Nada leva para a Belasis o que foi agendado aqui **antes** de ativar: a gravação lá só acontece ao criar ou remarcar, e a sincronização é só no sentido Belasis → MinhaAgenda. A recepção vê o profissional livre nesses horários. Visto no Spettacolo Salone (3/nov): 12 agendamentos futuros do Fabiano, criados em 29/out, nunca chegaram lá.
+
+**Não cadastrar à mão na Belasis:** sem o par salvo, a sincronização traz cada um de volta como agendamento novo — duplicado aqui, com lembrete em dobro.
+
+O caminho é `scripts/backfill-belasis.ts`, que grava um por um pelo mesmo fluxo da IA (confere vínculo, telefone e horário livre lá; salva o par). Por padrão só simula; `--apply` grava. Antes de criar, procura lá a marca `[MinhaAgenda <id>]`, então rodar de novo não duplica.
+
+```bash
+pnpm --filter @repo/db exec tsx ../../scripts/backfill-belasis.ts --salon <uuid>            # simulação
+pnpm --filter @repo/db exec tsx ../../scripts/backfill-belasis.ts --salon <uuid> --apply    # grava
+```
+
+Sem `pnpm` no PATH (Windows): de dentro de `packages/db`, `npx -y tsx@4.21.0 ../../scripts/backfill-belasis.ts ...` (ou `corepack pnpm ...` na raiz).
+
+Precisa de `DATABASE_URL` e da `ENCRYPTION_KEY` do app (lidas de `apps/web/.env.local`). Horário que a grade da Belasis não marca como livre — inclusive almoço — sai como "ocupado" e fica de fora até liberarem lá. `--only id1,id2` limita (bom para testar com um só); `--skip id1,id2` deixa algum de fora. Alertas são impressos, não vão para o painel do salão.
+
 ---
 
 ## 3. Conexão fácil (o que o dono vê em Integrações)
@@ -185,6 +202,7 @@ Só leitura, ~6 requisições, não imprime a chave. Conferir:
 2. Deploy do código.
 3. `scripts/diagnose-belasis.ts` com a chave do salão (seção 6).
 4. Integrações → Belasis: conectar, vincular, **Ativar**.
-5. Um agendamento de teste pela IA e conferência na agenda da Belasis (data, hora, profissional, serviço, cliente).
-6. Remarcar e cancelar esse agendamento pela IA e conferir lá.
-7. "Sincronizar agora" e conferir no painel os agendamentos da recepção (e o resumo: trazidos, sem vínculo, sem telefone).
+5. Se o salão já tinha agendamentos futuros aqui: `scripts/backfill-belasis.ts` — simulação, depois `--apply` (seção 2.2).
+6. Um agendamento de teste pela IA e conferência na agenda da Belasis (data, hora, profissional, serviço, cliente).
+7. Remarcar e cancelar esse agendamento pela IA e conferir lá.
+8. "Sincronizar agora" e conferir no painel os agendamentos da recepção (e o resumo: trazidos, sem vínculo, sem telefone).
