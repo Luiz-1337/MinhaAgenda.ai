@@ -193,8 +193,8 @@ describe.each([
 })
 
 describe("falhas que não vêm da agenda oficial", () => {
-  it("ao criar, continuam como APPOINTMENT_CREATION_FAILED", async () => {
-    createService.mockResolvedValue({ success: false, error: "Horário fora do expediente do profissional" })
+  it("ao criar, as sem código (dado inválido) continuam como APPOINTMENT_CREATION_FAILED", async () => {
+    createService.mockResolvedValue({ success: false, error: "Serviço inválido ou inativo" })
 
     const result = await createUseCase.execute({
       salonId: IDS.salonId,
@@ -207,7 +207,7 @@ describe("falhas que não vêm da agenda oficial", () => {
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.error.code).toBe("APPOINTMENT_CREATION_FAILED")
-      expect(result.error.message).toBe("Horário fora do expediente do profissional")
+      expect(result.error.message).toBe("Serviço inválido ou inativo")
     }
   })
 

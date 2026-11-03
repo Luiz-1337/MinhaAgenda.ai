@@ -12,7 +12,7 @@ import {
   IServiceRepository,
 } from "../../../domain/repositories"
 import { AppointmentDTO, CreateAppointmentDTO } from "../../dtos"
-import { mapExternalAgendaError } from "./appointment-error.mapper"
+import { mapKnownServiceError } from "./appointment-error.mapper"
 import { domainServices } from "@repo/db"
 
 /**
@@ -72,9 +72,10 @@ export class CreateAppointmentUseCase {
     })
 
     if (!result.success) {
-      // Falha na agenda oficial (ex.: Belasis) leva o motivo próprio; o resto
-      // continua como falha de criação.
-      return fail(mapExternalAgendaError(result.code, result.error) ?? new AppointmentCreationError(result.error))
+      // Cada recusa com código leva o motivo próprio (horário ocupado, fora do
+      // expediente, agenda oficial fora do ar…). Sem código sobram os dados
+      // inválidos (serviço/profissional inativo, data ilegível): falha de criação.
+      return fail(mapKnownServiceError(result.code, result.error) ?? new AppointmentCreationError(result.error))
     }
 
     // 5. Busca o agendamento criado para calcular endTime

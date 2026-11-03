@@ -6,6 +6,7 @@ import {
   AppointmentOperationError,
   ProfessionalCannotPerformServiceError,
   ProfessionalNotAvailableError,
+  ServiceRuleViolationError,
   ExternalAgendaConflictError,
   ExternalAgendaUnavailableError,
   ExternalAgendaNotLinkedError,
@@ -41,17 +42,11 @@ export function mapExternalAgendaError(
 
 /**
  * Converte o erro retornado pelos domain services (@repo/db) — um par
- * `{ error, code }` — no DomainError de apresentação correto.
- *
- * Antes (bug A2), QUALQUER falha do serviço era envolvida em
- * `AppointmentNotFoundError`, fazendo a IA receber "agendamento não encontrado"
- * mesmo quando o problema era outro (ex.: profissional não executa o serviço).
- *
- * Quando o código não é reconhecido, usa `AppointmentOperationError`, cujo
- * código não tem mensagem amigável no ErrorPresenter — então a mensagem REAL do
- * serviço é repassada à IA, em vez de ser mascarada.
+ * `{ error, code }` — no DomainError de apresentação correto. Devolve `null`
+ * quando o código não é reconhecido (ou não veio), para quem chama decidir o
+ * fallback.
  */
-export function mapServiceError(code: string | undefined, message: string): DomainError {
+export function mapKnownServiceError(code: string | undefined, message: string): DomainError | null {
   switch (code) {
     case "APPOINTMENT_NOT_FOUND":
       return new AppointmentNotFoundError()
@@ -63,7 +58,25 @@ export function mapServiceError(code: string | undefined, message: string): Doma
       return new ProfessionalCannotPerformServiceError()
     case "PROFESSIONAL_NOT_AVAILABLE":
       return new ProfessionalNotAvailableError(message)
+    // Minúsculo de propósito: é o código que o painel também lê (reserva manual).
+    case "service_rule_violation":
+      return new ServiceRuleViolationError(message)
     default:
-      return mapExternalAgendaError(code, message) ?? new AppointmentOperationError(message)
+      return mapExternalAgendaError(code, message)
   }
+}
+
+/**
+ * `mapKnownServiceError` para remarcar e cancelar.
+ *
+ * Antes (bug A2), QUALQUER falha do serviço era envolvida em
+ * `AppointmentNotFoundError`, fazendo a IA receber "agendamento não encontrado"
+ * mesmo quando o problema era outro (ex.: profissional não executa o serviço).
+ *
+ * Quando o código não é reconhecido, usa `AppointmentOperationError`, cujo
+ * código não tem mensagem amigável no ErrorPresenter — então a mensagem REAL do
+ * serviço é repassada à IA, em vez de ser mascarada.
+ */
+export function mapServiceError(code: string | undefined, message: string): DomainError {
+  return mapKnownServiceError(code, message) ?? new AppointmentOperationError(message)
 }

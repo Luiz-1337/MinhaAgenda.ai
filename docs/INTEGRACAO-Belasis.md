@@ -103,7 +103,7 @@ O token fica **cifrado** (AES-256-GCM, `ENCRYPTION_KEY`). Trocar o token num sal
 | Diagnóstico com chave real (só leitura) | `scripts/diagnose-belasis.ts` |
 
 **Testes:** `packages/db` 201/201 (Belasis: conversões 27, transporte 22, provedor 31; orquestração 38; sincronização 16; ligação em `appointments.ts` 12; vínculo 7; credencial 12); `apps/web` 451/451; mcp-server 284 verdes. As regras críticas foram validadas quebrando o código de propósito. tsc limpo em db, mcp-server e web; lint limpo nos arquivos novos.
-Os 4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) que falhavam desde `25ec1ca` (8/jun) foram acertados em 03/nov: faltavam `isWeekdayAllowed`/`timeToMinutes` no mock do `@repo/db` e o 4º argumento de `generateSlots` nas expectativas. mcp-server 312/312.
+Os 4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) que falhavam desde `25ec1ca` (8/jun) foram acertados em 03/nov: faltavam `isWeekdayAllowed`/`timeToMinutes` no mock do `@repo/db` e o 4º argumento de `generateSlots` nas expectativas. mcp-server 340/340 (03/nov).
 
 ---
 

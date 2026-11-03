@@ -729,9 +729,9 @@ export function handleToolErrors(steps: unknown[], contextLogger: Pick<Logger, "
 
   // Erros de tools internas não devem sequestrar a resposta real ao cliente
   // (ex: setChatKanbanColumn falha → cliente recebia "dificuldade técnica").
-  // Nem erros cuja mensagem já diz à IA o que responder (ex.: agenda oficial do
-  // salão fora do ar): em 03/nov/2026 o template abaixo pediu ao cliente data e
-  // horário de novo, que estavam certos.
+  // Nem erros cuja mensagem já diz à IA o que responder (ex.: horário ocupado,
+  // fora do expediente, agenda oficial do salão fora do ar): em 03/nov/2026 o
+  // template abaixo pediu ao cliente data e horário de novo, que estavam certos.
   const errors = allErrors.filter(
     (e) => !INTERNAL_TOOL_NAMES.has(e.toolName) && !(e.code && AI_GUIDED_ERROR_CODES.has(e.code))
   );

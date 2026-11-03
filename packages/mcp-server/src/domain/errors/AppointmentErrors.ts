@@ -102,6 +102,19 @@ export class ProfessionalNotAvailableError extends DomainError {
   }
 }
 
+/**
+ * Erro quando o serviço só é feito em certos dias ou horários de início (regra
+ * de agenda do serviço). A mensagem do serviço já diz quais são, então ela vai
+ * inteira para a IA (o código não tem mensagem amigável no ErrorPresenter).
+ */
+export class ServiceRuleViolationError extends DomainError {
+  readonly code = "SERVICE_RULE_VIOLATION"
+
+  constructor(message = "Este serviço não é feito neste dia ou horário") {
+    super(message)
+  }
+}
+
 /*
  * Erros da agenda OFICIAL externa (ex.: Belasis). Os códigos são os mesmos que
  * o @repo/db devolve (agenda-sync.service.ts), para o motivo chegar inteiro à

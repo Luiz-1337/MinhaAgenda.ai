@@ -6,7 +6,9 @@
  * e horário desejados?" — pedindo dados que estavam certos.
  *
  * Os erros da agenda oficial já dizem à IA o que responder (ErrorPresenter do
- * mcp-server), então para eles a resposta da IA segue para o cliente.
+ * mcp-server), então para eles a resposta da IA segue para o cliente. O mesmo
+ * vale para horário ocupado aqui ou no Google, fora do expediente, horário já
+ * passado e regra de agenda do serviço: o texto pronto pedia a data de novo.
  */
 
 import { describe, it, expect, vi } from "vitest"
@@ -53,8 +55,31 @@ describe("handleToolErrors / agenda oficial", () => {
   })
 })
 
+const LOCAL_CODES = [
+  "APPOINTMENT_CONFLICT",
+  "SLOT_UNAVAILABLE",
+  "PROFESSIONAL_NOT_AVAILABLE",
+  "PROFESSIONAL_CANNOT_PERFORM_SERVICE",
+  "PAST_APPOINTMENT",
+  "SERVICE_RULE_VIOLATION",
+]
+
+describe("handleToolErrors / horário ocupado, expediente e regras daqui", () => {
+  it.each(LOCAL_CODES)("não troca a resposta da IA quando addAppointment falha com %s", (code) => {
+    const steps = [step({ toolName: "addAppointment", result: toolError(code) })]
+
+    expect(handleToolErrors(steps, logger)).toBeNull()
+  })
+
+  it.each(LOCAL_CODES)("não troca a resposta da IA quando updateAppointment falha com %s", (code) => {
+    const steps = [step({ toolName: "updateAppointment", result: toolError(code) })]
+
+    expect(handleToolErrors(steps, logger)).toBeNull()
+  })
+})
+
 describe("handleToolErrors / demais erros (sem mudança)", () => {
-  it("addAppointment com falha comum ainda usa o texto pronto", () => {
+  it("addAppointment com dado inválido ainda usa o texto pronto", () => {
     const steps = [step({ toolName: "addAppointment", result: toolError("APPOINTMENT_CREATION_FAILED") })]
 
     expect(handleToolErrors(steps, logger)).toContain("tive dificuldade ao tentar agendar")
