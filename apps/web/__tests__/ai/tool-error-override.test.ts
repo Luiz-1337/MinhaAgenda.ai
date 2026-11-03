@@ -78,6 +78,29 @@ describe("handleToolErrors / horário ocupado, expediente e regras daqui", () =>
   })
 })
 
+describe("handleToolErrors / nome do cliente para a agenda oficial", () => {
+  // Cliente "💤" com Belasis ativa: a IA pergunta o nome antes de agendar. O
+  // texto pronto ("Pode me informar novamente a data e horário?") apagaria a pergunta.
+  it.each(["addAppointment", "updateAppointment"])(
+    "não troca a resposta da IA quando %s falha com CUSTOMER_NAME_REQUIRED",
+    (toolName) => {
+      const steps = [step({ toolName, result: toolError("CUSTOMER_NAME_REQUIRED") })]
+
+      expect(handleToolErrors(steps, logger)).toBeNull()
+    }
+  )
+
+  it("nem quando a IA já salvou o nome e agendou de novo no mesmo turno", () => {
+    const steps = [
+      step({ toolName: "addAppointment", result: toolError("CUSTOMER_NAME_REQUIRED") }),
+      step({ toolName: "updateCustomerName", result: { id: "c1", name: "Ana" } }),
+      step({ toolName: "addAppointment", result: { id: "a1", message: "Agendamento criado" } }),
+    ]
+
+    expect(handleToolErrors(steps, logger)).toBeNull()
+  })
+})
+
 describe("handleToolErrors / demais erros (sem mudança)", () => {
   it("addAppointment com dado inválido ainda usa o texto pronto", () => {
     const steps = [step({ toolName: "addAppointment", result: toolError("APPOINTMENT_CREATION_FAILED") })]

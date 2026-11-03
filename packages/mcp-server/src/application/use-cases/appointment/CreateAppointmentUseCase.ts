@@ -13,6 +13,7 @@ import {
 } from "../../../domain/repositories"
 import { AppointmentDTO, CreateAppointmentDTO } from "../../dtos"
 import { mapKnownServiceError } from "./appointment-error.mapper"
+import { checkCustomerNameForAgenda } from "./agenda-customer-name.service"
 import { domainServices } from "@repo/db"
 
 /**
@@ -54,6 +55,18 @@ export class CreateAppointmentUseCase {
     }
     if (!service) {
       return fail(new AppointmentCreationError("Serviço não encontrado"))
+    }
+
+    // Com agenda oficial ativa, o cliente é cadastrado lá pelo nome: sem nenhuma
+    // letra no nome, a IA pergunta o nome antes de agendar.
+    const nameError = await checkCustomerNameForAgenda({
+      salonId: input.salonId,
+      customerId: customer.id,
+      customerName: customer.name,
+      operation: "create",
+    })
+    if (nameError) {
+      return fail(nameError)
     }
 
     // 4. Delega para o serviço centralizado que executa todas as validações:
