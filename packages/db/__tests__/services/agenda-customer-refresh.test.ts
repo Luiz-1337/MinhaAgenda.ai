@@ -213,6 +213,33 @@ describe('refreshCustomerFromAgenda — trazer para cá o que a recepção marco
     expect(refs.store.get(`customer:${FERNANDA}`)).toBe('88')
   })
 
+  it('a listagem traz também o horário de OUTRA cliente (filtro por cliente ignorado lá) → só o dela entra', async () => {
+    const daOutra = remote({
+      externalId: '611',
+      externalCustomerId: '12',
+      start: new Date('2026-11-18T13:00:00.000Z'),
+      end: new Date('2026-11-18T14:00:00.000Z'),
+    })
+    const semDono = remote({
+      externalId: '612',
+      externalCustomerId: 'undefined',
+      start: new Date('2026-11-19T13:00:00.000Z'),
+      end: new Date('2026-11-19T14:00:00.000Z'),
+    })
+    const { ctx, deps, refs } = setup({ items: [daOutra, remote(), semDono] })
+
+    const result = await refreshCustomerFromAgenda(ctx, deps, { customer, ...range })
+
+    // O horário da outra pessoa não vira agendamento da cliente da conversa.
+    expect(deps.insertAppointment).toHaveBeenCalledTimes(1)
+    expect(deps.insertAppointment).toHaveBeenCalledWith(expect.objectContaining({ clientId: FERNANDA }))
+    expect(result.imported.map((item) => item.externalId)).toEqual(['610'])
+    expect(result.unlinked).toEqual([])
+    expect(refs.store.get('appointment:new-1')).toBe('610')
+    expect([...refs.store.values()]).not.toContain('611')
+    expect([...refs.store.values()]).not.toContain('612')
+  })
+
   it('o agendamento vai para a cliente da conversa, e não para quem o telefone guardado lá apontaria', async () => {
     const { ctx, deps } = setup({ items: [remote()] })
 

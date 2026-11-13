@@ -109,7 +109,7 @@ export function clearBelasisLookupCaches(): void {
 }
 
 /** "Marrom", " marrom " e "MARROM" são a mesma cor; "Café" e "cafe" também. */
-function normalizeColorName(name: string): string {
+export function normalizeColorName(name: string): string {
   return name
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -669,6 +669,12 @@ export class BelasisAgendaProvider implements AgendaProvider {
    * Os agendamentos de UM cliente lá no período — o filtro `client_id` da
    * listagem. Uma chamada (um cliente raramente passa de uma página), contra as
    * várias da agenda do salão inteiro.
+   *
+   * O dono de cada item é conferido AQUI também, e não só pelo filtro: quem chama
+   * dá tudo o que vier à cliente da conversa. Se a API ignorasse `client_id`, a
+   * listagem voltaria com a agenda do salão inteiro, e os horários de outras
+   * pessoas passariam a ser "dela". (O filtro vem da doc da Belasis; o
+   * comportamento real ainda não foi conferido com a chave de um salão.)
    */
   async listCustomerAppointments(
     externalCustomerId: string,
@@ -678,7 +684,10 @@ export class BelasisAgendaProvider implements AgendaProvider {
     const startDate = formatInTimeZone(range.start, this.timeZone, 'yyyy-MM-dd')
     const endDate = formatInTimeZone(range.end, this.timeZone, 'yyyy-MM-dd')
     const groups = await this.client.listScheduleGroups({ clientId, startDate, endDate })
-    return this.toRemoteAppointments(groups).filter((appointment) => overlaps(appointment, range))
+    const owner = String(clientId)
+    return this.toRemoteAppointments(groups).filter(
+      (appointment) => appointment.externalCustomerId === owner && overlaps(appointment, range)
+    )
   }
 
   /** Agendamentos da Belasis no formato da sincronização: um por serviço. */

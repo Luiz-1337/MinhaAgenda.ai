@@ -95,7 +95,14 @@ export async function refreshCustomerFromAgenda(
   if (!externalCustomerId) return NOTHING
 
   const range = { start: input.start, end: input.end }
-  const listed = await provider.listCustomerAppointments(externalCustomerId, range)
+  // Só o que é do cadastro DELA. Tudo o que passar daqui é dado à cliente da
+  // conversa (ownerCustomerId), então um item de outro cadastro — provedor que
+  // ignore o filtro por cliente e devolva a agenda inteira — não pode entrar:
+  // o horário de outra pessoa viraria "dela", e a IA o remarcaria.
+  const owner = externalCustomerId
+  const listed = (await provider.listCustomerAppointments(owner, range)).filter(
+    (item) => item.externalCustomerId === owner
+  )
   const linkedLocal = await deps.listLinkedLocalAppointments(range, { clientId: input.customer.id })
 
   const imported: AgendaImportedAppointment[] = []

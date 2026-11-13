@@ -4,7 +4,7 @@
 -- projeto, por uma instrução equivalente (os dois UPDATEs numa só, com a mesma trava de md5).
 -- Conferido depois: agente "Judite", prompt com 8.290 caracteres e md5
 -- e20953b518e066cd9dd481e54ff1cabf (o do arquivo .txt), corte feminino a R$ 450,00.
--- Rodar este arquivo de novo não muda nada.
+-- Rodar este arquivo de novo não muda nada (reexecutado em 13/nov às 00:59: sem alteração).
 --
 -- AJUSTE DE DADOS DE PRODUÇÃO. Não é migration: roda uma vez, no salão do Fabiano, por ID.
 -- Cobre os itens 3 a 12 da revisão do cliente (preço único do corte, nome "Judite",
