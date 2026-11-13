@@ -31,6 +31,7 @@ import {
   type AgendaCreatedAppointment,
 } from '../domain/integrations/interfaces/agenda-provider.interface'
 import { isAgendaProviderError } from '../domain/errors/agenda-provider-error'
+import type { LeadSource } from '../domain/constants'
 import { resolveAgendaProvider, type ResolvedAgendaProvider } from './agenda-provider-registry.service'
 import {
   findExternalRefId,
@@ -89,6 +90,12 @@ export interface AgendaPushInput {
   end: Date
   customer: { id: string; name: string; phone: string }
   notes?: string | null
+  /**
+   * Origem do lead (appointments.lead_source). O provedor marca lá o agendamento
+   * de tráfego pago se souber como (a Belasis, com uma cor). Nunca é motivo de
+   * falha: sem a marca, o agendamento vai do mesmo jeito.
+   */
+  leadSource?: LeadSource | null
 }
 
 export const AGENDA_SYNC_MESSAGES = {
@@ -248,6 +255,7 @@ async function mapForPush(
         ...(externalCustomerId ? { externalId: externalCustomerId } : {}),
       },
       ...(input.notes ? { notes: input.notes } : {}),
+      ...(input.leadSource ? { leadSource: input.leadSource } : {}),
     },
   }
 }
@@ -615,6 +623,7 @@ export async function pushAppointmentToAgenda(
       start: input.start,
       end: input.end,
       notes: input.notes,
+      leadSource: input.leadSource,
       customer,
     }
     return mode === 'create' ? await createInAgenda(ctx, push) : await rescheduleInAgenda(ctx, push)

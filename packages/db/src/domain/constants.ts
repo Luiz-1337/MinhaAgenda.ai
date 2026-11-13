@@ -35,3 +35,13 @@ export const GOOGLE_CHANNEL_EXPIRY_DAYS = 6 // Watch channels expire in ~7 days,
 export const GOOGLE_CHANNEL_RENEWAL_THRESHOLD_MS = 24 * 60 * 60 * 1000 // Renew channels expiring in <24h
 export const GOOGLE_BLOCKED_TIME_SERVICE_NAME = 'Bloqueio de Horário' as const
 export const GOOGLE_CALENDAR_PLACEHOLDER_PHONE = '0000000000' as const
+
+/**
+ * Origem do lead (customers.lead_source e appointments.lead_source, migration 035).
+ * - `paid_traffic`: a conversa nasceu de clique em anúncio;
+ * - `organic`: chegou pelo canal oficial sem anúncio.
+ * Coluna de texto com CHECK no banco, e não pgEnum: uma origem nova não pode
+ * depender de `ALTER TYPE`, que não tem volta.
+ */
+export const LEAD_SOURCES = ['paid_traffic', 'organic'] as const
+export type LeadSource = (typeof LEAD_SOURCES)[number]

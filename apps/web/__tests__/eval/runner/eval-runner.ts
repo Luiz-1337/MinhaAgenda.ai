@@ -9,10 +9,11 @@ import { saveMessage } from "@/lib/services/chat.service"
 import type {
   Conversation,
   ConversationResult,
+  ConversationRunContext,
   ConversationTurn,
   TurnResult,
 } from "../types"
-import { loadEvalEnv } from "./env"
+import { loadEvalEnv, type EvalEnv } from "./env"
 import {
   cleanupConversationContext,
   prepareConversationContext,
@@ -75,6 +76,8 @@ async function runTurn(
         customerId: seed.customerId,
         customerName: context.customerName ?? undefined,
         isNewCustomer: context.isNewCustomer,
+        // O anúncio só acompanha a primeira mensagem, como no worker.
+        ...(turnIndex === 0 && context.adReferral ? { adReferral: context.adReferral } : {}),
       }),
       AI_TURN_TIMEOUT_MS,
       `turn ${turnIndex + 1} generateAIResponse`
@@ -123,18 +126,29 @@ async function runTurn(
 }
 
 export async function runConversation(
-  conversation: Conversation
+  conversation: Conversation,
+  /** Ambiente da eval. Padrão: o das conversas "golden" (EVAL_*). */
+  env: EvalEnv = loadEvalEnv()
 ): Promise<ConversationResult> {
-  const env = loadEvalEnv()
   const start = Date.now()
   const seed = await prepareConversationContext(
     env,
     conversation.context.customerName,
-    conversation.context.seedAppointments
+    conversation.context.seedAppointments,
+    { leadSource: conversation.context.leadSource }
   )
+  const run: ConversationRunContext = {
+    salonId: env.salonId,
+    customerId: seed.customerId,
+    chatId: seed.chatId,
+    clientPhone: env.clientPhone,
+  }
 
   const turnResults: TurnResult[] = []
+  let verifyFailures: string[] = []
   try {
+    await conversation.prepare?.(run)
+
     for (let i = 0; i < conversation.turns.length; i++) {
       const turn = conversation.turns[i]!
       const result = await runTurn(turn, i, seed, conversation.context)
@@ -146,14 +160,23 @@ export async function runConversation(
         break
       }
     }
+
+    if (conversation.verify) {
+      try {
+        verifyFailures = await conversation.verify(run)
+      } catch (err) {
+        verifyFailures = [`verify threw: ${err instanceof Error ? err.message : String(err)}`]
+      }
+    }
   } finally {
     await cleanupConversationContext(seed)
   }
 
-  const passed = turnResults.every((t) => t.failures.length === 0)
+  const passed = turnResults.every((t) => t.failures.length === 0) && verifyFailures.length === 0
   return {
     conversation,
     turnResults,
+    verifyFailures,
     passed,
     durationMs: Date.now() - start,
   }

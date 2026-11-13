@@ -54,6 +54,8 @@ vi.mock('../../src/index', async () => {
         findFirst: vi.fn(async () => ({ id: PRO, salonId: SALON, isActive: true, personKey: null })),
       },
       professionalServices: { findFirst: vi.fn(async () => h.proService) },
+      // Origem do lead da cliente (customers.lead_source): aqui, cliente sem origem.
+      customers: { findFirst: vi.fn(async () => null) },
     },
     select: () => chain(() => h.workSpans),
     transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),

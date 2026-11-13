@@ -48,4 +48,16 @@ export interface AppointmentListDTO {
   appointments: AppointmentDTO[]
   total: number
   message: string
+  /**
+   * Presente quando o salão tem agenda oficial externa (onde a recepção também
+   * marca) e ela foi consultada para montar esta lista.
+   * - `checked` / `recent`: consultada (agora, ou há instantes) — a lista inclui
+   *   o que a recepção marcou;
+   * - `failed`: não respondeu — pode haver horário lá que não aparece aqui.
+   */
+  officialAgenda?: {
+    status: "checked" | "recent" | "failed"
+    /** Horários que existem lá e não puderam vir para cá: não dá para alterá-los por aqui. */
+    unlinked: Array<{ startsAt: string; startsAtISO: string }>
+  }
 }

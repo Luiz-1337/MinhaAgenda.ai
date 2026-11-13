@@ -4,6 +4,7 @@ import { BelasisClient } from '../../src/infrastructure/integrations/belasis/bel
 import {
   BelasisAgendaProvider,
   clearBelasisFreeTimesCache,
+  clearBelasisLookupCaches,
 } from '../../src/infrastructure/integrations/belasis/belasis-agenda-provider'
 import { belasisReferenceMarker } from '../../src/infrastructure/integrations/belasis/belasis-mapping'
 import type { AgendaAppointmentInput } from '../../src/domain/integrations/interfaces/agenda-provider.interface'
@@ -41,7 +42,11 @@ function fakeApi(routes: Record<string, Handler | Array<{ status: number; body?:
   return { impl: impl as unknown as typeof fetch, calls }
 }
 
-function makeProvider(routes: Parameters<typeof fakeApi>[0], now = () => Date.UTC(2026, 10, 9, 12, 0, 30)) {
+function makeProvider(
+  routes: Parameters<typeof fakeApi>[0],
+  now = () => Date.UTC(2026, 10, 9, 12, 0, 30),
+  options: { trafficColor?: string | null } = {}
+) {
   const api = fakeApi(routes)
   const client = new BelasisClient({
     apiKey: 'bpk_teste',
@@ -50,7 +55,7 @@ function makeProvider(routes: Parameters<typeof fakeApi>[0], now = () => Date.UT
     sleep: async () => undefined,
     now,
   })
-  return { provider: new BelasisAgendaProvider(client, { now }), calls: api.calls }
+  return { provider: new BelasisAgendaProvider(client, { now, ...options }), calls: api.calls }
 }
 
 const paged = (data: unknown[]) => ({ status: 200, body: { data, page: 1, limit: 100, total: data.length } })
@@ -96,6 +101,7 @@ const group = (overrides: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   clearBelasisFreeTimesCache()
+  clearBelasisLookupCaches()
 })
 
 describe('BelasisAgendaProvider.getBusyIntervals', () => {
@@ -761,6 +767,386 @@ describe('BelasisAgendaProvider — cancelar, conferir, catálogo', () => {
 
     await expect(
       provider.getBusyIntervals({ externalProfessionalId: 'abc', start: input.start, end: input.end })
+    ).rejects.toMatchObject({ kind: 'rejected' })
+    expect(calls).toEqual([])
+  })
+})
+
+describe('BelasisAgendaProvider — cor do agendamento de lead de tráfego', () => {
+  const COLORS = [
+    { id: 3, name: 'Confirmado', color: '#2196F3', default_for: 'confirmed' },
+    { id: 17, name: 'Marrom', color: '#3E2723', default_for: null },
+  ]
+  const CLIENT = { id: 88, name: 'Maria Souza', cellphone: '5547991054646' }
+  const traffic: AgendaAppointmentInput = { ...input, leadSource: 'paid_traffic' }
+
+  const routes = (extra: Parameters<typeof fakeApi>[0] = {}): Parameters<typeof fakeApi>[0] => ({
+    'GET /api/v1/clients': () => paged([CLIENT]),
+    'GET /api/v1/schedule_colors': () => ({ status: 200, body: COLORS }),
+    'POST /api/v1/schedule_groups': () => ({ status: 201, body: group() }),
+    ...extra,
+  })
+  const groupPosts = (calls: Call[]) =>
+    calls.filter((c) => c.method === 'POST' && c.path === '/api/v1/schedule_groups').map((c) => c.body ?? {})
+  const colorLookups = (calls: Call[]) => calls.filter((c) => c.path === '/api/v1/schedule_colors').length
+
+  it('tráfego + cor configurada pelo nome → manda o schedule_color_id que a conta tem para essa cor', async () => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: 'Marrom' })
+
+    const created = await provider.createAppointment(traffic)
+
+    expect(created).toEqual({ externalId: '501', externalCustomerId: '88' })
+    expect(groupPosts(calls)).toEqual([expect.objectContaining({ client_id: 88, schedule_color_id: 17 })])
+  })
+
+  it.each([' marrom ', 'MARROM', 'Marróm'])('o nome configurado como "%s" acha a cor "Marrom"', async (name) => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: name })
+
+    await provider.createAppointment(traffic)
+
+    expect(groupPosts(calls)[0]).toMatchObject({ schedule_color_id: 17 })
+  })
+
+  it('lead orgânico ou de origem desconhecida → sem cor, e nem consulta as cores', async () => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: 'Marrom' })
+
+    await provider.createAppointment({ ...input, leadSource: 'organic' })
+    await provider.createAppointment(input)
+
+    expect(groupPosts(calls).every((body) => !('schedule_color_id' in body))).toBe(true)
+    expect(colorLookups(calls)).toBe(0)
+  })
+
+  it.each([undefined, null, '', '   '])('cor não configurada (%j) → agenda normalmente, sem cor e sem consulta', async (value) => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: value })
+
+    const created = await provider.createAppointment(traffic)
+
+    expect(created.externalId).toBe('501')
+    expect(groupPosts(calls)).toHaveLength(1)
+    expect(groupPosts(calls)[0]).not.toHaveProperty('schedule_color_id')
+    expect(colorLookups(calls)).toBe(0)
+  })
+
+  it('a conta não tem cor com o nome configurado → agenda sem cor', async () => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: 'Roxo' })
+
+    const created = await provider.createAppointment(traffic)
+
+    expect(created.externalId).toBe('501')
+    expect(groupPosts(calls)[0]).not.toHaveProperty('schedule_color_id')
+  })
+
+  it('a listagem de cores está fora do ar → agenda sem cor', async () => {
+    const { provider, calls } = makeProvider(
+      routes({ 'GET /api/v1/schedule_colors': () => ({ status: 500 }) }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    const created = await provider.createAppointment(traffic)
+
+    expect(created.externalId).toBe('501')
+    expect(groupPosts(calls)).toHaveLength(1)
+    expect(groupPosts(calls)[0]).not.toHaveProperty('schedule_color_id')
+  })
+
+  it('a Belasis recusa a cor (422) → cria de novo SEM a cor, e o agendamento sai', async () => {
+    const { provider, calls } = makeProvider(
+      routes({
+        'POST /api/v1/schedule_groups': [
+          { status: 422, body: ['Cor de agendamento não encontrada'] },
+          { status: 201, body: group() },
+        ],
+      }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    const created = await provider.createAppointment(traffic)
+
+    expect(created).toEqual({ externalId: '501', externalCustomerId: '88' })
+    const posts = groupPosts(calls)
+    expect(posts).toHaveLength(2)
+    expect(posts[0]).toMatchObject({ schedule_color_id: 17 })
+    expect(posts[1]).not.toHaveProperty('schedule_color_id')
+    expect(posts[1]).toMatchObject({ client_id: 88, date: '2026-11-10' })
+  })
+
+  it('recusa de texto desconhecido com cor → tenta uma vez sem a cor antes de desistir', async () => {
+    const { provider, calls } = makeProvider(
+      routes({
+        'POST /api/v1/schedule_groups': [
+          { status: 422, body: ['Parâmetros inválidos'] },
+          { status: 201, body: group() },
+        ],
+      }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    await expect(provider.createAppointment(traffic)).resolves.toMatchObject({ externalId: '501' })
+    expect(groupPosts(calls).map((body) => 'schedule_color_id' in body)).toEqual([true, false])
+  })
+
+  it('recusa que continua sem a cor → o erro da Belasis sobe (a cor não mascara outro problema)', async () => {
+    const { provider, calls } = makeProvider(
+      routes({ 'POST /api/v1/schedule_groups': () => ({ status: 422, body: ['Profissional não atende o serviço'] }) }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    await expect(provider.createAppointment(traffic)).rejects.toMatchObject({ kind: 'rejected' })
+    expect(groupPosts(calls)).toHaveLength(2)
+  })
+
+  it('horário recusado com cor → slot_unavailable na hora, sem segunda tentativa', async () => {
+    const { provider, calls } = makeProvider(
+      routes({ 'POST /api/v1/schedule_groups': () => ({ status: 422, body: ['Horário indisponível'] }) }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    await expect(provider.createAppointment(traffic)).rejects.toMatchObject({ kind: 'slot_unavailable' })
+    expect(groupPosts(calls)).toHaveLength(1)
+  })
+
+  it('depois de recusada, a cor fica de fora por alguns minutos: o POST recusado não se repete a cada agendamento', async () => {
+    let now = Date.UTC(2026, 10, 9, 12, 0, 30)
+    const { provider, calls } = makeProvider(
+      routes({
+        'POST /api/v1/schedule_groups': [
+          { status: 422, body: ['Cor de agendamento não encontrada'] },
+          { status: 201, body: group() },
+          { status: 201, body: group({ id: 502 }) },
+          { status: 201, body: group({ id: 503 }) },
+        ],
+      }),
+      () => now,
+      { trafficColor: 'Marrom' }
+    )
+
+    await provider.createAppointment(traffic) // recusada, depois sem cor
+    await provider.createAppointment(traffic) // direto sem cor
+    expect(groupPosts(calls).map((body) => 'schedule_color_id' in body)).toEqual([true, false, false])
+
+    now += 11 * 60_000 // passou o tempo: confere a cor de novo
+    await provider.createAppointment(traffic)
+    expect(groupPosts(calls)[3]).toMatchObject({ schedule_color_id: 17 })
+  })
+
+  it('consulta as cores uma vez e reaproveita nos agendamentos seguintes', async () => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: 'Marrom' })
+
+    await provider.createAppointment(traffic)
+    await provider.createAppointment(traffic)
+
+    expect(colorLookups(calls)).toBe(1)
+    expect(groupPosts(calls).map((body) => body.schedule_color_id)).toEqual([17, 17])
+  })
+
+  it('id numérico configurado → usa direto, sem consultar as cores', async () => {
+    const { provider, calls } = makeProvider(routes(), undefined, { trafficColor: '42' })
+
+    await provider.createAppointment(traffic)
+
+    expect(groupPosts(calls)[0]).toMatchObject({ schedule_color_id: 42 })
+    expect(colorLookups(calls)).toBe(0)
+  })
+
+  it('id de cliente guardado envelhecido + cor: troca o cliente e MANTÉM a cor', async () => {
+    const { provider, calls } = makeProvider(
+      routes({
+        'POST /api/v1/schedule_groups': [
+          { status: 422, body: ['Cliente não encontrado'] },
+          { status: 201, body: group() },
+        ],
+      }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    const created = await provider.createAppointment({ ...traffic, customer: { ...traffic.customer, externalId: '999' } })
+
+    expect(created).toEqual({ externalId: '501', externalCustomerId: '88' })
+    expect(groupPosts(calls).map((body) => [body.client_id, body.schedule_color_id])).toEqual([
+      [999, 17],
+      [88, 17],
+    ])
+  })
+
+  it('cliente velho E cor recusada → sai sem cor, com o cliente certo', async () => {
+    const { provider, calls } = makeProvider(
+      routes({
+        'POST /api/v1/schedule_groups': [
+          { status: 422, body: ['Cliente não encontrado'] },
+          { status: 422, body: ['Erro que não diz qual campo'] },
+          { status: 201, body: group() },
+        ],
+      }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    const created = await provider.createAppointment({ ...traffic, customer: { ...traffic.customer, externalId: '999' } })
+
+    expect(created.externalCustomerId).toBe('88')
+    expect(groupPosts(calls).map((body) => [body.client_id, body.schedule_color_id])).toEqual([
+      [999, 17],
+      [88, 17],
+      [88, undefined],
+    ])
+  })
+
+  it('remarcar para outro dia: o agendamento novo de lá também leva a cor', async () => {
+    const { provider, calls } = makeProvider(
+      routes({
+        'GET /api/v1/schedule_groups/501': () => ({ status: 200, body: group({ date: '2026-11-09' }) }),
+        'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ id: 777 }) }),
+        'DELETE /api/v1/schedule_groups/501': () => ({ status: 204 }),
+      }),
+      undefined,
+      { trafficColor: 'Marrom' }
+    )
+
+    const moved = await provider.rescheduleAppointment('501', { ...traffic, customer: { ...traffic.customer, externalId: '88' } })
+
+    expect(moved.externalId).toBe('777')
+    expect(groupPosts(calls)[0]).toMatchObject({ client_id: 88, schedule_color_id: 17 })
+  })
+})
+
+describe('BelasisAgendaProvider — o que a cliente já tem marcado lá', () => {
+  const PHONE = '5547991054646'
+
+  it('findCustomerByPhone acha o cadastro pelo telefone (qualquer formato) e não cadastra ninguém', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/clients': clientSearch({
+        '9105-4646': [{ id: 88, name: 'Maria Souza', phone: '(47) 99105-4646', active: true }],
+      }),
+    })
+
+    await expect(provider.findCustomerByPhone('+55 (47) 99105-4646')).resolves.toEqual({
+      externalId: '88',
+      name: 'Maria Souza',
+    })
+    expect(calls.every((c) => c.method === 'GET')).toBe(true)
+  })
+
+  it('não achou → null, e o agendamento logo depois NÃO repete a busca: cadastra direto', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/clients': () => paged([]),
+      'POST /api/v1/clients': () => ({ status: 201, body: { id: 140, name: 'Maria Souza', cellphone: PHONE } }),
+      'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ client_id: 140 }) }),
+    })
+
+    await expect(provider.findCustomerByPhone(PHONE)).resolves.toBeNull()
+    expect(searchTerms(calls)).toEqual(['91054646', '9105-4646', '4646'])
+
+    const created = await provider.createAppointment(input)
+
+    expect(created.externalCustomerId).toBe('140')
+    expect(searchTerms(calls)).toHaveLength(3) // nenhuma busca a mais
+  })
+
+  it('a lembrança de "não achei" dura pouco: passado o tempo, o agendamento volta a procurar', async () => {
+    let now = Date.UTC(2026, 10, 9, 12, 0, 30)
+    const { provider, calls } = makeProvider(
+      {
+        'GET /api/v1/clients': () => paged([]),
+        'POST /api/v1/clients': () => ({ status: 201, body: { id: 140, name: 'Maria Souza', cellphone: PHONE } }),
+        'POST /api/v1/schedule_groups': () => ({ status: 201, body: group({ client_id: 140 }) }),
+      },
+      () => now
+    )
+
+    await provider.findCustomerByPhone(PHONE)
+    now += 11 * 60_000
+    await provider.createAppointment(input)
+
+    expect(searchTerms(calls)).toHaveLength(6)
+  })
+
+  it('cliente nova que demora para responder o nome: a segunda consulta não repete a busca', async () => {
+    let now = Date.UTC(2026, 10, 9, 12, 0, 30)
+    const { provider, calls } = makeProvider({ 'GET /api/v1/clients': () => paged([]) }, () => now)
+
+    await expect(provider.findCustomerByPhone(PHONE)).resolves.toBeNull()
+    now += 4 * 60_000
+    await expect(provider.findCustomerByPhone(PHONE)).resolves.toBeNull()
+
+    expect(searchTerms(calls)).toHaveLength(3)
+  })
+
+  it('"não achei" lembrado, mas a Belasis diz que o celular já existe → procura de novo e usa o cadastro que apareceu', async () => {
+    let registered = false
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/clients': () => paged(registered ? [{ id: 88, name: 'Maria Souza', cellphone: PHONE }] : []),
+      'POST /api/v1/clients': () => {
+        registered = true // a recepção cadastrou nesse meio-tempo
+        return { status: 422, body: ['Celular já está em uso'] }
+      },
+      'POST /api/v1/schedule_groups': () => ({ status: 201, body: group() }),
+    })
+
+    await expect(provider.findCustomerByPhone(PHONE)).resolves.toBeNull()
+    const created = await provider.createAppointment(input)
+
+    expect(created.externalCustomerId).toBe('88')
+    expect(calls.filter((c) => c.method === 'POST' && c.path === '/api/v1/schedule_groups')).toHaveLength(1)
+  })
+
+  it('o que não é telefone (id interno do WhatsApp) → null sem tocar na API', async () => {
+    const { provider, calls } = makeProvider({})
+
+    await expect(provider.findCustomerByPhone('136784245694524')).resolves.toBeNull()
+    expect(calls).toEqual([])
+  })
+
+  it('listCustomerAppointments pede só os agendamentos daquela cliente, no período, em datas de Brasília', async () => {
+    const { provider, calls } = makeProvider({
+      'GET /api/v1/schedule_groups': () =>
+        paged([
+          {
+            id: 610,
+            client_id: 88,
+            status: 'unconfirmed',
+            date: '2026-11-17',
+            observation: 'Marcado pela recepção',
+            calendars: [{ id: 9100, employee_id: 7, inventory_product_id: 33, start_hour: '17:00', end_hour: '18:00' }],
+          },
+        ]),
+    })
+
+    const appointments = await provider.listCustomerAppointments('88', {
+      start: new Date('2026-11-12T03:00:00.000Z'),
+      end: new Date('2027-05-11T03:00:00.000Z'),
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].query).toMatchObject({ client_id: '88', start_date: '2026-11-12', end_date: '2027-05-11' })
+    expect(appointments).toEqual([
+      {
+        externalId: '610',
+        status: 'active',
+        confirmed: false,
+        start: new Date('2026-11-17T20:00:00.000Z'),
+        end: new Date('2026-11-17T21:00:00.000Z'),
+        externalProfessionalId: '7',
+        externalServiceId: '33',
+        externalCustomerId: '88',
+        remindedByProvider: false,
+        createdByUsId: null,
+        notes: 'Marcado pela recepção',
+      },
+    ])
+  })
+
+  it('vínculo de cliente inválido → recusa sem chamar a API', async () => {
+    const { provider, calls } = makeProvider({})
+
+    await expect(
+      provider.listCustomerAppointments('abc', { start: input.start, end: input.end })
     ).rejects.toMatchObject({ kind: 'rejected' })
     expect(calls).toEqual([])
   })

@@ -126,6 +126,33 @@ export function extractAdReferral(msg: CloudInboundMessage): AdReferral | null {
 }
 
 /**
+ * De onde veio o lead, para a marca gravada no cliente e nos agendamentos
+ * (customers.lead_source / appointments.lead_source, migration 035). Os valores
+ * são os de `LeadSource` do @repo/db — repetidos aqui porque este módulo não
+ * importa nada.
+ */
+export type CloudLeadSource = 'paid_traffic' | 'organic';
+
+/**
+ * Classifica a mensagem que chegou: tráfego pago ou orgânico.
+ *
+ * - `source_type: 'ad'` → tráfego pago (Click-to-WhatsApp);
+ * - sem `source_type`, mas com `ctwa_clid` → tráfego pago: o click id só existe
+ *   em clique de anúncio;
+ * - `source_type: 'post'` → orgânico: a cliente veio de uma publicação, não de
+ *   mídia paga;
+ * - sem `referral` → orgânico. É o caso de quase toda mensagem, inclusive as
+ *   seguintes de quem veio de anúncio — por isso quem grava nunca rebaixa
+ *   tráfego para orgânico (ver recordCustomerLeadSource).
+ */
+export function leadSourceFromReferral(referral: AdReferral | null | undefined): CloudLeadSource {
+  if (!referral) return 'organic';
+  if (referral.sourceType === 'ad') return 'paid_traffic';
+  if (!referral.sourceType && referral.ctwaClid) return 'paid_traffic';
+  return 'organic';
+}
+
+/**
  * Bloco de contexto do anúncio para o system prompt. String vazia quando não há
  * anúncio, para concatenar sem `if` no template (mesma convenção dos outros
  * blocos do prompt builder).

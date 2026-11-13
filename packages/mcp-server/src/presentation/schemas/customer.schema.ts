@@ -39,7 +39,7 @@ export const updateCustomerNameSchema = z.object({
   name: z
     .string()
     .min(1, "Nome é obrigatório")
-    .describe("Novo nome do cliente"),
+    .describe("O nome como a cliente escreveu nesta conversa, de preferência nome e sobrenome"),
 })
 
 export type UpdateCustomerNameInput = z.infer<typeof updateCustomerNameSchema>

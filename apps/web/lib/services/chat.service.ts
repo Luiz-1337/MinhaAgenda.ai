@@ -2,7 +2,8 @@
  * Serviço para operações relacionadas a chats e mensagens
  */
 
-import { db, chats, messages, salons, profiles, customers, and, desc, eq, gte, sql, BRAZIL_TIMEZONE } from "@repo/db"
+import { db, chats, messages, salons, profiles, customers, and, desc, eq, gte, sql, BRAZIL_TIMEZONE, domainServices } from "@repo/db"
+import type { LeadSource } from "@repo/db"
 import type { ChatMessage } from "../types/chat"
 import type { RagTrace } from "./ai/rag-context.service"
 import { logger } from "../infra/logger"
@@ -32,6 +33,26 @@ export async function findOrCreateCustomer(
     ),
     columns: { id: true, name: true }
   })
+
+  // O mesmo telefone guardado em outro formato (cadastrado pelo painel sem o 55,
+  // sem o 9, ou formatado) é a MESMA pessoa: reaproveita o cadastro em vez de
+  // criar um segundo. Sem isto a conversa caía num cadastro novo e vazio, e a IA
+  // não enxergava os agendamentos do primeiro. Nunca derruba a entrada da
+  // mensagem: se a busca falhar, segue para a criação como antes.
+  if (!customer) {
+    try {
+      const sameNumber = await domainServices.adoptCustomerByPhone({ salonId, phone: normalizedPhone })
+      if (sameNumber) {
+        logger.info(
+          { customerId: sameNumber.id, salonId },
+          "Cliente achado pelo telefone em outro formato; cadastro reaproveitado"
+        )
+        customer = { id: sameNumber.id, name: sameNumber.name }
+      }
+    } catch (error) {
+      logger.warn({ error, salonId }, "Busca de cliente por telefone em outro formato falhou; seguindo")
+    }
+  }
 
   // Se não existir, tenta criar com proteção contra race condition
   if (!customer) {
@@ -127,6 +148,38 @@ export async function findOrCreateCustomer(
   }
 
   return { id: customer.id, name: customer.name }
+}
+
+/**
+ * Grava no cliente a origem do lead (tráfego pago × orgânico) que a mensagem
+ * trouxe. `incoming` vem de `leadSourceFromReferral` — o canal é quem sabe.
+ *
+ * Nunca lança: atribuição não pode derrubar a entrega da mensagem (mesmo
+ * princípio de persistAdReferral). Por isso é uma escrita separada, e não uma
+ * coluna a mais na leitura do cliente: se a coluna ainda não existir (deploy
+ * antes da migration 035), isto loga e a mensagem entra do mesmo jeito.
+ *
+ * É um UPDATE condicional e idempotente — só muda a linha quando a marca sobe
+ * (vazio → orgânico/tráfego, orgânico → tráfego). Nas demais mensagens não
+ * encontra o que mudar.
+ */
+export async function recordLeadSource(input: {
+  salonId: string
+  customerId: string
+  incoming: LeadSource
+}): Promise<void> {
+  try {
+    await domainServices.recordCustomerLeadSource({
+      salonId: input.salonId,
+      customerId: input.customerId,
+      source: input.incoming,
+    })
+  } catch (error) {
+    logger.warn(
+      { error, customerId: input.customerId, source: input.incoming },
+      "Falha ao gravar a origem do lead no cliente; mensagem segue"
+    )
+  }
 }
 
 /**

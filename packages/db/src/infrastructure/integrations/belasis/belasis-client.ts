@@ -24,6 +24,7 @@ import type {
   BelasisEmployee,
   BelasisFreeTime,
   BelasisPage,
+  BelasisScheduleColor,
   BelasisScheduleGroup,
   BelasisScheduleStatus,
   BelasisService,
@@ -300,6 +301,12 @@ export class BelasisClient {
    */
   deleteScheduleGroup(id: number): Promise<void> {
     return this.request<void>('DELETE', `/api/v1/schedule_groups/${id}`)
+  }
+
+  /** As cores de agendamento da conta. Vem tudo de uma vez: a rota não pagina. */
+  async listScheduleColors(): Promise<BelasisScheduleColor[]> {
+    const colors = await this.request<BelasisScheduleColor[]>('GET', '/api/v1/schedule_colors')
+    return Array.isArray(colors) ? colors : []
   }
 
   // ==========================================================================

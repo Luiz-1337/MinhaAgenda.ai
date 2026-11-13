@@ -13,11 +13,12 @@ const SLOT_TAKEN_MESSAGE =
 /**
  * Mensagens amigáveis para erros de domínio
  *
- * PAST_APPOINTMENT, SERVICE_RULE_VIOLATION e CUSTOMER_NAME_REQUIRED ficam de
- * fora de propósito: a mensagem do próprio erro já é a certa ("Não é possível
- * agendar em um horário que já passou", "Este serviço só é realizado em: Ter,
- * Qui.", o pedido do nome com o customerId) e vai inteira para a IA. Uma frase
- * única aqui trocaria o motivo por outro.
+ * PAST_APPOINTMENT, SERVICE_RULE_VIOLATION, CUSTOMER_NAME_REQUIRED e
+ * EXISTING_APPOINTMENT_FOUND ficam de fora de propósito: a mensagem do próprio
+ * erro já é a certa ("Não é possível agendar em um horário que já passou", "Este
+ * serviço só é realizado em: Ter, Qui.", o pedido do nome com o customerId, o
+ * horário que a cliente já tem) e vai inteira para a IA. Uma frase única aqui
+ * trocaria o motivo por outro.
  */
 const ERROR_MESSAGES: Record<string, string> = {
   // Erros de Agendamento
@@ -90,6 +91,8 @@ export const AI_GUIDED_ERROR_CODES: ReadonlySet<string> = new Set([
   "SERVICE_RULE_VIOLATION",
   // A pergunta da IA pelo nome tem que chegar ao cliente.
   "CUSTOMER_NAME_REQUIRED",
+  // Idem a pergunta "é para remarcar o horário que você já tem?".
+  "EXISTING_APPOINTMENT_FOUND",
   "EXTERNAL_AGENDA_CONFLICT",
   "EXTERNAL_AGENDA_UNAVAILABLE",
   "EXTERNAL_AGENDA_NOT_LINKED",
