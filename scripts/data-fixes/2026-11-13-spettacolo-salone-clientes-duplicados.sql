@@ -1,5 +1,11 @@
 -- 2026-11-13 — Spettacolo Salone (Fabiano Eber): unificar 4 clientes em dois cadastros cada
 --
+-- APLICADO EM PRODUÇÃO em 13/nov/2026 às 01:00 (Brasília) / 04:00 UTC, pelo dono do projeto,
+-- antes da migration 035. Conferido depois: os 4 cadastros do WhatsApp saíram; os 4 que
+-- ficaram estão com o telefone no formato do WhatsApp, mantêm agendamento e vínculo com a
+-- Belasis, casam cada um com uma conversa e receberam a origem do lead na carga da 035.
+-- Rodar este arquivo de novo não muda nada.
+--
 -- AJUSTE DE DADOS DE PRODUÇÃO. Não é migration: roda uma vez, no salão do Fabiano, por ID.
 --
 -- O QUE ACONTECEU: em 29/out a recepção cadastrou estas clientes pelo painel, e o painel

@@ -1142,6 +1142,27 @@ describe('BelasisAgendaProvider — o que a cliente já tem marcado lá', () => 
     ])
   })
 
+  it('a API devolve horários de outras clientes (filtro `client_id` ignorado) → ficam de fora', async () => {
+    const group = (id: number, clientId: number | undefined, hour: string) => ({
+      id,
+      ...(clientId === undefined ? {} : { client_id: clientId }),
+      status: 'unconfirmed',
+      date: '2026-11-17',
+      calendars: [{ id: id * 10, employee_id: 7, inventory_product_id: 33, start_hour: hour, end_hour: '18:00' }],
+    })
+    const { provider } = makeProvider({
+      'GET /api/v1/schedule_groups': () =>
+        paged([group(611, 12, '10:00'), group(610, 88, '17:00'), group(612, undefined, '11:00')]),
+    })
+
+    const appointments = await provider.listCustomerAppointments('88', {
+      start: new Date('2026-11-12T03:00:00.000Z'),
+      end: new Date('2027-05-11T03:00:00.000Z'),
+    })
+
+    expect(appointments.map((appointment) => appointment.externalId)).toEqual(['610'])
+  })
+
   it('vínculo de cliente inválido → recusa sem chamar a API', async () => {
     const { provider, calls } = makeProvider({})
 
