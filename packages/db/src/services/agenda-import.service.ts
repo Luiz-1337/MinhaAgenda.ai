@@ -30,6 +30,7 @@ import {
   AGENDA_PROVIDER_LABELS,
   type AgendaAppointmentSnapshot,
   type AgendaProviderId,
+  type AgendaRemoteAppointment,
 } from '../domain/integrations/interfaces/agenda-provider.interface'
 import { BRAZIL_TIMEZONE } from '../utils/timezone.utils'
 import { phoneMatchKey, toE164Digits } from '../utils/phone-match.utils'
@@ -66,13 +67,26 @@ export interface LocalAppointmentRow {
   serviceId: string
 }
 
+/** Um agendamento de lá que passou a existir aqui nesta rodada. */
+export interface AgendaImportedAppointment {
+  appointmentId: string
+  externalId: string
+  start: Date
+  end: Date
+  professionalId: string
+  serviceId: string
+}
+
 export interface AgendaImportDeps {
   findLocalAppointment(id: string): Promise<LocalAppointmentRow | null>
-  /** Agendamentos daqui com par lá, pendentes/confirmados, no período. */
-  listLinkedLocalAppointments(range: {
-    start: Date
-    end: Date
-  }): Promise<Array<LocalAppointmentRow & { externalId: string }>>
+  /**
+   * Agendamentos daqui com par lá, pendentes/confirmados, no período. Com
+   * `clientId`, só os de um cliente (a consulta por cliente, antes de agendar).
+   */
+  listLinkedLocalAppointments(
+    range: { start: Date; end: Date },
+    filter?: { clientId?: string }
+  ): Promise<Array<LocalAppointmentRow & { externalId: string }>>
   insertAppointment(input: {
     professionalId: string
     serviceId: string
@@ -90,6 +104,13 @@ export interface AgendaImportDeps {
   markConfirmed(id: string): Promise<void>
   findOrCreateCustomer(input: { name: string; phone: string }): Promise<string | null>
   hasConflict(input: { professionalId: string; start: Date; end: Date; excludeId?: string }): Promise<boolean>
+  /**
+   * Desfaz um agendamento que acabou de ser criado aqui e não pôde ficar: outra
+   * rodada (a sincronização do salão × a consulta de uma cliente) trouxe o mesmo
+   * agendamento de lá ao mesmo tempo e ficou com o par. Sem isto sobraria um
+   * agendamento em dobro aqui.
+   */
+  discardAppointment?(id: string): Promise<void>
 }
 
 function errorMessage(error: unknown): string {
@@ -111,6 +132,38 @@ export async function importAgendaAppointments(
 
   // Lança se a listagem falhar (token, fora do ar): sem a lista, não há o que sincronizar.
   const listed = await provider.listAppointments({ start: input.start, end: input.end })
+  const linkedLocal = await deps.listLinkedLocalAppointments({ start: input.start, end: input.end })
+
+  return reconcileAgendaAppointments(ctx, deps, { listed, linkedLocal, onProgress: input.onProgress })
+}
+
+/**
+ * O miolo da sincronização: recebe o que está lá (`listed`) e o que daqui tem par
+ * lá (`linkedLocal`) e deixa os dois lados iguais. Quem chama decide o recorte:
+ * o salão inteiro (`importAgendaAppointments`) ou uma cliente só
+ * (`refreshCustomerFromAgenda`, antes de a IA remarcar ou agendar).
+ */
+export async function reconcileAgendaAppointments(
+  ctx: AgendaSyncContext,
+  deps: AgendaImportDeps,
+  input: {
+    listed: AgendaRemoteAppointment[]
+    linkedLocal: Array<LocalAppointmentRow & { externalId: string }>
+    /**
+     * O cliente DAQUI que é dono de todos os itens (recorte de uma cliente: a
+     * lista veio do cadastro dela lá). Sem isto, cada item acha ou cadastra o
+     * cliente pelo telefone guardado lá.
+     */
+    ownerCustomerId?: string
+    onProgress?: (done: number, total: number) => void
+    /** Um agendamento de lá passou a existir aqui. */
+    onImported?: (imported: AgendaImportedAppointment) => void
+    /** Um agendamento ATIVO de lá ficou de fora: profissional ou serviço sem par aqui. */
+    onUnlinked?: (item: AgendaRemoteAppointment) => void
+  }
+): Promise<AgendaImportSummary> {
+  const provider = ctx.agenda.provider
+  const { listed, linkedLocal } = input
 
   const internal = (entity: 'professional' | 'service', externalId: string | undefined) =>
     externalId ? ctx.refs.getInternalId(entity, externalId) : Promise.resolve(null)
@@ -121,18 +174,21 @@ export async function importAgendaAppointments(
   // daqui: profissional com par, marca da IA na observação, ou agendamento já
   // ligado a um daqui (a recepção pode tê-lo passado para outro profissional lá).
   // O resto vai direto para "sem vínculo", sem consulta item a item.
-  const linkedLocal = await deps.listLinkedLocalAppointments({ start: input.start, end: input.end })
   const linkedExternalIds = new Set(linkedLocal.map((local) => local.externalId))
   const professionalHasPair = new Map<string, boolean>()
   for (const externalProfessionalId of new Set(listed.map((item) => item.externalProfessionalId))) {
     professionalHasPair.set(externalProfessionalId, (await internal('professional', externalProfessionalId)) !== null)
   }
-  const remote = listed.filter(
-    (item) =>
-      professionalHasPair.get(item.externalProfessionalId) === true ||
-      item.createdByUsId !== null ||
-      linkedExternalIds.has(item.externalId)
-  )
+  const reaches = (item: AgendaRemoteAppointment) =>
+    professionalHasPair.get(item.externalProfessionalId) === true ||
+    item.createdByUsId !== null ||
+    linkedExternalIds.has(item.externalId)
+  const remote = listed.filter(reaches)
+  if (input.onUnlinked) {
+    for (const item of listed) {
+      if (!reaches(item) && item.status === 'active') input.onUnlinked(item)
+    }
+  }
 
   const summary: AgendaImportSummary = {
     total: listed.length,
@@ -239,8 +295,9 @@ export async function importAgendaAppointments(
         ])
         if (!professionalId || !serviceId) {
           summary.skippedUnlinked++
+          input.onUnlinked?.(item)
         } else {
-          const clientId = await resolveCustomer(item.externalCustomerId)
+          const clientId = input.ownerCustomerId ?? (await resolveCustomer(item.externalCustomerId))
           if (!clientId) {
             summary.skippedNoPhone++
           } else {
@@ -256,9 +313,30 @@ export async function importAgendaAppointments(
               status: item.confirmed ? 'confirmed' : 'pending',
               ...(item.notes ? { notes: item.notes } : {}),
             })
-            await ctx.refs.setExternalId('appointment', newId, item.externalId)
+            try {
+              await ctx.refs.setExternalId('appointment', newId, item.externalId)
+            } catch (error) {
+              // O par já é de outro agendamento daqui: outra rodada trouxe este
+              // mesmo agendamento agora há pouco (o índice único de lá para cá é
+              // o que decide quem fica). O que acabou de ser criado é a sobra.
+              const winner = await ctx.refs.getInternalId('appointment', item.externalId)
+              if (!winner || winner === newId || !deps.discardAppointment) throw error
+              await deps.discardAppointment(newId)
+              claimed.add(winner)
+              summary.unchanged++
+              input.onProgress?.(index + 1, remote.length)
+              continue
+            }
             claimed.add(newId)
             summary.imported++
+            input.onImported?.({
+              appointmentId: newId,
+              externalId: item.externalId,
+              start: item.start,
+              end: item.end,
+              professionalId,
+              serviceId,
+            })
           }
         }
       }
@@ -327,7 +405,7 @@ export function createAgendaImportDeps(salonId: string, providerId: AgendaProvid
       return row ?? null
     },
 
-    async listLinkedLocalAppointments(range) {
+    async listLinkedLocalAppointments(range, filter) {
       return db
         .select({ ...localColumns, externalId: integrationExternalRefs.externalId })
         .from(appointments)
@@ -345,12 +423,20 @@ export function createAgendaImportDeps(salonId: string, providerId: AgendaProvid
             eq(appointments.salonId, salonId),
             inArray(appointments.status, ['pending', 'confirmed']),
             gte(appointments.date, range.start),
-            lt(appointments.date, range.end)
+            lt(appointments.date, range.end),
+            ...(filter?.clientId ? [eq(appointments.clientId, filter.clientId)] : [])
           )
         )
     },
 
     async insertAppointment(input) {
+      // A origem do lead acompanha a cliente também no que a recepção marcou lá:
+      // quem veio de anúncio e fechou por telefone continua sendo lead de tráfego.
+      const [owner] = await db
+        .select({ leadSource: customers.leadSource })
+        .from(customers)
+        .where(and(eq(customers.id, input.clientId), eq(customers.salonId, salonId)))
+        .limit(1)
       const [row] = await db
         .insert(appointments)
         .values({
@@ -364,6 +450,7 @@ export function createAgendaImportDeps(salonId: string, providerId: AgendaProvid
           // Veio da agenda oficial: já está lá.
           syncStatus: 'synced',
           notes: input.notes ?? null,
+          leadSource: owner?.leadSource ?? null,
         })
         .returning({ id: appointments.id })
       // O Google (se conectado) espelha a agenda daqui — inclusive o que veio de lá.
@@ -411,9 +498,11 @@ export function createAgendaImportDeps(salonId: string, providerId: AgendaProvid
       const match = candidates.find((c) => phoneMatchKey(c.phone) === key)
       if (match) return match.id
 
+      // O nome vem do cadastro da agenda oficial (digitado pela recepção), não do
+      // perfil do WhatsApp: já nasce confirmado.
       const [created] = await db
         .insert(customers)
-        .values({ salonId, name: name.trim() || 'Cliente', phone })
+        .values({ salonId, name: name.trim() || 'Cliente', phone, nameConfirmedAt: new Date() })
         .onConflictDoNothing()
         .returning({ id: customers.id })
       if (created) return created.id
@@ -423,6 +512,24 @@ export function createAgendaImportDeps(salonId: string, providerId: AgendaProvid
         columns: { id: true },
       })
       return existing?.id ?? null
+    },
+
+    async discardAppointment(id) {
+      // Só o que veio de lá e ainda não tem par: nunca apaga um agendamento que
+      // alguém já vinculou. (O espelho do Google, se o salão tiver, pode ter
+      // recebido o evento dessa sobra; a sincronização do Google o reconcilia.)
+      await db.delete(appointments).where(
+        and(
+          eq(appointments.id, id),
+          eq(appointments.salonId, salonId),
+          sql`not exists (
+            select 1 from ${integrationExternalRefs}
+             where ${integrationExternalRefs.salonId} = ${salonId}
+               and ${integrationExternalRefs.entityType} = 'appointment'
+               and ${integrationExternalRefs.internalId} = ${appointments.id}
+          )`
+        )
+      )
     },
 
     async hasConflict({ professionalId, start, end, excludeId }) {

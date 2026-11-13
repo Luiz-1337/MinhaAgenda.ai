@@ -7,6 +7,7 @@ import {
   buildReactionLabel,
   extractAdReferral,
   formatAdReferralText,
+  leadSourceFromReferral,
   type CloudInboundMessage,
 } from "@/lib/services/messaging/cloud/content"
 
@@ -237,6 +238,66 @@ describe("extractAdReferral", () => {
   it("normaliza espaços e quebras de linha do texto do anúncio", () => {
     const r = extractAdReferral({ type: "text", referral: { headline: " Corte\n\n  e cor " } })
     expect(r?.headline).toBe("Corte e cor")
+  })
+})
+
+/**
+ * Origem do lead gravada no cliente e nos agendamentos (migration 035). A
+ * classificação parte do que a Meta manda em `messages[0].referral`.
+ * Em 12/nov/2026, no Spettacolo Salone, 749 das 903 conversas tinham `source_type:
+ * "ad"` e 39 só `"post"`.
+ */
+describe("leadSourceFromReferral — tráfego pago ou orgânico", () => {
+  /** A primeira mensagem de quem clicou num anúncio, como a Cloud API entrega. */
+  const fromAd: CloudInboundMessage = {
+    type: "text",
+    text: { body: "Quero agendar um horário!" },
+    referral: {
+      source_type: "ad",
+      source_id: "120240000000000001",
+      source_url: "https://fb.me/abc",
+      headline: "Corte em Alta Definição",
+      body: "Agende seu horário",
+      media_type: "image",
+      ctwa_clid: "clid_abc",
+    },
+  }
+
+  it("clique em anúncio (source_type ad) → tráfego pago", () => {
+    expect(leadSourceFromReferral(extractAdReferral(fromAd))).toBe("paid_traffic")
+  })
+
+  it("mensagem comum, sem referral → orgânico", () => {
+    expect(leadSourceFromReferral(extractAdReferral({ type: "text", text: { body: "Oi" } }))).toBe("organic")
+    expect(leadSourceFromReferral(null)).toBe("organic")
+    expect(leadSourceFromReferral(undefined)).toBe("organic")
+  })
+
+  it("veio de uma publicação (source_type post) → orgânico: não é mídia paga", () => {
+    const fromPost = extractAdReferral({
+      type: "text",
+      referral: { source_type: "post", source_id: "999", headline: "Antes e depois" },
+    })
+
+    expect(leadSourceFromReferral(fromPost)).toBe("organic")
+  })
+
+  it("sem source_type mas com o click id do anúncio → tráfego pago", () => {
+    expect(leadSourceFromReferral(extractAdReferral({ type: "text", referral: { ctwa_clid: "clid_abc" } }))).toBe(
+      "paid_traffic"
+    )
+  })
+
+  it("referral só com texto, sem tipo nem click id → orgânico (na dúvida não marca como pago)", () => {
+    expect(leadSourceFromReferral(extractAdReferral({ type: "text", referral: { headline: "Corte e cor" } }))).toBe(
+      "organic"
+    )
+  })
+
+  it("tipo desconhecido que a Meta venha a criar → orgânico, mesmo com click id", () => {
+    expect(
+      leadSourceFromReferral(extractAdReferral({ type: "text", referral: { source_type: "story", ctwa_clid: "x" } }))
+    ).toBe("organic")
   })
 })
 

@@ -22,6 +22,8 @@ import {
   primaryKey
 } from 'drizzle-orm/pg-core'
 
+import type { LeadSource } from './domain/constants'
+
 // ============================================================================
 // CUSTOM TYPES
 // ============================================================================
@@ -330,6 +332,10 @@ export const appointments = pgTable(
     priceCharged: numeric('price_charged', { precision: 10, scale: 2 }),
     // 'panel' | 'cron' | 'ai' | 'google' | 'legacy'
     outcomeSource: text('outcome_source'),
+    // Origem do lead (migration 035): cópia de customers.lead_source NO MOMENTO da
+    // criação. O que foi marcado antes de a cliente clicar num anúncio continua
+    // 'organic'. NULL = não se sabe. CHECK no banco.
+    leadSource: text('lead_source').$type<LeadSource>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -618,6 +624,16 @@ export const customers = pgTable(
     // que recebe os bloqueios da sync). is_system=true => não aparece no CRM nem
     // entra em segmentações de marketing.
     isSystem: boolean('is_system').default(false).notNull(),
+    // O nome foi informado por uma PESSOA (migration 035)? NULL = veio do perfil do
+    // WhatsApp ou é provisório ("Sil", "💤", "Novo Cliente (11)"). Preenchido quando
+    // a própria cliente informa (tool updateCustomerName), alguém digita no painel
+    // ou o cadastro vem da agenda oficial. Com agenda oficial ativa, a IA só cria
+    // cadastro lá com nome confirmado — ver customer-agenda-name.service.ts.
+    nameConfirmedAt: timestamp('name_confirmed_at'),
+    // Origem do lead (migration 035). 'paid_traffic' = a conversa nasceu de clique em
+    // anúncio (messages.ad_referral); 'organic' = o resto do canal oficial; NULL =
+    // canal que não entrega a origem. Só sobe de 'organic' para 'paid_traffic'.
+    leadSource: text('lead_source').$type<LeadSource>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },

@@ -7,6 +7,7 @@
 
 import type { GenerateResponseResult } from "@/lib/services/ai/generate-response.service"
 import type { ResponsesRunnerStep } from "@/lib/services/ai/openai-responses-runner.service"
+import type { AdReferral } from "@/lib/services/messaging/cloud/content"
 
 export interface ToolCallExpectation {
   /** Tool names that MUST be called at some point in this turn's steps. */
@@ -73,6 +74,25 @@ export interface ConversationContext {
    * o professionalId/serviceId do ambiente de eval. Limpos no cleanup.
    */
   seedAppointments?: { inDays: number }[]
+  /**
+   * Origem do lead gravada no cliente ANTES da conversa (customers.lead_source).
+   * Em produção quem grava é o webhook, a partir do `referral` da Meta; a eval
+   * entra depois do webhook, então semeia direto.
+   */
+  leadSource?: "paid_traffic" | "organic"
+  /**
+   * Anúncio de origem, entregue ao bot só no PRIMEIRO turno — como o worker faz
+   * com a mensagem que carrega o `referral`.
+   */
+  adReferral?: AdReferral
+}
+
+/** O que os ganchos `prepare`/`verify` de uma conversa recebem. */
+export interface ConversationRunContext {
+  salonId: string
+  customerId: string
+  chatId: string
+  clientPhone: string
 }
 
 export interface Conversation {
@@ -80,6 +100,16 @@ export interface Conversation {
   description: string
   context: ConversationContext
   turns: ConversationTurn[]
+  /**
+   * Roda depois de o cliente e o chat de teste existirem e antes do primeiro
+   * turno. Serve para montar estado externo (ex.: a agenda oficial simulada).
+   */
+  prepare?: (run: ConversationRunContext) => Promise<void> | void
+  /**
+   * Roda depois do último turno, antes da limpeza. Devolve as falhas (vazio =
+   * passou). Serve para conferir o que ficou gravado fora da conversa.
+   */
+  verify?: (run: ConversationRunContext) => Promise<string[]> | string[]
 }
 
 export interface TurnResult {
@@ -93,6 +123,8 @@ export interface TurnResult {
 export interface ConversationResult {
   conversation: Conversation
   turnResults: TurnResult[]
+  /** Falhas do gancho `verify` da conversa (estado conferido no fim). */
+  verifyFailures: string[]
   passed: boolean
   durationMs: number
 }

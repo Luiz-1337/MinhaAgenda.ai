@@ -34,6 +34,7 @@ import {
 import { IDS } from "../../../helpers/fixtures"
 
 const hasActiveAgenda = vi.mocked(domainServices.hasActiveAgendaProvider)
+const needsName = vi.mocked(domainServices.customerNeedsNameForAgenda)
 const createService = vi.mocked(domainServices.createAppointmentService)
 const updateService = vi.mocked(domainServices.updateAppointmentService)
 
@@ -79,6 +80,7 @@ beforeEach(() => {
   )
 
   hasActiveAgenda.mockResolvedValue(true)
+  needsName.mockResolvedValue(false)
   createService.mockResolvedValue({ success: true, data: { appointmentId: IDS.appointmentId } })
   updateService.mockResolvedValue({ success: true, data: { appointmentId: IDS.appointmentId } })
 
@@ -231,5 +233,107 @@ describe("remarcar", () => {
 
     expect((await updateUseCase.execute(rescheduleInput)).success).toBe(true)
     expect(updateService).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * Caso real (Spettacolo Salone, 07/nov/2026): "Quero agendar um horário!". O
+ * perfil do WhatsApp dizia "Sil"; a IA agendou sem perguntar o nome e a cliente
+ * foi cadastrada na Belasis como "Sil". Três dias depois a recepção escreveu:
+ * "Ola Silvana, você pode me informar seu sobrenome para finalizar o seu
+ * cadastro?", e só então ela informou o nome (o sobrenome dos testes é fictício).
+ */
+describe("nome do perfil do WhatsApp não serve para o cadastro na agenda do salão", () => {
+  beforeEach(() => {
+    storedCustomer = customerNamed("Sil")
+    // O que o @repo/db responde de verdade: precisa do nome enquanto ninguém o
+    // informou (e a cliente ainda não tem cadastro lá).
+    needsName.mockImplementation(async () => storedCustomer.nameConfirmedAt === null)
+  })
+
+  it('"Sil" + agenda oficial + sem cadastro lá → não agenda e manda pedir o nome completo', async () => {
+    const result = await createUseCase.execute(createInput)
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("CUSTOMER_NAME_REQUIRED")
+    expect(needsName).toHaveBeenCalledWith({ salonId: IDS.salonId, customerId: IDS.customerId })
+    expect(createService).not.toHaveBeenCalled()
+
+    const json = ErrorPresenter.toJSON(result.error)
+    const message = String(json.message)
+    expect(message).toContain("Nada foi agendado")
+    expect(message).toContain("veio do perfil do WhatsApp")
+    expect(message).toContain("pergunte o nome completo dela (nome e sobrenome)")
+    expect(message).toContain(`updateCustomerName (customerId: ${IDS.customerId})`)
+    expect(message).toContain("NÃO chame updateCustomerName com o nome do perfil")
+    expect(message).toContain("Não peça data nem horário de novo")
+  })
+
+  it("a cliente informa o nome → fica confirmado e a nova tentativa, com os mesmos dados, agenda", async () => {
+    expect((await createUseCase.execute(createInput)).success).toBe(false)
+
+    const renamed = await updateCustomerUseCase.execute({ customerId: IDS.customerId, name: "Silvana Prado Lima" })
+    expect(renamed.success).toBe(true)
+    expect(storedCustomer.name).toBe("Silvana Prado Lima")
+    expect(storedCustomer.nameConfirmedAt).toBeInstanceOf(Date)
+    // É o que vai para o banco (customers.name_confirmed_at).
+    expect(storedCustomer.toPersistence().nameConfirmedAt).toBeInstanceOf(Date)
+
+    const second = await createUseCase.execute(createInput)
+    expect(second.success).toBe(true)
+    expect(createService).toHaveBeenCalledTimes(1)
+    expect(createService).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: IDS.customerId, date: createInput.startsAt })
+    )
+  })
+
+  it("confirmar de novo não reescreve a data da primeira confirmação", async () => {
+    await updateCustomerUseCase.execute({ customerId: IDS.customerId, name: "Silvana" })
+    const first = storedCustomer.nameConfirmedAt
+
+    await updateCustomerUseCase.execute({ customerId: IDS.customerId, name: "Silvana Prado Lima" })
+
+    expect(storedCustomer.nameConfirmedAt).toBe(first)
+  })
+
+  it("quem já tem cadastro na agenda do salão (ou já informou o nome) não é perguntada", async () => {
+    needsName.mockResolvedValue(false)
+
+    const result = await createUseCase.execute(createInput)
+
+    expect(result.success).toBe(true)
+    expect(createService).toHaveBeenCalled()
+  })
+
+  it("remarcar também passa pela trava, com o texto de remarcação", async () => {
+    const result = await updateUseCase.execute(rescheduleInput)
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("CUSTOMER_NAME_REQUIRED")
+    expect(result.error.message).toContain("Nada foi alterado")
+    expect(result.error.message).toContain("nome completo")
+    expect(result.error.message).toContain("tente remarcar de novo")
+    expect(updateService).not.toHaveBeenCalled()
+  })
+
+  it("se não der para saber (a consulta lança) → segue, sem travar o agendamento", async () => {
+    needsName.mockRejectedValue(new Error("duas agendas oficiais ativas"))
+
+    const result = await createUseCase.execute(createInput)
+
+    expect(result.success).toBe(true)
+    expect(createService).toHaveBeenCalled()
+  })
+
+  it("nome sem letra continua com a mensagem própria (pede o nome, não o sobrenome)", async () => {
+    storedCustomer = customerNamed("💤")
+
+    const result = await createUseCase.execute(createInput)
+    if (result.success) throw new Error("esperava falha")
+
+    expect(result.error.message).toContain("o nome que temos não tem letras")
+    expect(result.error.message).not.toContain("perfil do WhatsApp")
   })
 })

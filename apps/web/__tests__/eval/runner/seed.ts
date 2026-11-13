@@ -18,6 +18,7 @@ import {
   appointments,
   chats,
   customers,
+  integrationExternalRefs,
   messages,
   professionals,
   services,
@@ -95,6 +96,19 @@ async function ensureFixturesExist(env: EvalEnv): Promise<{ agentId: string }> {
   return { agentId: agent.id }
 }
 
+/** Apaga os de-para com a agenda oficial (integration_external_refs) dos ids informados. */
+async function deleteExternalRefsOf(salonId: string, internalIds: string[]): Promise<void> {
+  if (internalIds.length === 0) return
+  await db
+    .delete(integrationExternalRefs)
+    .where(
+      and(
+        eq(integrationExternalRefs.salonId, salonId),
+        inArray(integrationExternalRefs.internalId, internalIds)
+      )
+    )
+}
+
 /**
  * Resolves (or recreates) the test customer + chat. Returns identifiers
  * needed to run a conversation.
@@ -102,7 +116,8 @@ async function ensureFixturesExist(env: EvalEnv): Promise<{ agentId: string }> {
 export async function prepareConversationContext(
   env: EvalEnv,
   customerName: string | null,
-  seedAppointments?: { inDays: number }[]
+  seedAppointments?: { inDays: number }[],
+  options: { leadSource?: "paid_traffic" | "organic" } = {}
 ): Promise<EvalSeed> {
   const { agentId } = await ensureFixturesExist(env)
 
@@ -135,15 +150,25 @@ export async function prepareConversationContext(
       ),
       columns: { id: true, name: true },
     })
-  } else if (customer.name !== customerDisplayName) {
-    await db
-      .update(customers)
-      .set({ name: customerDisplayName, updatedAt: new Date() })
-      .where(eq(customers.id, customer.id))
   }
   if (!customer) {
     throw new Error("Failed to create/find eval customer")
   }
+
+  // Cada conversa começa com o cliente no estado de quem acabou de chegar pelo
+  // WhatsApp: o nome é o do perfil (ainda não confirmado por ninguém), a origem
+  // do lead é a que a conversa pedir, e não há cadastro vinculado na agenda
+  // oficial. Sem isto, a conversa anterior decide o resultado da seguinte.
+  await db
+    .update(customers)
+    .set({
+      name: customerDisplayName,
+      nameConfirmedAt: null,
+      leadSource: options.leadSource ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(customers.id, customer.id))
+  await deleteExternalRefsOf(env.salonId, [customer.id])
 
   // Active chat for the conversation. Force a fresh one each run by closing
   // any existing active chat first.
@@ -205,6 +230,17 @@ export async function prepareConversationContext(
  * and any appointments booked during the conversation. Idempotent.
  */
 export async function cleanupConversationContext(seed: EvalSeed): Promise<void> {
+  // Vínculos com a agenda oficial (cliente e agendamentos da conversa): sem
+  // apagá-los, a próxima conversa começaria com a cliente "já cadastrada lá".
+  const created = await db.query.appointments.findMany({
+    where: and(
+      eq(appointments.salonId, seed.env.salonId),
+      eq(appointments.clientId, seed.customerId)
+    ),
+    columns: { id: true },
+  })
+  await deleteExternalRefsOf(seed.env.salonId, [seed.customerId, ...created.map((a) => a.id)])
+
   // Delete appointments for this customer in this salon (safety net — only
   // appointments created during eval will exist for the eval phone).
   await db

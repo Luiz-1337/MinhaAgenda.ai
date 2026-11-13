@@ -11,6 +11,7 @@ export interface CustomerRow {
   email?: string | null
   preferences?: Record<string, unknown> | null
   aiPreferences?: string | null
+  nameConfirmedAt?: Date | null
   createdAt?: Date
   updatedAt?: Date
 }
@@ -31,6 +32,7 @@ export class CustomerMapper {
       email: row.email,
       preferences: row.preferences,
       aiPreferences: row.aiPreferences,
+      nameConfirmedAt: row.nameConfirmedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }
@@ -50,6 +52,7 @@ export class CustomerMapper {
       email: props.email,
       preferences: props.preferences,
       aiPreferences: props.aiPreferences,
+      nameConfirmedAt: props.nameConfirmedAt,
       createdAt: props.createdAt,
       updatedAt: props.updatedAt,
     }

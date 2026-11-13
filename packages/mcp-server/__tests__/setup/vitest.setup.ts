@@ -52,6 +52,11 @@ vi.mock("@repo/db", async () => {
       // Agenda oficial externa (AgendaBusySource).
       hasActiveAgendaProvider: vi.fn(),
       getAgendaBusyIntervals: vi.fn(),
+      // Agenda oficial × cliente: o nome serve para o cadastro de lá? O que ela já
+      // tem marcado lá? Sem roteiro devolvem undefined, que os casos de uso leem
+      // como "não precisa de nome" e "nada marcado lá".
+      customerNeedsNameForAgenda: vi.fn(),
+      refreshCustomerAppointmentsFromAgenda: vi.fn(),
     },
   }
 })

@@ -41,6 +41,30 @@ export interface UpcomingAppointmentSnapshot {
   startsAt: string
 }
 
+/**
+ * O que o prompt precisa saber quando o salão tem AGENDA OFICIAL externa (ex.:
+ * Belasis) — o sistema onde a recepção também marca horários. Sem agenda oficial
+ * (o caso da maioria dos salões), nada disto entra no prompt.
+ */
+export interface OfficialAgendaPromptContext {
+  /** O salão tem agenda oficial ativa. */
+  active: boolean
+  /**
+   * A agenda foi consultada para montar o bloco de agendamentos DESTA mensagem?
+   * - `checked` / `recent`: sim — o bloco já inclui o que a equipe marcou lá;
+   * - `failed`: tentou e ela não respondeu;
+   * - ausente: não foi consultada (mensagem que não falava de horário existente).
+   */
+  lookup?: "checked" | "recent" | "failed"
+  /** Horários que existem lá e não podem ser alterados por aqui, já formatados. */
+  teamSlots?: string[]
+  /**
+   * O nome que temos veio do perfil do WhatsApp e a cliente ainda não tem
+   * cadastro na agenda oficial: a IA pede o nome completo antes de agendar.
+   */
+  customerNeedsFullName?: boolean
+}
+
 const TIMEZONE = "America/Sao_Paulo"
 
 /**
@@ -267,29 +291,87 @@ function qualitativeTier(totalSpent: number, visits: number, vipScore: number): 
  * - itens → lista numerada com IDs internos (uso interno; nunca exibir ao cliente).
  */
 export function formatUpcomingAppointmentsText(
-  appointments?: UpcomingAppointmentSnapshot[] | null
+  appointments?: UpcomingAppointmentSnapshot[] | null,
+  officialAgenda?: OfficialAgendaPromptContext | null
 ): string {
   if (appointments == null) return ""
 
+  const agendaText = formatOfficialAgendaNotes(officialAgenda, appointments.length === 0)
+
   if (appointments.length === 0) {
-    return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE: nenhum no momento.\n- Se o cliente pedir para remarcar ou cancelar, informe gentilmente que não há agendamentos futuros e ofereça agendar um novo. NUNCA peça telefone.`
+    // Salão com agenda oficial e a agenda NÃO foi conferida nesta mensagem: a
+    // lista vazia não prova nada, porque a equipe marca direto lá. Dizer "não há
+    // agendamentos" aqui foi o que fez a IA criar um segundo horário para quem só
+    // queria remarcar (10 e 12/nov/2026).
+    if (agendaText.replacesEmptyRule) {
+      return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE: nenhum registrado aqui.${agendaText.text}\n- NUNCA peça telefone.`
+    }
+    return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE: nenhum no momento${agendaText.confirmed ? " (conferido agora também na agenda do salão)" : ""}.\n- Se o cliente pedir para remarcar ou cancelar, informe gentilmente que não há agendamentos futuros e ofereça agendar um novo. NUNCA peça telefone.${agendaText.text}`
   }
 
   const lines = appointments
     .slice(0, 10)
     .map((a, i) => `${i + 1}. ${a.serviceName} com ${a.professionalName} — ${a.startsAt} [id interno: ${a.id}]`)
 
-  return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE (contexto privado — atualizado a cada mensagem):\n${lines.join("\n")}\n- Use estes dados para remarcar/cancelar. Os IDs são INTERNOS: use-os em updateAppointment/removeAppointment, mas NUNCA mostre ao cliente.\n- NUNCA peça telefone nem identificação para localizar agendamentos — o cliente já está identificado pelo WhatsApp.`
+  return `\n\nAGENDAMENTOS FUTUROS DO CLIENTE (contexto privado — atualizado a cada mensagem):\n${lines.join("\n")}\n- Use estes dados para remarcar/cancelar. Os IDs são INTERNOS: use-os em updateAppointment/removeAppointment, mas NUNCA mostre ao cliente.\n- NUNCA peça telefone nem identificação para localizar agendamentos — o cliente já está identificado pelo WhatsApp.${agendaText.text}`
+}
+
+/**
+ * O que acrescentar ao bloco de agendamentos quando o salão tem agenda oficial.
+ *
+ * - `replacesEmptyRule`: com a lista vazia, troca a regra "informe que não há
+ *   agendamentos" pela ordem de consultar a agenda antes;
+ * - `confirmed`: a lista (vazia ou não) já foi conferida na agenda nesta mensagem.
+ */
+function formatOfficialAgendaNotes(
+  officialAgenda: OfficialAgendaPromptContext | null | undefined,
+  listIsEmpty: boolean
+): { text: string; replacesEmptyRule: boolean; confirmed: boolean } {
+  if (!officialAgenda?.active) return { text: "", replacesEmptyRule: false, confirmed: false }
+
+  const notes: string[] = []
+  const confirmed = officialAgenda.lookup === "checked" || officialAgenda.lookup === "recent"
+
+  if (officialAgenda.lookup === "failed") {
+    notes.push(
+      "- ATENÇÃO: neste salão a equipe também marca horários direto na agenda do salão, e ela NÃO respondeu agora. Pode existir horário que não aparece aqui. Se a cliente falar de um horário que já tem (remarcar, cancelar, \"tenho horário marcado\"), chame getMyFutureAppointments para tentar de novo. Se continuar sem resposta, diga que não conseguiu conferir a agenda agora e ofereça tentar em instantes — NÃO afirme que ela não tem agendamento e NÃO crie outro horário no lugar."
+    )
+  } else if (!confirmed) {
+    notes.push(
+      listIsEmpty
+        ? "- ATENÇÃO: neste salão a equipe também marca horários direto na agenda do salão, e eles podem não aparecer aqui. Se a cliente pedir para remarcar ou cancelar, ou disser que já tem horário marcado, chame getMyFutureAppointments ANTES de responder: ele consulta a agenda do salão. Só diga que não há agendamento depois dessa consulta, e NUNCA crie um horário novo para quem quer remarcar um que já tem."
+        : "- Neste salão a equipe também marca horários direto na agenda do salão. Se a cliente falar de um horário que NÃO está nesta lista, chame getMyFutureAppointments antes de responder: ele consulta a agenda do salão."
+    )
+  }
+
+  const teamSlots = (officialAgenda.teamSlots ?? []).filter((slot) => slot.trim().length > 0)
+  if (teamSlots.length > 0) {
+    notes.push(
+      `- HORÁRIOS MARCADOS PELA EQUIPE na agenda do salão que NÃO podem ser alterados por aqui: ${teamSlots.join("; ")}. Se a cliente quiser remarcar ou cancelar um deles, avise a equipe do salão. NUNCA crie outro horário no lugar deles.`
+    )
+  }
+
+  return {
+    text: notes.length > 0 ? `\n${notes.join("\n")}` : "",
+    replacesEmptyRule: listIsEmpty && officialAgenda.lookup !== "checked" && officialAgenda.lookup !== "recent",
+    confirmed,
+  }
 }
 
 /**
  * Formata informações do cliente em texto
  */
-function formatCustomerInfoText(
+export function formatCustomerInfoText(
   customerName?: string,
   customerId?: string,
   isNewCustomer?: boolean,
-  noShowRisk?: { isHighRisk: boolean; cancellationRatio: number }
+  noShowRisk?: { isHighRisk: boolean; cancellationRatio: number },
+  /**
+   * Salão com agenda oficial, e o nome que temos veio do perfil do WhatsApp: a
+   * IA pede o nome completo antes do primeiro agendamento (ver
+   * OfficialAgendaPromptContext.customerNeedsFullName).
+   */
+  needsFullName?: boolean
 ): string {
   if (!customerName && !customerId) {
     return ""
@@ -300,6 +382,21 @@ function formatCustomerInfoText(
     : ""
 
   if (customerName) {
+    // O nome do perfil do WhatsApp ("Sil", "Gi") não é nome de cadastro. Em
+    // 07/nov/2026 uma cliente foi cadastrada na agenda do salão só como
+    // "Sil" porque a IA usou o apelido sem perguntar. A tool de agendar também
+    // trava (CUSTOMER_NAME_REQUIRED); este bloco existe para a pergunta sair na
+    // hora certa, e não como resposta a um erro.
+    if (needsFullName && customerId && !needsNameUpdate(customerName)) {
+      const status = isNewCustomer === true ? "Cliente nova" : isNewCustomer === false ? "Cliente recorrente" : "Cliente"
+      return `\n\nINFORMAÇÃO DO CLIENTE:
+- Nome no perfil do WhatsApp: "${sanitizeUserInput(customerName, 80)}". É o apelido do perfil, NÃO o nome de cadastro. customerId: ${customerId}
+- ${status}
+- NOME COMPLETO ANTES DE AGENDAR (OBRIGATÓRIO): a agenda do salão cadastra a cliente pelo nome. Quando ela escolher o horário, e ANTES de chamar addAppointment, pergunte o nome completo dela (nome e sobrenome). Quando ela responder, chame updateCustomerName com o que ela escreveu e só então agende. Não pergunte o nome na saudação nem para quem só quer tirar dúvida.
+- Pergunte uma vez. Se ela der só o primeiro nome, peça o sobrenome uma vez; se não quiser informar, siga com o agendamento.
+- NUNCA chame updateCustomerName com o nome do perfil nem com um nome que ela não tenha escrito nesta conversa. Pode tratá-la pelo primeiro nome do perfil enquanto isso.${noShowWarning}`
+    }
+
     if (needsNameUpdate(customerName) && customerId) {
       const cleanedName = customerName.replace(EMOJI_REGEX, "").trim()
       const nameHint = cleanedName.length >= 2 ? ` (WhatsApp: "${customerName}")` : ""
@@ -379,15 +476,27 @@ export class SystemPromptBuilder {
      * anúncio. Recebido formatado, igual ao conversationStateText — quem monta é
      * formatAdReferralText, ao lado da tabela de campos do referral.
      */
-    adContextText?: string
+    adContextText?: string,
+    /**
+     * Só para salão com agenda oficial externa (ex.: Belasis): muda o bloco do
+     * cliente (pedir o nome completo) e o de agendamentos (consultar a agenda do
+     * salão antes de dizer que não há horário). Ausente = salão sem agenda oficial.
+     */
+    officialAgenda?: OfficialAgendaPromptContext | null
   ): Promise<string> {
     // Usa agentInfo passado ou busca (evita duplicação)
     const agentInfo = existingAgentInfo ?? await AgentInfoService.getActiveAgentInfo(salonId)
     const { formattedDate, formattedTime, isoDate } = formatDateTime()
     const preferencesText = formatPreferencesText(preferences)
-    const customerInfoText = formatCustomerInfoText(customerName, customerId, isNewCustomer, noShowRisk)
+    const customerInfoText = formatCustomerInfoText(
+      customerName,
+      customerId,
+      isNewCustomer,
+      noShowRisk,
+      officialAgenda?.active === true && officialAgenda.customerNeedsFullName === true
+    )
     const trinksProfileText = formatTrinksProfileText(trinksProfile)
-    const upcomingAppointmentsText = formatUpcomingAppointmentsText(upcomingAppointments)
+    const upcomingAppointmentsText = formatUpcomingAppointmentsText(upcomingAppointments, officialAgenda)
 
     // Query única para settings do salão (removida duplicação)
     const salonInfo = await db.query.salons.findFirst({
@@ -427,23 +536,31 @@ NÃO chame se a categoria não mudou — evite mover o chat repetidamente na mes
 
     const hasAdvancePayment = advancePayment?.enabled && advancePayment.amount && advancePayment.pix_key
 
+    // Salão com agenda oficial e cliente só com o nome do perfil: a pergunta do
+    // nome completo entra no passo 5 do fluxo, e não só no bloco do cliente — é
+    // ali que o modelo decide chamar addAppointment.
+    const fullNameGate =
+      officialAgenda?.active === true && officialAgenda.customerNeedsFullName === true && customerId
+        ? "(ANTES de agendar: se ainda não perguntou o nome completo desta cliente nesta conversa, pergunte agora — nome e sobrenome — e chame updateCustomerName com a resposta; só depois siga.) "
+        : ""
+
     const paymentStepSolo = hasAdvancePayment
-      ? `5. Cliente escolheu horário → Apresente a taxa de confirmação:
+      ? `5. Cliente escolheu horário → ${fullNameGate}Apresente a taxa de confirmação:
    "Para garantir seu horário, trabalhamos com uma taxa de confirmação de R$ ${advancePayment.amount!.toFixed(2)}. Esse valor é totalmente abatido no dia do seu atendimento."
    Informe a chave Pix: ${advancePayment.pix_key}${advancePayment.pix_name ? ` (${advancePayment.pix_name})` : ""}.
    Peça o comprovante (print/imagem do Pix).
    REGRA OBRIGATÓRIA: só chame addAppointment DEPOIS que o cliente ENVIAR o comprovante (imagem/print do Pix). Uma promessa como "vou pagar" ou "já paguei" sem o comprovante anexado NÃO conta. Você não valida o pagamento — apenas registra o agendamento após o envio; a equipe confere depois.
 6. Cliente enviou comprovante → Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
-      : `5. Cliente escolheu horário → Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
+      : `5. Cliente escolheu horário → ${fullNameGate}Chame addAppointment com professionalId (${soloProfessional?.id}), serviceId e data/hora. Confirme com resumo: serviço, dia e horário.`
 
     const paymentStepMulti = hasAdvancePayment
-      ? `5. Cliente escolheu horário → Apresente a taxa de confirmação:
+      ? `5. Cliente escolheu horário → ${fullNameGate}Apresente a taxa de confirmação:
    "Para garantir seu horário, trabalhamos com uma taxa de confirmação de R$ ${advancePayment.amount!.toFixed(2)}. Esse valor é totalmente abatido no dia do seu atendimento."
    Informe a chave Pix: ${advancePayment.pix_key}${advancePayment.pix_name ? ` (${advancePayment.pix_name})` : ""}.
    Peça o comprovante (print/imagem do Pix).
    REGRA OBRIGATÓRIA: só chame addAppointment DEPOIS que o cliente ENVIAR o comprovante (imagem/print do Pix). Uma promessa como "vou pagar" ou "já paguei" sem o comprovante anexado NÃO conta. Você não valida o pagamento — apenas registra o agendamento após o envio; a equipe confere depois.
 6. Cliente enviou comprovante → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
-      : `5. Cliente escolheu horário → Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
+      : `5. Cliente escolheu horário → ${fullNameGate}Chame addAppointment com professionalId, serviceId e data/hora. Confirme com resumo: serviço, profissional, dia e horário.`
 
     const bookingFlow = soloProfessional
       ? `FLUXO DE AGENDAMENTO (siga na ordem):
@@ -549,7 +666,8 @@ export async function createSalonAssistantPrompt(
   conversationStateText?: string,
   trinksProfile?: TrinksProfileSnapshot | null,
   upcomingAppointments?: UpcomingAppointmentSnapshot[] | null,
-  adContextText?: string
+  adContextText?: string,
+  officialAgenda?: OfficialAgendaPromptContext | null
 ): Promise<string> {
   return SystemPromptBuilder.build(
     salonId,
@@ -564,6 +682,7 @@ export async function createSalonAssistantPrompt(
     conversationStateText,
     trinksProfile,
     upcomingAppointments,
-    adContextText
+    adContextText,
+    officialAgenda
   )
 }
