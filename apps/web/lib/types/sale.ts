@@ -120,6 +120,8 @@ export interface SaleFormOptions {
   paymentMethods: PaymentMethodDTO[]
   /** O salão tem o módulo `commissions`: a comanda mostra o auxiliar do serviço. */
   commissionsEnabled: boolean
+  /** O salão tem o módulo `inventory`: reabrir a comanda devolve o estoque baixado. */
+  inventoryEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean

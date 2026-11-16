@@ -236,7 +236,15 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
   if ("error" in auth) return auth
 
   try {
-    const [serviceRows, productRows, professionalRows, methodRows, permissions, commissionsEnabled] = await Promise.all([
+    const [
+      serviceRows,
+      productRows,
+      professionalRows,
+      methodRows,
+      permissions,
+      commissionsEnabled,
+      inventoryEnabled,
+    ] = await Promise.all([
       db
         .select({
           id: services.id,
@@ -275,6 +283,8 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       getSalonPermissions(salonId, auth.userId),
       // Com comissões ligadas, o serviço da comanda aceita auxiliar (fase 3, fatia 3b).
       salonHasModule(salonId, "commissions"),
+      // Com o estoque ligado, a tela avisa que reabrir devolve o que foi baixado (fase 4).
+      salonHasModule(salonId, "inventory"),
     ])
 
     return {
@@ -286,6 +296,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       // depois da migration 038) — por isso não é lida aqui.
       paymentMethods: methodRows.map((method) => ({ ...method, accountId: null })),
       commissionsEnabled,
+      inventoryEnabled,
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),

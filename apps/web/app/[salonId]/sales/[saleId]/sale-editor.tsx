@@ -1097,6 +1097,9 @@ export function SaleEditor({
           (options.commissionsEnabled
             ? " As comissões desta comanda são apagadas e voltam a ser calculadas quando ela for faturada."
             : "") +
+          (options.inventoryEnabled
+            ? " Os produtos com estoque controlado voltam para o estoque e saem de novo quando ela for faturada."
+            : "") +
           " Depois de editar, é preciso faturar de novo."
         }
         confirmText="Reabrir"
