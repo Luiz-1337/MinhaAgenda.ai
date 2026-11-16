@@ -162,6 +162,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/finance`)
   revalidatePath(`/${salonId}/finance/cash`)
   revalidatePath(`/${salonId}/finance/summary`)
+  // E as comissões dos itens, quando o módulo está ligado.
+  revalidatePath(`/${salonId}/commissions`)
 }
 
 // ============================================================================
@@ -544,6 +546,8 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
     debtDueDate: acceptDebt ? (parsed.data.debtDueDate ?? null) : null,
     // Com o financeiro ligado, faturar gera as contas a receber (fase 2).
     recordFinance: await salonHasModule(parsed.data.salonId, "finance"),
+    // Com comissões ligadas, faturar calcula a comissão de cada item (fase 3).
+    recordCommissions: await salonHasModule(parsed.data.salonId, "commissions"),
   })
   if (!result.success) return { error: result.error }
 
@@ -571,6 +575,7 @@ export async function receiveSalePayment(
     ...parsed.data,
     userId: auth.userId,
     recordFinance: await salonHasModule(parsed.data.salonId, "finance"),
+    recordCommissions: await salonHasModule(parsed.data.salonId, "commissions"),
   })
   if (!result.success) return { error: result.error }
 
@@ -586,7 +591,11 @@ export async function reopenSale(salonId: string, saleId: string): Promise<Actio
   const visible = await loadVisibleSale(salonId, auth.userId, saleId)
   if ("error" in visible) return visible
 
-  const result = await reopenSaleService({ salonId, saleId })
+  const result = await reopenSaleService({
+    salonId,
+    saleId,
+    recordCommissions: await salonHasModule(salonId, "commissions"),
+  })
   if (!result.success) return { error: result.error }
 
   revalidateSales(salonId, saleId)

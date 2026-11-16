@@ -9,8 +9,10 @@ nem testada em uso), com a migration 037 já aplicada em produção — ver §5.
 branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
 testadas em uso num salão — ver §6.7 e §6.8. A fatia 2f (débito de cliente) está
 feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para depois o
-crédito de cliente (2h). Fases 3
-em diante: planejamento.
+crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e #16).
+Fase 3 (comissões): fatia 3a escrita na branch `claude/fase-3-comissoes`, com a
+**migration 041 não aplicada** e sem teste em uso — ver §7. Fases 4 em diante:
+planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -603,7 +605,7 @@ lint, testes e `next build`.
   ser publicado. Mesma regra da 039: ela adiciona colunas a `sales`, e o INSERT do
   Drizzle lista todas as colunas — sem elas, criar QUALQUER comanda falharia em todo
   ambiente que usa o banco de produção. Falta só o registro em `schema_migrations`
-  (nome `sale_debt`) — ver §7.
+  (nome `sale_debt`) — ver §8.
 
 Onde o débito aparece na tela: no diálogo de faturar (caixa "Deixar R$ X em aberto"
 e data combinada), na comanda faturada (aviso "Em aberto" e botão "Receber"), na
@@ -700,7 +702,147 @@ UPDATE salons
  WHERE id = '<id do salão>';
 ```
 
-## 7. Pendências do dono
+## 7. Fase 3 — Comissões (detalhe)
+
+Responde: de cada item vendido, quanto é do profissional? Parte da comanda (fase 1)
+e das taxas das formas de pagamento (fase 2). Itens da auditoria: C-01 a C-04,
+K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
+
+### 7.1 Fatias
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita em código — **migration 041 não aplicada**, sem teste em uso |
+| 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Pendente |
+| 3c | Vales e bonificações do profissional | Pendente |
+| 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro | Pendente |
+| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
+
+### 7.2 Modelo de dados (migration `041_commissions.sql`)
+
+Três tabelas novas; nenhuma tabela existente é alterada.
+
+- `commission_settings` — as regras gerais. Uma linha do salão (`professional_id`
+  NULL) e, se houver, uma por profissional que foge da regra do salão. Cada campo
+  NULL quer dizer "não define": o profissional segue o salão, o salão segue o padrão.
+- `commission_rules` — quanto cada item paga: padrão do salão por serviço ou produto
+  (`professional_id` NULL) e exceção por profissional. `kind` é `percent` (0 a 100)
+  ou `fixed` (reais por unidade).
+- `commission_entries` — o extrato: uma linha por item de comanda faturada, com a
+  base, a regra usada, a comissão, a parcela da taxa e o valor a receber já
+  calculados. `release_date` é o dia em que fica disponível (NULL = aguardando o
+  cliente pagar). `role` já aceita `assistant` para a fatia 3b.
+
+O percentual geral do profissional continua onde sempre esteve:
+`professionals.commission_rate`, editado no cadastro em Equipe.
+
+### 7.3 Regras de negócio
+
+Da auditoria (RN-COM, confirmada por cálculo sobre dados reais):
+
+1. **Fórmula:** disponível = valor × %comissão − valor × %taxa da comanda ×
+   %comissão. Conferido: item de R$ 200, 50%, taxa de 2,92% → R$ 2,92 de taxa,
+   R$ 97,08 disponível. Os dois exemplos da auditoria são testes automáticos.
+2. **Taxa da comanda** é a soma das taxas dos pagamentos, repartida entre os itens
+   pelo valor de cada um. Com mais de uma forma de pagamento vale a média ponderada.
+3. **Item sem comissão aparece no extrato com zero** (regra de 0%, item de cortesia):
+   a linha mostra que o atendimento foi contado.
+
+Da auditoria (RN-COM-CFG), com os padrões que ela encontrou configurados no salão:
+
+4. **Quando fica disponível** — competência (padrão): no dia da comanda.
+   Disponibilidade: quando o salão recebe, no último dia de recebimento entre os
+   pagamentos; com valor em aberto (fiado), fica sem data até o cliente quitar.
+5. **Taxas de pagamento** — proporcional à comissão (padrão), o salão paga tudo, o
+   profissional paga tudo, ou meio a meio.
+6. **Descontos** — o salão arca com tudo (padrão: comissão sobre o valor cheio),
+   proporcional (comissão sobre o que o cliente pagou), o profissional arca com tudo
+   (o desconto sai da comissão) ou meio a meio.
+7. **Exceção por profissional**, campo a campo; o que ele não define segue o salão.
+
+Decididas aqui, porque a auditoria não cobre — **a confirmar com o dono**:
+
+8. **A comissão é fotografia, não consulta.** É calculada quando a comanda é
+   faturada e fica gravada. Mudar uma regra não muda o que já foi calculado; para
+   isso existe "Recalcular período", que refaz com as regras de agora. Na Belasis o
+   extrato é recalculado sempre; aqui o histórico só muda quando alguém pede.
+9. **Só comanda faturada gera comissão.** A opção "Todas" da Belasis (comissão de
+   comanda ainda pendente) não existe — o salão auditado usava "Somente finalizadas".
+10. **Qual regra vale para o item:** exceção do profissional para o item → padrão do
+    salão para o item → percentual geral do profissional → zero. O padrão do item
+    vem antes do percentual geral para dar para dizer "produto paga 10%" ou
+    "estacionamento não paga comissão" para todos de uma vez.
+11. **Valor fixo é por unidade** (3 unidades de um produto com R$ 5,00 fixo = R$ 15,00).
+12. **A taxa nunca deixa a comissão negativa**, nem o desconto: o mínimo é zero.
+13. **Receber um débito recalcula a comissão da comanda:** a taxa efetiva e a data de
+    disponibilidade mudam com o novo pagamento. **Reabrir a comanda apaga** as
+    comissões dela.
+14. **Sem "Ver de todos", a pessoa vê só o próprio extrato** — as comissões dos
+    vínculos de profissional do usuário dela.
+
+Perguntas para o dono:
+
+- O percentual geral do profissional deve vencer o padrão do item? Hoje o item vence.
+- Na regra "disponibilidade" com pagamento dividido, liberar a comissão aos poucos
+  (proporcional a cada recebimento) em vez de tudo no último dia?
+- A regra 13 e a 8 mudam quando houver pagamento de comissão (fatia 3d): comissão
+  já paga precisa ficar congelada. Proposta: comanda com comissão paga não reabre
+  sem estornar o pagamento.
+
+### 7.4 Permissões e módulo
+
+Módulo novo: `commissions` (ligado por salão, como os outros). Depende de `sales`;
+não depende de `finance`.
+
+| Permissão | O que libera |
+|---|---|
+| `commissions.access` | Ver o próprio extrato |
+| `commissions.view_all` | Ver o extrato de todos os profissionais |
+| `commissions.configure` | Regras do salão, exceções, comissão por item e recalcular |
+
+### 7.5 Telas
+
+- **Comissões** (`/[salonId]/commissions`): filtro de período e de profissional na
+  URL, totais (valor dos itens, comissões, taxas, a receber), aviso do que está sem
+  data, resumo por profissional e a lista detalhada item a item.
+- **Configurar comissões** (`/[salonId]/commissions/settings`): regras do salão;
+  comissão por item, escolhendo entre o padrão do salão e um profissional (que
+  também mostra as regras gerais dele, com "Seguir o salão"); recalcular período.
+
+### 7.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`) |
+| I/O | `packages/db/src/services/commissions.service.ts` |
+| Comanda → comissão | `syncSaleCommissions`, chamado por `invoiceSaleService`, `receiveSaleDebtPaymentService` e `reopenSaleService` quando a action passa `recordCommissions` |
+| Actions | `apps/web/app/actions/commissions.ts` |
+| Telas | `apps/web/app/[salonId]/commissions/` |
+| Testes | `apps/web/__tests__/lib/services/commissions-domain.test.ts` |
+
+### 7.7 Estado da implementação (16/nov/2026)
+
+- Fatia 3a escrita na branch `claude/fase-3-comissoes` (sai de
+  `claude/fase-2-financeiro`). Typecheck, lint dos arquivos novos e testes passando.
+- **Migration 041: escrita, NÃO aplicada.** Ela só cria tabelas novas, então não há
+  ordem obrigatória entre aplicar e publicar: com o módulo `commissions` desligado,
+  nenhuma tabela de comissão é tocada. Com o módulo ligado e sem a 041, faturar e
+  reabrir comanda falham — **aplicar a 041 antes de ligar o módulo**.
+- Sem teste em uso.
+
+Ligar o módulo num salão (depois da 041 aplicada e do código publicado):
+
+```sql
+UPDATE salons
+   SET settings = jsonb_set(
+         coalesce(settings, '{}'::jsonb),
+         '{modules}',
+         coalesce(settings->'modules', '[]'::jsonb) || '["commissions"]'::jsonb
+       )
+ WHERE id = '<id do salão>';
+```
+
+## 8. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -711,5 +853,7 @@ UPDATE salons
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
 | Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
-| Revisar e mergear os PRs das fases 0, 1 e 2, nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
+| Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
+| Aplicar e registrar a migration 041 (nome `commissions`) e ligar o módulo `commissions` no salão de teste | Teste em uso da fatia 3a |
+| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga) | Fatias 3b em diante |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

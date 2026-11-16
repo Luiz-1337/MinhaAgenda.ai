@@ -27,6 +27,7 @@ import {
 import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
+import { syncSaleCommissions } from "./commissions.service"
 import { isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 
@@ -386,6 +387,12 @@ export async function invoiceSaleService(input: {
   allowDebt?: boolean
   /** Quando a cliente combinou de pagar o que ficou em aberto ("YYYY-MM-DD"). */
   debtDueDate?: string | null
+  /**
+   * Calcula e grava as comissões dos itens (fase 3). Quem decide é a action: só
+   * com o módulo `commissions` ligado no salão. Desligado, nenhuma tabela de
+   * comissão é tocada.
+   */
+  recordCommissions?: boolean
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -485,6 +492,11 @@ export async function invoiceSaleService(input: {
           })
           .where(and(eq(appointments.id, outcome.appointmentId), eq(appointments.salonId, input.salonId)))
       }
+
+      // Por último: a comissão é calculada sobre a comanda já no estado final.
+      if (input.recordCommissions) {
+        await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
+      }
     })
 
     return { success: true, data: undefined }
@@ -507,6 +519,8 @@ export async function receiveSaleDebtPaymentService(input: {
   payments: InvoicePaymentDraft[]
   userId: string
   recordFinance?: boolean
+  /** Recalcula as comissões da comanda: a taxa e a data de disponibilidade mudam. */
+  recordCommissions?: boolean
 }): Promise<ActionResult<{ remaining: string }>> {
   try {
     const remaining = await db.transaction(async (tx) => {
@@ -557,6 +571,10 @@ export async function receiveSaleDebtPaymentService(input: {
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
 
+      if (input.recordCommissions) {
+        await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
+      }
+
       return remainingAmount
     })
 
@@ -576,6 +594,8 @@ export async function receiveSaleDebtPaymentService(input: {
 export async function reopenSaleService(input: {
   salonId: string
   saleId: string
+  /** Apaga as comissões da comanda (fase 3). Só com o módulo `commissions` ligado. */
+  recordCommissions?: boolean
 }): Promise<ActionResult<void>> {
   try {
     await db.transaction(async (tx) => {
@@ -626,6 +646,11 @@ export async function reopenSaleService(input: {
               eq(appointments.outcomeSource, "sale")
             )
           )
+      }
+
+      // Comanda aberta não tem comissão: o sync só apaga.
+      if (input.recordCommissions) {
+        await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
       }
     })
 

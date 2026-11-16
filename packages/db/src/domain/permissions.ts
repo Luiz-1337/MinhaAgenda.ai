@@ -37,6 +37,9 @@ export const PERMISSION_CATALOG = {
   // Caixa (fase 2). `operate` = abrir, suprimento, sangria e fechar. Sem
   // `view_all` a pessoa vê só o histórico dos caixas que ela abriu.
   cash: ['access', 'operate', 'view_all'],
+  // Comissões (fase 3). Sem `view_all` a pessoa vê só o próprio extrato.
+  // `configure` = regras do salão, comissão por item e recalcular período.
+  commissions: ['access', 'view_all', 'configure'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -141,7 +144,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

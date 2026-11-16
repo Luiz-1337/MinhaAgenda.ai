@@ -1186,6 +1186,108 @@ export const cashMovements = pgTable(
 )
 
 // ============================================================================
+// TABLES - Comissões (migration 041)
+// ============================================================================
+// Quanto de cada item vendido é do profissional. Regras em commission_settings e
+// commission_rules; o extrato calculado em commission_entries. Regra pura em
+// domain/commissions.ts.
+
+/** 'competence' = disponível no dia da comanda; 'availability' = quando o salão recebe. */
+export type CommissionDateBasis = 'competence' | 'availability'
+/** Quem arca (com a taxa ou com o desconto): na proporção da comissão, o salão, o profissional ou meio a meio. */
+export type CommissionShareMode = 'proportional' | 'salon' | 'professional' | 'split'
+export type CommissionRateKind = 'percent' | 'fixed'
+export type CommissionRole = 'professional' | 'assistant'
+
+export const commissionSettings = pgTable(
+  'commission_settings',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = regra do salão. Preenchido = exceção daquele profissional.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    // NULL em qualquer das três = segue o salão (ou o padrão do sistema).
+    dateBasis: text('date_basis').$type<CommissionDateBasis>(),
+    feeMode: text('fee_mode').$type<CommissionShareMode>(),
+    discountMode: text('discount_mode').$type<CommissionShareMode>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_settings_salon_unique').on(table.salonId).where(sql`professional_id IS NULL`),
+    uniqueIndex('commission_settings_professional_unique')
+      .on(table.professionalId)
+      .where(sql`professional_id IS NOT NULL`),
+    index('commission_settings_salon_idx').on(table.salonId)
+  ]
+)
+
+export const commissionRules = pgTable(
+  'commission_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = padrão do salão para o item. Preenchido = exceção do profissional.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    // Exatamente um dos dois (CHECK no banco).
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<CommissionRateKind>().notNull(),
+    // 'percent': 0 a 100. 'fixed': reais por unidade.
+    value: numeric('value', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_rules_salon_service_unique')
+      .on(table.salonId, table.serviceId)
+      .where(sql`professional_id IS NULL AND service_id IS NOT NULL`),
+    uniqueIndex('commission_rules_salon_product_unique')
+      .on(table.salonId, table.productId)
+      .where(sql`professional_id IS NULL AND product_id IS NOT NULL`),
+    uniqueIndex('commission_rules_professional_service_unique')
+      .on(table.professionalId, table.serviceId)
+      .where(sql`professional_id IS NOT NULL AND service_id IS NOT NULL`),
+    uniqueIndex('commission_rules_professional_product_unique')
+      .on(table.professionalId, table.productId)
+      .where(sql`professional_id IS NOT NULL AND product_id IS NOT NULL`),
+    index('commission_rules_salon_idx').on(table.salonId)
+  ]
+)
+
+export const commissionEntries = pgTable(
+  'commission_entries',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }).notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    role: text('role').$type<CommissionRole>().default('professional').notNull(),
+    // Sobre quanto a comissão foi calculada.
+    baseAmount: numeric('base_amount', { precision: 12, scale: 2 }).notNull(),
+    // A regra usada, copiada: mudar a regra depois não muda o histórico.
+    rateKind: text('rate_kind').$type<CommissionRateKind>().notNull(),
+    rateValue: numeric('rate_value', { precision: 12, scale: 2 }).notNull(),
+    // Comissão antes da taxa da forma de pagamento.
+    grossAmount: numeric('gross_amount', { precision: 12, scale: 2 }).notNull(),
+    // Parcela da taxa que coube ao profissional.
+    feeAmount: numeric('fee_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // O que o profissional tem a receber.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    competenceDate: date('competence_date').notNull(),
+    // NULL = aguardando o cliente pagar (regra "disponibilidade" com valor em aberto).
+    releaseDate: date('release_date'),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_entries_item_unique').on(table.saleItemId, table.professionalId, table.role),
+    index('commission_entries_statement_idx').on(table.salonId, table.professionalId, table.releaseDate),
+    index('commission_entries_sale_idx').on(table.saleId)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(
