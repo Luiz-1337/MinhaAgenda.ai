@@ -23,6 +23,8 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   reports: "Relatórios",
   settings: "Configurações",
   access_profiles: "Perfis de acesso",
+  sales: "Comandas",
+  payment_methods: "Formas de pagamento",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
@@ -34,10 +36,14 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   view_phones: "Ver telefones",
   notes: "Anotações",
   manage: "Gerenciar",
+  view_invoiced: "Ver faturadas",
+  invoice: "Faturar",
+  edit_invoiced: "Reabrir faturada",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */
 export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, string>> = {
   schedule: "“Ver de todos” libera a agenda dos outros profissionais.",
   access_profiles: "Quem gerencia perfis define o que os outros podem.",
+  sales: "Sem “Ver de todos”, a pessoa vê só as comandas com item dela.",
 }

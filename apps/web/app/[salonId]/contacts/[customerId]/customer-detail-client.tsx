@@ -12,6 +12,7 @@ import { getCustomerDetail, addCustomerNote } from "@/app/actions/customers"
 import { Button } from "@/components/ui/button"
 import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 import { TagPill } from "@/components/contacts/tag-pill"
+import { CustomerSalesCard } from "@/components/contacts/customer-sales-card"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -209,6 +210,9 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
             </div>
           )}
         </Card>
+
+        {/* Vendas: só aparece no salão com o módulo de comandas ligado. */}
+        <CustomerSalesCard salonId={salonId} customerId={detail.id} />
 
         {/* Notas */}
         <Card title="Notas de atendimento">

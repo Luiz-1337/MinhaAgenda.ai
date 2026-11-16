@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { type CreateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import type { ActionResult } from "@/lib/types/common"
-import { db, salons, professionals, profiles, eq, asc, or, and, parseSalonModules } from "@repo/db"
+import { db, salons, professionals, profiles, accessProfiles, eq, asc, or, and, parseSalonModules, resolvePermissions } from "@repo/db"
 import type { SalonListItem } from "@/lib/types/salon"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { createSalonWithOwner } from "@/lib/services/salon.service"
@@ -53,6 +53,10 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
       subscriptionStatus: salons.subscriptionStatus,
       subscriptionStatusChangedAt: salons.subscriptionStatusChangedAt,
       professionalRole: professionals.role,
+      professionalActive: professionals.isActive,
+      customPermissions: professionals.customPermissions,
+      accessProfileId: professionals.accessProfileId,
+      profilePermissions: accessProfiles.permissions,
       settings: salons.settings
     })
     .from(salons)
@@ -62,6 +66,14 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
       and(
         eq(professionals.salonId, salons.id),
         eq(professionals.userId, userId)
+      )
+    )
+    // Mesmo salão no perfil — a mesma regra de getSalonPermissions.
+    .leftJoin(
+      accessProfiles,
+      and(
+        eq(accessProfiles.id, professionals.accessProfileId),
+        eq(accessProfiles.salonId, professionals.salonId)
       )
     )
     .where(
@@ -81,6 +93,21 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     subscriptionStatusChangedAt: s.subscriptionStatusChangedAt,
     // Só a lista de módulos ligados vai para o cliente — nunca o settings inteiro.
     modules: parseSalonModules(s.settings),
+    // Permissões efetivas, para o menu esconder o que a pessoa não acessa. É
+    // cortesia de tela: a trava é `can()` no servidor, em cada action.
+    permissions: Array.from(
+      resolvePermissions(
+        s.ownerId === userId,
+        s.professionalRole
+          ? [{
+              role: s.professionalRole,
+              isActive: s.professionalActive ?? false,
+              customPermissions: s.customPermissions,
+              profilePermissions: s.accessProfileId ? (s.profilePermissions ?? []) : null,
+            }]
+          : []
+      )
+    ),
     // Prioridade: Se é dono -> MANAGER, senão usa a role do profissional (se for OWNER vira MANAGER), senão STAFF
     role: (s.ownerId === userId || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
   }))

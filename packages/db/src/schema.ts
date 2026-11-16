@@ -895,6 +895,127 @@ export const retentionResponseAudit = pgTable(
 )
 
 // ============================================================================
+// TABLES - Comandas (migration 037)
+// ============================================================================
+// Dinheiro é numeric → o driver devolve STRING. Toda conta passa por
+// domain/sales.ts, em centavos inteiros. Nunca somar direto.
+
+export type PaymentMethodKind = 'cash' | 'pix' | 'credit_card' | 'debit_card' | 'other'
+export type SaleStatus = 'open' | 'invoiced' | 'void'
+export type SaleItemKind = 'service' | 'product'
+
+export const paymentMethods = pgTable(
+  'payment_methods',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').$type<PaymentMethodKind>().notNull(),
+    // Taxa cobrada do salão (%) e prazo de recebimento (dias). São COPIADOS para
+    // sale_payments no faturamento — mudar aqui não reescreve venda passada.
+    feePercent: numeric('fee_percent', { precision: 5, scale: 2 }).default('0').notNull(),
+    settlementDays: integer('settlement_days').default(0).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('payment_methods_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)
+  ]
+)
+
+// Numeração sequencial por salão. Incrementado por upsert com a linha travada —
+// nunca max()+1, que duplica número sob concorrência.
+export const saleCounters = pgTable('sale_counters', {
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).primaryKey().notNull(),
+  lastNumber: integer('last_number').default(0).notNull()
+})
+
+export const sales = pgTable(
+  'sales',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    number: integer('number').notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    // open = Pendente · invoiced = Finalizado · void = Excluída (exclusão lógica)
+    status: text('status').$type<SaleStatus>().default('open').notNull(),
+    saleDate: timestamp('sale_date').defaultNow().notNull(),
+    notes: text('notes'),
+    // Recalculados no servidor a cada gravação; o que o cliente envia é só entrada.
+    subtotal: numeric('subtotal', { precision: 12, scale: 2 }).default('0').notNull(),
+    discountTotal: numeric('discount_total', { precision: 12, scale: 2 }).default('0').notNull(),
+    total: numeric('total', { precision: 12, scale: 2 }).default('0').notNull(),
+    invoicedAt: timestamp('invoiced_at'),
+    invoicedBy: uuid('invoiced_by').references(() => profiles.id, { onDelete: 'set null' }),
+    voidedAt: timestamp('voided_at'),
+    voidedBy: uuid('voided_by').references(() => profiles.id, { onDelete: 'set null' }),
+    voidReason: text('void_reason'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('sales_salon_number_unique').on(table.salonId, table.number),
+    index('sales_salon_date_idx').on(table.salonId, table.saleDate.desc()),
+    index('sales_salon_status_idx').on(table.salonId, table.status, table.saleDate.desc()),
+    index('sales_customer_idx').on(table.customerId)
+  ]
+)
+
+export const saleItems = pgTable(
+  'sale_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    position: integer('position').default(0).notNull(),
+    kind: text('kind').$type<SaleItemKind>().notNull(),
+    serviceId: uuid('service_id').references(() => services.id),
+    productId: uuid('product_id').references(() => products.id),
+    // Cópia do nome no momento da venda: renomear o serviço não muda o histórico.
+    description: text('description').notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id),
+    quantity: numeric('quantity', { precision: 10, scale: 3 }).default('1').notNull(),
+    // NULL enquanto aberta = preço ainda não informado (faixa / sob avaliação).
+    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }),
+    discountAmount: numeric('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    total: numeric('total', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Um agendamento entra em no máximo uma comanda (índice único parcial).
+    appointmentId: uuid('appointment_id').references(() => appointments.id),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('sale_items_sale_idx').on(table.saleId, table.position),
+    index('sale_items_salon_idx').on(table.salonId),
+    index('sale_items_professional_idx').on(table.professionalId).where(sql`professional_id IS NOT NULL`),
+    uniqueIndex('sale_items_appointment_unique').on(table.appointmentId).where(sql`appointment_id IS NOT NULL`)
+  ]
+)
+
+export const salePayments = pgTable(
+  'sale_payments',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    paymentMethodId: uuid('payment_method_id').references(() => paymentMethods.id).notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    feePercent: numeric('fee_percent', { precision: 5, scale: 2 }).default('0').notNull(),
+    feeAmount: numeric('fee_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    settlesOn: date('settles_on').notNull(),
+    paidAt: timestamp('paid_at').defaultNow().notNull(),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('sale_payments_sale_idx').on(table.saleId),
+    index('sale_payments_salon_idx').on(table.salonId, table.paidAt.desc()),
+    index('sale_payments_method_idx').on(table.paymentMethodId)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(

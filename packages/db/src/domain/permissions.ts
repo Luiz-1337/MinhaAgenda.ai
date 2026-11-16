@@ -25,6 +25,10 @@ export const PERMISSION_CATALOG = {
   // Quem gerencia perfis define o que os outros podem — por isso é uma chave
   // própria, e não um efeito colateral de `settings.access`.
   access_profiles: ['manage'],
+  // Comandas (fase 1). Sem `view_all` a pessoa vê só comandas com item dela; sem
+  // `view_invoiced` não vê as já faturadas.
+  sales: ['access', 'create', 'edit', 'delete', 'view_invoiced', 'invoice', 'edit_invoiced', 'view_all'],
+  payment_methods: ['access', 'manage'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -129,7 +133,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles'] as const
+export const SALON_MODULES = ['access_profiles', 'sales'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

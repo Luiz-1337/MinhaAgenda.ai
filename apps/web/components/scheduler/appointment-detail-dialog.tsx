@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react"
+import Link from "next/link"
 import { toast } from "sonner"
 import {
   Calendar, Clock, User, Scissors, X, FileText, Loader2,
-  CheckCircle2, UserX, CalendarX, BadgeDollarSign,
+  CheckCircle2, UserX, CalendarX, BadgeDollarSign, Receipt,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -16,6 +17,7 @@ import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { appointmentStatusLabel, availableOutcomes } from "@/lib/utils/appointment-status"
 import { formatBRL, parseBRL, suggestedPriceFromService } from "@/lib/utils/money.utils"
+import { useSalon } from "@/contexts/salon-context"
 
 /** Qual desfecho está em confirmação. `null` = nenhum (estado normal do rodapé). */
 type PendingAction = null | "complete" | "no_show" | "cancel"
@@ -41,6 +43,15 @@ export function AppointmentDetailDialog({
   const [isCourtesy, setIsCourtesy] = useState(false)
   const [reason, setReason] = useState("")
   const [isPending, startTransition] = useTransition()
+
+  // Comandas (docs/ROADMAP.md, fase 1): só no salão com o módulo ligado e para quem
+  // pode criar comanda. É cortesia de tela — a página e as actions conferem de novo.
+  const { activeSalon } = useSalon()
+  const canCreateSale =
+    !!activeSalon &&
+    activeSalon.id === salonId &&
+    activeSalon.modules.includes("sales") &&
+    activeSalon.permissions.includes("sales.create")
 
   // Valor com que o campo abre, a partir do catálogo. É SUGESTÃO: "sob avaliação",
   // faixa sem mínimo e preço 0 abrem vazio — ~30% do catálogo cai nesses casos, e
@@ -176,6 +187,18 @@ export function AppointmentDetailDialog({
           ) : pendingAction === null ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
+                {/* Com o módulo de comandas, este é o caminho principal: a comanda
+                    fecha o agendamento ao ser faturada. Pode ser aberta antes do
+                    horário (cliente chegou); faturar é que exige o início. */}
+                {canCreateSale && (
+                  <Link
+                    href={`/${salonId}/sales/new?appointment=${appointment.id}`}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-bold shadow-md transition-all"
+                  >
+                    <Receipt size={16} />
+                    Criar comanda
+                  </Link>
+                )}
                 {/* Concluir só depois de o atendimento COMEÇAR. Durante ele é
                     permitido: quem está no balcão sabe que acabou mais cedo. */}
                 {canComplete && (

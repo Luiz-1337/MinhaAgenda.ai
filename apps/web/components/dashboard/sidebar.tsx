@@ -23,12 +23,26 @@ import {
   Package,
   Trello,
   Plug,
+  Receipt,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
+import type { SalonListItem } from "@/lib/types/salon"
+
+/**
+ * Itens de módulo novo (docs/ROADMAP.md): aparecem só com o módulo ligado no salão
+ * E a permissão de acesso. Não passam pela regra por cargo abaixo — nasceram com
+ * permissão por recurso. É cortesia de tela; a trava é `can()` no servidor.
+ */
+const MODULE_ITEMS: Record<string, (salon: SalonListItem) => boolean> = {
+  sales: (salon) => salon.modules.includes("sales") && salon.permissions.includes("sales.access"),
+}
 
 // Helper para verificar permissões de visualização
-function shouldShowItem(href: string, role: ProfessionalRole, isSolo: boolean) {
+function shouldShowItem(href: string, role: ProfessionalRole, isSolo: boolean, salon: SalonListItem | null) {
+  const moduleRule = MODULE_ITEMS[href]
+  if (moduleRule) return salon ? moduleRule(salon) : false
+
   // 1. Staff: Acesso restrito
   // `contacts` entrou porque quem atende no balcão é justamente quem precisa
   // saber quem é o cliente. STAFF LÊ a lista e a ficha; não cria, não edita, não
@@ -57,6 +71,7 @@ const menuGroups = [
     items: [
       { href: "dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "schedule", label: "Agenda", icon: Calendar },
+      { href: "sales", label: "Comandas", icon: Receipt },
     ]
   },
   {
@@ -126,7 +141,7 @@ export function SidebarNav() {
       <nav className="flex-1 overflow-y-auto px-3 py-2 custom-scrollbar">
         {menuGroups.map((group, groupIndex) => {
           // Filtra itens baseados na role
-          const visibleItems = group.items.filter(item => shouldShowItem(item.href, role, isSolo))
+          const visibleItems = group.items.filter(item => shouldShowItem(item.href, role, isSolo, activeSalon))
 
           if (visibleItems.length === 0) return null
 
