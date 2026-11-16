@@ -13,8 +13,9 @@ crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e
 Fase 3 (comissões): fatia 3a feita na branch `claude/fase-3-comissoes` (publicada,
 sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §7.7.
 Fatia 3b (auxiliar) feita na mesma branch e publicada, com a migration 042 aplicada
-em 16/nov/2026 e testada em uso — ver §7.8. Fatia 3c (vales e bonificações) escrita na
-mesma branch, **não publicada: aplicar a migration 043 antes do push** — ver §7.9.
+em 16/nov/2026 e testada em uso — ver §7.8. Fatia 3c (vales e bonificações) feita na
+mesma branch e publicada, com a migration 043 aplicada em 16/nov/2026 e testada em
+uso — ver §7.9. As migrations 040 a 043 estão registradas em `schema_migrations`.
 Fases 4 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -607,8 +608,8 @@ lint, testes e `next build`.
 - **Migration 040 (débito): aplicada em produção em 16/nov/2026**, antes de o código
   ser publicado. Mesma regra da 039: ela adiciona colunas a `sales`, e o INSERT do
   Drizzle lista todas as colunas — sem elas, criar QUALQUER comanda falharia em todo
-  ambiente que usa o banco de produção. Falta só o registro em `schema_migrations`
-  (nome `sale_debt`) — ver §8.
+  ambiente que usa o banco de produção. Registrada em `schema_migrations` em
+  16/nov/2026 (nome `sale_debt`).
 
 Onde o débito aparece na tela: no diálogo de faturar (caixa "Deixar R$ X em aberto"
 e data combinada), na comanda faturada (aviso "Em aberto" e botão "Receber"), na
@@ -717,7 +718,7 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 |---|---|---|
 | 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita — migration 041 aplicada e testada em uso em 16/nov/2026 (§7.7) |
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
-| 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita em código — **migration 043 não aplicada**, não publicada, sem teste em uso (§7.9) |
+| 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita — migration 043 aplicada e testada em uso (§7.9) |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Pendente |
 | 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
 
@@ -911,7 +912,7 @@ não depende de `finance`.
   build do preview da Vercel passou.
 - **Migration 041: aplicada em produção em 16/nov/2026**, conferida por leitura (três
   tabelas com RLS, política `deny_all`, sem acesso para `anon`/`authenticated`).
-  **Falta o registro em `schema_migrations`** (nome `commissions`) — ver §8.
+  Registrada em `schema_migrations` em 16/nov/2026 (nome `commissions`).
   Ela só cria tabelas novas: com o módulo `commissions` desligado, nenhuma tabela de
   comissão é tocada. Com o módulo ligado e sem a 041, faturar e reabrir comanda
   falham — em outro ambiente, **aplicar a 041 antes de ligar o módulo**.
@@ -967,8 +968,8 @@ UPDATE salons
   teste); o build do preview da Vercel passou.
 - **Migration 042: aplicada em produção em 16/nov/2026**, conferida por leitura (as
   duas colunas, a tabela com RLS e `deny_all`, sem acesso para
-  `anon`/`authenticated`, os dois CHECKs). **Falta o registro em
-  `schema_migrations`** (nome `commission_assistants`) — ver §8.
+  `anon`/`authenticated`, os dois CHECKs). Registrada em `schema_migrations` em
+  16/nov/2026 (nome `commission_assistants`).
 - Em outro ambiente, **aplicar a 042 antes de publicar o código**: diferente da 041,
   ela acrescenta colunas em tabelas que o código já lê e grava
   (`sale_items.assistant_id` e `commission_entries.assistant_deduction`). Sem elas,
@@ -998,16 +999,39 @@ regra pura; a visibilidade, não.
 
 ### 7.9 Fatia 3c — estado (16/nov/2026)
 
-- Escrita na branch `claude/fase-3-comissoes`, em commit local. Typecheck, lint dos
-  arquivos alterados e testes passando.
-- **Migration 043: escrita, NÃO aplicada. Aplicar antes de publicar.** Ela só cria
-  uma tabela nova, mas o extrato de comissões passa a consultá-la: publicado sem a
-  043, a tela de comissões falha nos salões com o módulo ligado (hoje, só o de
-  teste, no preview). Produção (`main`) não é afetada.
-- Sem teste em uso. Roteiro: com uma comissão de R$ 231,24 no período, lançar um
-  vale de R$ 100,00 e uma bonificação de R$ 50,00 → líquido de R$ 181,24; vale de
-  R$ 300,00 para quem não tem comissão → líquido negativo e o profissional aparece
-  no resumo; excluir os lançamentos → os totais voltam.
+- Na branch `claude/fase-3-comissoes`, publicada, ainda sem PR. Typecheck, lint dos
+  arquivos alterados e testes passando; o build do preview da Vercel passou.
+- **Migration 043: aplicada em produção em 16/nov/2026**, conferida por leitura (a
+  tabela com RLS e `deny_all`, sem acesso para `anon`/`authenticated`, o índice do
+  extrato, os CHECKs de valor e de tipo) e registrada em `schema_migrations` (nome
+  `commission_adjustments`).
+- Em outro ambiente, **aplicar a 043 antes de publicar o código**: ela só cria uma
+  tabela nova, mas o extrato de comissões passa a consultá-la. Sem a 043, a tela de
+  comissões falha nos salões com o módulo ligado.
+
+**Teste em uso (16/nov/2026, salão de teste, no preview da branch).** Regra de 50%
+no serviço, comanda #8 com dois itens em cartão de crédito (taxa de 2,92%): R$ 300,00
+de um profissional e R$ 200,00 do outro.
+
+- Vale de R$ 300,00 para quem ainda não tinha comissão no período → líquido de
+  −R$ 300,00, com o aviso de que os vales passam do que há a receber.
+- Com a comanda faturada: a receber de R$ 145,62 e R$ 97,08 (R$ 242,70 no total).
+  Vale de R$ 100,00 e bonificação de R$ 50,00 no primeiro → líquido de R$ 95,62; o
+  segundo, com o vale de R$ 300,00, fica em −R$ 202,92; total do salão −R$ 107,30. A
+  tabela "Por profissional" ganha as colunas de vales, bonificações e líquido.
+- Extrato filtrado num profissional: só os lançamentos dele aparecem, e o formulário
+  já abre nele.
+- Vale com data de 05/12/2026 não mexe em novembro e aparece em dezembro (regra 25).
+- Excluir um lançamento pede confirmação e os totais voltam.
+- Reabrir a comanda apaga as comissões e **mantém** os vales e a bonificação; os dois
+  profissionais continuam no resumo, só com os lançamentos.
+- Dados de teste removidos ao final: comanda #8 excluída, regra e lançamentos
+  apagados.
+
+Não testado em uso: o perfil com `commissions.adjust` e sem "Ver de todos" (só os
+próprios vínculos — regra 29) e a lista com mais lançamentos do que o limite da
+tela. Detalhe de tela anotado, sem correção: o total de vales mostra "− R$ 400,00"
+e o líquido negativo mostra "-R$ 107,30" (sinais com grafias diferentes).
 
 ## 8. Pendências do dono
 
@@ -1019,10 +1043,6 @@ regra pura; a visibilidade, não.
 | Conta Belasis de teste para executar fluxos | Fidelidade das regras nas fases 2 a 5 |
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
-| Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
-| Registrar a migration 041 em `schema_migrations` com o nome `commissions` (ela já está aplicada) | Histórico de migrations fiel ao banco |
-| Registrar a migration 042 em `schema_migrations` com o nome `commission_assistants` (ela já está aplicada) | Histórico de migrations fiel ao banco |
-| Aplicar e registrar a migration 043 (nome `commission_adjustments`) | Publicação e teste em uso da fatia 3c |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, vales no financeiro) | Fatia 3d |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
