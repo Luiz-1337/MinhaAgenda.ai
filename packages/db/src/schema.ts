@@ -884,6 +884,46 @@ export const retentionResponseAudit = pgTable(
 // Dinheiro é numeric → o driver devolve STRING. Toda conta passa por
 // domain/sales.ts, em centavos inteiros. Nunca somar direto.
 
+// --- Financeiro (migration 038) — contas e categorias ------------------------
+// Declaradas aqui em cima porque paymentMethods aponta para a conta de destino.
+export type FinancialAccountKind = 'bank' | 'cash' | 'safe' | 'other'
+export type FinancialCategoryKind = 'income' | 'expense'
+
+export const financialAccounts = pgTable(
+  'financial_accounts',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').$type<FinancialAccountKind>().notNull(),
+    // Saldo com que a conta entra no sistema. O saldo atual é este valor mais as
+    // transações PAGAS — nunca é gravado, sempre calculado.
+    openingBalance: numeric('opening_balance', { precision: 12, scale: 2 }).default('0').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('financial_accounts_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)
+  ]
+)
+
+export const financialCategories = pgTable(
+  'financial_categories',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').$type<FinancialCategoryKind>().notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('financial_categories_salon_kind_name_unique').on(table.salonId, table.kind, sql`lower(${table.name})`)
+  ]
+)
+
 export type PaymentMethodKind = 'cash' | 'pix' | 'credit_card' | 'debit_card' | 'other'
 export type SaleStatus = 'open' | 'invoiced' | 'void'
 export type SaleItemKind = 'service' | 'product'
@@ -899,12 +939,16 @@ export const paymentMethods = pgTable(
     // sale_payments no faturamento — mudar aqui não reescreve venda passada.
     feePercent: numeric('fee_percent', { precision: 5, scale: 2 }).default('0').notNull(),
     settlementDays: integer('settlement_days').default(0).notNull(),
+    // Conta de destino (migration 038): onde o dinheiro desta forma cai. NULL = não
+    // configurada — a venda entra no financeiro "sem conta".
+    accountId: uuid('account_id').references(() => financialAccounts.id, { onDelete: 'set null' }),
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
-    uniqueIndex('payment_methods_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)
+    uniqueIndex('payment_methods_salon_name_unique').on(table.salonId, sql`lower(${table.name})`),
+    index('payment_methods_account_idx').on(table.accountId).where(sql`account_id IS NOT NULL`)
   ]
 )
 
@@ -996,6 +1040,64 @@ export const salePayments = pgTable(
     index('sale_payments_sale_idx').on(table.saleId),
     index('sale_payments_salon_idx').on(table.salonId, table.paidAt.desc()),
     index('sale_payments_method_idx').on(table.paymentMethodId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Financeiro (migration 038) — transações
+// ============================================================================
+// Contas a receber e a pagar, e transferências entre contas. Toda conta de dinheiro
+// passa por domain/finance.ts, em centavos inteiros.
+
+export type FinancialDirection = 'in' | 'out'
+export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer'
+export type FinancialTransactionStatus = 'open' | 'paid'
+
+export const financialTransactions = pgTable(
+  'financial_transactions',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    direction: text('direction').$type<FinancialDirection>().notNull(),
+    // sale = gerada pelo faturamento de uma comanda · manual = lançada na tela ·
+    // transfer = uma das duas pernas de uma transferência entre contas
+    kind: text('kind').$type<FinancialTransactionKind>().notNull(),
+    // open = a receber / a pagar · paid = baixada (paid_at preenchido — CHECK no banco)
+    status: text('status').$type<FinancialTransactionStatus>().default('open').notNull(),
+    description: text('description').notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    feeAmount: numeric('fee_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // amount − fee_amount, gravado (CHECK no banco). É o que entra no saldo.
+    netAmount: numeric('net_amount', { precision: 12, scale: 2 }).notNull(),
+    // Datas de calendário em Brasília ("YYYY-MM-DD"), sem hora.
+    dueDate: date('due_date').notNull(),
+    competenceDate: date('competence_date').notNull(),
+    paidAt: timestamp('paid_at'),
+    accountId: uuid('account_id').references(() => financialAccounts.id, { onDelete: 'set null' }),
+    categoryId: uuid('category_id').references(() => financialCategories.id, { onDelete: 'set null' }),
+    paymentMethodId: uuid('payment_method_id').references(() => paymentMethods.id, { onDelete: 'set null' }),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'set null' }),
+    // Fornecedor ou outra parte sem cadastro (texto livre).
+    counterparty: text('counterparty'),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    // CASCADE de propósito: reabrir a comanda apaga os pagamentos, e o que eles
+    // geraram no financeiro some junto.
+    salePaymentId: uuid('sale_payment_id').references(() => salePayments.id, { onDelete: 'cascade' }),
+    // As duas pernas de uma transferência compartilham este id.
+    transferGroup: uuid('transfer_group'),
+    notes: text('notes'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('financial_transactions_salon_due_idx').on(table.salonId, table.dueDate),
+    index('financial_transactions_salon_status_due_idx').on(table.salonId, table.status, table.dueDate),
+    index('financial_transactions_account_paid_idx').on(table.accountId).where(sql`status = 'paid' AND account_id IS NOT NULL`),
+    index('financial_transactions_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
+    uniqueIndex('financial_transactions_sale_payment_unique').on(table.salePaymentId).where(sql`sale_payment_id IS NOT NULL`),
+    index('financial_transactions_transfer_idx').on(table.transferGroup).where(sql`transfer_group IS NOT NULL`)
   ]
 )
 

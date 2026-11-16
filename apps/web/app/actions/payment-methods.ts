@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { db, paymentMethods, and, asc, eq, type PermissionKey } from "@repo/db"
+import { db, financialAccounts, paymentMethods, and, asc, eq, type PermissionKey } from "@repo/db"
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { can } from "@/lib/services/permissions.service"
 import { salonHasModule } from "@/lib/services/salon-modules.service"
@@ -50,7 +50,13 @@ export async function listPaymentMethods(salonId: string): Promise<PaymentMethod
   if ("error" in auth) return auth
 
   try {
-    return await db
+    // A conta de destino (payment_methods.account_id) é do financeiro: só é lida e
+    // gravada com o módulo `finance` ligado. Isso NÃO torna as comandas independentes
+    // da migration 038 — o INSERT do Drizzle lista todas as colunas da tabela, então
+    // criar uma forma de pagamento exige a coluna. A 038 vem antes do deploy.
+    const withAccount = await salonHasModule(salonId, "finance")
+
+    const rows = await db
       .select({
         id: paymentMethods.id,
         name: paymentMethods.name,
@@ -58,13 +64,41 @@ export async function listPaymentMethods(salonId: string): Promise<PaymentMethod
         feePercent: paymentMethods.feePercent,
         settlementDays: paymentMethods.settlementDays,
         isActive: paymentMethods.isActive,
+        ...(withAccount ? { accountId: paymentMethods.accountId } : {}),
       })
       .from(paymentMethods)
       .where(eq(paymentMethods.salonId, salonId))
       .orderBy(asc(paymentMethods.name))
+
+    return rows.map((row) => ({ ...row, accountId: ("accountId" in row ? row.accountId : null) ?? null }))
   } catch (error) {
     console.error("Erro ao listar formas de pagamento:", error)
     return { error: "Não foi possível carregar as formas de pagamento" }
+  }
+}
+
+/**
+ * Contas ativas do financeiro, para escolher a conta de destino de uma forma de
+ * pagamento. Lista vazia no salão sem o módulo `finance` — a tela então nem mostra
+ * o campo.
+ */
+export async function listPaymentMethodAccounts(
+  salonId: string
+): Promise<{ id: string; name: string }[] | { error: string }> {
+  const auth = await authorizeSalon(salonId, "payment_methods.access")
+  if ("error" in auth) return auth
+
+  if (!(await salonHasModule(salonId, "finance"))) return []
+
+  try {
+    return await db
+      .select({ id: financialAccounts.id, name: financialAccounts.name })
+      .from(financialAccounts)
+      .where(and(eq(financialAccounts.salonId, salonId), eq(financialAccounts.isActive, true)))
+      .orderBy(asc(financialAccounts.name))
+  } catch (error) {
+    console.error("Erro ao listar contas para formas de pagamento:", error)
+    return { error: "Não foi possível carregar as contas" }
   }
 }
 
@@ -76,15 +110,29 @@ export async function savePaymentMethod(input: SavePaymentMethodInput): Promise<
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   const { salonId, id, name, kind, feePercent, settlementDays, isActive } = parsed.data
-  const values = {
-    name,
-    kind,
-    feePercent: feePercent.toFixed(2),
-    settlementDays,
-    isActive,
-  }
+  const accountId = parsed.data.accountId ?? null
 
   try {
+    // Conta de destino: só com o financeiro ligado, e só conta DESTE salão — a FK
+    // sozinha aceitaria o id de uma conta de outro.
+    const withAccount = await salonHasModule(salonId, "finance")
+    if (withAccount && accountId) {
+      const account = await db.query.financialAccounts.findFirst({
+        where: and(eq(financialAccounts.id, accountId), eq(financialAccounts.salonId, salonId)),
+        columns: { id: true },
+      })
+      if (!account) return { error: "Conta de destino não encontrada" }
+    }
+
+    const values = {
+      name,
+      kind,
+      feePercent: feePercent.toFixed(2),
+      settlementDays,
+      isActive,
+      ...(withAccount ? { accountId } : {}),
+    }
+
     if (id) {
       const [updated] = await db
         .update(paymentMethods)

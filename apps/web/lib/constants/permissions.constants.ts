@@ -25,6 +25,7 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   access_profiles: "Perfis de acesso",
   sales: "Comandas",
   payment_methods: "Formas de pagamento",
+  finance: "Financeiro",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
@@ -39,6 +40,8 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   view_invoiced: "Ver faturadas",
   invoice: "Faturar",
   edit_invoiced: "Reabrir faturada",
+  settle: "Dar baixa e estornar",
+  settings: "Contas e categorias",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */

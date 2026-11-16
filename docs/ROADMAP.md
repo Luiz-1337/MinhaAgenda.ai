@@ -5,7 +5,9 @@
 **Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
 Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
-nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fases 2 em diante: planejamento.
+nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): primeira fatia implementada na
+branch `claude/fase-2-financeiro`, com a **migration 038 não aplicada** — ver §6. Fases 3
+em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -413,7 +415,133 @@ comanda; a equipe (STAFF) não tem nenhuma — precisa de um perfil de acesso.
   "Concluir" da agenda. A comanda pode ser aberta antes; só o faturamento espera.
 - **Agendamento marcado como falta** também barra o faturamento.
 
-## 6. Pendências do dono
+## 6. Fase 2 — Financeiro (detalhe)
+
+A comanda registra a venda e como ela foi paga. O financeiro registra o DINHEIRO:
+quando entra, em qual conta, quanto a maquininha levou e o que o salão tem a pagar.
+É também o que a comissão (fase 3) vai ler para saber quando um valor ficou
+disponível.
+
+### 6.1 Fatias
+
+A fase é grande demais para uma entrega só. Ordem e estado:
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 2a | Contas, plano de categorias, conta de destino da forma de pagamento | Feita |
+| 2b | Transações: faturar comanda gera conta a receber; reabrir desfaz | Feita |
+| 2c | Novo recebimento, nova despesa, transferência, baixa, estorno, exclusão, lista com filtros e totais, saldo por conta | Feita |
+| 2d | Editar lançamento; recorrência (parcelas mensais) | Pendente |
+| 2e | Caixa: abrir, suprimento, sangria, fechar, conferência, histórico | Pendente |
+| 2f | Débito e crédito de cliente; faturar comanda com valor em aberto | Pendente |
+| 2g | Painel financeiro e relatórios (fluxo de caixa, recebimentos por forma, despesas por categoria) | Pendente |
+
+### 6.2 Modelo de dados (migration `038_finance.sql`)
+
+| Tabela / coluna | O que é |
+|---|---|
+| `financial_accounts` | Onde o dinheiro está: banco, caixa, cofre. Tem saldo inicial; o saldo atual nunca é gravado, é sempre saldo inicial + entradas pagas − saídas pagas |
+| `financial_categories` | Plano de categorias, de receita e de despesa |
+| `financial_transactions` | Contas a receber e a pagar, e as transferências |
+| `payment_methods.account_id` | Conta de destino de cada forma de pagamento |
+
+Campos centrais de `financial_transactions`:
+
+| Campo | Regra |
+|---|---|
+| `direction` | `in` (entrada) ou `out` (saída) |
+| `kind` | `sale` (gerada por comanda), `manual` (lançada na tela), `transfer` (perna de transferência) |
+| `status` | `open` (a receber / a pagar) ou `paid` (baixada); paga exige `paid_at` |
+| `amount`, `fee_amount`, `net_amount` | Bruto, taxa e líquido. O líquido é gravado e é o que entra no saldo |
+| `due_date`, `competence_date` | Dias de calendário em Brasília, sem hora |
+| `sale_payment_id` | Aponta para o pagamento da comanda, com `ON DELETE CASCADE` |
+| `transfer_group` | Une as duas pernas de uma transferência |
+
+### 6.3 Regras de negócio
+
+1. **Faturar comanda gera uma conta a receber por pagamento.** A taxa da forma de
+   pagamento vira `fee_amount`; o líquido é o que entra no saldo.
+2. **Prazo zero nasce pago; com prazo nasce em aberto**, vencendo no dia do
+   recebimento. É a diferença entre vender e receber.
+3. **Reabrir a comanda apaga as contas a receber dela**, sem código: os pagamentos
+   são removidos e a chave estrangeira leva junto.
+4. **Só gera financeiro com o módulo `finance` ligado** no salão. Comandas faturadas
+   antes de ligar o módulo não entram — não há retroativo (pendente, se necessário).
+5. **Nada entra em saldo sem conta.** Dar baixa exige conta. Forma de pagamento sem
+   conta de destino não trava o faturamento: a venda entra como "sem conta" e fica
+   fora de todo saldo até alguém dar baixa informando a conta.
+6. **Baixa não pode ter data futura.**
+7. **Transferência são duas linhas pagas**, saída de uma conta e entrada na outra.
+   Não entra em receita nem despesa, nem nos totais da tela.
+8. **Excluir:** lançamento manual só em aberto (o baixado precisa ser estornado
+   antes); transferência exclui as duas pernas; lançamento de comanda não se exclui
+   — reabre-se a comanda.
+9. **Conta e categoria com lançamento não são excluídas**, são desativadas.
+10. **O tipo da categoria (receita/despesa) não muda na edição.**
+
+Perguntas a confirmar com o dono (a auditoria não cobre):
+
+- Cartão: a conta a receber deve dar baixa sozinha no dia do recebimento, ou alguém
+  confere e dá baixa? Hoje é manual (fica "Atrasado" se ninguém baixar).
+- Comandas faturadas antes de ligar o módulo devem entrar no financeiro?
+- Quem pode ver o financeiro além do dono e dos gerentes?
+
+### 6.4 Permissões e módulo
+
+| Recurso | Ações |
+|---|---|
+| `finance` | `access`, `create`, `delete`, `settle` (dar baixa e estornar), `settings` (contas e categorias) |
+
+Módulo `finance` em `salons.settings.modules`. Sem perfil configurado, gerentes e
+dono têm tudo e a equipe não tem nada.
+
+### 6.5 Telas
+
+| Tela | Rota | Conteúdo |
+|---|---|---|
+| Financeiro | `/[salonId]/finance` | Saldo por conta, filtros (tipo, situação, conta, vencimento), totais do filtro, lista de lançamentos, novo recebimento, nova despesa, transferência, baixa, estorno, exclusão |
+| Contas e categorias | `/[salonId]/finance/settings` | Contas com saldo, plano de categorias em duas colunas |
+| Formas de pagamento | `/[salonId]/salon-settings/payment-methods` | Ganhou o campo "Conta de destino" (só com o módulo ligado) |
+
+### 6.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Tabelas | `packages/db/src/schema.ts` + `supabase/migrations/038_finance.sql` |
+| Regra pura | `packages/db/src/domain/finance.ts` |
+| Gravação e leitura | `packages/db/src/services/finance.service.ts` |
+| Comanda → financeiro | `recordSaleTransactions`, chamado por `invoiceSaleService` |
+| Actions | `apps/web/app/actions/finance.ts`, `finance-settings.ts` |
+| Telas | `apps/web/app/[salonId]/finance/` |
+| Testes | `apps/web/__tests__/lib/services/finance-domain.test.ts` |
+
+### 6.7 Estado da implementação (15/nov/2026)
+
+Branch `claude/fase-2-financeiro` (sai de `claude/fase-1-comandas`). Fatias 2a, 2b e
+2c escritas. Passam typecheck, lint, testes e `next build`.
+
+- **Migration 038: escrita, não aplicada.**
+- **Ordem de deploy — obrigatória.** A 038 tem que estar aplicada ANTES do código ir
+  para produção. Ela adiciona `payment_methods.account_id`, e o INSERT do Drizzle
+  lista todas as colunas da tabela: sem a coluna, criar uma forma de pagamento
+  falha mesmo com o financeiro desligado.
+- **Nada foi testado em uso.** Nenhuma tela aberta no navegador (sem `.env` no
+  checkout) e a gravação nunca rodou contra um banco. Isso vale também para as fases
+  0 e 1, nas quais a fase 2 se apoia.
+
+Ligar o módulo num salão (depois da 038 aplicada e do código publicado):
+
+```sql
+UPDATE salons
+   SET settings = jsonb_set(
+         coalesce(settings, '{}'::jsonb),
+         '{modules}',
+         coalesce(settings->'modules', '[]'::jsonb) || '["finance"]'::jsonb
+       )
+ WHERE id = '<id do salão>';
+```
+
+## 7. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -422,3 +550,5 @@ comanda; a equipe (STAFF) não tem nenhuma — precisa de um perfil de acesso.
 | Em qual salão sem Belasis pilotar | Fase 1 em produção |
 | Conta Belasis de teste para executar fluxos | Fidelidade das regras nas fases 2 a 5 |
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
+| Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
+| Testar as fases 0, 1 e 2 em uso, num salão de teste | Confiança para seguir construindo em cima |

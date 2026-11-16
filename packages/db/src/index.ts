@@ -94,6 +94,8 @@ export * from './domain/constants'
 export * from './domain/permissions'
 export * from './domain/sales'
 export * from './services/sales.service'
+export * from './domain/finance'
+export * from './services/finance.service'
 export * from './domain/errors/domain-error'
 export * from './domain/errors/integration-error'
 // appointment-status.enum removido: declarava um AppointmentStatus paralelo, com

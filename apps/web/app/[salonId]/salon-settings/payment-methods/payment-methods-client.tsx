@@ -28,9 +28,10 @@ type Draft = {
   feePercent: string
   settlementDays: string
   isActive: boolean
+  accountId: string
 }
 
-const EMPTY_DRAFT: Draft = { name: "", kind: "pix", feePercent: "0", settlementDays: "0", isActive: true }
+const EMPTY_DRAFT: Draft = { name: "", kind: "pix", feePercent: "0", settlementDays: "0", isActive: true, accountId: "" }
 
 function formatPercent(value: string): string {
   return `${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
@@ -44,10 +45,13 @@ function formatSettlement(days: number): string {
 export function PaymentMethodsClient({
   salonId,
   methods,
+  accounts,
   canManage,
 }: {
   salonId: string
   methods: PaymentMethodDTO[]
+  /** Contas do financeiro. Vazia = salão sem o módulo; o campo de destino some. */
+  accounts: { id: string; name: string }[]
   canManage: boolean
 }) {
   const router = useRouter()
@@ -63,6 +67,7 @@ export function PaymentMethodsClient({
       feePercent: Number(method.feePercent).toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
       settlementDays: String(method.settlementDays),
       isActive: method.isActive,
+      accountId: method.accountId ?? "",
     })
   }
 
@@ -90,6 +95,7 @@ export function PaymentMethodsClient({
         feePercent,
         settlementDays,
         isActive: draft.isActive,
+        accountId: draft.accountId || null,
       })
 
       if ("error" in result) {
@@ -303,6 +309,30 @@ export function PaymentMethodsClient({
                   />
                 </div>
               </div>
+
+              {accounts.length > 0 && (
+                <div className="space-y-1.5">
+                  <label htmlFor="pm-account" className={labelClass}>
+                    Conta de destino
+                  </label>
+                  <select
+                    id="pm-account"
+                    value={draft.accountId}
+                    onChange={(event) => setDraft({ ...draft, accountId: event.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Sem conta definida</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Onde o dinheiro desta forma cai. Sem conta, a venda entra no financeiro sem saldo.
+                  </p>
+                </div>
+              )}
 
               <label className="flex items-center gap-2 text-sm text-foreground">
                 <Switch

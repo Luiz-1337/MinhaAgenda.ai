@@ -22,7 +22,14 @@ import { join } from "node:path"
  * em `lib/services/permissions.service.ts`.
  */
 
-const GUARDED_FILES = ["chats.ts", "access-profiles.ts", "sales.ts", "payment-methods.ts"] as const
+const GUARDED_FILES = [
+  "chats.ts",
+  "access-profiles.ts",
+  "sales.ts",
+  "payment-methods.ts",
+  "finance.ts",
+  "finance-settings.ts",
+] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */
 const AUTHORIZERS = /\b(authorizeSalon|authorizeChat)\s*\(/

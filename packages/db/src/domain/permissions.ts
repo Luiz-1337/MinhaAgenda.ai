@@ -29,6 +29,9 @@ export const PERMISSION_CATALOG = {
   // `view_invoiced` não vê as já faturadas.
   sales: ['access', 'create', 'edit', 'delete', 'view_invoiced', 'invoice', 'edit_invoiced', 'view_all'],
   payment_methods: ['access', 'manage'],
+  // Financeiro (fase 2). `settle` = dar baixa e estornar; `settings` = contas e
+  // plano de categorias.
+  finance: ['access', 'create', 'delete', 'settle', 'settings'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -133,7 +136,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

@@ -14,6 +14,8 @@ export interface PaymentMethodDTO {
   feePercent: string
   settlementDays: number
   isActive: boolean
+  /** Conta de destino no financeiro. Sempre null no salão sem o módulo `finance`. */
+  accountId: string | null
 }
 
 export interface SavePaymentMethodInput {
@@ -24,6 +26,8 @@ export interface SavePaymentMethodInput {
   feePercent: number
   settlementDays: number
   isActive: boolean
+  /** Só é gravada no salão com o módulo `finance`. */
+  accountId?: string | null
 }
 
 export interface SaleListItemDTO {

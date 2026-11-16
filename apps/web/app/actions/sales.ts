@@ -151,6 +151,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   if (saleId) revalidatePath(`/${salonId}/sales/${saleId}`)
   // Faturar e reabrir mudam o desfecho de agendamentos.
   revalidatePath(`/${salonId}/schedule`)
+  // E geram (ou apagam) contas a receber, quando o financeiro está ligado.
+  revalidatePath(`/${salonId}/finance`)
 }
 
 // ============================================================================
@@ -262,7 +264,9 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       services: serviceRows.map((s) => ({ id: s.id, name: s.name, suggestedPrice: suggestedPriceFromService(s) })),
       products: productRows.map((p) => ({ id: p.id, name: p.name, price: toAmount(p.price) })),
       professionals: professionalRows,
-      paymentMethods: methodRows,
+      // A conta de destino não interessa à tela da comanda (e a coluna só existe
+      // depois da migration 038) — por isso não é lida aqui.
+      paymentMethods: methodRows.map((method) => ({ ...method, accountId: null })),
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),
@@ -499,7 +503,12 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
   const visible = await loadVisibleSale(parsed.data.salonId, auth.userId, parsed.data.saleId)
   if ("error" in visible) return visible
 
-  const result = await invoiceSaleService({ ...parsed.data, userId: auth.userId })
+  const result = await invoiceSaleService({
+    ...parsed.data,
+    userId: auth.userId,
+    // Com o financeiro ligado, faturar gera as contas a receber (fase 2).
+    recordFinance: await salonHasModule(parsed.data.salonId, "finance"),
+  })
   if (!result.success) return { error: result.error }
 
   revalidateSales(parsed.data.salonId, parsed.data.saleId)

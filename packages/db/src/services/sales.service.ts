@@ -24,6 +24,7 @@ import {
   type SaleItemDraft,
 } from "../domain/sales"
 import type { ActionResult } from "./appointments"
+import { recordSaleTransactions } from "./finance.service"
 
 /**
  * Comandas (docs/ROADMAP.md, fase 1).
@@ -306,6 +307,12 @@ export async function invoiceSaleService(input: {
   saleId: string
   payments: InvoicePaymentDraft[]
   userId: string
+  /**
+   * Gera as contas a receber no financeiro (fase 2). Quem decide é a action: só
+   * com o módulo `finance` ligado no salão. Desligado, a comanda fatura como na
+   * fase 1 e nenhuma tabela do financeiro é tocada.
+   */
+  recordFinance?: boolean
 }): Promise<ActionResult<void>> {
   try {
     await db.transaction(async (tx) => {
@@ -362,15 +369,37 @@ export async function invoiceSaleService(input: {
       if (!plan.ok) fail(plan.error)
 
       if (plan.payments.length > 0) {
-        await tx.insert(salePayments).values(
-          plan.payments.map((payment) => ({
-            ...payment,
-            saleId: sale.id,
+        const insertedPayments = await tx
+          .insert(salePayments)
+          .values(
+            plan.payments.map((payment) => ({
+              ...payment,
+              saleId: sale.id,
+              salonId: input.salonId,
+              paidAt: now,
+              createdBy: input.userId,
+            }))
+          )
+          .returning({
+            id: salePayments.id,
+            paymentMethodId: salePayments.paymentMethodId,
+            amount: salePayments.amount,
+            feeAmount: salePayments.feeAmount,
+            settlesOn: salePayments.settlesOn,
+          })
+
+        // Na MESMA transação: ou a comanda fatura e o financeiro registra, ou nada.
+        if (input.recordFinance) {
+          await recordSaleTransactions(tx, {
             salonId: input.salonId,
-            paidAt: now,
-            createdBy: input.userId,
-          }))
-        )
+            saleId: sale.id,
+            saleNumber: sale.number,
+            customerId: sale.customerId,
+            userId: input.userId,
+            payments: insertedPayments,
+            now,
+          })
+        }
       }
 
       await tx

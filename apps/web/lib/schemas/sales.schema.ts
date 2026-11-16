@@ -56,4 +56,5 @@ export const savePaymentMethodSchema = z.object({
   feePercent: z.number().finite().min(0, "Taxa inválida").max(100, "Taxa inválida"),
   settlementDays: z.number().int("Prazo inválido").min(0, "Prazo inválido").max(365, "Prazo inválido"),
   isActive: z.boolean(),
+  accountId: z.string().uuid().nullish(),
 })
