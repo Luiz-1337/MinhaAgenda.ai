@@ -15,7 +15,10 @@ sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §
 Fatia 3b (auxiliar) feita na mesma branch e publicada, com a migration 042 aplicada
 em 16/nov/2026 e testada em uso — ver §7.8. Fatia 3c (vales e bonificações) feita na
 mesma branch e publicada, com a migration 043 aplicada em 16/nov/2026 e testada em
-uso — ver §7.9. As migrations 040 a 043 estão registradas em `schema_migrations`.
+uso — ver §7.9. Fatia 3d (pagamento em lote, recibo e saída no financeiro) feita na
+mesma branch e publicada, com a migration 044 aplicada em 16/nov/2026 e testada em
+uso — ver §7.10. As migrations 040 a 044 estão registradas em `schema_migrations`.
+Da fase 3 falta só a fatia 3e, que depende do estoque (fase 4).
 Fases 4 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -719,14 +722,19 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 | 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita — migration 041 aplicada e testada em uso em 16/nov/2026 (§7.7) |
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
 | 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita — migration 043 aplicada e testada em uso (§7.9) |
-| 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Pendente |
+| 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Feita — migration 044 aplicada e testada em uso em 16/nov/2026 (§7.10) |
 | 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
 
-### 7.2 Modelo de dados (migrations `041_commissions.sql`, `042_commission_assistants.sql` e `043_commission_adjustments.sql`)
+### 7.2 Modelo de dados (migrations 041 a 044)
 
-A 041 cria três tabelas novas e não altera nenhuma existente. A 042 (fatia 3b) cria
-uma quarta e acrescenta uma coluna em `sale_items` e outra em `commission_entries`.
-A 043 (fatia 3c) cria `commission_adjustments` e não altera nenhuma existente.
+A 041 (`041_commissions.sql`) cria três tabelas novas e não altera nenhuma
+existente. A 042 (`042_commission_assistants.sql`, fatia 3b) cria uma quarta e
+acrescenta uma coluna em `sale_items` e outra em `commission_entries`. A 043
+(`043_commission_adjustments.sql`, fatia 3c) cria `commission_adjustments` e não
+altera nenhuma existente. A 044 (`044_commission_payments.sql`, fatia 3d) cria
+`commission_payments`, acrescenta `payment_id` em `commission_entries` e em
+`commission_adjustments`, e mexe no financeiro: duas colunas e um tipo novo em
+`financial_transactions`.
 
 - `commission_settings` — as regras gerais. Uma linha do salão (`professional_id`
   NULL) e, se houver, uma por profissional que foge da regra do salão. Cada campo
@@ -750,6 +758,17 @@ A 043 (fatia 3c) cria `commission_adjustments` e não altera nenhuma existente.
 - `commission_adjustments` (043) — vales e bonificações: profissional, `kind`
   (`advance` = vale, `bonus` = bonificação), `amount` sempre positivo,
   `reference_date` (o dia em que entra no extrato), observação e quem lançou.
+- `commission_payments` (044) — um pagamento a UM profissional: a data de corte
+  (`cutoff_date`), a fotografia do que foi quitado (comissões, vales, bonificações),
+  o valor pago, o dia, a conta de saída (opcional) e quem registrou. Os feitos na
+  mesma operação compartilham `batch_id`. O banco confere que
+  valor = comissões − vales + bonificações, e que não é negativo.
+- `commission_entries.payment_id` e `commission_adjustments.payment_id` (044) — o
+  pagamento que quitou a linha; NULL = em aberto. `ON DELETE SET NULL`: apagar o
+  pagamento devolve tudo para "em aberto".
+- `financial_transactions` (044) — tipo novo `commission` e as colunas
+  `commission_payment_id` e `commission_adjustment_id` (exatamente uma preenchida
+  nesse tipo; `ON DELETE CASCADE`). É sempre saída, paga e com conta (CHECK).
 
 O percentual geral do profissional continua onde sempre esteve:
 `professionals.commission_rate`, editado no cadastro em Equipe.
@@ -845,23 +864,64 @@ bonificações, líquido). Decidido aqui, **a confirmar com o dono**:
 29. **Sem "Ver de todos", a pessoa só lança e exclui nos próprios vínculos** — a
     permissão de lançar não amplia o que ela enxerga.
 
+Pagamento (fatia 3d). A auditoria traz a tela "Resumidas" (período e profissionais,
+"base para o pagamento em lote"), a lista "Pagas" (data, pagamento, profissional,
+usuário, comissões, vales, bonificações, valor pago; impressão individual e
+agrupada) e o vale como saída do financeiro. Decidido aqui, **a confirmar com o
+dono** — as regras 30 a 39 substituem a 27 e a 28:
+
+30. **O pagamento quita tudo o que está em aberto até uma data de corte**, por
+    profissional: comissões liberadas − vales + bonificações. Um pagamento por
+    profissional; os feitos juntos formam um lote.
+31. **Não há data inicial.** O que não foi quitado continua em aberto e entra no
+    próximo pagamento — é assim que o saldo passa de um mês para o outro. A Belasis
+    usa período (de/até); aqui, só "até".
+32. **Líquido negativo não se paga nem se quita.** O profissional aparece como
+    devendo e fica fora do lote; o que é dele continua em aberto até um pagamento
+    futuro cobrir.
+33. **Líquido zero quita sem sair dinheiro** (comissão e vale que se anulam).
+34. **Comissão que aguarda o cliente pagar não entra** (sem data de liberação). A
+    data de corte pode ser futura: adiantar o que ainda vai liberar é escolha de
+    quem paga. O dia do pagamento não pode ser futuro.
+35. **Comissão paga é fotografia.** "Recalcular período" e o recebimento de um
+    débito só regravam o que está em aberto, e a comanda com comissão paga não
+    reabre enquanto o pagamento não for estornado (substitui a pergunta da regra 13).
+36. **Estornar é apagar o pagamento**: o que ele quitou volta a ficar em aberto e a
+    despesa que ele gerou sai do financeiro. Lançamento que entrou num pagamento
+    não se exclui sem estornar antes.
+37. **O dinheiro só entra no financeiro quando se escolhe a conta de saída** — no
+    pagamento e no vale. Vira despesa paga, do tipo "comissão", que não se edita,
+    estorna nem exclui pela tela do financeiro. Sem conta, nada é lançado lá. A
+    bonificação não gera despesa própria: sai dentro do pagamento. Assim o total
+    lançado é comissões + bonificações, sem contar o vale duas vezes.
+38. **A despesa do vale leva a data em que o dinheiro saiu**: a data do vale, ou
+    hoje quando ela é futura (vale para descontar no mês que vem).
+39. **Só oferece conta para quem pode lançar no financeiro** (`finance.create`, com
+    o módulo ligado): pagar comissão não dá, por tabela, o direito de criar despesa.
+    O valor que a tela mostrou é conferido no servidor — se outro lançamento entrou
+    nesse meio-tempo, o pagamento é recusado.
+
 Perguntas para o dono:
 
 - O percentual geral do profissional deve vencer o padrão do item? Hoje o item vence.
 - Na regra "disponibilidade" com pagamento dividido, liberar a comissão aos poucos
   (proporcional a cada recebimento) em vez de tudo no último dia?
-- A regra 13 e a 8 mudam quando houver pagamento de comissão (fatia 3d): comissão
-  já paga precisa ficar congelada. Proposta: comanda com comissão paga não reabre
-  sem estornar o pagamento.
+- Comissão paga ficou congelada (regra 35): comanda com comissão paga não reabre
+  sem estornar o pagamento. É isso mesmo, ou a reabertura deve ser livre e gerar um
+  acerto no pagamento seguinte?
 - Auxiliar: quando a comissão do profissional não cobre o auxiliar (regra 19), o
   salão completa ou o auxiliar recebe só o que houver? Hoje o salão completa.
 - Auxiliar: o percentual "sobre o valor do serviço" deve seguir a regra de desconto
   do salão (regra 6)? Hoje é sempre sobre o valor cheio.
 - Um serviço pode ter mais de um auxiliar? Hoje é um por item.
-- Vale: ao lançar, o sistema deve registrar a saída do dinheiro no financeiro (e de
-  qual conta)? Hoje não registra nada (regra 27).
-- Vale maior que a comissão: o que sobra deve passar para o período seguinte
-  automaticamente? Hoje não passa (regra 28).
+- Pagamento por data de corte (regra 31), sem período de/até como na Belasis: serve?
+- Vale e pagamento só vão para o financeiro quando se escolhe a conta (regra 37).
+  Deve ser obrigatório escolher? E o vale pago em dinheiro deve sair do caixa aberto
+  (sangria) sozinho? Hoje não mexe no caixa.
+- O texto do recibo é fixo. Na Belasis ele é configurável, com as variáveis valor e
+  nome da empresa. Vale a pena configurar?
+- A lista "Pagas" mostra a conta de saída na coluna "Pagamento". A Belasis mostra a
+  forma de pagamento. Falta a forma (dinheiro, PIX) no pagamento de comissão?
 - "Solicitações de saída" (retirada de produto pelo profissional, com "preço para
   profissional") também abatem o líquido na Belasis. Ficam para a fase 4 (estoque).
 
@@ -876,6 +936,11 @@ não depende de `finance`.
 | `commissions.view_all` | Ver o extrato de todos os profissionais |
 | `commissions.configure` | Regras do salão, exceções, comissão por item e recalcular |
 | `commissions.adjust` | Lançar e excluir vales e bonificações (fatia 3c) |
+| `commissions.pay` | Pagar comissões e estornar pagamentos (fatia 3d) |
+
+Registrar a saída no financeiro (no pagamento e no vale) pede também
+`finance.create` e o módulo `finance` ligado; sem isso o pagamento e o vale
+funcionam, só não geram despesa.
 
 ### 7.5 Telas
 
@@ -885,7 +950,15 @@ não depende de `finance`.
   período, aparece a coluna "Auxiliar" (o desconto) e a linha de quem auxiliou.
   Seção "Vales e bonificações" com a lista do período e, para quem tem
   `commissions.adjust`, o formulário de lançamento e a exclusão; havendo
-  lançamento, aparecem os totais de vales, bonificações e líquido.
+  lançamento, aparecem os totais de vales, bonificações e líquido. O vale pode
+  dizer de qual conta o dinheiro saiu. Comissão e lançamento já pagos aparecem
+  marcados com o dia do pagamento.
+- **Pagamento de comissões** (`/[salonId]/commissions/payments`): "Em aberto até"
+  uma data, por profissional (comissões, vales, bonificações, a pagar), com quem
+  está devendo fora da seleção; dia do pagamento, conta de saída, categoria e
+  observação; e a lista "Pagas" do período, com recibo, recibos do lote e estorno.
+- **Recibo** (`/[salonId]/commissions/payments/receipt?payment=` ou `?batch=`): o
+  demonstrativo do que foi quitado, pronto para imprimir — um por folha no lote.
 - **Configurar comissões** (`/[salonId]/commissions/settings`): regras do salão;
   comissão por item, escolhendo entre o padrão do salão e um profissional (que
   também mostra as regras gerais dele, com "Seguir o salão"); comissão como
@@ -898,7 +971,7 @@ não depende de `finance`.
 
 | O quê | Onde |
 |---|---|
-| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`, `resolveAssistantRule`, `planAssistantRule`, `planCommissionAdjustment`, `commissionNetCents`); o auxiliar do item é validado em `domain/sales.ts` (`planSaleItems`) |
+| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`, `resolveAssistantRule`, `planAssistantRule`, `planCommissionAdjustment`, `commissionNetCents`, `planCommissionPayment`, `planCommissionPaymentBatch`, `unpaidPlannedEntries`, `advancePaidDate`); o bloqueio do lançamento de comissão no financeiro fica em `domain/finance.ts`; o auxiliar do item é validado em `domain/sales.ts` (`planSaleItems`) |
 | I/O | `packages/db/src/services/commissions.service.ts` |
 | Comanda → comissão | `syncSaleCommissions`, chamado por `invoiceSaleService`, `receiveSaleDebtPaymentService` e `reopenSaleService` quando a action passa `recordCommissions` |
 | Actions | `apps/web/app/actions/commissions.ts` |
@@ -1033,6 +1106,61 @@ próprios vínculos — regra 29) e a lista com mais lançamentos do que o limit
 tela. Detalhe de tela anotado, sem correção: o total de vales mostra "− R$ 400,00"
 e o líquido negativo mostra "-R$ 107,30" (sinais com grafias diferentes).
 
+### 7.10 Fatia 3d — estado (16/nov/2026)
+
+- Na branch `claude/fase-3-comissoes`, publicada, ainda sem PR. Typecheck, lint dos
+  arquivos alterados e testes passando; o build do preview da Vercel passou.
+- **Migration 044: aplicada em produção em 16/nov/2026** (pelo assistente, com a
+  autorização do dono para rodar migrations naquela sessão), conferida por leitura
+  (a tabela com RLS e `deny_all`, sem acesso para `anon`/`authenticated`, as
+  quatro colunas novas, os dois CHECKs do financeiro) e registrada em
+  `schema_migrations` (nome `commission_payments`). As três tabelas que ela altera
+  estavam vazias, então não houve cópia de segurança.
+- Em outro ambiente, **aplicar a 044 antes de publicar o código**: ela acrescenta
+  colunas em tabelas que o código já grava (`commission_entries`,
+  `commission_adjustments`, `financial_transactions`). Sem elas, faturar comanda
+  com comissões ligadas e lançar no financeiro falham. O código antigo continua
+  funcionando depois dela.
+
+**Teste em uso (16/nov/2026, salão de teste, no preview da branch).** Regra de 50%
+no serviço, comanda #9 com dois itens em cartão de crédito (taxa de 2,92%): R$ 300,00
+de um profissional e R$ 200,00 do outro.
+
+- Vale de R$ 100,00 com saída na conta de caixa → o extrato mostra "saiu de" a
+  conta e o financeiro ganha a despesa paga "Vale — <profissional>". Vale de
+  R$ 300,00 sem conta e bonificação de R$ 50,00 (o campo de conta some na
+  bonificação) não lançam nada.
+- Em aberto até hoje: R$ 145,62 − R$ 100,00 + R$ 50,00 = **R$ 95,62** a pagar a um;
+  o outro, com R$ 97,08 de comissão e R$ 300,00 de vale, aparece como devendo
+  (−R$ 202,92) e sem caixa de seleção. Com a data de corte na véspera, nada em aberto.
+- Pagamento de R$ 95,62 com saída na conta de banco e categoria: entra em "Pagas",
+  o profissional sai de "Em aberto", e o financeiro ganha a despesa paga
+  "Comissão — <profissional>". Total pago no financeiro: R$ 195,62 — a comissão mais
+  a bonificação, com o vale contado uma vez só.
+- Recibo: comanda, vale e bonificação no demonstrativo, totais e linha de assinatura.
+- No financeiro, as duas despesas de comissão aparecem sem editar, estornar ou excluir.
+- No extrato, a comissão e os dois lançamentos pagos ficam marcados com o dia do
+  pagamento, e os lançamentos pagos perdem o botão de excluir.
+- Reabrir a comanda #9 com a comissão paga foi **recusado**.
+- Regra trocada para 40% e "Recalcular período": a comissão paga ficou em R$ 145,62
+  (50%) e só a em aberto foi refeita (R$ 77,66).
+- Estorno: o pagamento some, o profissional volta para "Em aberto" com os mesmos
+  R$ 95,62, a despesa da comissão sai do financeiro e a do vale fica. Excluir o
+  vale com conta tira a despesa dele também. Depois do estorno a comanda reabriu.
+- Dados de teste removidos ao final: comanda #9 excluída, regra, lançamentos e
+  despesas apagados.
+
+Não testado em uso: lote com mais de um profissional (impressão agrupada), o
+profissional que recebe uma comissão nova depois de ficar devendo (o saldo antigo
+entrando no pagamento seguinte), pagamento de valor zero, o perfil com
+`commissions.pay` e sem "Ver de todos", o perfil sem `finance.create` (sem campo
+de conta), a impressão em papel, e o recebimento de débito numa comanda com
+comissão paga.
+
+Fica para depois (não é da auditoria ou depende de decisão do dono): texto do
+recibo configurável, forma de pagamento no pagamento de comissão, vale em dinheiro
+saindo do caixa aberto, "pagar salário" (ficha do profissional na Belasis).
+
 ## 8. Pendências do dono
 
 | Pendência | Trava |
@@ -1044,5 +1172,6 @@ e o líquido negativo mostra "-R$ 107,30" (sinais com grafias diferentes).
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
-| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, vales no financeiro) | Fatia 3d |
+| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
+| Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

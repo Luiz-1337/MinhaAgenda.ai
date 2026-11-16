@@ -1511,7 +1511,10 @@ const paymentColumns = {
   cutoffDate: commissionPayments.cutoffDate,
   professionalId: commissionPayments.professionalId,
   professionalName: professionals.name,
-  userName: profiles.fullName,
+  // Cadastro antigo pode ter só nome e sobrenome, sem o nome completo.
+  userName: sql<
+    string | null
+  >`coalesce(${profiles.fullName}, nullif(trim(concat_ws(' ', ${profiles.firstName}, ${profiles.lastName})), ''))`,
   accountName: financialAccounts.name,
   entriesAmount: commissionPayments.entriesAmount,
   advancesAmount: commissionPayments.advancesAmount,

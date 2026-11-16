@@ -727,7 +727,7 @@ export function CommissionSettingsClient({
         onClose={() => setConfirmRecalc(false)}
         onConfirm={runRecalculate}
         title="Recalcular comissões"
-        description="As comissões das comandas faturadas do período serão refeitas com as regras de agora. Os valores do extrato podem mudar."
+        description="As comissões das comandas faturadas do período serão refeitas com as regras de agora. Os valores do extrato podem mudar. Comissão já paga não é recalculada."
         confirmText="Recalcular"
         type="warning"
       />
