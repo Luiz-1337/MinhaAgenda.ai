@@ -21,7 +21,7 @@ import { isMessageProcessed, markMessageProcessed } from '@/lib/infra/redis';
 import { enqueueMessage } from '@/lib/queues/message-queue';
 import { WebhookMetrics } from '@/lib/infra/metrics';
 import { recordAlert } from '@/lib/services/alerts/alert.service';
-import { findOrCreateChat, findOrCreateCustomer, saveMessage } from '@/lib/services/chat.service';
+import { findOrCreateChat, findOrCreateCustomer, recordLeadSource, saveMessage } from '@/lib/services/chat.service';
 import { checkPhoneRateLimit } from '@/lib/infra/rate-limit';
 import { withTimeout, TimeoutError } from '@/lib/utils/async.utils';
 import { RateLimitError } from '@/lib/errors';
@@ -32,6 +32,7 @@ import {
   getReactionTarget,
   buildReactionLabel,
   extractAdReferral,
+  leadSourceFromReferral,
 } from '@/lib/services/messaging/cloud/content';
 import type { AdReferral } from '@/lib/services/messaging/cloud/content';
 
@@ -449,14 +450,29 @@ async function handleInboundMessage(
   //    sistema): o painel mostra e o contexto da IA registra.
   //    providerMessageId agora é gravado no inbound também: sem o wamid do
   //    cliente no banco, reação a mensagem DELE seria irresolvível.
-  const userMessageId = await withTimeout(
-    saveMessage(chat.id, 'user', body, {
-      providerMessageId: messageId,
-      ...(hasMedia && mediaType ? { mediaType } : {}),
+  //
+  //    Junto, a origem do lead no CLIENTE (tráfego pago × orgânico — migration
+  //    035): é dela que os agendamentos herdam a marca, e por ela a agenda oficial
+  //    pinta o agendamento de tráfego. Em paralelo com o salvamento para não
+  //    custar tempo, e não-fatal: nem erro nem demora da marca derrubam a entrada
+  //    da mensagem.
+  const [userMessageId] = await Promise.all([
+    withTimeout(
+      saveMessage(chat.id, 'user', body, {
+        providerMessageId: messageId,
+        ...(hasMedia && mediaType ? { mediaType } : {}),
+      }),
+      DB_TIMEOUT,
+      'saveMessage',
+    ),
+    withTimeout(
+      recordLeadSource({ salonId, customerId: customer.id, incoming: leadSourceFromReferral(adReferral) }),
+      DB_TIMEOUT,
+      'recordLeadSource',
+    ).catch((error) => {
+      reqLogger.warn({ err: error }, 'Origem do lead não foi gravada a tempo; mensagem segue');
     }),
-    DB_TIMEOUT,
-    'saveMessage',
-  );
+  ]);
 
   // 6b. Origem do anúncio no banco. Escrita SEPARADA e não-fatal de propósito, em
   //     vez de entrar no INSERT do saveMessage: a coluna `ad_referral` chega pela

@@ -99,6 +99,44 @@ export function detectAppointmentIntent(userMessage: string): boolean {
 }
 
 /**
+ * A cliente esta falando de um horario que JA TEM (remarcar, desmarcar, "nao vou
+ * poder ir", "tinha agendado")?
+ *
+ * Serve para decidir quando vale consultar a agenda oficial do salao antes de
+ * montar o bloco de agendamentos do prompt. A consulta custa chamadas a API de
+ * la (cota de 30/min), entao nao roda a cada mensagem — so quando a mensagem
+ * aponta para um horario existente. E um atalho, nao a unica porta: a tool
+ * getMyFutureAppointments faz a mesma consulta quando a IA a chama.
+ *
+ * As duas mensagens reais que motivaram (Spettacolo Salone, nov/2026), ambas de
+ * clientes com horario marcado pela recepcao direto na agenda do salao:
+ *   "vou precisar reagendar o corte para dia 19nov"
+ *   "Gostaria de marcar para outro dia"
+ *
+ * Erra para o lado de consultar: um falso positivo custa uma chamada; um falso
+ * negativo deixa a IA responder "nao encontrei agendamento".
+ */
+const EXISTING_APPOINTMENT_REGEX = new RegExp(
+  [
+    // remarcar, reagendar, desmarcar, cancelar, adiar, antecipar
+    String.raw`\b(reagend|remarc|desmarc|cancel|adia|antecip)\w*`,
+    // "outro dia", "outra data", "mudar o horario", "trocar de dia"
+    String.raw`\b(outr[oa]|mudar|trocar|alterar)\s+(de\s+|o\s+|a\s+|para\s+|pra\s+)?(dia|data|hor[aá]rio)\b`,
+    // "nao vou poder ir", "nao consigo comparecer", "nao vai dar para ir"
+    String.raw`\bn[aã]o\s+(vou|posso|consigo|poderei|vai\s+dar)\s+(poder\s+|para\s+|pra\s+)?(ir|comparecer)\b`,
+    // "tinha agendado", "tenho um horario marcado", "estou agendada"
+    String.raw`\b(tinha|tenho|estou|t[oô])\s+((um|o|meu)\s+)?(hor[aá]rio\s+)?(agendad|marcad)\w*`,
+    // "meu horario", "meu agendamento"
+    String.raw`\bmeu\s+(hor[aá]rio|agendamento)\b`,
+  ].join("|"),
+  "i"
+)
+
+export function detectExistingAppointmentIntent(userMessage: string): boolean {
+  return EXISTING_APPOINTMENT_REGEX.test(userMessage)
+}
+
+/**
  * Detecta violacao de fluxo: agente tentou criar/atualizar agendamento sem
  * antes ter buscado os IDs reais via getServices.
  *

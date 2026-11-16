@@ -14,6 +14,8 @@
  * a tabela `integration_external_refs` guarda o de-para.
  */
 
+import type { LeadSource } from '../../constants'
+
 /** Provedores que podem ser agenda oficial. Um por salão, no máximo. */
 export type AgendaProviderId = 'belasis'
 
@@ -67,6 +69,13 @@ export interface AgendaAppointmentInput {
     externalId?: string
   }
   notes?: string
+  /**
+   * Origem do lead. O provedor pode marcar o agendamento de tráfego pago do jeito
+   * que o sistema dele permitir (a Belasis, com uma cor). É um ENFEITE: se o
+   * sistema externo não aceitar a marca, o agendamento é criado sem ela — nunca
+   * deixa de ser criado por causa disso.
+   */
+  leadSource?: LeadSource
 }
 
 export interface AgendaCreatedAppointment {
@@ -165,6 +174,23 @@ export interface AgendaProvider {
 
   /** Opcional: nome e telefone de um cliente de lá (null = não existe). */
   getCustomer?(externalId: string): Promise<AgendaRemoteCustomer | null>
+
+  /**
+   * Opcional: o cadastro de lá que tem este telefone (null = não achou). Só
+   * leitura — não cadastra ninguém. Serve para enxergar, ANTES de agendar, o que
+   * a recepção já marcou para a cliente.
+   */
+  findCustomerByPhone?(phone: string): Promise<{ externalId: string; name: string } | null>
+
+  /**
+   * Opcional: os agendamentos de UM cliente de lá num período, um por serviço,
+   * no mesmo formato de `listAppointments`. É a consulta barata (um cliente, e
+   * não o salão inteiro) que roda com a cliente esperando no WhatsApp.
+   */
+  listCustomerAppointments?(
+    externalCustomerId: string,
+    range: { start: Date; end: Date }
+  ): Promise<AgendaRemoteAppointment[]>
 
   /**
    * Opcional: acha um agendamento pela chave de idempotência. Só é chamado depois

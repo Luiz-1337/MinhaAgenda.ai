@@ -33,6 +33,8 @@ const h = vi.hoisted(() => {
     fireAndForgetUpdate: vi.fn(),
     fireAndForgetDelete: vi.fn(),
     existingAppointment: null as Record<string, unknown> | null,
+    /** A linha do cliente que a criação lê para saber a origem do lead. */
+    customerLookup: vi.fn(),
   }
 })
 
@@ -72,6 +74,7 @@ vi.mock('../../src/index', async () => {
       },
       professionalServices: { findFirst: vi.fn(async () => ({ id: 'ps-1' })) },
       appointments: { findFirst: vi.fn(async () => h.existingAppointment) },
+      customers: { findFirst: h.customerLookup },
     },
     // Expediente: o dia inteiro, para a regra de horário não interferir.
     select: () => chain('select', [{ startTime: '00:00', endTime: '23:59', isBreak: false }]),
@@ -121,9 +124,71 @@ beforeEach(() => {
   h.calls.length = 0
   vi.clearAllMocks()
   h.existingAppointment = null
+  h.customerLookup.mockResolvedValue({ leadSource: null })
   h.checkAgendaSlot.mockResolvedValue({ ok: true })
   h.pushAppointmentToAgenda.mockResolvedValue({ ok: true, externalId: 'ext-1' })
   h.cancelAppointmentInAgenda.mockResolvedValue(true)
+})
+
+/** O que foi gravado na linha do agendamento criado. */
+const inserted = () => h.calls.find((c) => c.op === 'insert')?.values as Record<string, unknown> | undefined
+
+describe('createAppointmentService × origem do lead', () => {
+  it('cliente de tráfego pago → o agendamento nasce com a origem e ela vai junto para a agenda oficial', async () => {
+    h.prepareAgendaSync.mockResolvedValue({ ok: true, ctx: h.ctx })
+    h.customerLookup.mockResolvedValue({ leadSource: 'paid_traffic' })
+
+    const result = await createAppointmentService(createInput)
+
+    expect(result.success).toBe(true)
+    expect(inserted()).toMatchObject({ leadSource: 'paid_traffic' })
+    expect(h.pushAppointmentToAgenda).toHaveBeenCalledWith(
+      h.ctx,
+      'create',
+      expect.objectContaining({ appointmentId: APPOINTMENT, leadSource: 'paid_traffic' })
+    )
+  })
+
+  it('cliente orgânico → origem orgânica, sem agenda oficial também', async () => {
+    h.prepareAgendaSync.mockResolvedValue({ ok: true, ctx: null })
+    h.customerLookup.mockResolvedValue({ leadSource: 'organic' })
+
+    await createAppointmentService(createInput)
+
+    expect(inserted()).toMatchObject({ leadSource: 'organic' })
+  })
+
+  it('origem desconhecida (cliente sem a marca) → agenda do mesmo jeito, com a origem vazia', async () => {
+    h.prepareAgendaSync.mockResolvedValue({ ok: true, ctx: h.ctx })
+
+    const result = await createAppointmentService(createInput)
+
+    expect(result.success).toBe(true)
+    expect(inserted()).toMatchObject({ leadSource: null })
+    expect(h.pushAppointmentToAgenda).toHaveBeenCalledWith(h.ctx, 'create', expect.objectContaining({ leadSource: null }))
+  })
+
+  it('a leitura da origem falha → a origem fica vazia e o agendamento NÃO é impedido', async () => {
+    h.prepareAgendaSync.mockResolvedValue({ ok: true, ctx: h.ctx })
+    h.customerLookup.mockRejectedValue(new Error('coluna lead_source ainda não existe'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const result = await createAppointmentService(createInput)
+
+    expect(result).toEqual({ success: true, data: { appointmentId: APPOINTMENT } })
+    expect(inserted()).toMatchObject({ leadSource: null })
+    expect(h.pushAppointmentToAgenda).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('a origem é lida só do cliente DESTE salão', async () => {
+    h.prepareAgendaSync.mockResolvedValue({ ok: true, ctx: null })
+
+    await createAppointmentService(createInput)
+
+    expect(h.customerLookup).toHaveBeenCalledTimes(1)
+    expect(h.customerLookup).toHaveBeenCalledWith(expect.objectContaining({ columns: { leadSource: true } }))
+  })
 })
 
 describe('createAppointmentService × agenda oficial', () => {
@@ -247,6 +312,20 @@ describe('updateAppointmentService × agenda oficial', () => {
     expect(result.success).toBe(true)
     expect(h.prepareAgendaSync).not.toHaveBeenCalled()
     expect(h.pushAppointmentToAgenda).not.toHaveBeenCalled()
+  })
+
+  it('remarcar leva a origem do AGENDAMENTO para a agenda oficial (o novo de lá mantém a cor)', async () => {
+    h.existingAppointment = { ...previous, leadSource: 'paid_traffic' }
+    h.prepareAgendaSync.mockResolvedValue({ ok: true, ctx: h.ctx })
+
+    const result = await updateAppointmentService({ appointmentId: APPOINTMENT, date: '2030-03-13T15:00:00' })
+
+    expect(result.success).toBe(true)
+    expect(h.pushAppointmentToAgenda).toHaveBeenCalledWith(
+      h.ctx,
+      'reschedule',
+      expect.objectContaining({ appointmentId: APPOINTMENT, leadSource: 'paid_traffic' })
+    )
   })
 })
 

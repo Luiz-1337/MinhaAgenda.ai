@@ -231,10 +231,13 @@ describe("appointment.tools", () => {
     upcomingExecute.mockResolvedValueOnce(okResult(makeAppointmentListDTO()))
     const success = await tools.getMyFutureAppointments.execute({})
 
+    // A tool sempre confere a agenda oficial do salão antes de listar: é ela que
+    // a IA chama para saber se a cliente tem horário marcado pela recepção.
     expect(upcomingExecute).toHaveBeenCalledWith({
       salonId,
       customerId: undefined,
       phone: clientPhone,
+      refreshFromAgenda: true,
     })
     expect(success).toMatchObject({
       total: 1,
@@ -276,6 +279,7 @@ describe("appointment.tools", () => {
       salonId,
       customerId: undefined,
       phone: clientPhone,
+      refreshFromAgenda: true,
     })
   })
 

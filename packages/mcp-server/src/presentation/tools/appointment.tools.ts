@@ -27,7 +27,9 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
   return {
     addAppointment: defineTool(ctx, {
       description:
-        "Cria um novo agendamento. REQUER professionalId e serviceId (obtidos via getServices e getProfessionals/checkAvailability) e date em formato ISO 8601. SEMPRE chame checkAvailability ANTES para confirmar disponibilidade.",
+        "Cria um novo agendamento de UM serviço. REQUER professionalId e serviceId (obtidos via getServices e getProfessionals/checkAvailability) e date em formato ISO 8601. SEMPRE chame checkAvailability ANTES para confirmar disponibilidade. " +
+        "Pedido com mais de um serviço (ex.: corte e hidratação): chame uma vez POR SERVIÇO, em sequência, com o segundo começando quando o primeiro termina. " +
+        "NÃO use para remarcar: se a cliente já tem horário, use updateAppointment. Se o retorno disser que ela já tem horário marcado ou que falta o nome completo, siga a orientação do retorno.",
       inputSchema: createAppointmentSchema,
       handler: async (input, { container, salonId }) => {
         const customerId = await resolveCustomerId(ctx)
@@ -107,7 +109,8 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
 
     getMyFutureAppointments: defineTool(ctx, {
       description:
-        "Lista os agendamentos futuros do cliente atual. Retorna IDs internos necessários para reagendar/cancelar. NÃO precisa de parâmetros — o cliente é identificado automaticamente pelo número do WhatsApp da sessão. NUNCA peça telefone ao cliente.",
+        "Lista os agendamentos futuros do cliente atual. Retorna IDs internos necessários para reagendar/cancelar. NÃO precisa de parâmetros — o cliente é identificado automaticamente pelo número do WhatsApp da sessão. NUNCA peça telefone ao cliente. " +
+        "Em salão com agenda oficial externa (onde a equipe também marca horários), esta tool CONSULTA essa agenda na hora e traz o que a equipe marcou: chame-a ANTES de dizer que a cliente não tem agendamento e sempre que ela falar de um horário que você não conhece.",
       inputSchema: getMyFutureAppointmentsSchema,
       handler: async (_input, { container, salonId, clientPhone }) => {
         const result = await container
@@ -116,6 +119,7 @@ export function createAppointmentTools(ctx: ToolContext): ToolSet {
             salonId,
             customerId: undefined,
             phone: clientPhone,
+            refreshFromAgenda: true,
           })
 
         return AppointmentPresenter.listToJSON(unwrap(result))

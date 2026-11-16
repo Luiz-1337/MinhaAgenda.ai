@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql } from "@repo/db"
+import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql, domainServices, phonesMatch } from "@repo/db"
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service"
 import { ActionResult } from "@/lib/types/common"
 import { CUSTOMERS_PAGE_SIZE } from "@/lib/types/customer"
@@ -628,22 +628,29 @@ export async function createSalonCustomer(
       return { error: "Acesso negado a este salão" }
     }
 
-    // 4. Normaliza telefone
-    const normalizedPhone = input.phone.replace(/\D/g, "") // Remove caracteres não numéricos
+    // 4. Normaliza telefone: só dígitos e COM o DDI — o formato em que o WhatsApp
+    //    entrega o número. Gravado sem o 55 ("11900002222"), o contato do painel
+    //    não era reconhecido quando a mesma pessoa escrevia pelo WhatsApp
+    //    ("5511900002222") e nascia um segundo cadastro, sem os agendamentos.
+    const normalizedPhone = domainServices.canonicalCustomerPhone(input.phone)
 
     // 5. Prepara preferências
     const preferencesData: Record<string, unknown> | null = input.preferences?.trim()
       ? { notes: input.preferences.trim() }
       : null
 
-    // 6. Verifica se já existe customer com este telefone no salão
-    const existingCustomer = await db.query.customers.findFirst({
-      where: and(
-        eq(customers.salonId, input.salonId),
-        eq(customers.phone, normalizedPhone)
-      ),
-      columns: { id: true, name: true, email: true, preferences: true },
+    // 6. Verifica se já existe customer com este telefone no salão — em qualquer
+    //    formato (com ou sem DDI, com ou sem o 9, formatado): é a mesma pessoa.
+    const samePhone = await domainServices.findCustomerByPhoneAnyFormat({
+      salonId: input.salonId,
+      phone: normalizedPhone,
     })
+    const existingCustomer = samePhone
+      ? await db.query.customers.findFirst({
+          where: and(eq(customers.salonId, input.salonId), eq(customers.id, samePhone.id)),
+          columns: { id: true, name: true, email: true, preferences: true },
+        })
+      : undefined
 
     let customerId: string
 
@@ -653,7 +660,12 @@ export async function createSalonCustomer(
         name?: string
         email?: string | null
         preferences?: Record<string, unknown> | null
-      } = {}
+        nameConfirmedAt?: Date
+      } = {
+        // Quem preencheu o formulário digitou o nome: vale como nome confirmado
+        // por uma pessoa (a IA não precisa perguntar de novo antes de agendar).
+        nameConfirmedAt: new Date(),
+      }
 
       if (input.name.trim() !== existingCustomer.name) {
         updates.name = input.name.trim()
@@ -693,6 +705,8 @@ export async function createSalonCustomer(
           phone: normalizedPhone,
           email: input.email?.trim() || null,
           preferences: preferencesData,
+          // Nome digitado por uma pessoa no painel: já nasce confirmado.
+          nameConfirmedAt: new Date(),
         })
         .returning({ id: customers.id })
 
@@ -854,6 +868,7 @@ export async function updateSalonCustomer(
       phone?: string
       email?: string | null
       preferences?: Record<string, unknown> | null
+      nameConfirmedAt?: Date
       updatedAt?: Date
     } = {}
 
@@ -862,15 +877,23 @@ export async function updateSalonCustomer(
         return { error: "Nome deve ter pelo menos 2 caracteres" }
       }
       updates.name = input.name.trim()
+      // Nome corrigido por uma pessoa no painel: fica confirmado.
+      updates.nameConfirmedAt = new Date()
     }
 
     if (input.phone !== undefined) {
-      const normalizedPhone = input.phone.replace(/\D/g, "")
-      if (normalizedPhone !== existingCustomer.phone) {
-        if (!normalizedPhone) {
+      const typedDigits = input.phone.replace(/\D/g, "")
+      if (typedDigits !== existingCustomer.phone) {
+        if (!typedDigits) {
           return { error: "Telefone é obrigatório" }
         }
-        updates.phone = normalizedPhone
+        // Só regrava quando o NÚMERO mudou. O mesmo número em outro formato (o
+        // formulário devolve sem o 55 o que está guardado com ele, ou o
+        // contrário) não é mudança: regravar ali esbarraria no cadastro gêmeo do
+        // WhatsApp e a edição do nome falharia junto.
+        if (!phonesMatch(typedDigits, existingCustomer.phone)) {
+          updates.phone = domainServices.canonicalCustomerPhone(typedDigits)
+        }
       }
     }
 

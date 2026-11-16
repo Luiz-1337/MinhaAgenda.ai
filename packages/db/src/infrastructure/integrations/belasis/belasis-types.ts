@@ -88,10 +88,27 @@ export interface BelasisCalendar {
   client_id?: number
 }
 
+/**
+ * GET /api/v1/schedule_colors — as cores de agendamento "cadastradas pela
+ * empresa", todas de uma vez (sem paginação), em ordem alfabética. Endpoint que
+ * não existia na leitura de 15/out; lido em 12/nov/2026. Os ids são da conta:
+ * o "Marrom" de um salão não é o de outro.
+ */
+export interface BelasisScheduleColor {
+  id: number
+  name: string
+  /** Hexadecimal, um de 24 códigos fixos (ex.: "#3E2723"). */
+  color: string
+  /** Status de que esta é a cor padrão (`confirmed`, `unconfirmed`...), ou null. */
+  default_for?: string | null
+}
+
 /** GET /api/v1/schedule_groups[/{id}] — o "agendamento" da Belasis. */
 export interface BelasisScheduleGroup {
   id: number
   client_id: number
+  /** Null = a cor padrão do status. */
+  schedule_color_id?: number | null
   status?: BelasisScheduleStatus
   observation?: string
   /** "YYYY-MM-DD" */
@@ -104,6 +121,12 @@ export interface BelasisCreateScheduleGroupBody {
   client_id: number
   date: string
   status?: BelasisScheduleStatus
+  /**
+   * Cor do agendamento (id de `GET /schedule_colors`). Opcional: "Quando não
+   * informado, é usada a cor padrão do status." Cor inexistente → 422 "Cor de
+   * agendamento não encontrada" (texto do endpoint de trocar cor).
+   */
+  schedule_color_id?: number
   observation?: string
   calendars_attributes: Array<{
     inventory_product_id: number

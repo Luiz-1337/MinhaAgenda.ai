@@ -62,6 +62,9 @@ export * as domainServices from './services'
 // Re-export timezone utilities
 export { fromBrazilTime, toBrazilTime, getBrazilNow, formatBrazilTime, BRAZIL_TIMEZONE } from './utils/timezone.utils'
 
+// Telefone brasileiro: normalizar e comparar sem duplicar cliente
+export { toE164Digits, phoneMatchKey, phonesMatch } from './utils/phone-match.utils'
+
 // Re-export date parsing utilities
 export {
   parseBrazilianDateTime,

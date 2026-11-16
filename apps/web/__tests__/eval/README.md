@@ -88,6 +88,27 @@ Em falha, o console mostra qual turno falhou, a resposta gerada, as tools chamad
 | `agendamento_direto_dia_hora` | "corte sexta às 10h" → chama `checkAvailability`, NÃO chama `addAppointment` ainda, sem "vou verificar" |
 | `memoria_tool_context` | Após injetar TOOL_CONTEXT com `getServices`, próximo turno NÃO rechamada `getServices` |
 
+## Suíte da Judite (`judite/`)
+
+Os ajustes pedidos pelo salão do Fabiano Eber, cada um testado com a **mensagem
+real** que gerou o problema (nov/2026). Roda o bot de verdade num salão de teste,
+com a **Belasis simulada** (`judite/fake-belasis.ts`) — nada vai para a agenda real.
+
+- Prompt em teste: `judite/system-prompt.txt` (o mesmo texto que vai para
+  `agents.system_prompt` em produção). O atual está em `system-prompt.anterior.txt`.
+- Precisa de um salão de teste com a configuração do salão da Judite (agente
+  ativo, o profissional, os serviços, o expediente) e **"teste" no nome**. A
+  suíte se recusa a rodar no salão real.
+- `JUDITE_EVAL_SALON_ID=<uuid>` no `.env`. Sem ela, a suíte se pula.
+
+```bash
+pnpm --filter web eval -- judite                       # os 11 cenários
+pnpm --filter web eval -- judite -t pedido_de_desconto  # um só
+```
+
+A conversa de cada cenário (mensagem da cliente, resposta da Judite, tools) sai
+no console, passe ou não.
+
 ## Adicionar um cenário novo
 
 1. Crie um arquivo em `conversations/NN-nome-do-cenario.ts` seguindo o shape `Conversation` (`../types`).

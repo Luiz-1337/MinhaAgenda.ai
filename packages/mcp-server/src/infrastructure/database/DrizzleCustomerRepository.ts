@@ -39,6 +39,7 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
       email: row.email,
       preferences: row.preferences as Record<string, unknown> | null,
       aiPreferences: row.aiPreferences,
+      nameConfirmedAt: row.nameConfirmedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     })
@@ -74,6 +75,7 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
       email: row.email,
       preferences: row.preferences as Record<string, unknown> | null,
       aiPreferences: row.aiPreferences,
+      nameConfirmedAt: row.nameConfirmedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     })
@@ -98,6 +100,7 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
         email: row.email,
         preferences: row.preferences as Record<string, unknown> | null,
         aiPreferences: row.aiPreferences,
+        nameConfirmedAt: row.nameConfirmedAt,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })
@@ -115,6 +118,7 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
       email: data.email,
       preferences: data.preferences,
       aiPreferences: data.aiPreferences,
+      nameConfirmedAt: data.nameConfirmedAt ?? null,
     })
 
     this.idCache.invalidate(data.id)
@@ -131,6 +135,10 @@ export class DrizzleCustomerRepository implements ICustomerRepository {
         email: data.email,
         preferences: data.preferences,
         aiPreferences: data.aiPreferences,
+        // Só grava quando a entidade tem a data: ela pode ter vindo do cache de
+        // 5 minutos, e um null velho apagaria a confirmação feita por outro
+        // caminho (o painel, por exemplo) nesse meio-tempo.
+        ...(data.nameConfirmedAt ? { nameConfirmedAt: data.nameConfirmedAt } : {}),
         updatedAt: new Date(),
       })
       .where(eq(customers.id, data.id))

@@ -27,6 +27,7 @@ import {
   detectExecutedTools,
   formatConversationStateText,
   detectAppointmentIntent,
+  detectExistingAppointmentIntent,
   detectFlowViolation,
 } from "./conversation-state";
 import {
@@ -45,12 +46,16 @@ import { findRelevantContext, generateQueryEmbedding, resolveRagSettings, type R
 import { logger, createContextLogger, Logger } from "../../infra/logger";
 import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
-import { db, customers, customerTrinksProfile, professionals, salons, eq, and, sql } from "@repo/db";
+import { db, customers, customerTrinksProfile, professionals, salons, eq, and, sql, domainServices } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 import type { ProcessedMedia } from "./media-processor.service";
 import { formatAdReferralText } from "../messaging/cloud/content";
 import type { AdReferral } from "../messaging/cloud/content";
-import type { TrinksProfileSnapshot, UpcomingAppointmentSnapshot } from "./system-prompt-builder.service";
+import type {
+  OfficialAgendaPromptContext,
+  TrinksProfileSnapshot,
+  UpcomingAppointmentSnapshot,
+} from "./system-prompt-builder.service";
 import { enqueueTrinksProfileSync } from "../../queues/trinks-sync-queue";
 
 const TRINKS_PROFILE_STALE_HOURS = 24;
@@ -74,8 +79,23 @@ type UpcomingAppointmentsUseCase = {
     salonId: string;
     customerId?: string;
     phone?: string;
+    refreshFromAgenda?: boolean;
+    agendaTimeoutMs?: number;
   }): Promise<Result<AppointmentListDTO, unknown>>;
 };
+
+/** Quanto a montagem do prompt espera pela agenda oficial do salão. */
+const PROMPT_AGENDA_LOOKUP_TIMEOUT_MS = 8_000;
+
+/** Os agendamentos futuros do cliente e o que a agenda oficial do salão disse deles. */
+interface UpcomingAppointmentsContext {
+  /** `null` = a busca falhou: o prompt omite o bloco em vez de afirmar que não há. */
+  appointments: UpcomingAppointmentSnapshot[] | null;
+  /** Só em salão com agenda oficial consultada nesta mensagem. */
+  agendaLookup?: OfficialAgendaPromptContext["lookup"];
+  /** Horários de lá que não dá para alterar por aqui, já formatados. */
+  teamSlots?: string[];
+}
 
 /**
  * Carrega os agendamentos futuros do cliente para injetar no system prompt, para
@@ -87,28 +107,84 @@ type UpcomingAppointmentsUseCase = {
  * - lista (possivelmente vazia) quando a busca foi bem-sucedida;
  * - `null` quando falhou — nesse caso o prompt omite o bloco em vez de afirmar
  *   incorretamente que não há agendamentos.
+ *
+ * `refreshFromAgenda`: a mensagem fala de um horário que a cliente já tem
+ * (remarcar, desmarcar, "tinha agendado"). Em salão com agenda oficial, confere
+ * lá ANTES de montar a lista, para ela incluir o que a recepção marcou — sem
+ * depender de a IA lembrar de chamar a tool. Em salão sem agenda oficial o caso
+ * de uso não faz nada a mais.
  */
 async function fetchUpcomingAppointments(
   salonId: string,
   customerId: string | undefined,
   clientPhone: string,
   log: Logger,
-): Promise<UpcomingAppointmentSnapshot[] | null> {
+  refreshFromAgenda = false,
+): Promise<UpcomingAppointmentsContext> {
   try {
     const useCase = mcpContainer.resolve<UpcomingAppointmentsUseCase>(
       MCP_TOKENS.GetUpcomingAppointmentsUseCase,
     );
-    const result = await useCase.execute({ salonId, customerId, phone: clientPhone });
-    if (!isOk(result)) return [];
-    return result.data.appointments.map((a) => ({
-      id: a.id,
-      serviceName: a.serviceName,
-      professionalName: a.professionalName,
-      startsAt: a.startsAt,
-    }));
+    const result = await useCase.execute({
+      salonId,
+      customerId,
+      phone: clientPhone,
+      refreshFromAgenda,
+      // Prazo curto: esta consulta fica no caminho de toda a resposta. Se a
+      // agenda demorar, o prompt avisa que ela não respondeu e a IA tenta de
+      // novo pela tool, que espera mais.
+      agendaTimeoutMs: PROMPT_AGENDA_LOOKUP_TIMEOUT_MS,
+    });
+    if (!isOk(result)) return { appointments: [] };
+    return {
+      appointments: result.data.appointments.map((a) => ({
+        id: a.id,
+        serviceName: a.serviceName,
+        professionalName: a.professionalName,
+        startsAt: a.startsAt,
+      })),
+      agendaLookup: result.data.officialAgenda?.status,
+      teamSlots: result.data.officialAgenda?.unlinked.map((slot) => slot.startsAt),
+    };
   } catch (err) {
     log.warn({ err }, "fetchUpcomingAppointments falhou; bloco de agendamentos omitido do prompt");
-    return null;
+    return { appointments: null };
+  }
+}
+
+/**
+ * O que o prompt precisa saber da agenda oficial do salão (ex.: Belasis): se ela
+ * existe, o que disse dos agendamentos desta cliente e se a IA precisa pedir o
+ * nome completo antes de agendar. `undefined` = salão sem agenda oficial — o
+ * prompt fica exatamente como sempre foi.
+ *
+ * Nunca lança: na dúvida devolve `undefined` e o prompt segue sem os blocos da
+ * agenda (as travas de verdade estão nas tools).
+ *
+ * A pergunta do nome vem DEPOIS da busca dos agendamentos de propósito: a busca
+ * pode achar o cadastro da cliente lá pelo telefone, e quem já tem cadastro não
+ * é perguntada.
+ */
+async function loadOfficialAgendaContext(
+  salonId: string,
+  customerId: string | undefined,
+  upcoming: UpcomingAppointmentsContext,
+  log: Logger,
+): Promise<OfficialAgendaPromptContext | undefined> {
+  try {
+    if (!(await domainServices.hasActiveAgendaProvider(salonId))) return undefined;
+    const customerNeedsFullName = customerId
+      ? await domainServices.customerNeedsNameForAgenda({ salonId, customerId })
+      : false;
+    return {
+      active: true,
+      lookup: upcoming.agendaLookup,
+      teamSlots: upcoming.teamSlots,
+      customerNeedsFullName,
+    };
+  } catch (err) {
+    log.warn({ err }, "Contexto da agenda oficial indisponível; prompt segue sem ele");
+    return undefined;
   }
 }
 
@@ -199,7 +275,20 @@ export async function generateAIResponse(
     // 1. PARALELO: Buscar dados independentes + iniciar embedding especulativo
     const embeddingPromise = generateQueryEmbedding(userMessage);
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, upcomingAppointments] = await Promise.all([
+    // Agendamentos futuros + agenda oficial do salão, encadeados (a segunda parte
+    // depende da primeira) mas em paralelo com o resto do contexto.
+    const agendaAwarePromise = fetchUpcomingAppointments(
+      salonId,
+      customerId,
+      clientPhone,
+      contextLogger,
+      detectExistingAppointmentIntent(userMessage),
+    ).then(async (upcoming) => ({
+      upcomingAppointments: upcoming.appointments,
+      officialAgenda: await loadOfficialAgendaContext(salonId, customerId, upcoming, contextLogger),
+    }));
+
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, { upcomingAppointments, officialAgenda }] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
@@ -209,7 +298,7 @@ export async function generateAIResponse(
       embeddingPromise.catch(() => null),
       fetchTrinksProfile(salonId, customerId, clientPhone, contextLogger),
       isAiKanbanEnabled(salonId),
-      fetchUpcomingAppointments(salonId, customerId, clientPhone, contextLogger),
+      agendaAwarePromise,
     ]);
     timer.mark("context_loaded");
 
@@ -322,7 +411,9 @@ export async function generateAIResponse(
       upcomingAppointments, // Agendamentos futuros em aberto (injetados para remarcar/cancelar sem pedir telefone)
       // Origem em anúncio. Formatado aqui (e não dentro do builder) pela mesma
       // convenção do conversationStateText: o builder recebe o bloco pronto.
-      formatAdReferralText(adReferral)
+      formatAdReferralText(adReferral),
+      // Agenda oficial do salão (undefined na maioria dos salões).
+      officialAgenda
     );
     timer.mark("prompt_built");
 
@@ -920,12 +1011,29 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
       }
     }
 
-    // Agendamentos futuros
+    // Agendamentos futuros. Em salão com agenda oficial o resumo guarda também o
+    // que ela disse: nos próximos turnos a IA precisa saber que "nenhum" foi
+    // conferido lá, e quais horários a equipe marcou que não dá para mexer por aqui.
     if (toolName === "getMyFutureAppointments" && Array.isArray(data.appointments)) {
-      return data.appointments
+      const list = data.appointments
         .slice(0, 5)
         .map((a: any) => `${a.service}(id:${a.id},${a.startsAt},${a.professional})`)
         .join(", ");
+      if (typeof data.agendaDoSalao !== "string") return list;
+
+      const teamSlots = Array.isArray(data.horariosMarcadosPelaEquipe)
+        ? (data.horariosMarcadosPelaEquipe as unknown[])
+            .slice(0, 5)
+            .map((slot) => (slot && typeof slot === "object" ? (slot as { quando?: unknown }).quando : undefined))
+            .filter((when): when is string => typeof when === "string")
+        : [];
+      return [
+        list || "nenhum agendamento futuro",
+        `agenda do salão: ${data.agendaDoSalao}`,
+        ...(teamSlots.length > 0
+          ? [`marcados pela equipe, NÃO alteráveis por aqui: ${teamSlots.join("; ")}`]
+          : []),
+      ].join(" | ");
     }
 
     // Appointment criado/atualizado — preserva o id interno para os próximos turnos

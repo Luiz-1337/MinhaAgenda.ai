@@ -28,7 +28,26 @@ export type AgendaProviderFactory = (ctx: {
  * tabela da migration 034.
  */
 const FACTORIES: Partial<Record<AgendaProviderId, AgendaProviderFactory>> = {
-  belasis: ({ credentials, background }) => createBelasisAgendaProvider(credentials.token, { background }),
+  belasis: ({ credentials, background }) =>
+    createBelasisAgendaProvider(credentials.token, {
+      background,
+      // Lida a cada montagem (e não uma vez no carregamento do módulo): o worker
+      // e o painel podem subir com valores diferentes, e os testes trocam o valor.
+      trafficColor: belasisTrafficColor(),
+    }),
+}
+
+/**
+ * A cor que marca, na Belasis, o agendamento de lead de tráfego pago: o NOME da
+ * cor como está cadastrada na conta do salão (ex.: `Marrom`) ou o id numérico
+ * dela. Sem a variável, o recurso fica desligado: os agendamentos saem sem cor e a
+ * origem continua gravada aqui (appointments.lead_source).
+ *
+ * Precisa estar no ambiente de quem agenda: o worker (IA) e o app web (painel).
+ */
+export function belasisTrafficColor(): string | null {
+  const value = process.env.BELASIS_TRAFFIC_COLOR?.trim()
+  return value ? value : null
 }
 
 function availableProviderIds(): AgendaProviderId[] {
@@ -96,6 +115,13 @@ async function findActiveAgendaRow(salonId: string): Promise<ActiveAgendaRow | n
 export async function hasActiveAgendaProvider(salonId: string): Promise<boolean> {
   if (availableProviderIds().length === 0) return false
   return (await findActiveAgendaRow(salonId)) !== null
+}
+
+/** Qual é a agenda oficial ativa do salão (null = nenhuma). Mesmo custo de `hasActiveAgendaProvider`. */
+export async function getActiveAgendaProviderId(salonId: string): Promise<AgendaProviderId | null> {
+  if (availableProviderIds().length === 0) return null
+  const row = await findActiveAgendaRow(salonId)
+  return row ? (row.provider as AgendaProviderId) : null
 }
 
 /**

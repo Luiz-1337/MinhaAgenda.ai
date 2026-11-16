@@ -1,6 +1,6 @@
 # Integração Belasis — Diagnóstico, Implementação e Ativação
 
-**Atualizado:** 3 de novembro de 2026 (busca do cliente por telefone — seção 2.0)
+**Atualizado:** 13 de novembro de 2026 (nome completo antes do cadastro, consulta por cliente antes de remarcar, origem do lead e cor — seções 2.0, 2.3 e 2.4; migration 035 aplicada em produção em 13/nov, **código ainda não publicado**)
 **Escopo:** agendamentos feitos pela IA do WhatsApp (e pelo painel) caírem na agenda da Belasis, com conexão fácil para o dono do salão.
 **Decisão do dono (14/out):** a **Belasis é a agenda oficial** do salão — a recepção agenda direto lá.
 **Estado:** cliente implementado contra a documentação oficial; tela de conexão e vínculo prontas; **nada commitado**. Falta, nesta ordem: aplicar a migration 034, validar com uma chave real (`scripts/diagnose-belasis.ts`) e o piloto num salão.
@@ -27,6 +27,8 @@ Fonte: https://belasis-api.readme.io (OpenAPI 3.0.1 "Belasis API v1"), lida pág
 | Cancelar | `PATCH /schedule_groups/{id}/cancel` (mantém histórico; há também DELETE). **Fora da doc:** o cancelado (`disconfirm`) continua ocupando o horário — `free_times` o marca `unavailable` (API real, 03/nov). Só o `DELETE` libera (decisão 11) |
 | Erros | 401 chave inválida/sem recurso; 404; 422 com array de strings (ex.: "Celular já está em uso") |
 | Idempotência / webhooks | **não existem** |
+| Cor do agendamento | `schedule_color_id` (inteiro, opcional) no corpo da criação; os ids vêm de `GET /schedule_colors`, que devolve de uma vez as cores "cadastradas pela empresa" (`id`, `name`, `color`, `default_for`). Cor inexistente → 422 "Cor de agendamento não encontrada". A doc não tem token nem permissão à parte para cor. Endpoints que não existiam em 15/out (a API passou de 33 para 49); lidos em 12/nov |
+| Agendamentos de um cliente | `GET /schedule_groups?client_id=` (com `start_date`/`end_date`); a doc não fala em limite de período |
 
 Conferido contra a API real (15/out, com chave propositalmente inválida): `/api/v1/employees` existe e responde 401; a recusa vira `auth` no nosso cliente.
 
@@ -39,8 +41,9 @@ O Google Calendar é **espelho** (cópia em segundo plano; se falhar, o agendame
 | Momento | O que acontece | Se a Belasis falhar |
 |---|---|---|
 | IA sugere horários | subtrai o que está ocupado na grade `free_times` (cache de 45 s) | segue sem ela (a checagem do agendamento trava) |
+| Cliente fala de um horário que já tem, ou a IA vai agendar | consulta os horários futuros **daquela cliente** lá e traz para cá o que a recepção marcou (seção 2.3) | a IA é avisada de que não conseguiu conferir; não afirma que não há horário |
 | Antes de reservar | confere o horário na grade, sem cache | **não agenda** (fail-closed) |
-| Depois de reservar aqui | acha o cliente pelo telefone (ou cadastra — seção 2.0) e grava lá **na hora** | **desfaz a reserva local**; a IA oferece outro horário |
+| Depois de reservar aqui | acha o cliente pelo telefone (ou cadastra, com o nome que a cliente informou — seção 2.0) e grava lá **na hora**; lead de tráfego leva a cor (seção 2.4) | **desfaz a reserva local**; a IA oferece outro horário. Cor recusada não conta: sai sem cor |
 | Remarcar no mesmo dia/profissional/serviço | PATCH da hora (com o serviço e o profissional do item — seção 1) | volta a linha local ao horário anterior |
 | Remarcar para outro dia/profissional/serviço | cria o novo, depois remove o antigo | idem; se só a remoção do antigo falhar, alerta |
 | Cancelar | remove lá (`DELETE`; se ela não deixar remover, `/cancel`). Já cancelado lá fica como está | cancela aqui mesmo assim; alerta no painel |
@@ -76,6 +79,16 @@ Não achou → cadastra (`POST /clients`, telefone só dígitos com DDI). A Bela
 - sem nenhuma letra latina → **"Cliente WhatsApp"**.
 
 Se mesmo assim vier 422 sobre o nome (mensagem que começa com "Nome"/"Nickname" ou fala em caractere inválido), tenta **uma vez** com "Cliente WhatsApp". Melhor esse cadastro, com o telefone certo, do que o cliente sem horário. O nome do cliente no MinhaAgenda não muda; só o que vai para lá. Cliente que já existe lá (achado pela busca) não é cadastrado de novo, e o nome dele lá não é tocado.
+
+**De quem é o nome** (`customers.name_confirmed_at`, migration 035). O cliente nasce aqui com o nome do perfil do WhatsApp. Em 07/nov uma cliente foi cadastrada lá só como "Sil", o apelido do perfil, e a recepção teve de pedir o sobrenome por mensagem. Agora a IA só cria cadastro lá com nome que uma **pessoa** informou:
+- `name_confirmed_at` vazio = o nome veio do perfil. Fica preenchido quando a cliente informa o nome (tool `updateCustomerName`), quando alguém o digita no painel, ou quando o cadastro vem da Belasis (sincronização);
+- cliente sem cadastro lá **e** sem nome confirmado → a tool de agendar/remarcar devolve `CUSTOMER_NAME_REQUIRED` e a IA pede nome e sobrenome. O prompt já manda perguntar quando a cliente escolhe o horário, para a pergunta não sair como resposta a um erro;
+- só o primeiro nome → a IA pede o sobrenome uma vez; sem sobrenome o agendamento sai do mesmo jeito;
+- quem já tem cadastro lá (vínculo guardado, ou achado pelo telefone) não é perguntada.
+
+A regra mora em `customer-agenda-name.service.ts` (@repo/db) e é lida pela trava das tools (`agenda-customer-name.service.ts`, mcp-server) e pelo prompt.
+
+**Um cliente por telefone, aqui dentro.** A busca de cliente na entrada do WhatsApp e no cadastro do painel comparava o texto exato do telefone; o painel gravava sem o 55 e a mesma pessoa virava dois cadastros (9 pares em 4 salões em 12/nov). Agora as duas comparam por DDD + 8 últimos dígitos (`customer-phone.service.ts`) e o número achado em outro formato é regravado no formato do WhatsApp. Os pares que já existem precisam ser unificados à mão.
 
 Custo na cota (30/min): cliente com o telefone só em dígitos, **1** chamada; formatado, 2; cliente novo, 2 + 1 a 5 (os 4 dígitos) + 1 (o cadastro). Para ver qual termo acha um telefone real: `scripts/diagnose-belasis.ts --phone` (seção 6).
 
@@ -114,6 +127,36 @@ Sem `pnpm` no PATH (Windows): de dentro de `packages/db`, `npx -y tsx@4.21.0 ../
 
 Precisa de `DATABASE_URL` e da `ENCRYPTION_KEY` do app (lidas de `apps/web/.env.local`). Horário que a grade da Belasis não marca como livre — inclusive almoço — sai como "ocupado" e fica de fora até liberarem lá. `--only id1,id2` limita (bom para testar com um só); `--skip id1,id2` deixa algum de fora. Alertas são impressos, não vão para o painel do salão.
 
+### 2.3 O que a cliente já tem marcado lá (consulta por cliente)
+
+A sincronização é de hora em hora e deixa de fora o que não tem par aqui. Em 10 e 12/nov duas clientes pediram para remarcar um horário que uma atendente tinha marcado direto na Belasis; aqui ele não existia, a IA respondeu "não encontrei nenhum agendamento futuro" e criou **outro** — o original continuou na agenda (e, num dos casos, nasceu um segundo cadastro).
+
+`refreshCustomerAppointmentsFromAgenda` (`agenda-customer-refresh.service.ts`) consulta **uma cliente**: acha o cadastro dela lá (vínculo guardado ou telefone), lista os agendamentos desse cadastro dos próximos 180 dias (`client_id`) e passa pelo mesmo miolo da sincronização (`reconcileAgendaAppointments`). O que a recepção marcou passa a existir aqui, no cadastro da cliente da conversa, e é remarcado ou cancelado pelas tools de sempre.
+
+**De quem é cada horário:** tudo o que essa consulta traz é dado à cliente da conversa, então o dono de cada item é conferido aqui (no provedor e no serviço), e não só pelo filtro `client_id` da API. Item de outro cadastro, ou sem `client_id`, fica de fora. O filtro vem da documentação da Belasis e **ainda não foi conferido com a chave de um salão**: se a API o ignorar, nada de outra pessoa entra, mas cada consulta percorre a agenda inteira (passo 6 do diagnóstico, seção 6).
+
+Quando roda:
+- a tool `getMyFutureAppointments`, sempre;
+- o bloco de agendamentos do prompt, quando a mensagem fala de um horário que ela já tem (`detectExistingAppointmentIntent`: remarcar, desmarcar, "outro dia", "não vou poder ir", "tinha agendado");
+- a tool `addAppointment`, antes de criar. Se a consulta **trouxe** um horário futuro, a tool não cria e devolve `EXISTING_APPOINTMENT_FOUND` com o horário e o id, para a IA perguntar se é remarcação. Na segunda chamada (horário a mais) ela cria.
+
+Horário de lá cujo serviço ou profissional não tem par aqui não dá para trazer: a IA é avisada de que ele existe e não pode ser alterado por aqui, e encaminha para a equipe em vez de criar outro.
+
+Custo: 1 chamada por consulta com a cliente já vinculada; sem vínculo, a busca por telefone da seção 2.0. Consulta repetida em menos de 1 minuto não vai à API, e o "não achei este telefone" vale por 10 minutos — tempo de a cliente responder o nome, sem pagar a busca três vezes.
+
+**Limite conhecido:** se o cadastro que a recepção usou não tem o celular da cliente, não há como achá-lo por telefone; aí a IA não enxerga o horário.
+
+### 2.4 Origem do lead e cor
+
+O WhatsApp oficial (Cloud API) manda `referral` na mensagem que nasce de um clique em anúncio (`messages.ad_referral`, migration 031). O webhook classifica (`leadSourceFromReferral`: `source_type` `ad`, ou click id sem tipo → tráfego; `post` e sem `referral` → orgânico) e grava no cliente (`customers.lead_source`, migration 035). A marca só sobe: orgânico vira tráfego ao clicar num anúncio; tráfego não volta. O agendamento copia a marca do cliente ao ser criado (`appointments.lead_source`), inclusive o que vem da recepção pela sincronização. Canal que não entrega a origem (Evolution) deixa vazio.
+
+Na Belasis, o agendamento de lead de tráfego criado por aqui leva `schedule_color_id`. A cor é escolhida pela variável de ambiente **`BELASIS_TRAFFIC_COLOR`**: o nome da cor como está cadastrada na conta do salão (ex.: `Marrom`) ou o id. O id é resolvido em `GET /schedule_colors` e guardado por 6 horas. O token usado é o do próprio salão.
+
+A cor nunca impede um agendamento:
+- sem a variável, ou cor não cadastrada na conta, ou listagem fora do ar → agenda sem cor;
+- a Belasis recusa (422) → repete a criação sem a cor e fica 10 minutos sem tentar de novo.
+Em todos os casos `appointments.lead_source` continua gravado.
+
 ---
 
 ## 3. Conexão fácil (o que o dono vê em Integrações)
@@ -138,7 +181,7 @@ O token fica **cifrado** (AES-256-GCM, `ENCRYPTION_KEY`). Trocar o token num sal
 | Cliente Belasis (transporte, limite de 30/min, 429, paginação, erros) | `packages/db/src/infrastructure/integrations/belasis/belasis-client.ts` |
 | Provedor Belasis (grade → ocupado, cliente por telefone, remarcação, conferência) | `.../belasis/belasis-agenda-provider.ts`, `belasis-mapping.ts`, `belasis-types.ts` |
 | Registro (Belasis registrada) e credencial cifrada | `services/agenda-provider-registry.service.ts`, `infrastructure/integrations/agenda/agenda-credentials.ts`, `utils/secret-crypto.utils.ts` |
-| De-para de IDs | tabela `integration_external_refs` — `supabase/migrations/034_integration_external_refs.sql` (**não aplicada**) |
+| De-para de IDs | tabela `integration_external_refs` — `supabase/migrations/034_integration_external_refs.sql` (aplicada em produção em out/2026) |
 | Conexão e vínculo | `services/agenda-setup.service.ts`, `apps/web/app/actions/belasis.ts`, `apps/web/components/integrations/belasis-integration.tsx` |
 | Disponibilidade da IA | `IExternalBusySource` + `AgendaBusySource` (mcp-server), com o `salonId` em cada chamada |
 | Falha lá → motivo certo para a IA | os 4 códigos `EXTERNAL_AGENDA_*` viram erros próprios em `appointment-error.mapper.ts` (criar e remarcar); a mensagem que a IA lê está no `ErrorPresenter`. Para esses códigos, `handleToolErrors` (`generate-response.service.ts`) não troca a resposta da IA pelo texto pronto que pedia data e horário de novo |
@@ -162,8 +205,11 @@ Os 4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) que falhavam desd
 7. **Fuso de Brasília** para `date`/`HH:MM` (a doc não diz; é o que o resto do sistema assume).
 8. **Lembrete de agendamento trazido da recepção:** se a Belasis já vai lembrar (lembrete ligado lá), o MinhaAgenda não manda o dele.
 9. **Sincronização em segundo plano a 15 chamadas/min**, para nunca tirar a vez da IA na cota de 30.
-10. **Cliente sem nome → a IA pergunta o nome antes de agendar ou remarcar** (decisão de 03/nov). Vale quando o nome daqui não tem nenhuma letra (só emoji, como "💤", ou o telefone). O cadastro lá é feito por esse nome e não se corrige depois. A trava fica no mcp-server (`agenda-customer-name.service.ts`, erro `CUSTOMER_NAME_REQUIRED`). Na remarcação, só vale quando muda horário, profissional ou serviço. Sem agenda oficial, nada muda; o painel não passa por ela.
+10. **Cliente sem nome próprio → a IA pergunta o nome antes de agendar ou remarcar** (decisão de 03/nov, ampliada em 13/nov). Vale quando o nome daqui não tem nenhuma letra (só emoji, como "💤", ou o telefone) **e também quando o nome veio do perfil do WhatsApp** e a cliente ainda não tem cadastro lá — aí a IA pede nome e sobrenome (seção 2.0). A trava fica no mcp-server (`agenda-customer-name.service.ts`, erro `CUSTOMER_NAME_REQUIRED`). Na remarcação, só vale quando muda horário, profissional ou serviço. Sem agenda oficial, nada muda; o painel não passa por ela.
 11. **Cancelar daqui remove o agendamento lá** (decisão do dono, 03/nov). Cancelado (`disconfirm`) continua ocupando o horário na Belasis (seção 1): o salão via o horário preso e a IA não o oferecia de novo. Vale também para o antigo de uma remarcação para outro dia/profissional/serviço. O histórico do cancelamento fica no MinhaAgenda; lá o registro some. Se a Belasis não deixar remover (422), cai no `/cancel`. Agendamento já cancelado lá (pela recepção) não é tocado. Os cancelados daqui antes desta decisão continuam lá ocupando o horário — a recepção exclui na Belasis.
+12. **Antes de criar, a IA confere o que a cliente já tem lá** (13/nov, seção 2.3). Achou horário futuro que não conhecia → não cria; pergunta se é remarcação. Custa uma chamada a mais por agendamento.
+13. **Faltar sobrenome não trava o agendamento** (13/nov). A IA pede o nome completo e, se vier só o primeiro nome, pede o sobrenome uma vez; depois segue.
+14. **Cor de tráfego escolhida pelo nome, em variável de ambiente** (13/nov, seção 2.4). `BELASIS_TRAFFIC_COLOR=Marrom`. O token é o do salão; a doc da Belasis não tem credencial à parte para cor. A variável vale para todos os salões com Belasis — por isso o nome (cada conta tem os seus ids).
 
 ---
 
@@ -173,12 +219,14 @@ Os 4 testes de `CheckAvailabilityUseCase.test.ts` (mcp-server) que falhavam desd
 BELASIS_TOKEN=bpk_... pnpm --filter @repo/db exec tsx ../../scripts/diagnose-belasis.ts --date 2026-10-20 --phone 5547999998888
 ```
 
-Só leitura, ~6 requisições, não imprime a chave. Conferir:
+Só leitura, ~8 requisições, não imprime a chave. Conferir:
 
 1. **Estabelecimento:** os profissionais listados são os do salão? (a chave "vale para todos os estabelecimentos" e não há parâmetro — se a conta tiver mais de um, pode misturar.)
 2. **Grade:** o passo inferido e o que aparece fora do expediente; os agendamentos do dia caem nos horários `✗`? (confirma o fuso.)
 3. **Telefone:** o formato guardado nos clientes (o exemplo da doc vem sem DDI e às vezes formatado). O `--phone` roda os três termos da busca (seção 2.0), diz quantos candidatos cada um trouxe, se cortou em páginas e qual acha o cliente — com os números mascarados.
 4. **No piloto:** a Belasis recusa agendamento em horário ocupado? Qual o texto do 422? (o cliente reconhece "indisponível/ocupado/conflito".)
+5. **Filtro por cliente** (passo 6 do script; `--client ID` escolhe o cliente, senão usa um com horário em `--date`): a listagem com `client_id` traz só os agendamentos daquele cliente? É disso que depende a consulta da seção 2.3. O script diz quantos vieram de outros clientes ou sem `client_id`.
+6. **Cores** (passo 7; `--color NOME` ou `BELASIS_TRAFFIC_COLOR`, padrão "Marrom"): as cores da conta e se a do lead de tráfego existe, com o id que vai em `schedule_color_id` (seção 2.4).
 
 ---
 
@@ -186,13 +234,18 @@ Só leitura, ~6 requisições, não imprime a chave. Conferir:
 
 | # | Item | Observação |
 |---|---|---|
-| 1 | **Aplicar a migration 034** | backup + `get_advisors` antes/depois (DATABASE.md). Sem ela, conectar funciona mas o vínculo falha — e a ativação exige vínculo, então nada liga sem a tabela |
+| 1 | ~~Aplicar a migration 034~~ | **Feito** em out/2026 (consta em `supabase_migrations.schema_migrations`) |
 | 2 | Rodar o diagnóstico com a chave do salão (seção 6) | |
 | 3 | Piloto: conectar, vincular, ativar, e um agendamento real pela IA | acompanhar os alertas `agenda_*` |
 | 4 | Confirmação do cliente (resposta ao lembrete) → `confirm` na Belasis | hoje a confirmação não sincroniza com ninguém (decisão antiga de `ConfirmAppointmentUseCase`) |
 | 5 | Mudança feita na recepção chega aqui em até 1 hora (sincronização) ou antes do lembrete | webhook não existe; o botão "Sincronizar agora" traz na hora |
 | 6 | Cancelamento em massa ao remover profissional (`actions/professionals.ts`) não avisa a agenda oficial | |
-| 7 | Volume: 30 req/min por salão | cada agendamento gasta ~4 requisições (cliente novo: até ~10, seção 2.0); a sugestão de horários, 1 por profissional por dia (com cache); a sincronização usa no máximo 15/min |
+| 7 | Volume: 30 req/min por salão | cada agendamento gasta ~5 requisições (cliente novo: até ~10, seção 2.0; a consulta por cliente da seção 2.3 soma 1); a sugestão de horários, 1 por profissional por dia (com cache); a sincronização usa no máximo 15/min |
+| 8 | ~~Aplicar a migration 035~~ (`customers.name_confirmed_at`, `customers.lead_source`, `appointments.lead_source`) | **Feito** em 13/nov/2026, antes do deploy. Carga: 1.059 clientes de tráfego, 304 orgânicos, 99 sem origem; 12 agendamentos de tráfego. As duas tabelas como estavam antes ficaram em `backups.customers_pre_035_20261113` e `backups.appointments_pre_035_20261113` (schema fora da API; apagar quando o deploy estiver validado). `get_advisors` sem novidade além dessas duas cópias |
+| 9 | `BELASIS_TRAFFIC_COLOR` no worker e no app web | e a cor com esse nome cadastrada na conta Belasis do salão. Sem isso, agenda sem cor |
+| 10 | Unificar os cadastros duplicados por formato de telefone | Spettacolo Salone: **feito** em 13/nov (4 pares, `scripts/data-fixes/2026-11-13-spettacolo-salone-clientes-duplicados.sql`). Restam 5 pares em 3 outros salões. O código novo não cria mais, mas não junta os que já existem |
+| 11 | Por que a sincronização não trouxe os horários da recepção desde 03/nov (Spettacolo Salone) | não diagnosticado: serviço sem vínculo, cadastro sem celular ou rotina parada. O resumo da última sincronização no card da Belasis diz qual. No banco (13/nov), os 36 agendamentos do salão têm par lá: 11 criados juntos em 03/nov às 20h10 e 25 criados pela IA ou pelo painel (`sync_source = app`) de 04 a 12/nov — nenhum com cara de ter vindo da recepção depois de 03/nov. O passo 5 do diagnóstico avisa se a listagem vem sem `client_id`, o que impediria a sincronização de achar o cliente |
+| 12 | **Rodar o diagnóstico com a chave do salão antes de publicar este código** (seção 6, itens 5 e 6) | a consulta por cliente (seção 2.3) e a cor (seção 2.4) foram escritas pela documentação da Belasis, sem chamada real. Os testes usam uma Belasis simulada |
 
 ---
 

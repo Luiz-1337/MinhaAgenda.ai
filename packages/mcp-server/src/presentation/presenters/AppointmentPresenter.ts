@@ -109,6 +109,39 @@ export class AppointmentPresenter {
    * Formata lista para JSON
    */
   static listToJSON(dto: AppointmentListDTO): Record<string, unknown> {
+    const instructions = [
+      "Mostre agendamentos ao cliente usando o campo 'number' (1, 2, 3...). NUNCA mostre o campo 'id' ao cliente. Use o 'id' internamente para updateAppointment ou removeAppointment.",
+    ]
+    const officialAgenda: Record<string, unknown> = {}
+
+    // Salão com agenda oficial (onde a recepção também marca): a IA precisa saber
+    // se a lista inclui o que está lá, e o que existe lá mas não pode mexer.
+    if (dto.officialAgenda) {
+      if (dto.officialAgenda.status === "failed") {
+        officialAgenda.agendaDoSalao = "não respondeu"
+        instructions.push(
+          "A agenda oficial do salão NÃO respondeu agora: pode existir horário marcado pela equipe que não aparece nesta lista. " +
+            "NÃO afirme que a cliente não tem agendamento. Diga que não conseguiu conferir a agenda do salão agora e ofereça tentar de novo em instantes."
+        )
+      } else {
+        officialAgenda.agendaDoSalao = "conferida"
+        instructions.push(
+          "A agenda oficial do salão foi conferida: esta lista já inclui o que a equipe marcou por lá."
+        )
+      }
+
+      if (dto.officialAgenda.unlinked.length > 0) {
+        officialAgenda.horariosMarcadosPelaEquipe = dto.officialAgenda.unlinked.map((item) => ({
+          startsAt: item.startsAtISO,
+          quando: item.startsAt,
+        }))
+        instructions.push(
+          "Os horários em 'horariosMarcadosPelaEquipe' existem na agenda do salão, mas NÃO podem ser remarcados nem cancelados por aqui. " +
+            "Se a cliente quer mexer num deles, avise a equipe do salão. NUNCA crie outro horário no lugar deles."
+        )
+      }
+    }
+
     return {
       appointments: dto.appointments.map((apt, index) => ({
         number: index + 1,
@@ -122,7 +155,8 @@ export class AppointmentPresenter {
       })),
       total: dto.total,
       message: dto.message,
-      _instrucao: "Mostre agendamentos ao cliente usando o campo 'number' (1, 2, 3...). NUNCA mostre o campo 'id' ao cliente. Use o 'id' internamente para updateAppointment ou removeAppointment.",
+      ...officialAgenda,
+      _instrucao: instructions.join(" "),
     }
   }
 }

@@ -25,7 +25,7 @@ import {
 import { processVacantSlot } from "./slot-filler.service"
 import { detachCancelledAppointmentFromSale } from "./sales.service"
 import { getGoogleFreeBusyForProfessional } from "./google-calendar"
-import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } from "../domain/constants"
+import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE, type LeadSource } from "../domain/constants"
 import type { AgendaProviderId } from "../domain/integrations/interfaces/agenda-provider.interface"
 
 /**
@@ -35,6 +35,26 @@ import type { AgendaProviderId } from "../domain/integrations/interfaces/agenda-
 export type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string; code?: string }
+
+/**
+ * A origem do lead (tráfego pago × orgânico) que a cliente tem agora, para o
+ * agendamento nascer com ela. Null quando não se sabe.
+ *
+ * Nunca lança nem impede o agendamento: a origem é uma etiqueta. Filtra pelo
+ * salão para a etiqueta de um cliente de outro salão não vazar para cá.
+ */
+async function loadCustomerLeadSource(salonId: string, clientId: string): Promise<LeadSource | null> {
+  try {
+    const customer = await db.query.customers.findFirst({
+      where: and(eq(customers.id, clientId), eq(customers.salonId, salonId)),
+      columns: { leadSource: true },
+    })
+    return customer?.leadSource ?? null
+  } catch (error) {
+    console.warn("[appointments] origem do lead indisponível — agendamento segue sem ela:", error)
+    return null
+  }
+}
 
 /**
  * Cria um novo agendamento no sistema.
@@ -92,8 +112,9 @@ export async function createAppointmentService(input: {
   }
   const { salonId, professionalId, clientId, serviceId } = parse.data
 
-  // Valida serviço e profissional em paralelo
-  const [service, professional] = await Promise.all([
+  // Valida serviço e profissional em paralelo. A origem do lead vem junto: o
+  // agendamento nasce com a origem que a cliente tem AGORA (ver leadSource abaixo).
+  const [service, professional, leadSource] = await Promise.all([
     db.query.services.findFirst({
       where: eq(services.id, serviceId),
       columns: {
@@ -110,6 +131,7 @@ export async function createAppointmentService(input: {
       where: eq(professionals.id, professionalId),
       columns: { id: true, salonId: true, isActive: true, personKey: true },
     }),
+    loadCustomerLeadSource(salonId, clientId),
   ])
 
   if (!service || service.salonId !== salonId || !service.isActive) {
@@ -289,7 +311,8 @@ export async function createAppointmentService(input: {
         endTime: endUtc,
         status: 'pending',
         syncSource: input.skipExternalSync ? 'google' : 'app',
-        notes: parse.data.notes
+        notes: parse.data.notes,
+        leadSource,
       }).returning({ id: appointments.id })
 
       return { appointmentId: newAppointment.id }
@@ -308,6 +331,7 @@ export async function createAppointmentService(input: {
         start: startUtc,
         end: endUtc,
         notes: parse.data.notes,
+        leadSource,
       })
       if (!pushed.ok) {
         await db
@@ -398,6 +422,7 @@ export async function updateAppointmentService(input: {
       endTime: true,
       status: true,
       notes: true,
+      leadSource: true,
     },
   })
 
@@ -636,6 +661,9 @@ export async function updateAppointmentService(input: {
         start: startUtc,
         end: endUtc,
         notes: finalNotes,
+        // Remarcar para outro dia cria um agendamento novo lá: a marca de tráfego
+        // precisa ir junto, senão a remarcação apagaria a cor.
+        leadSource: existingAppointment.leadSource,
       })
       if (!pushed.ok) {
         await db

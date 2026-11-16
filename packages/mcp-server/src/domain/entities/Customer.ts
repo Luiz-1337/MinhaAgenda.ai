@@ -8,6 +8,11 @@ export interface CustomerProps {
   email?: string | null
   preferences?: Record<string, unknown> | null
   aiPreferences?: string | null
+  /**
+   * Quando o nome foi informado por uma pessoa (a própria cliente ou alguém no
+   * painel). Null = o nome veio do perfil do WhatsApp ou é provisório.
+   */
+  nameConfirmedAt?: Date | null
   createdAt?: Date
   updatedAt?: Date
 }
@@ -23,6 +28,7 @@ export class Customer {
   private _email?: string | null
   private _preferences: Record<string, unknown>
   private _aiPreferences?: string | null
+  private _nameConfirmedAt: Date | null
   readonly createdAt: Date
   private _updatedAt: Date
 
@@ -34,6 +40,7 @@ export class Customer {
     this._email = props.email
     this._preferences = props.preferences ?? {}
     this._aiPreferences = props.aiPreferences
+    this._nameConfirmedAt = props.nameConfirmedAt ?? null
     this.createdAt = props.createdAt ?? new Date()
     this._updatedAt = props.updatedAt ?? new Date()
   }
@@ -101,6 +108,19 @@ export class Customer {
     this._updatedAt = new Date()
   }
 
+  get nameConfirmedAt(): Date | null {
+    return this._nameConfirmedAt
+  }
+
+  /**
+   * Grava o nome que a própria cliente informou. É o que libera o cadastro dela
+   * na agenda oficial do salão: o nome do perfil do WhatsApp não serve para isso.
+   */
+  confirmName(name: string): void {
+    this.updateName(name)
+    this._nameConfirmedAt = this._nameConfirmedAt ?? new Date()
+  }
+
   /**
    * Atualiza o email do cliente
    */
@@ -152,6 +172,7 @@ export class Customer {
       email: this._email,
       preferences: this._preferences,
       aiPreferences: this._aiPreferences,
+      nameConfirmedAt: this._nameConfirmedAt,
       createdAt: this.createdAt,
       updatedAt: this._updatedAt,
     }

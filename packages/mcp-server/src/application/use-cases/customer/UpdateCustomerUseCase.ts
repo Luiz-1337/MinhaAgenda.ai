@@ -16,12 +16,15 @@ export class UpdateCustomerUseCase {
       return fail(new CustomerNotFoundError(input.customerId))
     }
 
-    // Atualizar nome se fornecido
+    // Atualizar nome se fornecido. Este caso de uso atende a tool
+    // updateCustomerName, que a IA chama com o nome que a PRÓPRIA cliente informou
+    // na conversa: por isso o nome fica marcado como confirmado, o que libera o
+    // cadastro dela na agenda oficial do salão (ver agenda-customer-name.service).
     if (input.name !== undefined) {
       if (!input.name || input.name.trim() === "") {
         return fail(new RequiredFieldError("name"))
       }
-      customer.updateName(input.name.trim())
+      customer.confirmName(input.name.trim())
     }
 
     // Atualizar email se fornecido

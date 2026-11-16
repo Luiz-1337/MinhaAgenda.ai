@@ -170,6 +170,23 @@ export class ExternalAgendaRejectedError extends DomainError {
 }
 
 /**
+ * A cliente já tem horário futuro na agenda oficial do salão — marcado pela
+ * recepção — que a IA não conhecia. Criar outro sem perguntar foi o que
+ * aconteceu em 10 e 12/nov/2026: a cliente pediu para remarcar, a IA criou um
+ * horário novo e o original continuou na agenda.
+ *
+ * A mensagem vem pronta do caso de uso (traz o horário achado e o id interno) e
+ * vai inteira para a IA: o código não tem texto amigável no ErrorPresenter.
+ */
+export class ExistingAppointmentFoundError extends DomainError {
+  readonly code = "EXISTING_APPOINTMENT_FOUND"
+
+  constructor(message: string) {
+    super(message)
+  }
+}
+
+/**
  * Erro genérico de uma operação de agendamento que falhou por uma regra de
  * negócio sem código dedicado (ex.: agendamento cancelado, serviço/profissional
  * inválido). O código NÃO está no mapa de mensagens amigáveis do ErrorPresenter
