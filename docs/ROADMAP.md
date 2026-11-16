@@ -20,8 +20,8 @@ mesma branch e publicada, com a migration 044 aplicada em 16/nov/2026 e testada 
 uso — ver §7.10. As migrations 040 a 044 estão registradas em `schema_migrations`.
 Da fase 3 falta só a fatia 3e, que depende do estoque (fase 4).
 Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
-(publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026.
-**Ainda sem teste em uso**: o preview da branch nova pede login — ver §8.7.
+(publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026 e
+testada em uso — ver §8.7.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1174,7 +1174,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 
 | Fatia | Entrega | Estado |
 |---|---|---|
-| 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita em código e publicada — migration 045 aplicada; **sem teste em uso** (§8.7) |
+| 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita — migration 045 aplicada, testada em uso em 16/nov/2026 (§8.7) |
 | 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Pendente |
 | 4c | Lotes e validades | Pendente |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"); com isso, a fatia 3e (custo adicional e consumo abatendo a comissão) | Pendente |
@@ -1296,18 +1296,39 @@ UPDATE salons
 - Em outro ambiente, **aplicar a 045 antes de publicar o código**: ela acrescenta
   colunas em `products`, que todo salão usa. Sem elas, cadastrar produto e abrir a
   lista falham em qualquer salão.
-- **Sem teste em uso — travado por acesso.** O endereço do preview da branch nova
-  (`minha-agenda-ai-web-git-claude-fase-4-estoque-minhaagendaai.vercel.app`) pede
-  login, e a sessão do navegador é por endereço. O módulo `inventory` também ainda
-  **não foi ligado** em nenhum salão (nem no de teste), de propósito: nada muda para
-  ninguém até o teste.
-- Roteiro do teste, quando houver login: ligar o módulo no salão de teste (SQL da
-  §8.4); ligar o controle de um produto com mínimo 5 e custo; acerto para 10 →
-  saldo 10, "Em dia"; entrada de 2 com custo novo → saldo 12 e custo atualizado;
-  saída de 9 → saldo 3, "Abaixo do mínimo", sugestão de 2; comanda com 4 unidades
-  do produto faturada → saldo −1, "Negativo", movimento com o link da comanda;
-  reabrir a comanda → saldo 3 de novo; produto sem controle na mesma comanda não
-  gera movimento. Depois, limpar os dados de teste.
+- O módulo `inventory` está ligado **só no salão de teste** (Salão TOP), desde
+  16/nov/2026. Nos outros salões nada muda.
+- **Testada em uso em 16/nov/2026**, no preview da branch, no salão de teste, com
+  dois produtos criados para isso ("Teste Shampoo", R$ 30,00, e "Teste Pente",
+  R$ 10,00 — cadastrar produto continua funcionando depois da 045):
+  - "Estoque" aparece no menu; os dois produtos entram como "Sem controle".
+  - Controle do Teste Shampoo ligado com mínimo 5, custo R$ 18,50 e código →
+    "Zerado", sugestão de compra 5, "Para comprar (1)".
+  - Acerto com 10 contados → movimento "+ 10", saldo 10, "Em dia", valor em estoque
+    R$ 185,00.
+  - Entrada de 2 a R$ 20,00 com observação → saldo 12, custo do produto passa a
+    R$ 20,00, valor R$ 240,00.
+  - Saída de 9 → saldo 3, "Abaixo do mínimo", sugestão 2, valor R$ 60,00; a aba
+    "Para comprar" mostra só ele.
+  - Comanda #10 com 4 Teste Shampoo e 1 Teste Pente, faturada → movimento "Venda
+    − 4" com o link "Comanda #10", saldo −1, "Negativo", sugestão 6, valor em estoque
+    R$ 0,00. O Teste Pente (sem controle) não gerou movimento.
+  - Reabrir a comanda → o movimento de venda some e o saldo volta a 3. O filtro de
+    movimentações por produto funciona.
+  - Acerto com a mesma quantidade que o sistema mostra é recusado ("O estoque já
+    está nesta quantidade").
+- Ajuste que saiu do teste: o aviso de "Reabrir comanda" não dizia que o estoque
+  volta. Com o módulo ligado, passou a dizer (`inventoryEnabled` nas opções da
+  comanda).
+- **Não testado em uso:** perfil com `inventory.access` sem `move`/`manage` (os
+  botões somem; a trava do servidor está coberta só pelo teste estático das
+  actions); quantidade fracionada (1,5); desligar o controle de um produto que já
+  tem movimentos; o mesmo produto em dois itens da comanda; faturar com o módulo
+  desligado e reabrir depois.
+- Dados de teste limpos: comanda #10 excluída e os três lançamentos de estoque
+  apagados. **Ficaram, como apoio para as próximas fatias:** os produtos "Teste
+  Shampoo" (controle ligado, mínimo 5, custo R$ 20,00, saldo zero) e "Teste Pente"
+  no salão de teste.
 
 ## 9. Pendências do dono
 
@@ -1322,7 +1343,6 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Entrar no preview da fase 4 (endereço na §8.7) para o teste em uso do estoque | Teste em uso da fatia 4a e as fatias seguintes da fase 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal) | Fatia 4b |
 | Dizer quando a cópia `backups.products_pre_045_20261116` pode ser apagada | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
