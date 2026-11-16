@@ -8,7 +8,7 @@ Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não pu
 nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2e e 2g implementadas na
 branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
 testadas em uso num salão — ver §6.7 e §6.8. A fatia 2f (débito de cliente) está
-escrita, com a **migration 040 não aplicada** e sem teste em uso. Fica para depois o
+feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para depois o
 crédito de cliente (2h). Fases 3
 em diante: planejamento.
 
@@ -437,7 +437,7 @@ A fase é grande demais para uma entrega só. Ordem e estado:
 | 2d | Editar lançamento manual em aberto; lançamento que se repete todo mês | Feita |
 | 2g | Resumo do mês: recebido, pago, resultado, a receber, a pagar, atrasado, por categoria, por forma de pagamento e fluxo de caixa por dia | Feita (em tabelas, sem gráficos) |
 | 2e | Caixa: abrir, suprimento, sangria, fechar com conferência, histórico; comanda paga em dinheiro entra sozinha | Feita e testada em uso |
-| 2f | Débito de cliente: faturar com valor em aberto e receber depois, em uma ou mais vezes | Feita — **migration 040 não aplicada** |
+| 2f | Débito de cliente: faturar com valor em aberto e receber depois, em uma ou mais vezes | Feita — migration 040 aplicada em 16/nov/2026, testada em uso |
 | 2h | Crédito de cliente (saldo a favor, usado como forma de pagamento) | Pendente — ficou fora da 2f |
 
 ### 6.2 Modelo de dados (migration `038_finance.sql`)
@@ -599,11 +599,11 @@ lint, testes e `next build`.
   `payment_methods.account_id`, e o INSERT do Drizzle lista todas as colunas da
   tabela. Já está cumprido.
 
-- **Migration 040 (débito): escrita, NÃO aplicada.** Mesma regra da 039: tem que
-  entrar ANTES de o código chegar a qualquer ambiente que use o banco de produção.
-  Ela adiciona colunas a `sales`, e o INSERT do Drizzle lista todas as colunas —
-  sem elas, criar QUALQUER comanda falha. Por isso o commit do débito fica local
-  até a 040 ser aplicada.
+- **Migration 040 (débito): aplicada em produção em 16/nov/2026**, antes de o código
+  ser publicado. Mesma regra da 039: ela adiciona colunas a `sales`, e o INSERT do
+  Drizzle lista todas as colunas — sem elas, criar QUALQUER comanda falharia em todo
+  ambiente que usa o banco de produção. Falta só o registro em `schema_migrations`
+  (nome `sale_debt`) — ver §7.
 
 Onde o débito aparece na tela: no diálogo de faturar (caixa "Deixar R$ X em aberto"
 e data combinada), na comanda faturada (aviso "Em aberto" e botão "Receber"), na
@@ -636,9 +636,30 @@ e gerou o lançamento no financeiro; reabrir devolveu o agendamento para
 `confirmed` sem valor e apagou pagamento e lançamento. A correção da coluna
 Operador do caixa também foi vista na tela.
 
+Também em 16/nov/2026 foi testado o débito de cliente (fatia 2f), na comanda #5 de
+R$ 170,00:
+
+- faturar com R$ 100,00 no PIX: sem marcar o fiado, "Faltam R$ 70,00" e o botão de
+  confirmar fica desligado; marcando "Deixar R$ 70,00 em aberto" e uma data
+  combinada já vencida, a comanda fatura com `amount_due = 70.00`;
+- a comanda mostra "Em aberto: R$ 70,00 de R$ 170,00 · venceu em …" e o botão
+  "Receber";
+- receber R$ 80,00 é recusado na tela ("Passou do valor em aberto em R$ 10,00") e
+  nada muda no banco;
+- receber R$ 30,00 no PIX deixa R$ 40,00 em aberto, com novo pagamento e novo
+  lançamento recebido no financeiro;
+- com R$ 40,00 em aberto: a lista filtra por "Com valor em aberto" e mostra o valor
+  na linha; a ficha do cliente mostra "Deve R$ 40,00 em 1 comanda · R$ 40,00
+  vencido"; o resumo do mês mostra "Fiado de clientes R$ 40,00", fora de "A receber";
+- receber os R$ 40,00 no crédito quita a comanda: `amount_due = 0`, a data combinada
+  é apagada, o aviso e o botão "Receber" somem, e o lançamento nasce a receber pelo
+  líquido (R$ 38,83, taxa de R$ 1,17) para 30 dias depois;
+- reabrir a comanda apagou os três pagamentos e os três lançamentos.
+
 Ainda não testado:
 
-- débito de cliente (fatia 2f), escrito depois e ainda sem a migration 040;
+- débito com pagamento em dinheiro entrando no caixa aberto;
+- total devido somando mais de uma comanda do mesmo cliente;
 - produto na comanda (o salão não tem produto ativo);
 - restrição por perfil, logado como outro usuário;
 
@@ -663,7 +684,7 @@ Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
 
 Dados de teste deixados no Salão TOP: contas "Teste Banco" e "Teste Caixa",
 categoria "Teste Aluguel", formas "Teste PIX", "Teste Credito" e "Teste Dinheiro",
-comandas #1 a #4 excluídas, um caixa fechado (com suprimento e sangria de teste) e
+comandas #1 a #5 excluídas, um caixa fechado (com suprimento e sangria de teste) e
 dois agendamentos de teste cancelados. O serviço
 "Corte de Cabelo Masculino" passou do Marcos Affonso para o profissional do dono.
 
@@ -689,6 +710,6 @@ UPDATE salons
 | Conta Belasis de teste para executar fluxos | Fidelidade das regras nas fases 2 a 5 |
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
-| Aplicar a migration 040 e testar o débito de cliente em uso | Fechar a fase 2 |
-| Atualizar a branch com a `main` (o PR #13 entrou depois) antes de abrir o PR | Publicação das fases 0 a 2 |
+| Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
+| Revisar e mergear os PRs das fases 0, 1 e 2, nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
