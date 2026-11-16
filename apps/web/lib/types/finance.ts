@@ -129,6 +129,11 @@ export interface FinanceSummaryDTO {
   expenseByCategory: { name: string; cents: number }[]
   receivedByPaymentMethod: { name: string; cents: number }[]
   dailyFlow: { date: string; inCents: number; outCents: number }[]
+  /**
+   * Valor em aberto em comandas faturadas (fiado). NULL no salão sem o módulo de
+   * comandas. NÃO está em "A receber": o débito só vira lançamento quando é pago.
+   */
+  customerDebt: { openCents: number; overdueCents: number; count: number } | null
 }
 
 export interface CreateFinanceTransferInput {

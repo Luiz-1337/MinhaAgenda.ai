@@ -7,8 +7,9 @@ publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 —
 Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
 nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2e e 2g implementadas na
 branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
-testadas em uso num salão — ver §6.7 e §6.8. Da fase 2 falta a fatia 2f (débito de
-cliente). Fases 3
+testadas em uso num salão — ver §6.7 e §6.8. A fatia 2f (débito de cliente) está
+escrita, com a **migration 040 não aplicada** e sem teste em uso. Fica para depois o
+crédito de cliente (2h). Fases 3
 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -436,7 +437,8 @@ A fase é grande demais para uma entrega só. Ordem e estado:
 | 2d | Editar lançamento manual em aberto; lançamento que se repete todo mês | Feita |
 | 2g | Resumo do mês: recebido, pago, resultado, a receber, a pagar, atrasado, por categoria, por forma de pagamento e fluxo de caixa por dia | Feita (em tabelas, sem gráficos) |
 | 2e | Caixa: abrir, suprimento, sangria, fechar com conferência, histórico; comanda paga em dinheiro entra sozinha | Feita e testada em uso |
-| 2f | Débito e crédito de cliente; faturar comanda com valor em aberto | Pendente |
+| 2f | Débito de cliente: faturar com valor em aberto e receber depois, em uma ou mais vezes | Feita — **migration 040 não aplicada** |
+| 2h | Crédito de cliente (saldo a favor, usado como forma de pagamento) | Pendente — ficou fora da 2f |
 
 ### 6.2 Modelo de dados (migration `038_finance.sql`)
 
@@ -512,12 +514,39 @@ Caixa (fatia 2e) — o dono escolheu seguir com estes padrões, em 15/nov/2026:
 20. **Diferença não impede fechar.** Sobra e falta ficam registradas no histórico.
 21. **Caixa fechado não se reabre nem se edita** nesta fatia.
 
+Débito de cliente (fatia 2f) — o dono escolheu seguir com estes padrões:
+
+22. **O débito é a própria comanda**, não uma tabela nova: `sales.amount_due` guarda
+    quanto da comanda faturada ainda não foi pago, e `sales.debt_due_date` quando a
+    cliente combinou de pagar (opcional).
+23. **Fiado é decisão, não descuido.** Faturar com valor em aberto exige a permissão
+    `sales.invoice_debt` E marcar "Deixar R$ X em aberto" na tela. Sem os dois,
+    faltar um centavo continua sendo erro. Pode ficar tudo em aberto (nenhum
+    pagamento).
+24. **Receber depois é mais um pagamento na mesma comanda.** Pode ser parcial e em
+    várias vezes. Usa a permissão `sales.invoice`: quem fatura também recebe.
+25. **Passar do valor nunca é aceito** — nem do total ao faturar, nem do valor em
+    aberto ao receber. O que sobraria seria crédito do cliente, que não existe (2h).
+26. **O pagamento de depois gera o mesmo que o de hoje:** conta a receber no
+    financeiro e entrada no caixa aberto se for dinheiro.
+27. **O fiado NÃO vira lançamento no financeiro enquanto não é pago.** Ele aparece no
+    resumo do mês como "Fiado de clientes", fora de "A receber" — somar os dois
+    contaria o mesmo dinheiro duas vezes quando o pagamento chegasse.
+28. **O agendamento fecha pelo valor cheio** no faturamento, mesmo com parte em
+    aberto: receita por competência. Receber depois não mexe no agendamento.
+29. **Reabrir a comanda zera o débito**, junto com os pagamentos.
+30. **Débito sem data combinada nunca conta como atrasado.**
+31. **O total devido na ficha** soma todas as comandas do cliente e só é mostrado a
+    quem vê todas as comandas (`sales.view_all` + `sales.view_invoiced`).
+
 Perguntas a confirmar com o dono (a auditoria não cobre):
 
 - Cartão: a conta a receber deve dar baixa sozinha no dia do recebimento, ou alguém
   confere e dá baixa? Hoje é manual (fica "Atrasado" se ninguém baixar).
 - Comandas faturadas antes de ligar o módulo devem entrar no financeiro?
 - Quem pode ver o financeiro além do dono e dos gerentes?
+- Cliente com débito pode abrir comanda nova sem aviso? Hoje pode, e a tela da
+  comanda nova não avisa.
 
 ### 6.4 Permissões e módulo
 
@@ -549,6 +578,7 @@ dono têm tudo e a equipe não tem nada.
 | Comanda → financeiro | `recordSaleTransactions`, chamado por `invoiceSaleService` |
 | Caixa | `packages/db/src/domain/cash.ts`, `services/cash.service.ts`, `apps/web/app/actions/cash.ts`, `apps/web/app/[salonId]/finance/cash/`, `supabase/migrations/039_cash_sessions.sql` |
 | Comanda → caixa | `recordSaleCashMovements`, chamado por `invoiceSaleService` |
+| Débito de cliente | `planInvoice` (com `allowDebt`) e `planDebtPayment` em `domain/sales.ts`; `receiveSaleDebtPaymentService` e `getDebtTotalsService` em `services/sales.service.ts`; action `receiveSalePayment`; `supabase/migrations/040_sale_debt.sql` |
 | Actions | `apps/web/app/actions/finance.ts`, `finance-settings.ts` |
 | Telas | `apps/web/app/[salonId]/finance/` |
 | Testes | `apps/web/__tests__/lib/services/finance-domain.test.ts` |
@@ -569,6 +599,18 @@ lint, testes e `next build`.
   `payment_methods.account_id`, e o INSERT do Drizzle lista todas as colunas da
   tabela. Já está cumprido.
 
+- **Migration 040 (débito): escrita, NÃO aplicada.** Mesma regra da 039: tem que
+  entrar ANTES de o código chegar a qualquer ambiente que use o banco de produção.
+  Ela adiciona colunas a `sales`, e o INSERT do Drizzle lista todas as colunas —
+  sem elas, criar QUALQUER comanda falha. Por isso o commit do débito fica local
+  até a 040 ser aplicada.
+
+Onde o débito aparece na tela: no diálogo de faturar (caixa "Deixar R$ X em aberto"
+e data combinada), na comanda faturada (aviso "Em aberto" e botão "Receber"), na
+lista de comandas (filtro "Com valor em aberto" e o valor em cada linha), no cartão
+Vendas da ficha do cliente ("Deve R$ X em N comandas") e no resumo do mês ("Fiado de
+clientes").
+
 ### 6.8 Teste em uso (15/nov/2026)
 
 Feito no preview da Vercel, no "Salão TOP" (`37dc22de…`), único salão com os módulos
@@ -588,11 +630,15 @@ Funcionou, sem nenhum erro do código novo:
   de um agendamento em duas comandas, "Agrupar em comanda" com dois agendamentos, e
   cancelamento de agendamento tirando o item da comanda aberta.
 
+Em 16/nov/2026, depois das 9h, foi testado o que dependia do horário: faturar a
+comanda #3 concluiu o agendamento (`completed`, R$ 170,00, `outcome_source = 'sale'`)
+e gerou o lançamento no financeiro; reabrir devolveu o agendamento para
+`confirmed` sem valor e apagou pagamento e lançamento. A correção da coluna
+Operador do caixa também foi vista na tela.
+
 Ainda não testado:
 
-- faturamento CONCLUINDO o agendamento, e a reabertura devolvendo-o para
-  confirmado (só depois que o horário do agendamento começa — ficou um agendamento
-  de teste em 16/nov às 9h, ligado à comanda #3);
+- débito de cliente (fatia 2f), escrito depois e ainda sem a migration 040;
 - produto na comanda (o salão não tem produto ativo);
 - restrição por perfil, logado como outro usuário;
 
@@ -617,8 +663,8 @@ Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
 
 Dados de teste deixados no Salão TOP: contas "Teste Banco" e "Teste Caixa",
 categoria "Teste Aluguel", formas "Teste PIX", "Teste Credito" e "Teste Dinheiro",
-comandas #1, #2 e #4 excluídas, comanda #3 aberta, um caixa fechado (com suprimento
-e sangria de teste), um agendamento cancelado e um pendente. O serviço
+comandas #1 a #4 excluídas, um caixa fechado (com suprimento e sangria de teste) e
+dois agendamentos de teste cancelados. O serviço
 "Corte de Cabelo Masculino" passou do Marcos Affonso para o profissional do dono.
 
 Ligar o módulo num salão (depois da 038 aplicada e do código publicado):
@@ -643,5 +689,6 @@ UPDATE salons
 | Conta Belasis de teste para executar fluxos | Fidelidade das regras nas fases 2 a 5 |
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
-| Testar o faturamento com agendamento (a partir de 16/nov, 9h) e as fatias 2d e 2g | Fechar o teste em uso |
+| Aplicar a migration 040 e testar o débito de cliente em uso | Fechar a fase 2 |
+| Atualizar a branch com a `main` (o PR #13 entrou depois) antes de abrir o PR | Publicação das fases 0 a 2 |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

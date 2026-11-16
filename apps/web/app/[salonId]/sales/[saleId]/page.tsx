@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { ArrowLeft, ShieldOff } from "lucide-react"
+import { brazilToday } from "@repo/db"
 import { getSale, getSaleDraftFromAppointments, getSaleFormOptions } from "@/app/actions/sales"
 import { SaleEditor } from "./sale-editor"
 
@@ -61,12 +62,14 @@ export default async function SalePage({
     <SaleEditor
       // A chave troca quando o status muda (faturar/reabrir), para a tela remontar
       // com o que o servidor gravou em vez de reaproveitar estado de edição.
-      key={sale ? `${sale.id}:${sale.status}` : `new:${appointmentIds.join(",")}`}
+      key={sale ? `${sale.id}:${sale.status}:${sale.amountDue}` : `new:${appointmentIds.join(",")}`}
       salonId={salonId}
       sale={sale}
       options={options}
       draft={draft}
       openInvoice={query.invoice === "1"}
+      // "Hoje" em Brasília vem do servidor: decide se o débito está atrasado.
+      today={brazilToday(new Date())}
     />
   )
 }

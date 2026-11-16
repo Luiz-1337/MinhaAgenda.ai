@@ -12,6 +12,7 @@ import {
   createTransferService,
   deleteTransactionService,
   brazilToday,
+  getDebtTotalsService,
   getFinanceSummaryService,
   monthRange,
   updateManualTransactionService,
@@ -176,8 +177,12 @@ export async function getFinanceSummary(
     const range = monthRange(chosen)
     if (!range) return { error: "Mês inválido" }
 
-    const summary = await getFinanceSummaryService({ salonId, ...range, today })
-    return { month: chosen, ...summary }
+    const [summary, customerDebt] = await Promise.all([
+      getFinanceSummaryService({ salonId, ...range, today }),
+      // Fiado é dado das comandas: só existe (e só é consultado) com o módulo ligado.
+      (await salonHasModule(salonId, "sales")) ? getDebtTotalsService({ salonId, today }) : null,
+    ])
+    return { month: chosen, ...summary, customerDebt }
   } catch (error) {
     console.error("Erro ao montar o resumo financeiro:", error)
     return { error: "Não foi possível carregar o resumo financeiro" }

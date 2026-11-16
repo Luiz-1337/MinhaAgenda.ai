@@ -226,6 +226,12 @@ export type InvoiceInput = {
   methods: ReadonlyMap<string, { feePercent: string; settlementDays: number; isActive: boolean }>
   /** Agendamentos ligados aos itens, já filtrados por salon_id. */
   appointments: ReadonlyMap<string, { status: string; date: Date }>
+  /**
+   * Aceita faturar com os pagamentos somando MENOS que o total: a diferença vira
+   * débito do cliente. Quem decide é o chamador (permissão + confirmação explícita
+   * na tela). Sem isso, faltar um centavo é erro.
+   */
+  allowDebt?: boolean
   now: Date
 }
 
@@ -241,6 +247,9 @@ export type InvoicePlan =
   | {
       ok: true
       totalCents: number
+      paidCents: number
+      /** O que fica em aberto: total − pagamentos. Zero, a não ser com `allowDebt`. */
+      dueCents: number
       payments: PlannedPayment[]
       /** Agendamentos a fechar, com o valor cobrado (soma dos itens de cada um). */
       appointmentOutcomes: { appointmentId: string; priceCharged: string }[]
@@ -266,12 +275,56 @@ export function settlementDate(now: Date, settlementDays: number): string {
   return date.toISOString().slice(0, 10)
 }
 
+type PaymentMethodsMap = ReadonlyMap<string, { feePercent: string; settlementDays: number; isActive: boolean }>
+
+type PaymentsPlan = { ok: true; payments: PlannedPayment[]; paidCents: number } | { ok: false; error: string }
+
+/**
+ * Valida os pagamentos contra as formas do salão e calcula taxa e dia do
+ * recebimento de cada um. Compartilhado pelo faturamento e pelo recebimento de
+ * débito — a regra de um pagamento é a mesma nos dois.
+ */
+function planPayments(payments: readonly InvoicePaymentDraft[], methods: PaymentMethodsMap, now: Date): PaymentsPlan {
+  const planned: PlannedPayment[] = []
+  let paidCents = 0
+
+  for (const payment of payments) {
+    const method = methods.get(payment.paymentMethodId)
+    if (!method) return { ok: false, error: 'Forma de pagamento não encontrada' }
+    if (!method.isActive) return { ok: false, error: 'Forma de pagamento inativa' }
+
+    const amountCents = toCents(payment.amount)
+    if (amountCents === null || amountCents <= 0) {
+      return { ok: false, error: 'Valor de pagamento inválido' }
+    }
+
+    // Taxa em centésimos de ponto percentual, para não fazer conta com float.
+    const feeBasisPoints = Math.round(Number(method.feePercent) * 100)
+    if (!Number.isFinite(feeBasisPoints) || feeBasisPoints < 0 || feeBasisPoints > 10_000) {
+      return { ok: false, error: 'A forma de pagamento tem taxa inválida' }
+    }
+    const feeCents = Math.round((amountCents * feeBasisPoints) / 10_000)
+
+    paidCents += amountCents
+    planned.push({
+      paymentMethodId: payment.paymentMethodId,
+      amount: centsToNumeric(amountCents),
+      feePercent: (feeBasisPoints / 100).toFixed(2),
+      feeAmount: centsToNumeric(feeCents),
+      settlesOn: settlementDate(now, method.settlementDays),
+    })
+  }
+
+  return { ok: true, payments: planned, paidCents }
+}
+
 /**
  * Decide o faturamento: confere se a comanda pode ser faturada com estes
  * pagamentos e devolve o que gravar.
  *
- * Na fase 1 a soma dos pagamentos tem que ser IGUAL ao total. Pagamento parcial
- * vira débito do cliente, que só existe a partir da fase 2 (financeiro).
+ * Por padrão a soma dos pagamentos tem que ser IGUAL ao total. Com `allowDebt`,
+ * pode ser menor — inclusive zero — e a diferença fica em aberto como débito do
+ * cliente. Passar do total nunca é aceito: não há troco nem crédito aqui.
  */
 export function planInvoice(input: InvoiceInput): InvoicePlan {
   if (input.items.length === 0) {
@@ -318,54 +371,73 @@ export function planInvoice(input: InvoiceInput): InvoicePlan {
     }
   }
 
-  const payments: PlannedPayment[] = []
-  let paidCents = 0
+  const planned = planPayments(input.payments, input.methods, input.now)
+  if (!planned.ok) return planned
 
-  for (const payment of input.payments) {
-    const method = input.methods.get(payment.paymentMethodId)
-    if (!method) return { ok: false, error: 'Forma de pagamento não encontrada' }
-    if (!method.isActive) return { ok: false, error: 'Forma de pagamento inativa' }
+  const { payments, paidCents } = planned
 
-    const amountCents = toCents(payment.amount)
-    if (amountCents === null || amountCents <= 0) {
-      return { ok: false, error: 'Valor de pagamento inválido' }
-    }
-
-    // Taxa em centésimos de ponto percentual, para não fazer conta com float.
-    const feeBasisPoints = Math.round(Number(method.feePercent) * 100)
-    if (!Number.isFinite(feeBasisPoints) || feeBasisPoints < 0 || feeBasisPoints > 10_000) {
-      return { ok: false, error: 'A forma de pagamento tem taxa inválida' }
-    }
-    const feeCents = Math.round((amountCents * feeBasisPoints) / 10_000)
-
-    paidCents += amountCents
-    payments.push({
-      paymentMethodId: payment.paymentMethodId,
-      amount: centsToNumeric(amountCents),
-      feePercent: (feeBasisPoints / 100).toFixed(2),
-      feeAmount: centsToNumeric(feeCents),
-      settlesOn: settlementDate(input.now, method.settlementDays),
-    })
+  if (paidCents > totalCents) {
+    const diff = centsToNumeric(paidCents - totalCents).replace('.', ',')
+    return { ok: false, error: `Os pagamentos passam do total em R$ ${diff}` }
   }
 
-  if (paidCents !== totalCents) {
-    const diff = centsToNumeric(Math.abs(totalCents - paidCents)).replace('.', ',')
-    return {
-      ok: false,
-      error:
-        paidCents < totalCents
-          ? `Faltam R$ ${diff} para fechar a comanda`
-          : `Os pagamentos passam do total em R$ ${diff}`,
-    }
+  if (paidCents < totalCents && !input.allowDebt) {
+    const diff = centsToNumeric(totalCents - paidCents).replace('.', ',')
+    return { ok: false, error: `Faltam R$ ${diff} para fechar a comanda` }
   }
 
   return {
     ok: true,
     totalCents,
+    paidCents,
+    dueCents: totalCents - paidCents,
     payments,
     appointmentOutcomes: Array.from(chargedByAppointment, ([appointmentId, cents]) => ({
       appointmentId,
       priceCharged: centsToNumeric(cents),
     })),
+  }
+}
+
+// ============================================================================
+// Receber débito
+// ============================================================================
+
+export type DebtPaymentPlan =
+  | { ok: true; payments: PlannedPayment[]; paidCents: number; remainingCents: number }
+  | { ok: false; error: string }
+
+/**
+ * Recebe (todo ou parte de) o valor em aberto de uma comanda já faturada.
+ *
+ * Pode ser parcial — a cliente paga em duas, três vezes. Não pode ser zero nem
+ * passar do que está em aberto: o que sobraria seria crédito do cliente, que não
+ * existe aqui.
+ */
+export function planDebtPayment(input: {
+  /** `sales.amount_due`, string do banco. */
+  amountDue: string
+  payments: readonly InvoicePaymentDraft[]
+  methods: PaymentMethodsMap
+  now: Date
+}): DebtPaymentPlan {
+  const dueCents = toCents(input.amountDue) ?? 0
+  if (dueCents <= 0) return { ok: false, error: 'Esta comanda não tem valor em aberto' }
+
+  if (input.payments.length === 0) return { ok: false, error: 'Informe ao menos um pagamento' }
+
+  const planned = planPayments(input.payments, input.methods, input.now)
+  if (!planned.ok) return planned
+
+  if (planned.paidCents > dueCents) {
+    const diff = centsToNumeric(planned.paidCents - dueCents).replace('.', ',')
+    return { ok: false, error: `Os pagamentos passam do valor em aberto em R$ ${diff}` }
+  }
+
+  return {
+    ok: true,
+    payments: planned.payments,
+    paidCents: planned.paidCents,
+    remainingCents: dueCents - planned.paidCents,
   }
 }

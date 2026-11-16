@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, ne, or, sql } from "drizzle-orm"
+import { and, desc, eq, gt, gte, inArray, lte, ne, or, sql } from "drizzle-orm"
 
 import {
   db,
@@ -16,6 +16,7 @@ import {
 import type { SaleStatus } from "../schema"
 import {
   centsToNumeric,
+  planDebtPayment,
   planInvoice,
   planSaleItems,
   toCents,
@@ -26,6 +27,8 @@ import {
 import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
+import { isCalendarDate } from "../domain/finance"
+import type { PlannedPayment } from "../domain/sales"
 
 /**
  * Comandas (docs/ROADMAP.md, fase 1).
@@ -157,6 +160,7 @@ async function lockSale(tx: Tx, salonId: string, saleId: string) {
       status: sales.status,
       customerId: sales.customerId,
       number: sales.number,
+      amountDue: sales.amountDue,
     })
     .from(sales)
     .where(and(eq(sales.id, saleId), eq(sales.salonId, salonId)))
@@ -296,6 +300,65 @@ export async function updateSaleService(
 // ============================================================================
 
 /**
+ * Grava pagamentos de uma comanda e dispara o que cada pagamento gera: conta a
+ * receber no financeiro e, se for dinheiro, entrada no caixa aberto (só com
+ * `recordFinance`). Usado pelo faturamento e pelo recebimento de débito — o
+ * pagamento de hoje e o da semana que vem têm que produzir exatamente o mesmo.
+ */
+async function insertSalePayments(
+  tx: Tx,
+  input: {
+    salonId: string
+    sale: { id: string; number: number; customerId: string }
+    payments: PlannedPayment[]
+    userId: string
+    recordFinance?: boolean
+    now: Date
+  }
+): Promise<void> {
+  if (input.payments.length === 0) return
+
+  const inserted = await tx
+    .insert(salePayments)
+    .values(
+      input.payments.map((payment) => ({
+        ...payment,
+        saleId: input.sale.id,
+        salonId: input.salonId,
+        paidAt: input.now,
+        createdBy: input.userId,
+      }))
+    )
+    .returning({
+      id: salePayments.id,
+      paymentMethodId: salePayments.paymentMethodId,
+      amount: salePayments.amount,
+      feeAmount: salePayments.feeAmount,
+      settlesOn: salePayments.settlesOn,
+    })
+
+  if (!input.recordFinance) return
+
+  // Na MESMA transação: ou o pagamento entra e o financeiro registra, ou nada.
+  await recordSaleTransactions(tx, {
+    salonId: input.salonId,
+    saleId: input.sale.id,
+    saleNumber: input.sale.number,
+    customerId: input.sale.customerId,
+    userId: input.userId,
+    payments: inserted,
+    now: input.now,
+  })
+
+  // E o que foi pago em dinheiro entra no caixa aberto, se houver um.
+  await recordSaleCashMovements(tx, {
+    salonId: input.salonId,
+    userId: input.userId,
+    payments: inserted,
+  })
+}
+
+/**
  * Fatura a comanda: grava os pagamentos, muda para Finalizado e FECHA os
  * agendamentos ligados aos itens.
  *
@@ -315,8 +378,20 @@ export async function invoiceSaleService(input: {
    * caixa é tocada.
    */
   recordFinance?: boolean
+  /**
+   * Aceita faturar com os pagamentos somando menos que o total; a diferença fica
+   * em aberto como débito do cliente (fatia 2f). Quem decide é a action: permissão
+   * `sales.invoice_debt` E confirmação explícita na tela.
+   */
+  allowDebt?: boolean
+  /** Quando a cliente combinou de pagar o que ficou em aberto ("YYYY-MM-DD"). */
+  debtDueDate?: string | null
 }): Promise<ActionResult<void>> {
   try {
+    if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
+      return { success: false, error: "Data de vencimento do débito inválida" }
+    }
+
     await db.transaction(async (tx) => {
       const sale = await lockSale(tx, input.salonId, input.saleId)
       if (!sale) fail("Comanda não encontrada")
@@ -366,56 +441,28 @@ export async function invoiceSaleService(input: {
         payments: input.payments,
         methods: new Map(methodRows.map((m) => [m.id, m])),
         appointments: new Map(appointmentRows.map((a) => [a.id, { status: a.status, date: a.date }])),
+        allowDebt: input.allowDebt,
         now,
       })
       if (!plan.ok) fail(plan.error)
 
-      if (plan.payments.length > 0) {
-        const insertedPayments = await tx
-          .insert(salePayments)
-          .values(
-            plan.payments.map((payment) => ({
-              ...payment,
-              saleId: sale.id,
-              salonId: input.salonId,
-              paidAt: now,
-              createdBy: input.userId,
-            }))
-          )
-          .returning({
-            id: salePayments.id,
-            paymentMethodId: salePayments.paymentMethodId,
-            amount: salePayments.amount,
-            feeAmount: salePayments.feeAmount,
-            settlesOn: salePayments.settlesOn,
-          })
-
-        // Na MESMA transação: ou a comanda fatura e o financeiro registra, ou nada.
-        if (input.recordFinance) {
-          await recordSaleTransactions(tx, {
-            salonId: input.salonId,
-            saleId: sale.id,
-            saleNumber: sale.number,
-            customerId: sale.customerId,
-            userId: input.userId,
-            payments: insertedPayments,
-            now,
-          })
-
-          // E o que foi pago em dinheiro entra no caixa aberto, se houver um.
-          await recordSaleCashMovements(tx, {
-            salonId: input.salonId,
-            userId: input.userId,
-            payments: insertedPayments,
-          })
-        }
-      }
+      await insertSalePayments(tx, {
+        salonId: input.salonId,
+        sale,
+        payments: plan.payments,
+        userId: input.userId,
+        recordFinance: input.recordFinance,
+        now,
+      })
 
       await tx
         .update(sales)
         .set({
           status: "invoiced",
           total: centsToNumeric(plan.totalCents),
+          amountDue: centsToNumeric(plan.dueCents),
+          // Vencimento só enquanto há valor em aberto (CHECK no banco).
+          debtDueDate: plan.dueCents > 0 ? (input.debtDueDate ?? null) : null,
           invoicedAt: now,
           invoicedBy: input.userId,
           updatedAt: now,
@@ -447,6 +494,79 @@ export async function invoiceSaleService(input: {
 }
 
 /**
+ * Recebe (todo ou parte de) o valor em aberto de uma comanda já faturada: mais um
+ * pagamento na mesma comanda, que baixa `amount_due`.
+ *
+ * É o mesmo caminho do pagamento feito no faturamento — gera conta a receber no
+ * financeiro e entra no caixa aberto se for dinheiro. O agendamento não muda: ele
+ * já foi fechado pelo valor cheio quando a comanda foi faturada.
+ */
+export async function receiveSaleDebtPaymentService(input: {
+  salonId: string
+  saleId: string
+  payments: InvoicePaymentDraft[]
+  userId: string
+  recordFinance?: boolean
+}): Promise<ActionResult<{ remaining: string }>> {
+  try {
+    const remaining = await db.transaction(async (tx) => {
+      const sale = await lockSale(tx, input.salonId, input.saleId)
+      if (!sale) fail("Comanda não encontrada")
+      if (sale.status !== "invoiced") fail("Só comanda faturada tem valor em aberto a receber")
+
+      const methodIds = unique(input.payments.map((p) => p.paymentMethodId))
+      const methodRows = methodIds.length
+        ? await tx
+            .select({
+              id: paymentMethods.id,
+              feePercent: paymentMethods.feePercent,
+              settlementDays: paymentMethods.settlementDays,
+              isActive: paymentMethods.isActive,
+            })
+            .from(paymentMethods)
+            .where(and(eq(paymentMethods.salonId, input.salonId), inArray(paymentMethods.id, methodIds)))
+        : []
+
+      const now = new Date()
+      const plan = planDebtPayment({
+        amountDue: sale.amountDue,
+        payments: input.payments,
+        methods: new Map(methodRows.map((m) => [m.id, m])),
+        now,
+      })
+      if (!plan.ok) fail(plan.error)
+
+      await insertSalePayments(tx, {
+        salonId: input.salonId,
+        sale,
+        payments: plan.payments,
+        userId: input.userId,
+        recordFinance: input.recordFinance,
+        now,
+      })
+
+      const remainingAmount = centsToNumeric(plan.remainingCents)
+
+      await tx
+        .update(sales)
+        .set({
+          amountDue: remainingAmount,
+          // Quitou: o vencimento deixa de fazer sentido (CHECK no banco).
+          ...(plan.remainingCents === 0 ? { debtDueDate: null } : {}),
+          updatedAt: now,
+        })
+        .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
+
+      return remainingAmount
+    })
+
+    return { success: true, data: { remaining } }
+  } catch (error) {
+    return toFailure(error, "Não foi possível registrar o recebimento")
+  }
+}
+
+/**
  * Reabre uma comanda faturada: volta para Pendente, remove os pagamentos e devolve
  * os agendamentos para "confirmado".
  *
@@ -471,7 +591,15 @@ export async function reopenSaleService(input: {
 
       await tx
         .update(sales)
-        .set({ status: "open", invoicedAt: null, invoicedBy: null, updatedAt: now })
+        // O débito some junto: comanda aberta não deve nada (CHECK no banco).
+        .set({
+          status: "open",
+          invoicedAt: null,
+          invoicedBy: null,
+          amountDue: "0.00",
+          debtDueDate: null,
+          updatedAt: now,
+        })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
 
       const linked = await tx
@@ -615,6 +743,9 @@ export type SaleDetail = {
   subtotal: string
   discountTotal: string
   total: string
+  /** Quanto da comanda faturada ainda não foi pago. "0.00" = quitada. */
+  amountDue: string
+  debtDueDate: string | null
   invoicedAt: Date | null
   voidedAt: Date | null
   voidReason: string | null
@@ -642,6 +773,7 @@ export type SaleDetail = {
     feePercent: string
     feeAmount: string
     settlesOn: string
+    paidAt: Date
   }[]
 }
 
@@ -656,6 +788,8 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
       subtotal: sales.subtotal,
       discountTotal: sales.discountTotal,
       total: sales.total,
+      amountDue: sales.amountDue,
+      debtDueDate: sales.debtDueDate,
       invoicedAt: sales.invoicedAt,
       voidedAt: sales.voidedAt,
       voidReason: sales.voidReason,
@@ -700,6 +834,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         feePercent: salePayments.feePercent,
         feeAmount: salePayments.feeAmount,
         settlesOn: salePayments.settlesOn,
+        paidAt: salePayments.paidAt,
       })
       .from(salePayments)
       .innerJoin(paymentMethods, eq(paymentMethods.id, salePayments.paymentMethodId))
@@ -716,6 +851,8 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
     subtotal: sale.subtotal,
     discountTotal: sale.discountTotal,
     total: sale.total,
+    amountDue: sale.amountDue,
+    debtDueDate: sale.debtDueDate,
     invoicedAt: sale.invoicedAt,
     voidedAt: sale.voidedAt,
     voidReason: sale.voidReason,
@@ -752,6 +889,8 @@ export type SaleListRow = {
   status: SaleStatus
   saleDate: Date
   total: string
+  amountDue: string
+  debtDueDate: string | null
   customerId: string
   customerName: string
   /** Nomes das formas de pagamento, na ordem em que foram lançadas. */
@@ -768,6 +907,8 @@ export type ListSalesFilters = {
   from?: Date
   to?: Date
   customerId?: string
+  /** Só comandas faturadas com valor em aberto (débito do cliente). */
+  onlyWithDebt?: boolean
   /**
    * Quem não tem `sales.view_all` vê só as próprias: as que criou e as que têm
    * item de um vínculo de profissional dele neste salão.
@@ -788,6 +929,9 @@ export async function listSalesService(
   if (filters.from) conditions.push(gte(sales.saleDate, filters.from))
   if (filters.to) conditions.push(lte(sales.saleDate, filters.to))
   if (filters.customerId) conditions.push(eq(sales.customerId, filters.customerId))
+  if (filters.onlyWithDebt) {
+    conditions.push(eq(sales.status, "invoiced"), gt(sales.amountDue, "0"))
+  }
 
   if (filters.visibleTo) {
     const { userId, professionalIds } = filters.visibleTo
@@ -821,6 +965,8 @@ export async function listSalesService(
         status: sales.status,
         saleDate: sales.saleDate,
         total: sales.total,
+        amountDue: sales.amountDue,
+        debtDueDate: sales.debtDueDate,
         customerId: customers.id,
         customerName: customers.name,
       })
@@ -860,5 +1006,47 @@ export async function listSalesService(
   return {
     rows: rows.map((row) => ({ ...row, paymentMethods: methodsBySale.get(row.id) ?? [] })),
     total,
+  }
+}
+
+export type DebtTotals = {
+  /** Soma do que está em aberto, em centavos. */
+  openCents: number
+  /** Parte do que está em aberto com vencimento anterior a hoje. */
+  overdueCents: number
+  /** Quantas comandas têm valor em aberto. */
+  count: number
+}
+
+/**
+ * Quanto está em aberto em comandas faturadas — do salão inteiro ou de um cliente.
+ * `today` é o dia de hoje em Brasília ("YYYY-MM-DD"), para separar o que já venceu.
+ * Débito sem vencimento combinado nunca conta como atrasado.
+ */
+export async function getDebtTotalsService(input: {
+  salonId: string
+  customerId?: string
+  today: string
+}): Promise<DebtTotals> {
+  const [row] = await db
+    .select({
+      open: sql<string>`coalesce(sum(${sales.amountDue}), 0)::text`,
+      overdue: sql<string>`coalesce(sum(${sales.amountDue}) filter (where ${sales.debtDueDate} < ${input.today}::date), 0)::text`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(sales)
+    .where(
+      and(
+        eq(sales.salonId, input.salonId),
+        eq(sales.status, "invoiced"),
+        gt(sales.amountDue, "0"),
+        input.customerId ? eq(sales.customerId, input.customerId) : undefined
+      )
+    )
+
+  return {
+    openCents: toCents(row?.open ?? "0") ?? 0,
+    overdueCents: toCents(row?.overdue ?? "0") ?? 0,
+    count: row?.count ?? 0,
   }
 }

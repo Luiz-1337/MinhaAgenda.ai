@@ -17,10 +17,12 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
   invoiceSale,
+  receiveSalePayment,
   reopenSale,
   saveSale,
   searchSaleCustomers,
@@ -140,6 +142,7 @@ export function SaleEditor({
   options,
   draft,
   openInvoice,
+  today,
 }: {
   salonId: string
   sale: SaleDetailDTO | null
@@ -147,6 +150,8 @@ export function SaleEditor({
   /** Comanda nova aberta a partir de agendamentos ("Criar comanda" / "Agrupar em comanda"). */
   draft: AppointmentDraft | null
   openInvoice: boolean
+  /** O dia de hoje em Brasília ("YYYY-MM-DD"). */
+  today: string
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -171,6 +176,17 @@ export function SaleEditor({
   )
   const [confirmVoid, setConfirmVoid] = useState(false)
   const [confirmReopen, setConfirmReopen] = useState(false)
+
+  // O diálogo de pagamentos serve a dois momentos: faturar a comanda aberta e
+  // receber depois o que ficou em aberto numa comanda já faturada.
+  const [dialogMode, setDialogMode] = useState<"invoice" | "receive">("invoice")
+  // Fiado: deixar parte (ou tudo) em aberto de propósito. Exige marcar a caixa.
+  const [acceptDebt, setAcceptDebt] = useState(false)
+  const [debtDueDate, setDebtDueDate] = useState("")
+
+  const amountDueCents = sale ? (toCents(sale.amountDue) ?? 0) : 0
+  const hasDebt = status === "invoiced" && amountDueCents > 0
+  const debtOverdue = hasDebt && !!sale?.debtDueDate && sale.debtDueDate < today
 
   // Itens gravados podem apontar para serviço, produto ou profissional que foi
   // desativado depois — some do catálogo ativo, mas tem que continuar aparecendo.
@@ -279,9 +295,21 @@ export function SaleEditor({
 
   function openInvoiceDialog() {
     const firstMethod = options.paymentMethods[0]?.id ?? ""
+    setDialogMode("invoice")
+    setAcceptDebt(false)
+    setDebtDueDate("")
     setPayments(
       totals.total > 0 ? [{ key: nextKey(), methodId: firstMethod, amount: moneyToInput(centsToNumeric(totals.total)) }] : []
     )
+    setInvoiceOpen(true)
+  }
+
+  function openReceiveDialog() {
+    if (!sale) return
+    setDialogMode("receive")
+    setPayments([
+      { key: nextKey(), methodId: options.paymentMethods[0]?.id ?? "", amount: moneyToInput(sale.amountDue) },
+    ])
     setInvoiceOpen(true)
   }
 
@@ -343,7 +371,16 @@ export function SaleEditor({
   // --------------------------------------------------------------------------
 
   const paidCents = payments.reduce((sum, p) => sum + (toCents(parseBRL(p.amount)) ?? 0), 0)
-  const remainingCents = totals.total - paidCents
+  // O alvo do diálogo: o total, ao faturar; o valor em aberto, ao receber depois.
+  const targetCents = dialogMode === "receive" ? amountDueCents : totals.total
+  const remainingCents = targetCents - paidCents
+  const leavingDebt = dialogMode === "invoice" && acceptDebt && options.can.invoiceDebt && remainingCents > 0
+
+  const confirmBlocked =
+    remainingCents < 0 ||
+    (dialogMode === "invoice"
+      ? rows.length === 0 || (remainingCents > 0 && !leavingDebt)
+      : paidCents <= 0)
 
   function confirmInvoice() {
     if (!sale) return
@@ -362,13 +399,33 @@ export function SaleEditor({
       list.push({ paymentMethodId: payment.methodId, amount })
     }
 
+    if (dialogMode === "receive") {
+      startTransition(async () => {
+        const result = await receiveSalePayment({ salonId, saleId: sale.id, payments: list })
+        if ("error" in result) {
+          toast.error(result.error)
+          return
+        }
+        toast.success(Number(result.data?.remaining ?? 0) > 0 ? "Pagamento recebido" : "Débito quitado")
+        setInvoiceOpen(false)
+        router.refresh()
+      })
+      return
+    }
+
     startTransition(async () => {
-      const result = await invoiceSale({ salonId, saleId: sale.id, payments: list })
+      const result = await invoiceSale({
+        salonId,
+        saleId: sale.id,
+        payments: list,
+        acceptDebt: leavingDebt,
+        debtDueDate: leavingDebt && debtDueDate ? debtDueDate : null,
+      })
       if ("error" in result) {
         toast.error(result.error)
         return
       }
-      toast.success("Comanda faturada")
+      toast.success(leavingDebt ? "Comanda faturada com valor em aberto" : "Comanda faturada")
       setInvoiceOpen(false)
       // Tira o ?invoice=1 da URL para um F5 não reabrir o diálogo.
       router.replace(`/${salonId}/sales/${sale.id}`)
@@ -459,6 +516,12 @@ export function SaleEditor({
               Faturar
             </Button>
           )}
+          {hasDebt && options.can.invoice && (
+            <Button onClick={openReceiveDialog} loading={isPending} className="font-bold shadow-md">
+              {!isPending && <Wallet size={16} />}
+              Receber
+            </Button>
+          )}
           {status === "invoiced" && options.can.reopen && (
             <Button onClick={() => setConfirmReopen(true)} variant="outline" loading={isPending} className="font-bold">
               {!isPending && <RotateCcw size={16} />}
@@ -469,6 +532,24 @@ export function SaleEditor({
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar md:pr-4 space-y-6">
+        {hasDebt && sale && (
+          <div
+            role="status"
+            className={`rounded-md border p-4 text-sm ${
+              debtOverdue
+                ? "bg-destructive/10 border-destructive/20 text-destructive"
+                : "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200"
+            }`}
+          >
+            <span className="font-bold">Em aberto: {formatBRL(sale.amountDue)}</span>
+            {" de "}
+            {formatBRL(sale.total)}
+            {sale.debtDueDate
+              ? ` · ${debtOverdue ? "venceu" : "vence"} em ${sale.debtDueDate.split("-").reverse().join("/")}`
+              : " · sem data combinada"}
+          </div>
+        )}
+
         {status === "void" && (
           <div className="bg-muted border border-border rounded-md p-4 text-sm text-muted-foreground">
             Comanda excluída
@@ -709,7 +790,8 @@ export function SaleEditor({
                 <div key={payment.id} className="p-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-sm">
                   <span className="font-semibold text-foreground">{payment.methodName}</span>
                   <span className="text-xs text-muted-foreground">
-                    Taxa {Number(payment.feePercent).toLocaleString("pt-BR")}% ({formatBRL(payment.feeAmount)}) · recebe em{" "}
+                    Pago em {dateTimeFormat.format(new Date(payment.paidAt))} · taxa{" "}
+                    {Number(payment.feePercent).toLocaleString("pt-BR")}% ({formatBRL(payment.feeAmount)}) · recebe em{" "}
                     {payment.settlesOn.split("-").reverse().join("/")}
                   </span>
                   <span className="font-mono font-medium text-foreground tabular-nums">{formatBRL(payment.amount)}</span>
@@ -726,12 +808,17 @@ export function SaleEditor({
           className="!max-w-xl max-h-[90vh] overflow-hidden flex flex-col bg-card border-border p-0"
           showCloseButton={false}
         >
-          <DialogTitle className="sr-only">Faturar comanda</DialogTitle>
+          <DialogTitle className="sr-only">
+            {dialogMode === "receive" ? "Receber pagamento" : "Faturar comanda"}
+          </DialogTitle>
           <div className="p-5 border-b border-border flex justify-between items-center bg-muted/50">
             <div>
-              <h2 className="text-lg font-bold text-foreground tracking-tight">Faturar comanda</h2>
+              <h2 className="text-lg font-bold text-foreground tracking-tight">
+                {dialogMode === "receive" ? "Receber pagamento" : "Faturar comanda"}
+              </h2>
               <p className="text-xs text-muted-foreground">
-                Total {formatBRL(centsToNumeric(Math.max(0, totals.total)))}
+                {dialogMode === "receive" ? "Em aberto" : "Total"}{" "}
+                {formatBRL(centsToNumeric(Math.max(0, targetCents)))}
               </p>
             </div>
             <button
@@ -745,7 +832,7 @@ export function SaleEditor({
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
-            {totals.total === 0 ? (
+            {targetCents === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Esta comanda não tem valor a receber. Ela será finalizada sem pagamento.
               </p>
@@ -809,7 +896,9 @@ export function SaleEditor({
                         />
                       </div>
                       <div className="col-span-1 flex justify-end">
-                        {payments.length > 1 && (
+                        {/* A última linha só sai quando dá para faturar sem pagamento
+                            nenhum (fiado inteiro). */}
+                        {(payments.length > 1 || (dialogMode === "invoice" && options.can.invoiceDebt)) && (
                           <button
                             onClick={() => setPayments((current) => current.filter((p) => p.key !== payment.key))}
                             disabled={isPending}
@@ -848,19 +937,61 @@ export function SaleEditor({
                   className="flex items-center gap-1.5 text-xs font-bold text-accent hover:underline disabled:opacity-50"
                 >
                   <Plus size={14} />
-                  Dividir em outra forma
+                  {payments.length === 0 ? "Adicionar pagamento" : "Dividir em outra forma"}
                 </button>
 
                 <p
-                  className={`text-sm font-semibold ${remainingCents === 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}
+                  className={`text-sm font-semibold ${
+                    remainingCents === 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : remainingCents > 0 && (leavingDebt || dialogMode === "receive")
+                        ? "text-amber-700 dark:text-amber-300"
+                        : "text-destructive"
+                  }`}
                   role="status"
                 >
                   {remainingCents === 0
-                    ? "Pagamentos fecham o total."
-                    : remainingCents > 0
-                      ? `Faltam ${formatBRL(centsToNumeric(remainingCents))}`
-                      : `Passou do total em ${formatBRL(centsToNumeric(-remainingCents))}`}
+                    ? dialogMode === "receive"
+                      ? "Quita o valor em aberto."
+                      : "Pagamentos fecham o total."
+                    : remainingCents < 0
+                      ? `Passou ${dialogMode === "receive" ? "do valor em aberto" : "do total"} em ${formatBRL(centsToNumeric(-remainingCents))}`
+                      : dialogMode === "receive"
+                        ? `Continuam ${formatBRL(centsToNumeric(remainingCents))} em aberto`
+                        : leavingDebt
+                          ? `Ficam ${formatBRL(centsToNumeric(remainingCents))} em aberto para a cliente`
+                          : `Faltam ${formatBRL(centsToNumeric(remainingCents))}`}
                 </p>
+
+                {/* Fiado: só aparece quando falta valor e a pessoa tem a permissão. */}
+                {dialogMode === "invoice" && options.can.invoiceDebt && remainingCents > 0 && (
+                  <div className="space-y-3 border-t border-border pt-4">
+                    <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                      <Checkbox
+                        aria-label="Deixar o restante em aberto"
+                        checked={acceptDebt}
+                        disabled={isPending}
+                        onChange={(event) => setAcceptDebt(event.target.checked)}
+                      />
+                      Deixar {formatBRL(centsToNumeric(remainingCents))} em aberto (fiado)
+                    </label>
+                    {acceptDebt && (
+                      <div className="space-y-1">
+                        <label htmlFor="debt-due-date" className="text-[11px] font-semibold text-muted-foreground">
+                          Combinado para (opcional)
+                        </label>
+                        <input
+                          id="debt-due-date"
+                          type="date"
+                          value={debtDueDate}
+                          disabled={isPending}
+                          onChange={(event) => setDebtDueDate(event.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -878,11 +1009,11 @@ export function SaleEditor({
               onClick={confirmInvoice}
               size="lg"
               loading={isPending}
-              disabled={remainingCents !== 0 || rows.length === 0}
+              disabled={confirmBlocked}
               className="font-bold shadow-md"
             >
               {!isPending && <Wallet size={18} />}
-              {isPending ? "Faturando..." : "Confirmar"}
+              {isPending ? "Salvando..." : "Confirmar"}
             </Button>
           </div>
         </DialogContent>

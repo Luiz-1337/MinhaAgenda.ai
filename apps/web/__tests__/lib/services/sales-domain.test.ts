@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   centsToNumeric,
+  planDebtPayment,
   planInvoice,
   planSaleItems,
   settlementDate,
@@ -320,5 +321,139 @@ describe("planInvoice", () => {
     expectInvoiceError(withAppointment("a-falta"), "falta")
     expectInvoiceError(withAppointment("a-futuro"), "ainda não começou")
     expectInvoiceError(withAppointment("a-sumiu"), "não foi encontrado")
+  })
+})
+
+describe("faturar com valor em aberto (débito do cliente)", () => {
+  const now = new Date("2026-11-15T18:00:00Z")
+  const methods = new Map([
+    ["m-dinheiro", { feePercent: "0.00", settlementDays: 0, isActive: true }],
+    ["m-credito", { feePercent: "2.92", settlementDays: 30, isActive: true }],
+    ["m-inativa", { feePercent: "0.00", settlementDays: 0, isActive: false }],
+  ])
+  const items = [{ unitPrice: "200.00", total: "200.00", appointmentId: null }]
+
+  it("sem allowDebt, pagar menos continua sendo erro — o padrão não muda", () => {
+    const plan = planInvoice({
+      items,
+      payments: [{ paymentMethodId: "m-dinheiro", amount: 150 }],
+      methods,
+      appointments: new Map(),
+      now,
+    })
+    expect(plan.ok).toBe(false)
+    if (!plan.ok) expect(plan.error).toContain("Faltam R$ 50,00")
+  })
+
+  it("com allowDebt, a diferença fica em aberto", () => {
+    const plan = planInvoice({
+      items,
+      payments: [{ paymentMethodId: "m-dinheiro", amount: 150 }],
+      methods,
+      appointments: new Map(),
+      allowDebt: true,
+      now,
+    })
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan).toMatchObject({ totalCents: 20000, paidCents: 15000, dueCents: 5000 })
+    expect(plan.payments).toHaveLength(1)
+  })
+
+  it("com allowDebt, dá para faturar sem pagamento nenhum — fiado inteiro", () => {
+    const plan = planInvoice({ items, payments: [], methods, appointments: new Map(), allowDebt: true, now })
+    expect(plan.ok && plan.dueCents).toBe(20000)
+    expect(plan.ok && plan.payments).toEqual([])
+  })
+
+  it("pagando o total, não sobra débito, com ou sem allowDebt", () => {
+    for (const allowDebt of [true, false]) {
+      const plan = planInvoice({
+        items,
+        payments: [{ paymentMethodId: "m-dinheiro", amount: 200 }],
+        methods,
+        appointments: new Map(),
+        allowDebt,
+        now,
+      })
+      expect(plan.ok && plan.dueCents).toBe(0)
+    }
+  })
+
+  it("passar do total nunca é aceito, nem com allowDebt", () => {
+    const plan = planInvoice({
+      items,
+      payments: [{ paymentMethodId: "m-dinheiro", amount: 200.01 }],
+      methods,
+      appointments: new Map(),
+      allowDebt: true,
+      now,
+    })
+    expect(plan.ok).toBe(false)
+    if (!plan.ok) expect(plan.error).toContain("passam do total em R$ 0,01")
+  })
+
+  it("o agendamento fecha pelo valor CHEIO do item, mesmo com parte em aberto", () => {
+    const plan = planInvoice({
+      items: [{ unitPrice: "200.00", total: "200.00", appointmentId: "a-1" }],
+      payments: [],
+      methods,
+      appointments: new Map([["a-1", { status: "confirmed", date: new Date("2026-11-15T14:00:00Z") }]]),
+      allowDebt: true,
+      now,
+    })
+    expect(plan.ok && plan.appointmentOutcomes).toEqual([{ appointmentId: "a-1", priceCharged: "200.00" }])
+  })
+
+  describe("planDebtPayment — receber depois", () => {
+    it("recebe parte e diz quanto ainda falta", () => {
+      const plan = planDebtPayment({
+        amountDue: "50.00",
+        payments: [{ paymentMethodId: "m-dinheiro", amount: 20 }],
+        methods,
+        now,
+      })
+      expect(plan).toMatchObject({ ok: true, paidCents: 2000, remainingCents: 3000 })
+    })
+
+    it("recebe o resto, com taxa e prazo da forma de pagamento", () => {
+      const plan = planDebtPayment({
+        amountDue: "50.00",
+        payments: [{ paymentMethodId: "m-credito", amount: 50 }],
+        methods,
+        now,
+      })
+      expect(plan.ok).toBe(true)
+      if (!plan.ok) return
+      expect(plan.remainingCents).toBe(0)
+      expect(plan.payments[0]).toMatchObject({ amount: "50.00", feeAmount: "1.46", settlesOn: "2026-12-15" })
+    })
+
+    it("barra receber mais do que está em aberto, e diz quanto passou", () => {
+      const plan = planDebtPayment({
+        amountDue: "50.00",
+        payments: [{ paymentMethodId: "m-dinheiro", amount: 50.5 }],
+        methods,
+        now,
+      })
+      expect(plan.ok).toBe(false)
+      if (!plan.ok) expect(plan.error).toContain("R$ 0,50")
+    })
+
+    it("barra comanda sem valor em aberto, lista vazia, valor zero e forma inativa", () => {
+      const fail = (overrides: Partial<Parameters<typeof planDebtPayment>[0]>) =>
+        planDebtPayment({
+          amountDue: "50.00",
+          payments: [{ paymentMethodId: "m-dinheiro", amount: 10 }],
+          methods,
+          now,
+          ...overrides,
+        }).ok
+
+      expect(fail({ amountDue: "0.00" })).toBe(false)
+      expect(fail({ payments: [] })).toBe(false)
+      expect(fail({ payments: [{ paymentMethodId: "m-dinheiro", amount: 0 }] })).toBe(false)
+      expect(fail({ payments: [{ paymentMethodId: "m-inativa", amount: 10 }] })).toBe(false)
+    })
   })
 })

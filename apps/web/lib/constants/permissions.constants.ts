@@ -40,6 +40,7 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   manage: "Gerenciar",
   view_invoiced: "Ver faturadas",
   invoice: "Faturar",
+  invoice_debt: "Faturar com valor em aberto",
   edit_invoiced: "Reabrir faturada",
   settle: "Dar baixa e estornar",
   settings: "Contas e categorias",

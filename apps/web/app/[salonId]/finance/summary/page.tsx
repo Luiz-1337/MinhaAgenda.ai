@@ -121,6 +121,18 @@ export default async function FinanceSummaryPage({
           />
           <Stat label="A receber" value={money(summary.toReceiveCents)} hint="Em aberto, vencendo neste mês" />
           <Stat label="A pagar" value={money(summary.toPayCents)} hint="Em aberto, vencendo neste mês" />
+          {summary.customerDebt && (
+            <Stat
+              label="Fiado de clientes"
+              value={money(summary.customerDebt.openCents)}
+              hint={
+                summary.customerDebt.count === 0
+                  ? "Nenhuma comanda com valor em aberto"
+                  : `${summary.customerDebt.count} ${summary.customerDebt.count === 1 ? "comanda" : "comandas"} · ${money(summary.customerDebt.overdueCents)} vencido · não entra em A receber`
+              }
+              tone={summary.customerDebt.overdueCents > 0 ? "bad" : undefined}
+            />
+          )}
           <Stat
             label="Atrasado"
             value={`${money(summary.overdueInCents)} a receber`}

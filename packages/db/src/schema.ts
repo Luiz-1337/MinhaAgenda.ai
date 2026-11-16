@@ -974,6 +974,12 @@ export const sales = pgTable(
     subtotal: numeric('subtotal', { precision: 12, scale: 2 }).default('0').notNull(),
     discountTotal: numeric('discount_total', { precision: 12, scale: 2 }).default('0').notNull(),
     total: numeric('total', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Débito do cliente (migration 040): quanto da comanda FATURADA ainda não foi
+    // pago. Mantido pelo código, na transação de cada pagamento: total − pagamentos.
+    // CHECK no banco: 0 ≤ amount_due ≤ total, e só comanda faturada deve.
+    amountDue: numeric('amount_due', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Quando a cliente combinou de pagar ("YYYY-MM-DD"). Só com valor em aberto.
+    debtDueDate: date('debt_due_date'),
     invoicedAt: timestamp('invoiced_at'),
     invoicedBy: uuid('invoiced_by').references(() => profiles.id, { onDelete: 'set null' }),
     voidedAt: timestamp('voided_at'),
@@ -987,7 +993,8 @@ export const sales = pgTable(
     uniqueIndex('sales_salon_number_unique').on(table.salonId, table.number),
     index('sales_salon_date_idx').on(table.salonId, table.saleDate.desc()),
     index('sales_salon_status_idx').on(table.salonId, table.status, table.saleDate.desc()),
-    index('sales_customer_idx').on(table.customerId)
+    index('sales_customer_idx').on(table.customerId),
+    index('sales_debt_idx').on(table.salonId, table.customerId).where(sql`status = 'invoiced' AND amount_due > 0`)
   ]
 )
 

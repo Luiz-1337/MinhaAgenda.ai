@@ -27,7 +27,9 @@ export const PERMISSION_CATALOG = {
   access_profiles: ['manage'],
   // Comandas (fase 1). Sem `view_all` a pessoa vê só comandas com item dela; sem
   // `view_invoiced` não vê as já faturadas.
-  sales: ['access', 'create', 'edit', 'delete', 'view_invoiced', 'invoice', 'edit_invoiced', 'view_all'],
+  // `invoice_debt` = faturar deixando valor em aberto (fiado). Receber depois é
+  // `invoice`: quem fatura também recebe.
+  sales: ['access', 'create', 'edit', 'delete', 'view_invoiced', 'invoice', 'invoice_debt', 'edit_invoiced', 'view_all'],
   payment_methods: ['access', 'manage'],
   // Financeiro (fase 2). `settle` = dar baixa e estornar; `settings` = contas e
   // plano de categorias.

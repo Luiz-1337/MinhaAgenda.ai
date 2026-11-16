@@ -39,12 +39,32 @@ export const invoiceSaleSchema = z.object({
       })
     )
     .max(20, "No máximo 20 pagamentos por comanda"),
+  acceptDebt: z.boolean().optional(),
+  debtDueDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data de vencimento inválida")
+    .nullish(),
+})
+
+export const receiveSalePaymentSchema = z.object({
+  salonId: z.string().uuid(),
+  saleId: z.string().uuid(),
+  payments: z
+    .array(
+      z.object({
+        paymentMethodId: z.string().uuid({ message: "Selecione a forma de pagamento" }),
+        amount: z.number().finite().positive("Informe o valor do pagamento").max(100_000_000),
+      })
+    )
+    .min(1, "Informe ao menos um pagamento")
+    .max(20, "No máximo 20 pagamentos por vez"),
 })
 
 export const saleListFiltersSchema = z.object({
   status: z.enum(["open", "invoiced", "void"]).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  debt: z.boolean().optional(),
   page: z.number().int().min(1).max(10_000).optional(),
 })
 
