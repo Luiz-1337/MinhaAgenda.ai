@@ -667,7 +667,8 @@ export async function updateAppointmentService(input: {
 }
 
 /** Quem produziu o desfecho. Grava em appointments.outcome_source. */
-export type OutcomeSource = 'panel' | 'cron' | 'ai' | 'google' | 'legacy' | AgendaProviderId
+// 'sale' = fechado pelo faturamento de uma comanda (services/sales.service.ts).
+export type OutcomeSource = 'panel' | 'cron' | 'ai' | 'google' | 'legacy' | 'sale' | AgendaProviderId
 
 /**
  * CANCELA um agendamento.

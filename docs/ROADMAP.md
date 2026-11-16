@@ -4,7 +4,8 @@
 **Origem:** "Auditoria Funcional — Belasis" (13/nov/2026, 80 itens, conta admin, somente leitura).
 **Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
-Fases 1 em diante: planejamento.
+Fase 1 (comandas) implementada em parte na branch `claude/fase-1-comandas` (ainda não
+publicada), com a migration 037 já aplicada em produção — ver §5.9. Fases 2 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -343,6 +344,65 @@ Sem `view_all`, o profissional vê só comandas com itens dele.
 - Usuário de outro salão não lê nem altera a comanda (teste).
 - Profissional sem `sales.invoice` não fatura, nem chamando a action direto.
 - Salão com o módulo desligado não vê nada novo.
+
+### 5.9 Estado da implementação (15/nov/2026)
+
+Branch `claude/fase-1-comandas` (sai de `claude/fase-0-permissoes`).
+
+| Peça | Onde | Estado |
+|---|---|---|
+| Migration | `supabase/migrations/037_sales.sql` | Aplicada em produção (15/nov/2026) e conferida por leitura; **falta registrar** em `supabase_migrations.schema_migrations` |
+| Tabelas | `packages/db/src/schema.ts` (`paymentMethods`, `saleCounters`, `sales`, `saleItems`, `salePayments`) | Feito |
+| Regra pura (itens, totais, faturamento) | `packages/db/src/domain/sales.ts` | Feito, com testes |
+| Gravação (criar, salvar, faturar, reabrir, excluir, listar) | `packages/db/src/services/sales.service.ts` | Feito, **sem teste contra banco** |
+| Actions | `apps/web/app/actions/sales.ts`, `payment-methods.ts` | Feito |
+| Formas de pagamento | `/[salonId]/salon-settings/payment-methods` | Feita |
+| Lista e comanda | `/[salonId]/sales`, `/[salonId]/sales/[saleId]` (`new` = criar) | Feitas |
+| Criar comanda pelo agendamento | botão no diálogo do agendamento → `/sales/new?appointment=<id>` | Feito |
+| Menu "Comandas" | `components/dashboard/sidebar.tsx` | Feito (módulo ligado + `sales.access`) |
+| Agrupar agendamentos (Agenda → Ações) | — | **Pendente** |
+| Aba Vendas na ficha do cliente | — | **Pendente** |
+| Cancelar agendamento remove o item da comanda aberta (regra 9) | — | **Pendente** — hoje o faturamento recusa e pede para remover o item |
+
+Nenhuma tela foi aberta no navegador (sem `.env` no checkout): typecheck, lint, testes
+e `next build` passam, mas o fluxo nunca foi clicado. A gravação no banco
+(transações, trava de linha, numeração) só será exercitada no piloto.
+
+**Deploy.** Diferente da 036, a ordem aqui é livre: a 037 só cria tabelas novas e o
+código só as consulta com o módulo `sales` ligado. Para usar, as duas coisas precisam
+estar no ar.
+
+**Ligar o módulo num salão** (depois da 037 aplicada):
+
+```sql
+UPDATE salons
+   SET settings = jsonb_set(
+         coalesce(settings, '{}'::jsonb),
+         '{modules}',
+         coalesce(settings->'modules', '[]'::jsonb) || '["sales"]'::jsonb
+       )
+ WHERE id = '<id do salão>';
+```
+
+Quem vê o quê, sem configurar perfil: gerentes e o dono têm todas as permissões de
+comanda; a equipe (STAFF) não tem nenhuma — precisa de um perfil de acesso.
+
+**Padrões assumidos nas perguntas da §5.3** (sem resposta do dono até aqui):
+
+| Pergunta | O que foi implementado |
+|---|---|
+| Reabrir comanda faturada | Remove os pagamentos e devolve para "confirmado" só os agendamentos que a própria comanda fechou |
+| Cliente avulso | Não: a comanda exige cliente cadastrado |
+| Data retroativa | Livre, sem limite |
+| Quem fatura | Quem tiver a permissão `sales.invoice` — por padrão, gerentes e o dono |
+
+**Diferenças em relação ao plano da §5.3:**
+
+- **Excluir** só vale para comanda aberta; a faturada precisa ser reaberta antes
+  (regra 8 não dizia isso).
+- **Agendamento que ainda não começou** não pode ser faturado — mesma regra do
+  "Concluir" da agenda. A comanda pode ser aberta antes; só o faturamento espera.
+- **Agendamento marcado como falta** também barra o faturamento.
 
 ## 6. Pendências do dono
 

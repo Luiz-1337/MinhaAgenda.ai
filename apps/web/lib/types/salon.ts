@@ -2,7 +2,7 @@
  * Tipos relacionados a salões
  */
 
-import type { SalonModule } from "@repo/db"
+import type { PermissionKey, SalonModule } from "@repo/db"
 import type { ProfessionalRole } from "./professional"
 
 export type PlanTier = 'SOLO' | 'PRO' | 'ENTERPRISE'
@@ -30,4 +30,6 @@ export interface SalonListItem {
   subscriptionStatusChangedAt?: string | Date | null
   /** Módulos ligados neste salão (`salons.settings.modules`) — chave de piloto. */
   modules: SalonModule[]
+  /** Permissões efetivas do usuário neste salão — só para o menu; a trava é no servidor. */
+  permissions: PermissionKey[]
 }

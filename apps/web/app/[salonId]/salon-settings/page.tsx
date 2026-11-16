@@ -7,7 +7,7 @@ import { AIResumePolicyCard } from "@/components/dashboard/ai-resume-policy-card
 import { getCurrentSalon } from "@/app/actions/salon"
 import { useSalon } from "@/contexts/salon-context"
 import type { SalonDetails } from "@/app/actions/salon"
-import { Store, Save, ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react"
+import { Store, Save, ArrowLeft, ArrowRight, CreditCard, Loader2, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 
 export default function SalonSettingsPage() {
@@ -189,6 +189,28 @@ export default function SalonSettingsPage() {
                   </div>
                 </Link>
               )}
+              {activeSalon.modules.includes("sales") &&
+                activeSalon.permissions.includes("payment_methods.access") && (
+                  <Link
+                    href={`/${activeSalon.id}/salon-settings/payment-methods`}
+                    className="block bg-card border border-border rounded-md p-6 hover:border-accent/30 transition-all group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-md bg-accent/10 text-accent group-hover:bg-accent/20 transition-colors">
+                          <CreditCard size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-foreground">Formas de pagamento</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Taxa e prazo de recebimento usados ao faturar comandas
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowRight size={18} className="text-muted-foreground group-hover:text-accent transition-colors" />
+                    </div>
+                  </Link>
+                )}
               <SalonEditForm
                 ref={formRef}
                 salon={salonData}
