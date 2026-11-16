@@ -43,6 +43,7 @@ export interface FinanceTransactionDTO {
   paidAt: string | null
   accountId: string | null
   accountName: string | null
+  categoryId: string | null
   categoryName: string | null
   customerName: string | null
   professionalName: string | null
@@ -96,6 +97,38 @@ export interface CreateFinanceTransactionInput {
   notes?: string | null
   paid: boolean
   paidDate?: string | null
+  /** Repete todo mês por N meses (1 = não repete). "Já pago" vale só para o primeiro. */
+  installments?: number
+}
+
+/** Edição de um lançamento manual em aberto. O tipo (entrada/saída) não muda. */
+export interface UpdateFinanceTransactionInput {
+  salonId: string
+  transactionId: string
+  description: string
+  amount: number
+  dueDate: string
+  categoryId?: string | null
+  accountId?: string | null
+  counterparty?: string | null
+  notes?: string | null
+}
+
+export interface FinanceSummaryDTO {
+  /** "YYYY-MM" do período mostrado. */
+  month: string
+  from: string
+  to: string
+  receivedCents: number
+  paidCents: number
+  toReceiveCents: number
+  toPayCents: number
+  overdueInCents: number
+  overdueOutCents: number
+  incomeByCategory: { name: string; cents: number }[]
+  expenseByCategory: { name: string; cents: number }[]
+  receivedByPaymentMethod: { name: string; cents: number }[]
+  dailyFlow: { date: string; inCents: number; outCents: number }[]
 }
 
 export interface CreateFinanceTransferInput {

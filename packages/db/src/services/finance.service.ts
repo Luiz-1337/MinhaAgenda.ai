@@ -14,6 +14,8 @@ import type { FinancialDirection, FinancialTransactionKind, FinancialTransaction
 import {
   accountBalanceCents,
   deleteBlocker,
+  editBlocker,
+  planInstallments,
   planManualTransaction,
   planSaleTransactions,
   planSettle,
@@ -130,23 +132,87 @@ async function lockTransaction(tx: Tx, salonId: string, transactionId: string) {
 // Lançar
 // ============================================================================
 
-/** Novo recebimento ou nova despesa. */
+/**
+ * Novo recebimento ou nova despesa. Com `installments` > 1, repete todo mês: uma
+ * linha por mês, todas no mesmo INSERT (entram todas ou nenhuma).
+ */
 export async function createManualTransactionService(input: {
   salonId: string
   userId: string
   draft: ManualTransactionDraft
-}): Promise<ActionResult<{ transactionId: string }>> {
+  installments?: number
+}): Promise<ActionResult<{ transactionId: string; count: number }>> {
   try {
     const refs = await loadRefs(db, input.salonId, input.draft)
-    const plan = planManualTransaction(input.draft, refs, new Date())
+    const plan = planInstallments(input.draft, input.installments ?? 1, refs, new Date())
     if (!plan.ok) return { success: false, error: plan.error }
 
-    const [created] = await db
+    const created = await db
       .insert(financialTransactions)
-      .values({ ...plan.row, salonId: input.salonId, createdBy: input.userId })
+      .values(plan.rows.map((row) => ({ ...row, salonId: input.salonId, createdBy: input.userId })))
       .returning({ id: financialTransactions.id })
 
-    return { success: true, data: { transactionId: created.id } }
+    return { success: true, data: { transactionId: created[0].id, count: created.length } }
+  } catch (error) {
+    return toFailure(error, "Não foi possível salvar o lançamento")
+  }
+}
+
+/**
+ * Edita um lançamento MANUAL EM ABERTO. Baixado precisa ser estornado antes;
+ * lançamento de comanda e transferência não se editam (domain: editBlocker).
+ */
+export async function updateManualTransactionService(input: {
+  salonId: string
+  transactionId: string
+  draft: Omit<ManualTransactionDraft, "direction" | "paid" | "paidDate">
+}): Promise<ActionResult<void>> {
+  try {
+    await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          id: financialTransactions.id,
+          kind: financialTransactions.kind,
+          status: financialTransactions.status,
+          accountId: financialTransactions.accountId,
+          direction: financialTransactions.direction,
+        })
+        .from(financialTransactions)
+        .where(
+          and(eq(financialTransactions.id, input.transactionId), eq(financialTransactions.salonId, input.salonId))
+        )
+        .for("update")
+
+      if (!current) fail("Lançamento não encontrado")
+
+      const blocker = editBlocker(current)
+      if (blocker) fail(blocker)
+
+      // O tipo (entrada/saída) não muda na edição: é o que define a categoria válida
+      // e o lado do saldo. Trocar é excluir e lançar de novo.
+      const draft: ManualTransactionDraft = { ...input.draft, direction: current.direction, paid: false }
+      const refs = await loadRefs(tx, input.salonId, draft)
+      const plan = planManualTransaction(draft, refs, new Date())
+      if (!plan.ok) fail(plan.error)
+
+      await tx
+        .update(financialTransactions)
+        .set({
+          description: plan.row.description,
+          amount: plan.row.amount,
+          netAmount: plan.row.netAmount,
+          dueDate: plan.row.dueDate,
+          competenceDate: plan.row.competenceDate,
+          accountId: plan.row.accountId,
+          categoryId: plan.row.categoryId,
+          counterparty: plan.row.counterparty,
+          notes: plan.row.notes,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(financialTransactions.id, current.id), eq(financialTransactions.salonId, input.salonId)))
+    })
+
+    return { success: true, data: undefined }
   } catch (error) {
     return toFailure(error, "Não foi possível salvar o lançamento")
   }
@@ -349,6 +415,7 @@ export type FinanceTransactionRow = {
   paidAt: Date | null
   accountId: string | null
   accountName: string | null
+  categoryId: string | null
   categoryName: string | null
   customerName: string | null
   professionalName: string | null
@@ -408,6 +475,7 @@ export async function listTransactionsService(
         paidAt: financialTransactions.paidAt,
         accountId: financialTransactions.accountId,
         accountName: financialAccounts.name,
+        categoryId: financialTransactions.categoryId,
         categoryName: financialCategories.name,
         customerName: customers.name,
         professionalName: professionals.name,
@@ -448,6 +516,136 @@ export async function listTransactionsService(
   }
 
   return { rows, total, totals }
+}
+
+// ============================================================================
+// Resumo do período
+// ============================================================================
+
+export type FinanceSummary = {
+  from: string
+  to: string
+  /** Regime de caixa: o que foi BAIXADO no período, líquido de taxa. Centavos. */
+  receivedCents: number
+  paidCents: number
+  /** Em aberto com VENCIMENTO no período. */
+  toReceiveCents: number
+  toPayCents: number
+  /** Em aberto com vencimento anterior a hoje — independe do período. */
+  overdueInCents: number
+  overdueOutCents: number
+  incomeByCategory: { name: string; cents: number }[]
+  expenseByCategory: { name: string; cents: number }[]
+  receivedByPaymentMethod: { name: string; cents: number }[]
+  /** Um ponto por dia com movimento, pelo dia da BAIXA em Brasília. */
+  dailyFlow: { date: string; inCents: number; outCents: number }[]
+}
+
+/**
+ * Resumo financeiro de um período. Transferências ficam de fora de tudo: não são
+ * receita nem despesa.
+ *
+ * "Recebido" e "pago" são por DIA DA BAIXA (regime de caixa); "a receber" e "a
+ * pagar" são por VENCIMENTO. São perguntas diferentes — quanto entrou no mês e
+ * quanto vence no mês — e a tela mostra as duas.
+ */
+export async function getFinanceSummaryService(input: {
+  salonId: string
+  from: string
+  to: string
+  today: string
+}): Promise<FinanceSummary> {
+  // paid_at é timestamp UTC sem fuso; o dia da baixa é o dia em Brasília.
+  const paidDay = sql<string>`(${financialTransactions.paidAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date`
+  const netSum = sql<string>`coalesce(sum(${financialTransactions.netAmount}), 0)::text`
+
+  const base = and(eq(financialTransactions.salonId, input.salonId), ne(financialTransactions.kind, "transfer"))
+  const realized = and(
+    base,
+    eq(financialTransactions.status, "paid"),
+    sql`${paidDay} >= ${input.from}::date`,
+    sql`${paidDay} <= ${input.to}::date`
+  )
+
+  const categoryName = sql<string>`coalesce(${financialCategories.name}, case when ${financialTransactions.kind} = 'sale' then 'Vendas (comandas)' else 'Sem categoria' end)`
+  const methodName = sql<string>`coalesce(${paymentMethods.name}, 'Não informada')`
+
+  const [realizedRows, openRows, overdueRows, categoryRows, methodRows, dailyRows] = await Promise.all([
+    db
+      .select({ direction: financialTransactions.direction, net: netSum })
+      .from(financialTransactions)
+      .where(realized)
+      .groupBy(financialTransactions.direction),
+    db
+      .select({ direction: financialTransactions.direction, net: netSum })
+      .from(financialTransactions)
+      .where(
+        and(
+          base,
+          eq(financialTransactions.status, "open"),
+          gte(financialTransactions.dueDate, input.from),
+          lte(financialTransactions.dueDate, input.to)
+        )
+      )
+      .groupBy(financialTransactions.direction),
+    db
+      .select({ direction: financialTransactions.direction, net: netSum })
+      .from(financialTransactions)
+      .where(and(base, eq(financialTransactions.status, "open"), sql`${financialTransactions.dueDate} < ${input.today}::date`))
+      .groupBy(financialTransactions.direction),
+    db
+      .select({ direction: financialTransactions.direction, name: categoryName, net: netSum })
+      .from(financialTransactions)
+      .leftJoin(financialCategories, eq(financialCategories.id, financialTransactions.categoryId))
+      .where(realized)
+      .groupBy(financialTransactions.direction, categoryName),
+    db
+      .select({ name: methodName, net: netSum })
+      .from(financialTransactions)
+      .leftJoin(paymentMethods, eq(paymentMethods.id, financialTransactions.paymentMethodId))
+      .where(and(realized, eq(financialTransactions.direction, "in")))
+      .groupBy(methodName),
+    db
+      .select({ date: sql<string>`${paidDay}::text`, direction: financialTransactions.direction, net: netSum })
+      .from(financialTransactions)
+      .where(realized)
+      .groupBy(paidDay, financialTransactions.direction)
+      .orderBy(paidDay),
+  ])
+
+  const byDirection = (rows: { direction: FinancialDirection; net: string }[], direction: FinancialDirection) =>
+    toCents(rows.find((row) => row.direction === direction)?.net ?? "0") ?? 0
+
+  const byCategory = (direction: FinancialDirection) =>
+    categoryRows
+      .filter((row) => row.direction === direction)
+      .map((row) => ({ name: row.name, cents: toCents(row.net) ?? 0 }))
+      .sort((a, b) => b.cents - a.cents)
+
+  const daily = new Map<string, { date: string; inCents: number; outCents: number }>()
+  for (const row of dailyRows) {
+    const entry = daily.get(row.date) ?? { date: row.date, inCents: 0, outCents: 0 }
+    if (row.direction === "in") entry.inCents = toCents(row.net) ?? 0
+    else entry.outCents = toCents(row.net) ?? 0
+    daily.set(row.date, entry)
+  }
+
+  return {
+    from: input.from,
+    to: input.to,
+    receivedCents: byDirection(realizedRows, "in"),
+    paidCents: byDirection(realizedRows, "out"),
+    toReceiveCents: byDirection(openRows, "in"),
+    toPayCents: byDirection(openRows, "out"),
+    overdueInCents: byDirection(overdueRows, "in"),
+    overdueOutCents: byDirection(overdueRows, "out"),
+    incomeByCategory: byCategory("in"),
+    expenseByCategory: byCategory("out"),
+    receivedByPaymentMethod: methodRows
+      .map((row) => ({ name: row.name, cents: toCents(row.net) ?? 0 }))
+      .sort((a, b) => b.cents - a.cents),
+    dailyFlow: Array.from(daily.values()).sort((a, b) => a.date.localeCompare(b.date)),
+  }
 }
 
 export type FinanceAccountRow = {

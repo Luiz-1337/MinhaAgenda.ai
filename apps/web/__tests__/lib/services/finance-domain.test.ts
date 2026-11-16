@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest"
 import {
   accountBalanceCents,
+  addMonthsToDate,
   brazilToday,
   deleteBlocker,
+  editBlocker,
   isCalendarDate,
+  monthRange,
   paidAtFromDate,
+  planInstallments,
   planManualTransaction,
   planSaleTransactions,
   planSettle,
@@ -133,6 +137,82 @@ describe("planManualTransaction", () => {
   })
 })
 
+describe("addMonthsToDate", () => {
+  it("mantém o dia do mês quando ele existe", () => {
+    expect(addMonthsToDate("2026-11-10", 1)).toBe("2026-12-10")
+    expect(addMonthsToDate("2026-11-10", 2)).toBe("2027-01-10")
+    expect(addMonthsToDate("2026-11-10", 0)).toBe("2026-11-10")
+  })
+
+  it("recua para o último dia quando o mês é mais curto — e volta ao dia original depois", () => {
+    expect(addMonthsToDate("2027-01-31", 1)).toBe("2027-02-28")
+    expect(addMonthsToDate("2027-01-31", 2)).toBe("2027-03-31")
+    expect(addMonthsToDate("2028-01-31", 1)).toBe("2028-02-29") // bissexto
+    expect(addMonthsToDate("2026-08-31", 1)).toBe("2026-09-30")
+  })
+})
+
+describe("planInstallments — lançamento que se repete", () => {
+  it("uma repetição é um lançamento comum, sem sufixo", () => {
+    const plan = planInstallments(draft(), 1, refs, now)
+    expect(plan.ok && plan.rows.map((r) => r.description)).toEqual(["Aluguel"])
+  })
+
+  it("gera uma linha por mês, numerada, com o mesmo valor", () => {
+    const plan = planInstallments(draft({ dueDate: "2026-11-30" }), 4, refs, now)
+
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.rows.map((r) => r.description)).toEqual([
+      "Aluguel (1/4)",
+      "Aluguel (2/4)",
+      "Aluguel (3/4)",
+      "Aluguel (4/4)",
+    ])
+    expect(plan.rows.map((r) => r.dueDate)).toEqual(["2026-11-30", "2026-12-30", "2027-01-30", "2027-02-28"])
+    expect(plan.rows.every((r) => r.amount === "3500.00" && r.kind === "manual")).toBe(true)
+  })
+
+  it("'já pago' vale só para a primeira; as próximas nascem em aberto", () => {
+    const plan = planInstallments(draft({ paid: true, accountId: "acc-banco", dueDate: "2026-11-15" }), 3, refs, now)
+
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.rows.map((r) => r.status)).toEqual(["paid", "open", "open"])
+    expect(plan.rows[0].paidAt).not.toBeNull()
+    expect(plan.rows[1].paidAt).toBeNull()
+    // A conta escolhida acompanha as próximas, para a baixa já vir sugerida.
+    expect(plan.rows[2].accountId).toBe("acc-banco")
+  })
+
+  it("barra quantidade fora de 1 a 60 e repassa o erro do lançamento", () => {
+    for (const n of [0, 61, 1.5, -2]) {
+      expect(planInstallments(draft(), n, refs, now).ok).toBe(false)
+    }
+    const invalid = planInstallments(draft({ amount: 0 }), 3, refs, now)
+    expect(invalid.ok).toBe(false)
+  })
+
+  it("descrição longa cabe em 200 caracteres com o sufixo", () => {
+    const plan = planInstallments(draft({ description: "x".repeat(200) }), 12, refs, now)
+    expect(plan.ok && plan.rows.every((r) => r.description.length <= 200)).toBe(true)
+    expect(plan.ok && plan.rows[11].description.endsWith("(12/12)")).toBe(true)
+  })
+})
+
+describe("monthRange", () => {
+  it("devolve o primeiro e o último dia do mês", () => {
+    expect(monthRange("2026-11")).toEqual({ from: "2026-11-01", to: "2026-11-30" })
+    expect(monthRange("2028-02")).toEqual({ from: "2028-02-01", to: "2028-02-29" })
+  })
+
+  it("rejeita o que não é um mês", () => {
+    for (const value of ["2026-13", "2026-00", "2026-1", "11/2026", ""]) {
+      expect(monthRange(value)).toBeNull()
+    }
+  })
+})
+
 describe("planTransfer", () => {
   const accounts = new Map([
     ["acc-banco", { name: "Banco", isActive: true }],
@@ -200,6 +280,13 @@ describe("baixa, estorno e exclusão", () => {
     expect(unsettleBlocker(paid)).toBeNull()
     expect(unsettleBlocker(open)).not.toBeNull()
     expect(unsettleBlocker(transfer)).toContain("exclua")
+  })
+
+  it("edição: só lançamento manual em aberto", () => {
+    expect(editBlocker(open)).toBeNull()
+    expect(editBlocker(paid)).toContain("Estorne")
+    expect(editBlocker(saleOpen)).toContain("reabra a comanda")
+    expect(editBlocker(transfer)).toContain("exclua")
   })
 
   it("exclusão: manual aberto e transferência sim; venda e manual baixado não", () => {

@@ -11,6 +11,10 @@ import {
   createManualTransactionService,
   createTransferService,
   deleteTransactionService,
+  brazilToday,
+  getFinanceSummaryService,
+  monthRange,
+  updateManualTransactionService,
   listAccountsWithBalanceService,
   listTransactionsService,
   settleTransactionService,
@@ -26,6 +30,7 @@ import {
   createFinanceTransferSchema,
   financeListFiltersSchema,
   settleFinanceTransactionSchema,
+  updateFinanceTransactionSchema,
 } from "@/lib/schemas/finance.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
@@ -34,7 +39,9 @@ import type {
   FinanceFormOptions,
   FinanceListFilters,
   FinanceListPage,
+  FinanceSummaryDTO,
   SettleFinanceTransactionInput,
+  UpdateFinanceTransactionInput,
 } from "@/lib/types/finance"
 
 /**
@@ -68,6 +75,7 @@ async function authorizeSalon(
 
 function revalidateFinance(salonId: string) {
   revalidatePath(`/${salonId}/finance`)
+  revalidatePath(`/${salonId}/finance/summary`)
   revalidatePath(`/${salonId}/finance/settings`)
 }
 
@@ -148,26 +156,75 @@ export async function getFinanceFormOptions(salonId: string): Promise<FinanceFor
   }
 }
 
+/**
+ * Resumo financeiro de um mês ("YYYY-MM"; ausente ou inválido = mês corrente em
+ * Brasília): o que entrou e saiu, o que vence, o que está atrasado, e a quebra por
+ * categoria e forma de pagamento.
+ */
+export async function getFinanceSummary(
+  salonId: string,
+  month?: string
+): Promise<FinanceSummaryDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "finance.access")
+  if ("error" in auth) return auth
+
+  try {
+    const today = brazilToday(new Date())
+    const currentMonth = today.slice(0, 7)
+    const chosen = month && monthRange(month) ? month : currentMonth
+    const range = monthRange(chosen)
+    if (!range) return { error: "Mês inválido" }
+
+    const summary = await getFinanceSummaryService({ salonId, ...range, today })
+    return { month: chosen, ...summary }
+  } catch (error) {
+    console.error("Erro ao montar o resumo financeiro:", error)
+    return { error: "Não foi possível carregar o resumo financeiro" }
+  }
+}
+
 // ============================================================================
 // Mutações
 // ============================================================================
 
-/** Novo recebimento (`in`) ou nova despesa (`out`). */
+/**
+ * Novo recebimento (`in`) ou nova despesa (`out`). Com `installments` > 1, repete
+ * todo mês.
+ */
 export async function createFinanceTransaction(
   input: CreateFinanceTransactionInput
-): Promise<ActionResult<{ transactionId: string }>> {
+): Promise<ActionResult<{ transactionId: string; count: number }>> {
   const auth = await authorizeSalon(input?.salonId, "finance.create")
   if ("error" in auth) return auth
 
   const parsed = createFinanceTransactionSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
-  const { salonId, ...draft } = parsed.data
-  const result = await createManualTransactionService({ salonId, userId: auth.userId, draft })
+  const { salonId, installments, ...draft } = parsed.data
+  const result = await createManualTransactionService({ salonId, userId: auth.userId, draft, installments })
   if (!result.success) return { error: result.error }
 
   revalidateFinance(salonId)
   return { success: true, data: result.data }
+}
+
+/**
+ * Edita um lançamento manual em aberto. Exige `finance.create`: quem pode lançar
+ * pode corrigir o que lançou.
+ */
+export async function updateFinanceTransaction(input: UpdateFinanceTransactionInput): Promise<ActionResult> {
+  const auth = await authorizeSalon(input?.salonId, "finance.create")
+  if ("error" in auth) return auth
+
+  const parsed = updateFinanceTransactionSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const { salonId, transactionId, ...draft } = parsed.data
+  const result = await updateManualTransactionService({ salonId, transactionId, draft })
+  if (!result.success) return { error: result.error }
+
+  revalidateFinance(salonId)
+  return { success: true }
 }
 
 /** Transferência entre duas contas do salão. */

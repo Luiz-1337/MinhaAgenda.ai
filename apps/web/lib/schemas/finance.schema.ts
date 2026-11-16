@@ -21,6 +21,19 @@ export const createFinanceTransactionSchema = z.object({
   notes: z.string().max(1000).nullish(),
   paid: z.boolean(),
   paidDate: calendarDate.nullish(),
+  installments: z.number().int().min(1).max(60, "No máximo 60 repetições").optional(),
+})
+
+export const updateFinanceTransactionSchema = z.object({
+  salonId: z.string().uuid(),
+  transactionId: z.string().uuid(),
+  description: z.string().trim().min(2, "Informe a descrição").max(200, "Descrição muito longa"),
+  amount,
+  dueDate: calendarDate,
+  categoryId: z.string().uuid().nullish(),
+  accountId: z.string().uuid().nullish(),
+  counterparty: z.string().max(120).nullish(),
+  notes: z.string().max(1000).nullish(),
 })
 
 export const createFinanceTransferSchema = z.object({

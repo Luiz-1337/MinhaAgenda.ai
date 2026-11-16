@@ -11,7 +11,9 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  BarChart3,
   Landmark,
+  Pencil,
   RotateCcw,
   Save,
   Settings2,
@@ -28,6 +30,7 @@ import {
   deleteFinanceTransaction,
   settleFinanceTransaction,
   unsettleFinanceTransaction,
+  updateFinanceTransaction,
 } from "@/app/actions/finance"
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 import { centsToNumeric } from "@repo/db/src/domain/sales"
@@ -54,7 +57,7 @@ function money(cents: number): string {
 }
 
 type OpenDialog =
-  | { type: "transaction"; direction: "in" | "out" }
+  | { type: "transaction"; direction: "in" | "out"; editing: FinanceTransactionDTO | null }
   | { type: "transfer" }
   | { type: "settle"; transaction: FinanceTransactionDTO }
   | null
@@ -69,6 +72,8 @@ type TransactionDraft = {
   notes: string
   paid: boolean
   paidDate: string
+  /** Quantos meses o lançamento se repete ("1" = não repete). Só na criação. */
+  installments: string
 }
 
 type TransferDraft = { fromAccountId: string; toAccountId: string; amount: string; date: string; notes: string }
@@ -158,8 +163,25 @@ export function FinanceClient({
       notes: "",
       paid: false,
       paidDate: today,
+      installments: "1",
     })
-    setDialog({ type: "transaction", direction })
+    setDialog({ type: "transaction", direction, editing: null })
+  }
+
+  function openEdit(transaction: FinanceTransactionDTO) {
+    setTransactionDraft({
+      description: transaction.description,
+      amount: Number(transaction.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+      dueDate: transaction.dueDate,
+      categoryId: transaction.categoryId ?? "",
+      accountId: transaction.accountId ?? "",
+      counterparty: transaction.counterparty ?? "",
+      notes: transaction.notes ?? "",
+      paid: false,
+      paidDate: today,
+      installments: "1",
+    })
+    setDialog({ type: "transaction", direction: transaction.direction, editing: transaction })
   }
 
   function openTransfer() {
@@ -208,9 +230,40 @@ export function FinanceClient({
       return
     }
 
+    const editing = dialog.editing
+    if (editing) {
+      run(
+        "Lançamento atualizado",
+        () =>
+          updateFinanceTransaction({
+            salonId,
+            transactionId: editing.id,
+            description: transactionDraft.description,
+            amount,
+            dueDate: transactionDraft.dueDate,
+            categoryId: transactionDraft.categoryId || null,
+            accountId: transactionDraft.accountId || null,
+            counterparty: transactionDraft.counterparty,
+            notes: transactionDraft.notes,
+          }),
+        () => setDialog(null)
+      )
+      return
+    }
+
+    const installments = Number(transactionDraft.installments)
+    if (!Number.isInteger(installments) || installments < 1 || installments > 60) {
+      toast.error("Informe de 1 a 60 repetições")
+      return
+    }
+
     const direction = dialog.direction
     run(
-      direction === "in" ? "Recebimento lançado" : "Despesa lançada",
+      installments > 1
+        ? `${installments} lançamentos criados`
+        : direction === "in"
+          ? "Recebimento lançado"
+          : "Despesa lançada",
       () =>
         createFinanceTransaction({
           salonId,
@@ -224,6 +277,7 @@ export function FinanceClient({
           notes: transactionDraft.notes,
           paid: transactionDraft.paid,
           paidDate: transactionDraft.paid ? transactionDraft.paidDate : null,
+          installments,
         }),
       () => setDialog(null)
     )
@@ -284,6 +338,15 @@ export function FinanceClient({
     run("Lançamento excluído", () => deleteFinanceTransaction(salonId, transaction.id), () => setToDelete(null))
   }
 
+  const transactionTitle =
+    dialog?.type !== "transaction"
+      ? ""
+      : dialog.editing
+        ? "Editar lançamento"
+        : dialog.direction === "in"
+          ? "Novo recebimento"
+          : "Nova despesa"
+
   const categoryKind = dialog?.type === "transaction" ? (dialog.direction === "in" ? "income" : "expense") : null
   const categoriesForDialog = options.categories.filter((category) => category.kind === categoryKind)
 
@@ -299,6 +362,13 @@ export function FinanceClient({
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Financeiro</h2>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/${salonId}/finance/summary`}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <BarChart3 size={16} />
+            Resumo do mês
+          </Link>
           {options.can.settings && (
             <Link
               href={`/${salonId}/finance/settings`}
@@ -500,6 +570,7 @@ export function FinanceClient({
               const canUnsettle = options.can.settle && row.status === "paid" && row.kind !== "transfer"
               const canDelete =
                 options.can.delete && (row.kind === "transfer" || (row.kind === "manual" && row.status === "open"))
+              const canEdit = options.can.create && row.kind === "manual" && row.status === "open"
 
               return (
                 <div
@@ -563,6 +634,17 @@ export function FinanceClient({
                         title="Dar baixa"
                       >
                         <Check size={16} />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        onClick={() => openEdit(row)}
+                        disabled={isPending}
+                        className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        aria-label={`Editar ${row.description}`}
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
                       </button>
                     )}
                     {canUnsettle && (
@@ -629,14 +711,8 @@ export function FinanceClient({
           className="!max-w-lg max-h-[90vh] overflow-hidden flex flex-col bg-card border-border p-0"
           showCloseButton={false}
         >
-          <DialogTitle className="sr-only">
-            {dialog?.type === "transaction" && dialog.direction === "in" ? "Novo recebimento" : "Nova despesa"}
-          </DialogTitle>
-          <DialogHeader
-            title={dialog?.type === "transaction" && dialog.direction === "in" ? "Novo recebimento" : "Nova despesa"}
-            onClose={closeDialog}
-            disabled={isPending}
-          />
+          <DialogTitle className="sr-only">{transactionTitle}</DialogTitle>
+          <DialogHeader title={transactionTitle} onClose={closeDialog} disabled={isPending} />
 
           {transactionDraft && dialog?.type === "transaction" && (
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -751,9 +827,32 @@ export function FinanceClient({
                 />
               </div>
 
+              {/* Repetição e "já pago" só na criação. Na edição o lançamento está em
+                  aberto por definição, e as parcelas já criadas são independentes. */}
+              {!dialog.editing && (
               <div className="space-y-3 border-t border-border pt-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="ft-installments" className={labelClass}>
+                    Repetir por (meses)
+                  </label>
+                  <input
+                    id="ft-installments"
+                    type="number"
+                    min={1}
+                    max={60}
+                    step={1}
+                    value={transactionDraft.installments}
+                    onChange={(event) => setTransactionDraft({ ...transactionDraft, installments: event.target.value })}
+                    className={inputClass}
+                    aria-describedby="ft-installments-hint"
+                  />
+                  <p id="ft-installments-hint" className="text-[11px] text-muted-foreground">
+                    1 = não repete. Acima disso, cria um lançamento por mês a partir do vencimento.
+                  </p>
+                </div>
                 <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
                   <Checkbox
+                    aria-label={dialog.direction === "in" ? "Já recebido" : "Já pago"}
                     checked={transactionDraft.paid}
                     onChange={(event) => setTransactionDraft({ ...transactionDraft, paid: event.target.checked })}
                   />
@@ -775,9 +874,15 @@ export function FinanceClient({
                     {!transactionDraft.accountId && (
                       <p className="text-xs text-destructive">Escolha a conta para registrar a baixa.</p>
                     )}
+                    {Number(transactionDraft.installments) > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        A baixa vale só para o primeiro lançamento; os próximos ficam em aberto.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

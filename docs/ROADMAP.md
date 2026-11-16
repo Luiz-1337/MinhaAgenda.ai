@@ -5,8 +5,9 @@
 **Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
 Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
-nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): primeira fatia implementada na
-branch `claude/fase-2-financeiro`, com a **migration 038 não aplicada** — ver §6. Fases 3
+nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2d e 2g implementadas na
+branch `claude/fase-2-financeiro`, com a migration 038 aplicada; fases 0 a 2 testadas
+em uso num salão — ver §6.8. Fases 3
 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -431,10 +432,10 @@ A fase é grande demais para uma entrega só. Ordem e estado:
 | 2a | Contas, plano de categorias, conta de destino da forma de pagamento | Feita |
 | 2b | Transações: faturar comanda gera conta a receber; reabrir desfaz | Feita |
 | 2c | Novo recebimento, nova despesa, transferência, baixa, estorno, exclusão, lista com filtros e totais, saldo por conta | Feita |
-| 2d | Editar lançamento; recorrência (parcelas mensais) | Pendente |
+| 2d | Editar lançamento manual em aberto; lançamento que se repete todo mês | Feita |
+| 2g | Resumo do mês: recebido, pago, resultado, a receber, a pagar, atrasado, por categoria, por forma de pagamento e fluxo de caixa por dia | Feita (em tabelas, sem gráficos) |
 | 2e | Caixa: abrir, suprimento, sangria, fechar, conferência, histórico | Pendente |
 | 2f | Débito e crédito de cliente; faturar comanda com valor em aberto | Pendente |
-| 2g | Painel financeiro e relatórios (fluxo de caixa, recebimentos por forma, despesas por categoria) | Pendente |
 
 ### 6.2 Modelo de dados (migration `038_finance.sql`)
 
@@ -478,6 +479,17 @@ Campos centrais de `financial_transactions`:
    — reabre-se a comanda.
 9. **Conta e categoria com lançamento não são excluídas**, são desativadas.
 10. **O tipo da categoria (receita/despesa) não muda na edição.**
+11. **Só se edita lançamento manual em aberto.** O baixado precisa ser estornado
+    antes; lançamento de comanda e transferência não se editam. O tipo (entrada ou
+    saída) não muda na edição.
+12. **Lançamento que se repete** cria uma linha por mês (até 60), numeradas
+    "(2/6)", a partir do vencimento informado. Dia 31 recua para o último dia nos
+    meses mais curtos e volta ao 31 quando existe. "Já pago" vale só para a
+    primeira. Depois de criadas, as linhas são independentes — não há "excluir as
+    próximas" (exigiria uma coluna de grupo, que ficou fora para não pedir migration).
+13. **O resumo separa duas perguntas:** recebido e pago são pelo DIA DA BAIXA
+    (regime de caixa); a receber e a pagar são pelo VENCIMENTO. Atrasado independe
+    do mês escolhido.
 
 Perguntas a confirmar com o dono (a auditoria não cobre):
 
@@ -499,7 +511,8 @@ dono têm tudo e a equipe não tem nada.
 
 | Tela | Rota | Conteúdo |
 |---|---|---|
-| Financeiro | `/[salonId]/finance` | Saldo por conta, filtros (tipo, situação, conta, vencimento), totais do filtro, lista de lançamentos, novo recebimento, nova despesa, transferência, baixa, estorno, exclusão |
+| Financeiro | `/[salonId]/finance` | Saldo por conta, filtros (tipo, situação, conta, vencimento), totais do filtro, lista de lançamentos, novo recebimento, nova despesa (com "repetir por meses"), edição, transferência, baixa, estorno, exclusão |
+| Resumo do mês | `/[salonId]/finance/summary?month=AAAA-MM` | Recebido, pago, resultado, a receber, a pagar, atrasado; receitas e despesas por categoria; recebimentos por forma de pagamento; fluxo de caixa por dia |
 | Contas e categorias | `/[salonId]/finance/settings` | Contas com saldo, plano de categorias em duas colunas |
 | Formas de pagamento | `/[salonId]/salon-settings/payment-methods` | Ganhou o campo "Conta de destino" (só com o módulo ligado) |
 
@@ -517,17 +530,54 @@ dono têm tudo e a equipe não tem nada.
 
 ### 6.7 Estado da implementação (15/nov/2026)
 
-Branch `claude/fase-2-financeiro` (sai de `claude/fase-1-comandas`). Fatias 2a, 2b e
-2c escritas. Passam typecheck, lint, testes e `next build`.
+Branch `claude/fase-2-financeiro` (sai de `claude/fase-1-comandas`), publicada no
+GitHub, com preview na Vercel. Fatias 2a, 2b, 2c, 2d e 2g escritas. Passam typecheck,
+lint, testes e `next build`.
 
-- **Migration 038: escrita, não aplicada.**
-- **Ordem de deploy — obrigatória.** A 038 tem que estar aplicada ANTES do código ir
-  para produção. Ela adiciona `payment_methods.account_id`, e o INSERT do Drizzle
-  lista todas as colunas da tabela: sem a coluna, criar uma forma de pagamento
-  falha mesmo com o financeiro desligado.
-- **Nada foi testado em uso.** Nenhuma tela aberta no navegador (sem `.env` no
-  checkout) e a gravação nunca rodou contra um banco. Isso vale também para as fases
-  0 e 1, nas quais a fase 2 se apoia.
+- **Migration 038: aplicada e registrada em produção** (15/nov/2026). As fatias 2d e
+  2g não precisaram de migration.
+- **Ordem de deploy.** A 038 tinha que vir antes do código — ela adiciona
+  `payment_methods.account_id`, e o INSERT do Drizzle lista todas as colunas da
+  tabela. Já está cumprido.
+
+### 6.8 Teste em uso (15/nov/2026)
+
+Feito no preview da Vercel, no "Salão TOP" (`37dc22de…`), único salão com os módulos
+`access_profiles`, `sales` e `finance` ligados. O preview usa o banco de produção. O
+banco foi conferido por leitura a cada passo.
+
+Funcionou, sem nenhum erro do código novo:
+
+- contas, categoria e formas de pagamento com conta de destino;
+- comanda manual com desconto, numeração (#1, #2, #3) e faturamento dividido em
+  crédito e PIX, com taxa e prazo corretos;
+- financeiro: PIX nasce recebido e soma no saldo, crédito nasce a receber pelo
+  líquido; despesa, baixa, estorno, transferência e exclusões;
+- reabrir comanda (pagamentos e lançamentos somem) e excluir comanda;
+- perfil de acesso criado e excluído;
+- "Criar comanda" pelo agendamento, recusa de faturamento antes do horário, recusa
+  de um agendamento em duas comandas, "Agrupar em comanda" com dois agendamentos, e
+  cancelamento de agendamento tirando o item da comanda aberta.
+
+Ainda não testado:
+
+- faturamento CONCLUINDO o agendamento, e a reabertura devolvendo-o para
+  confirmado (só depois que o horário do agendamento começa — ficou um agendamento
+  de teste em 16/nov às 9h, ligado à comanda #3);
+- produto na comanda (o salão não tem produto ativo);
+- restrição por perfil, logado como outro usuário;
+- fatias 2d e 2g, escritas depois do teste.
+
+Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
+
+- a tela "Novo Agendamento" deixa escolher um profissional, mas a action usa sempre
+  o do dono, sem avisar;
+- salvar um serviço apaga os vínculos de todo profissional que não seja o dono.
+
+Dados de teste deixados no Salão TOP: contas "Teste Banco" e "Teste Caixa",
+categoria "Teste Aluguel", formas "Teste PIX" e "Teste Credito", comandas #1 e #2
+excluídas, comanda #3 aberta, um agendamento cancelado e um pendente. O serviço
+"Corte de Cabelo Masculino" passou do Marcos Affonso para o profissional do dono.
 
 Ligar o módulo num salão (depois da 038 aplicada e do código publicado):
 
@@ -551,4 +601,5 @@ UPDATE salons
 | Conta Belasis de teste para executar fluxos | Fidelidade das regras nas fases 2 a 5 |
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
-| Testar as fases 0, 1 e 2 em uso, num salão de teste | Confiança para seguir construindo em cima |
+| Testar o faturamento com agendamento (a partir de 16/nov, 9h) e as fatias 2d e 2g | Fechar o teste em uso |
+| Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

@@ -36,6 +36,21 @@ export function paidAtFromDate(date: string): Date {
   return new Date(`${date}T12:00:00-03:00`)
 }
 
+/**
+ * Soma meses a um dia de calendário, mantendo o dia do mês quando ele existe e
+ * recuando para o último dia quando não existe (31/jan + 1 mês = 28 ou 29/fev).
+ *
+ * Parte sempre da data ORIGINAL: somar mês a mês arrastaria o recuo (31/jan →
+ * 28/fev → 28/mar), e a parcela de março tem que cair no dia 31.
+ */
+export function addMonthsToDate(date: string, months: number): string {
+  const [year, month, day] = date.split('-').map(Number)
+  const target = new Date(Date.UTC(year, month - 1 + months, 1))
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+  target.setUTCDate(Math.min(day, lastDay))
+  return target.toISOString().slice(0, 10)
+}
+
 // ============================================================================
 // Lançamento manual (recebimento / despesa)
 // ============================================================================
@@ -193,6 +208,50 @@ export function planManualTransaction(
   }
 }
 
+export const MAX_INSTALLMENTS = 60
+
+export type InstallmentsPlan = { ok: true; rows: PlannedTransaction[] } | { ok: false; error: string }
+
+/**
+ * Lançamento que se repete todo mês: N linhas, uma por mês, a partir do vencimento
+ * informado. A descrição ganha "(2/6)" para as parcelas se distinguirem na lista.
+ *
+ * "Já pago" vale só para a PRIMEIRA: as próximas ainda vão vencer, e nascer pagas
+ * seria registrar dinheiro que não se moveu.
+ *
+ * As linhas são independentes depois de criadas — editar ou excluir uma não mexe
+ * nas outras.
+ */
+export function planInstallments(
+  draft: ManualTransactionDraft,
+  installments: number,
+  refs: FinanceRefs,
+  now: Date
+): InstallmentsPlan {
+  if (!Number.isInteger(installments) || installments < 1 || installments > MAX_INSTALLMENTS) {
+    return { ok: false, error: `Informe de 1 a ${MAX_INSTALLMENTS} repetições` }
+  }
+
+  const first = planManualTransaction(draft, refs, now)
+  if (!first.ok) return first
+  if (installments === 1) return { ok: true, rows: [first.row] }
+
+  const rows: PlannedTransaction[] = []
+  for (let index = 0; index < installments; index++) {
+    const suffix = ` (${index + 1}/${installments})`
+    rows.push({
+      ...first.row,
+      description: `${first.row.description.slice(0, 200 - suffix.length)}${suffix}`,
+      dueDate: addMonthsToDate(first.row.dueDate, index),
+      competenceDate: addMonthsToDate(first.row.competenceDate, index),
+      status: index === 0 ? first.row.status : 'open',
+      paidAt: index === 0 ? first.row.paidAt : null,
+    })
+  }
+
+  return { ok: true, rows }
+}
+
 // ============================================================================
 // Transferência entre contas
 // ============================================================================
@@ -304,6 +363,17 @@ export function unsettleBlocker(transaction: TransactionState): string | null {
   return null
 }
 
+/** Editar. Devolve o motivo se não pode. */
+export function editBlocker(transaction: TransactionState): string | null {
+  // Lançamento de comanda espelha a comanda; transferência são duas pernas que têm
+  // que continuar iguais. Nenhum dos dois se edita por aqui.
+  if (transaction.kind === 'sale') return 'Lançamento de comanda não se edita aqui: reabra a comanda'
+  if (transaction.kind === 'transfer') return 'Transferência não se edita: exclua e lance de novo'
+  // Editar o valor de algo já baixado mudaria o saldo sem deixar rastro.
+  if (transaction.status === 'paid') return 'Estorne a baixa antes de editar'
+  return null
+}
+
 /** Excluir. Devolve o motivo se não pode. */
 export function deleteBlocker(transaction: TransactionState): string | null {
   // O lançamento de venda é consequência da comanda: quem o desfaz é a reabertura.
@@ -374,6 +444,19 @@ export function planSaleTransactions(input: {
       notes: null,
     }
   })
+}
+
+// ============================================================================
+// Resumo do período
+// ============================================================================
+
+/** "2026-11" → primeiro e último dia do mês. NULL se o formato não for um mês real. */
+export function monthRange(month: string): { from: string; to: string } | null {
+  if (!/^\d{4}-\d{2}$/.test(month)) return null
+  const [year, monthNumber] = month.split('-').map(Number)
+  if (monthNumber < 1 || monthNumber > 12 || year < 2000 || year > 2100) return null
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate()
+  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}` }
 }
 
 // ============================================================================
