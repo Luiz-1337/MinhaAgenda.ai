@@ -207,6 +207,15 @@ export const products = pgTable(
     description: text('description'),
     price: numeric('price', { precision: 10, scale: 2 }).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
+    // Controle de estoque (migration 045). O SALDO não está aqui: é a soma de
+    // stock_movements.quantity. Regra em domain/inventory.ts.
+    trackStock: boolean('track_stock').default(false).notNull(),
+    // Abaixo disto o produto entra na sugestão de compra.
+    minStock: numeric('min_stock', { precision: 12, scale: 3 }).default('0').notNull(),
+    // Custo de compra. A entrada com custo informado atualiza este valor.
+    costPrice: numeric('cost_price', { precision: 12, scale: 2 }),
+    sku: text('sku'),
+    barcode: text('barcode'),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -1406,6 +1415,41 @@ export const commissionAdjustments = pgTable(
     index('commission_adjustments_open_idx')
       .on(table.salonId, table.professionalId, table.referenceDate)
       .where(sql`payment_id IS NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Estoque (migration 045)
+// ============================================================================
+// Tudo o que entra e sai de um produto controlado. O saldo é a SOMA de
+// `quantity` — nunca é gravado. Regra em domain/inventory.ts.
+
+/** in = entrada · out = saída · adjustment = acerto de inventário · sale = baixa por comanda */
+export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale'
+
+export const stockMovements = pgTable(
+  'stock_movements',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<StockMovementKind>().notNull(),
+    // Com sinal: positivo entra, negativo sai (CHECK no banco).
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unitCost: numeric('unit_cost', { precision: 12, scale: 2 }),
+    notes: text('notes'),
+    // Só em 'sale' (CHECK no banco). CASCADE de propósito: reabrir a comanda apaga
+    // a baixa que ela fez.
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('stock_movements_product_idx').on(table.productId, table.createdAt.desc()),
+    index('stock_movements_salon_idx').on(table.salonId, table.createdAt.desc()),
+    index('stock_movements_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
+    uniqueIndex('stock_movements_sale_item_unique').on(table.saleItemId).where(sql`sale_item_id IS NOT NULL`)
   ]
 )
 

@@ -103,6 +103,8 @@ export * from './domain/cash'
 export * from './services/cash.service'
 export * from './domain/commissions'
 export * from './services/commissions.service'
+export * from './domain/inventory'
+export * from './services/inventory.service'
 export * from './domain/errors/domain-error'
 export * from './domain/errors/integration-error'
 // appointment-status.enum removido: declarava um AppointmentStatus paralelo, com

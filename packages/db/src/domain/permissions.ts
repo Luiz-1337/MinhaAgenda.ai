@@ -42,6 +42,9 @@ export const PERMISSION_CATALOG = {
   // `adjust` = lançar e excluir vales e bonificações.
   // `pay` = pagar comissões e estornar pagamentos.
   commissions: ['access', 'view_all', 'configure', 'adjust', 'pay'],
+  // Estoque (fase 4). `move` = lançar entrada, saída e acerto de inventário.
+  // `manage` = ligar o controle do produto, estoque mínimo, custo e códigos.
+  inventory: ['access', 'move', 'manage'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -146,7 +149,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

@@ -29,6 +29,7 @@ import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
 import { saleHasPaidCommissions, syncSaleCommissions } from "./commissions.service"
+import { recordSaleStock, revertSaleStock } from "./inventory.service"
 import { isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 
@@ -398,6 +399,12 @@ export async function invoiceSaleService(input: {
    * comissão é tocada.
    */
   recordCommissions?: boolean
+  /**
+   * Baixa o estoque dos produtos controlados da comanda (fase 4). Quem decide é a
+   * action: só com o módulo `inventory` ligado no salão. Desligado, nenhuma tabela
+   * de estoque é tocada.
+   */
+  recordStock?: boolean
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -501,6 +508,10 @@ export async function invoiceSaleService(input: {
       // Por último: a comissão é calculada sobre a comanda já no estado final.
       if (input.recordCommissions) {
         await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
+      }
+
+      if (input.recordStock) {
+        await recordSaleStock(tx, { salonId: input.salonId, saleId: sale.id, userId: input.userId })
       }
     })
 
@@ -663,6 +674,9 @@ export async function reopenSaleService(input: {
       if (input.recordCommissions) {
         await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
       }
+
+      // O que a comanda baixou volta para o estoque — com o módulo ligado ou não.
+      await revertSaleStock(tx, { salonId: input.salonId, saleId: sale.id })
     })
 
     return { success: true, data: undefined }

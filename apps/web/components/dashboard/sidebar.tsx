@@ -26,6 +26,7 @@ import {
   Receipt,
   Landmark,
   Percent,
+  Boxes,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
@@ -41,6 +42,7 @@ const MODULE_ITEMS: Record<string, (salon: SalonListItem) => boolean> = {
   finance: (salon) => salon.modules.includes("finance") && salon.permissions.includes("finance.access"),
   commissions: (salon) =>
     salon.modules.includes("commissions") && salon.permissions.includes("commissions.access"),
+  inventory: (salon) => salon.modules.includes("inventory") && salon.permissions.includes("inventory.access"),
 }
 
 // Helper para verificar permissões de visualização
@@ -79,6 +81,7 @@ const menuGroups = [
       { href: "sales", label: "Comandas", icon: Receipt },
       { href: "finance", label: "Financeiro", icon: Landmark },
       { href: "commissions", label: "Comissões", icon: Percent },
+      { href: "inventory", label: "Estoque", icon: Boxes },
     ]
   },
   {

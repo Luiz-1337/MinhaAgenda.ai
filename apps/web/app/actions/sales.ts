@@ -555,6 +555,8 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
     recordFinance: await salonHasModule(parsed.data.salonId, "finance"),
     // Com comissões ligadas, faturar calcula a comissão de cada item (fase 3).
     recordCommissions: await salonHasModule(parsed.data.salonId, "commissions"),
+    // Com o estoque ligado, faturar baixa os produtos controlados (fase 4).
+    recordStock: await salonHasModule(parsed.data.salonId, "inventory"),
   })
   if (!result.success) return { error: result.error }
 
