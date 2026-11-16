@@ -36,6 +36,9 @@ export interface InventoryDTO {
   movementsTruncated: boolean
   /** Produto filtrado na movimentação. NULL = todos. */
   productId: string | null
+  /** Marcas e categorias do salão, para classificar o produto (fatia 4b). */
+  brands: { id: string; name: string }[]
+  categories: { id: string; name: string }[]
   /** Cortesias de tela — a trava é no servidor. */
   can: { move: boolean; manage: boolean }
 }
@@ -59,4 +62,6 @@ export interface SaveProductStockSettingsInput {
   costPrice?: number | null
   sku?: string | null
   barcode?: string | null
+  brandId?: string | null
+  categoryId?: string | null
 }

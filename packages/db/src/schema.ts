@@ -216,10 +216,15 @@ export const products = pgTable(
     costPrice: numeric('cost_price', { precision: 12, scale: 2 }),
     sku: text('sku'),
     barcode: text('barcode'),
+    // Marca e categoria (migration 046). SET NULL: apagar a marca não apaga o produto.
+    brandId: uuid('brand_id').references(() => productBrands.id, { onDelete: 'set null' }),
+    categoryId: uuid('category_id').references(() => productCategories.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
-    index('products_salon_idx').on(table.salonId)
+    index('products_salon_idx').on(table.salonId),
+    index('products_brand_idx').on(table.brandId).where(sql`brand_id IS NOT NULL`),
+    index('products_category_idx').on(table.categoryId).where(sql`category_id IS NOT NULL`)
   ]
 )
 
@@ -1086,7 +1091,7 @@ export const salePayments = pgTable(
 // passa por domain/finance.ts, em centavos inteiros.
 
 export type FinancialDirection = 'in' | 'out'
-export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer' | 'commission'
+export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer' | 'commission' | 'purchase'
 export type FinancialTransactionStatus = 'open' | 'paid'
 
 export const financialTransactions = pgTable(
@@ -1097,7 +1102,8 @@ export const financialTransactions = pgTable(
     direction: text('direction').$type<FinancialDirection>().notNull(),
     // sale = gerada pelo faturamento de uma comanda · manual = lançada na tela ·
     // transfer = uma das duas pernas de uma transferência entre contas ·
-    // commission = saída gerada por um pagamento de comissão ou por um vale
+    // commission = saída gerada por um pagamento de comissão ou por um vale ·
+    // purchase = parcela a pagar gerada por uma compra de produtos
     kind: text('kind').$type<FinancialTransactionKind>().notNull(),
     // open = a receber / a pagar · paid = baixada (paid_at preenchido — CHECK no banco)
     status: text('status').$type<FinancialTransactionStatus>().default('open').notNull(),
@@ -1130,12 +1136,17 @@ export const financialTransactions = pgTable(
     commissionAdjustmentId: uuid('commission_adjustment_id').references(() => commissionAdjustments.id, {
       onDelete: 'cascade'
     }),
+    // Parcela de compra (migration 046): preenchido só quando kind é 'purchase'
+    // (CHECK no banco). CASCADE de propósito: excluir a compra apaga as parcelas —
+    // por isso o serviço barra a exclusão quando alguma já foi paga.
+    purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }),
     notes: text('notes'),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
+    index('financial_transactions_purchase_idx').on(table.purchaseId).where(sql`purchase_id IS NOT NULL`),
     index('financial_transactions_salon_due_idx').on(table.salonId, table.dueDate),
     index('financial_transactions_salon_status_due_idx').on(table.salonId, table.status, table.dueDate),
     index('financial_transactions_account_paid_idx').on(table.accountId).where(sql`status = 'paid' AND account_id IS NOT NULL`),
@@ -1424,8 +1435,11 @@ export const commissionAdjustments = pgTable(
 // Tudo o que entra e sai de um produto controlado. O saldo é a SOMA de
 // `quantity` — nunca é gravado. Regra em domain/inventory.ts.
 
-/** in = entrada · out = saída · adjustment = acerto de inventário · sale = baixa por comanda */
-export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale'
+/**
+ * in = entrada · out = saída · adjustment = acerto de inventário · sale = baixa por
+ * comanda · purchase = entrada por compra
+ */
+export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale' | 'purchase'
 
 export const stockMovements = pgTable(
   'stock_movements',
@@ -1442,6 +1456,10 @@ export const stockMovements = pgTable(
     // a baixa que ela fez.
     saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
     saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }),
+    // Só em 'purchase' (migration 046, CHECK no banco). CASCADE de propósito:
+    // excluir a compra apaga a entrada que ela deu.
+    purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }),
+    purchaseItemId: uuid('purchase_item_id').references(() => purchaseItems.id, { onDelete: 'cascade' }),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
@@ -1449,7 +1467,109 @@ export const stockMovements = pgTable(
     index('stock_movements_product_idx').on(table.productId, table.createdAt.desc()),
     index('stock_movements_salon_idx').on(table.salonId, table.createdAt.desc()),
     index('stock_movements_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
-    uniqueIndex('stock_movements_sale_item_unique').on(table.saleItemId).where(sql`sale_item_id IS NOT NULL`)
+    uniqueIndex('stock_movements_sale_item_unique').on(table.saleItemId).where(sql`sale_item_id IS NOT NULL`),
+    index('stock_movements_purchase_idx').on(table.purchaseId).where(sql`purchase_id IS NOT NULL`),
+    uniqueIndex('stock_movements_purchase_item_unique')
+      .on(table.purchaseItemId)
+      .where(sql`purchase_item_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Compras, fornecedores, marcas e categorias (migration 046)
+// ============================================================================
+// A compra é um documento: fornecedor, data, nota e itens. Ela dá entrada no
+// estoque (stock_movements.kind = 'purchase'), atualiza o custo do produto e, com o
+// financeiro ligado, gera as parcelas a pagar. Regra em domain/purchases.ts.
+
+export const suppliers = pgTable(
+  'suppliers',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // CPF (11 dígitos) ou CNPJ (14 caracteres), sem pontuação.
+    document: text('document'),
+    phone: text('phone'),
+    email: text('email'),
+    notes: text('notes'),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('suppliers_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const productBrands = pgTable(
+  'product_brands',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('product_brands_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const productCategories = pgTable(
+  'product_categories',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('product_categories_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const purchases = pgTable(
+  'purchases',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // SET NULL só como rede: o serviço barra excluir fornecedor que tem compra.
+    supplierId: uuid('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+    // Dia de calendário em Brasília ("YYYY-MM-DD").
+    purchasedOn: date('purchased_on').notNull(),
+    invoiceNumber: text('invoice_number'),
+    notes: text('notes'),
+    itemsAmount: numeric('items_amount', { precision: 12, scale: 2 }).notNull(),
+    // Frete e outros custos da nota que não são produto.
+    freightAmount: numeric('freight_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    discountAmount: numeric('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // itens + frete − desconto (CHECK no banco). É o que se paga ao fornecedor.
+    totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).notNull(),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('purchases_salon_date_idx').on(table.salonId, table.purchasedOn.desc(), table.createdAt.desc()),
+    index('purchases_supplier_idx').on(table.supplierId).where(sql`supplier_id IS NOT NULL`)
+  ]
+)
+
+export const purchaseItems = pgTable(
+  'purchase_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }).notNull(),
+    position: integer('position').default(0).notNull(),
+    // Sem ON DELETE, como sale_items: produto com compra não se apaga.
+    productId: uuid('product_id').references(() => products.id).notNull(),
+    // Cópia do nome na hora da compra: renomear o produto não muda o histórico.
+    description: text('description').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unitCost: numeric('unit_cost', { precision: 12, scale: 2 }).notNull(),
+    totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).notNull(),
+    // O custo que o produto tinha antes desta compra: excluir a compra o devolve.
+    previousCost: numeric('previous_cost', { precision: 12, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('purchase_items_purchase_idx').on(table.purchaseId, table.position),
+    index('purchase_items_product_idx').on(table.productId),
+    index('purchase_items_salon_idx').on(table.salonId)
   ]
 )
 

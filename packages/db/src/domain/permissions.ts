@@ -43,8 +43,10 @@ export const PERMISSION_CATALOG = {
   // `pay` = pagar comissões e estornar pagamentos.
   commissions: ['access', 'view_all', 'configure', 'adjust', 'pay'],
   // Estoque (fase 4). `move` = lançar entrada, saída e acerto de inventário.
-  // `manage` = ligar o controle do produto, estoque mínimo, custo e códigos.
-  inventory: ['access', 'move', 'manage'],
+  // `manage` = ligar o controle do produto, estoque mínimo, custo e códigos, e os
+  // cadastros de apoio (fornecedores, marcas e categorias).
+  // `purchase` = lançar e excluir compras.
+  inventory: ['access', 'move', 'manage', 'purchase'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG

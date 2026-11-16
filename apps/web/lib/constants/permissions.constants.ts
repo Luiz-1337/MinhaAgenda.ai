@@ -51,6 +51,7 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   adjust: "Lançar vales e bonificações",
   pay: "Pagar comissões e estornar pagamentos",
   move: "Lançar entradas, saídas e acertos",
+  purchase: "Lançar e excluir compras",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */
@@ -60,5 +61,5 @@ export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, strin
   sales: "Sem “Ver de todos”, a pessoa vê só as comandas com item dela.",
   cash: "Sem “Ver de todos”, a pessoa vê só o histórico dos caixas que abriu.",
   commissions: "Sem “Ver de todos”, a pessoa vê só o próprio extrato.",
-  inventory: "“Gerenciar” liga o controle do produto e define mínimo e custo.",
+  inventory: "“Gerenciar” liga o controle do produto, define mínimo e custo e cuida de fornecedores, marcas e categorias.",
 }

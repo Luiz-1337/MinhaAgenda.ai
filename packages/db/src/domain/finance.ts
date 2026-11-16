@@ -85,7 +85,7 @@ export type ManualTransactionDraft = {
 
 export type PlannedTransaction = {
   direction: 'in' | 'out'
-  kind: 'sale' | 'manual' | 'transfer' | 'commission'
+  kind: 'sale' | 'manual' | 'transfer' | 'commission' | 'purchase'
   status: 'open' | 'paid'
   description: string
   amount: string
@@ -331,8 +331,15 @@ export function planTransfer(
  */
 const COMMISSION_BLOCKER = 'Lançamento de comissão não se altera aqui: estorne o pagamento ou exclua o vale em Comissões'
 
+/**
+ * Parcela gerada por uma compra de produtos (fase 4, fatia 4b). Dar baixa e
+ * estornar a baixa são do financeiro, como em qualquer despesa. Editar e excluir
+ * não: o valor é o da compra, e quem a desfaz é a exclusão da compra.
+ */
+const PURCHASE_BLOCKER = 'Lançamento de compra não se altera aqui: exclua a compra em Estoque > Compras'
+
 export type TransactionState = {
-  kind: 'sale' | 'manual' | 'transfer' | 'commission'
+  kind: 'sale' | 'manual' | 'transfer' | 'commission' | 'purchase'
   status: 'open' | 'paid'
   accountId: string | null
 }
@@ -378,6 +385,7 @@ export function editBlocker(transaction: TransactionState): string | null {
   // que continuar iguais. Nenhum dos dois se edita por aqui.
   if (transaction.kind === 'sale') return 'Lançamento de comanda não se edita aqui: reabra a comanda'
   if (transaction.kind === 'commission') return COMMISSION_BLOCKER
+  if (transaction.kind === 'purchase') return PURCHASE_BLOCKER
   if (transaction.kind === 'transfer') return 'Transferência não se edita: exclua e lance de novo'
   // Editar o valor de algo já baixado mudaria o saldo sem deixar rastro.
   if (transaction.status === 'paid') return 'Estorne a baixa antes de editar'
@@ -389,6 +397,7 @@ export function deleteBlocker(transaction: TransactionState): string | null {
   // O lançamento de venda é consequência da comanda: quem o desfaz é a reabertura.
   if (transaction.kind === 'sale') return 'Lançamento de comanda não se exclui aqui: reabra a comanda'
   if (transaction.kind === 'commission') return COMMISSION_BLOCKER
+  if (transaction.kind === 'purchase') return PURCHASE_BLOCKER
   if (transaction.kind === 'manual' && transaction.status === 'paid') {
     return 'Estorne a baixa antes de excluir'
   }

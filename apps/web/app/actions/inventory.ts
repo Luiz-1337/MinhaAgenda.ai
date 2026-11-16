@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import {
   createStockMovementService,
   listInventoryService,
+  listProductCatalogService,
   listStockMovementsService,
   milliToNumeric,
   purchaseSuggestionMilli,
@@ -63,6 +64,8 @@ async function authorizeSalon(
 
 function revalidateInventory(salonId: string) {
   revalidatePath(`/${salonId}/inventory`)
+  // A contagem de produtos por marca e por categoria.
+  revalidatePath(`/${salonId}/inventory/catalog`)
 }
 
 /** Os produtos com saldo, situação e sugestão de compra, e a movimentação recente. */
@@ -77,9 +80,10 @@ export async function getInventory(
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   try {
-    const [rows, permissions] = await Promise.all([
+    const [rows, permissions, catalog] = await Promise.all([
       listInventoryService(salonId),
       getSalonPermissions(salonId, auth.userId),
+      listProductCatalogService(salonId),
     ])
 
     // Produto pedido que não é do salão é ignorado, não um erro: a movimentação
@@ -118,6 +122,8 @@ export async function getInventory(
       movements: movements.rows,
       movementsTruncated: movements.truncated,
       productId,
+      brands: catalog.brands.map((brand) => ({ id: brand.id, name: brand.name })),
+      categories: catalog.categories.map((category) => ({ id: category.id, name: category.name })),
       can: {
         move: permissions.has("inventory.move"),
         manage: permissions.has("inventory.manage"),
@@ -156,9 +162,14 @@ export async function saveProductStockSettings(input: SaveProductStockSettingsIn
   const parsed = saveProductStockSettingsSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
-  const { salonId, productId, ...settings } = parsed.data
+  const { salonId, productId, brandId, categoryId, ...settings } = parsed.data
 
-  const result = await saveProductStockSettingsService({ salonId, productId, settings })
+  const result = await saveProductStockSettingsService({
+    salonId,
+    productId,
+    settings,
+    classification: { brandId: brandId ?? null, categoryId: categoryId ?? null },
+  })
   if (!result.success) return { error: result.error }
 
   revalidateInventory(salonId)

@@ -30,4 +30,6 @@ export const saveProductStockSettingsSchema = z.object({
   costPrice: money.nullish(),
   sku: z.string().max(60, "Código muito longo").nullish(),
   barcode: z.string().max(60, "Código de barras muito longo").nullish(),
+  brandId: z.string().uuid().nullish(),
+  categoryId: z.string().uuid().nullish(),
 })

@@ -190,6 +190,13 @@ export async function deleteProduct(id: string, salonId: string): Promise<Action
     return { success: true, data: undefined }
 
   } catch (error) {
+    // 23503 = violação de chave estrangeira: o produto está em comanda ou em compra
+    // (sale_items e purchase_items não têm ON DELETE). O histórico não se apaga.
+    const code =
+      (error as { code?: string } | null)?.code ?? (error as { cause?: { code?: string } } | null)?.cause?.code
+    if (code === "23503") {
+      return { error: "Este produto tem vendas ou compras lançadas. Desative em vez de excluir." }
+    }
     console.error("Erro ao excluir produto:", error)
     return { error: "Falha ao excluir produto." }
   }

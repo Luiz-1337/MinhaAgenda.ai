@@ -1,6 +1,15 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 
-import { db, products, profiles, saleItems, sales, stockMovements } from "../index"
+import {
+  db,
+  productBrands,
+  productCategories,
+  products,
+  profiles,
+  saleItems,
+  sales,
+  stockMovements,
+} from "../index"
 import type { StockMovementKind } from "../schema"
 import {
   milliToNumeric,
@@ -65,6 +74,10 @@ export type InventoryProductRow = {
   costPrice: string | null
   sku: string | null
   barcode: string | null
+  brandId: string | null
+  brandName: string | null
+  categoryId: string | null
+  categoryName: string | null
   /** Saldo: a soma dos movimentos (numeric como string, pode ser negativo). */
   quantity: string
 }
@@ -92,10 +105,16 @@ export async function listInventoryService(salonId: string): Promise<InventoryPr
       costPrice: products.costPrice,
       sku: products.sku,
       barcode: products.barcode,
+      brandId: products.brandId,
+      brandName: productBrands.name,
+      categoryId: products.categoryId,
+      categoryName: productCategories.name,
       quantity: sql<string>`coalesce(${balances.total}, 0)::numeric(12,3)::text`,
     })
     .from(products)
     .leftJoin(balances, eq(balances.productId, products.id))
+    .leftJoin(productBrands, eq(productBrands.id, products.brandId))
+    .leftJoin(productCategories, eq(productCategories.id, products.categoryId))
     .where(eq(products.salonId, salonId))
     .orderBy(asc(products.name))
 }
@@ -113,6 +132,8 @@ export type StockMovementRow = {
   /** Só em venda: a comanda que baixou. */
   saleId: string | null
   saleNumber: number | null
+  /** Só em compra: a compra que deu a entrada. */
+  purchaseId: string | null
   /** Quem lançou. */
   userName: string | null
 }
@@ -138,6 +159,7 @@ export async function listStockMovementsService(input: {
       notes: stockMovements.notes,
       saleId: stockMovements.saleId,
       saleNumber: sales.number,
+      purchaseId: stockMovements.purchaseId,
       // Cadastro antigo pode ter só nome e sobrenome, sem o nome completo.
       userName: sql<
         string | null
@@ -222,15 +244,40 @@ export async function createStockMovementService(input: {
   }
 }
 
-/** Grava o controle de estoque de um produto: controlar ou não, mínimo, custo e códigos. */
+/**
+ * Grava o controle de estoque de um produto: controlar ou não, mínimo, custo e
+ * códigos. Com `classification`, grava também a marca e a categoria (fatia 4b) —
+ * as duas têm que ser do salão.
+ */
 export async function saveProductStockSettingsService(input: {
   salonId: string
   productId: string
   settings: { trackStock: unknown; minStock?: unknown; costPrice?: unknown; sku?: unknown; barcode?: unknown }
+  classification?: { brandId: string | null; categoryId: string | null }
 }): Promise<ActionResult<void>> {
   try {
     const plan = planProductStockSettings(input.settings)
     if (!plan.ok) fail(plan.error)
+
+    if (input.classification?.brandId) {
+      const [brand] = await db
+        .select({ id: productBrands.id })
+        .from(productBrands)
+        .where(and(eq(productBrands.id, input.classification.brandId), eq(productBrands.salonId, input.salonId)))
+        .limit(1)
+      if (!brand) fail("Marca não encontrada")
+    }
+
+    if (input.classification?.categoryId) {
+      const [category] = await db
+        .select({ id: productCategories.id })
+        .from(productCategories)
+        .where(
+          and(eq(productCategories.id, input.classification.categoryId), eq(productCategories.salonId, input.salonId))
+        )
+        .limit(1)
+      if (!category) fail("Categoria não encontrada")
+    }
 
     const updated = await db
       .update(products)
@@ -240,6 +287,9 @@ export async function saveProductStockSettingsService(input: {
         costPrice: plan.costPrice,
         sku: plan.sku,
         barcode: plan.barcode,
+        ...(input.classification
+          ? { brandId: input.classification.brandId, categoryId: input.classification.categoryId }
+          : {}),
       })
       .where(and(eq(products.id, input.productId), eq(products.salonId, input.salonId)))
       .returning({ id: products.id })

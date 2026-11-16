@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { ArrowLeftRight, Boxes, Settings2, X } from "lucide-react"
+import { ArrowLeftRight, Boxes, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createStockMovement, saveProductStockSettings } from "@/app/actions/inventory"
 import {
@@ -15,14 +15,18 @@ import {
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 import type { ManualStockMovementKind, StockStatus } from "@repo/db"
 import type { InventoryDTO, InventoryProductDTO } from "@/lib/types/inventory"
+import {
+  InventoryNav,
+  Modal,
+  controlClass,
+  formatQuantity,
+  iconButtonClass,
+  inputClass,
+  labelClass,
+  parseQuantity,
+} from "./inventory-ui"
 
 const MANUAL_KINDS: ManualStockMovementKind[] = ["in", "out", "adjustment"]
-
-const controlClass =
-  "bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring/50 transition-all disabled:opacity-60"
-const inputClass =
-  "w-full bg-card border border-border rounded-md px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-const labelClass = "text-xs font-semibold text-muted-foreground"
 
 const STATUS_CLASS: Record<StockStatus, string> = {
   untracked: "bg-muted border-border text-muted-foreground",
@@ -34,63 +38,12 @@ const STATUS_CLASS: Record<StockStatus, string> = {
 
 type View = "all" | "to_buy" | "untracked"
 
-/** "12.500" → "12,5". Quantidade de coluna numeric(12,3), sem zeros à direita. */
-function formatQuantity(value: string): string {
-  return Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 3 })
-}
-
-/**
- * Quantidade digitada → número. A vírgula é sempre o decimal ("0,250"); sem
- * vírgula, o ponto é o decimal ("1.5"). Diferente do dinheiro, aqui três casas são
- * comuns (gramas, mililitros) — por isso não reaproveita `parseBRL`.
- */
-function parseQuantity(input: string): number | null {
-  const cleaned = input.replace(/\s/g, "")
-  if (!cleaned || !/^[\d.,]+$/.test(cleaned)) return null
-  const normalized = cleaned.includes(",") ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned
-  const value = Number(normalized)
-  return Number.isFinite(value) ? value : null
-}
-
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="bg-card border border-border rounded-md p-4">
       <p className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">{label}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-foreground">{value}</p>
       {hint && <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>}
-    </div>
-  )
-}
-
-function Modal({
-  title,
-  onClose,
-  disabled,
-  children,
-}: {
-  title: string
-  onClose: () => void
-  disabled: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-black/50" onClick={disabled ? undefined : onClose} />
-      <div className="relative z-10 w-full max-w-lg bg-card border border-border rounded-md overflow-hidden">
-        <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
-          <h3 className="text-base font-bold text-foreground">{title}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={disabled}
-            aria-label="Fechar"
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        {children}
-      </div>
     </div>
   )
 }
@@ -120,6 +73,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
   const [costPrice, setCostPrice] = useState("")
   const [sku, setSku] = useState("")
   const [barcode, setBarcode] = useState("")
+  const [brandId, setBrandId] = useState("")
+  const [categoryId, setCategoryId] = useState("")
 
   const visible = useMemo(() => {
     if (view === "to_buy") {
@@ -146,6 +101,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
     setCostPrice(product.costPrice ? Number(product.costPrice).toFixed(2).replace(".", ",") : "")
     setSku(product.sku ?? "")
     setBarcode(product.barcode ?? "")
+    setBrandId(product.brandId ?? "")
+    setCategoryId(product.categoryId ?? "")
   }
 
   function submitMovement() {
@@ -214,6 +171,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
         costPrice: cost,
         sku: sku.trim() || null,
         barcode: barcode.trim() || null,
+        brandId: brandId || null,
+        categoryId: categoryId || null,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -245,6 +204,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
           </p>
         </div>
       </div>
+
+      <InventoryNav salonId={salonId} />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Stat
@@ -308,9 +269,11 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                   <tr key={product.id} className={product.isActive ? undefined : "opacity-60"}>
                     <td className="p-3 font-semibold text-foreground">
                       {product.name}
-                      {(product.sku || !product.isActive) && (
+                      {(product.sku || product.brandName || product.categoryName || !product.isActive) && (
                         <span className="block text-[11px] font-normal text-muted-foreground">
-                          {[product.sku, product.isActive ? null : "inativo"].filter(Boolean).join(" · ")}
+                          {[product.sku, product.brandName, product.categoryName, product.isActive ? null : "inativo"]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </span>
                       )}
                     </td>
@@ -347,7 +310,7 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                             type="button"
                             onClick={() => openMovement(product)}
                             disabled={isPending}
-                            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
+                            className={iconButtonClass}
                             aria-label={`Movimentar ${product.name}`}
                             title="Movimentar"
                           >
@@ -359,7 +322,7 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                             type="button"
                             onClick={() => openSettings(product)}
                             disabled={isPending}
-                            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
+                            className={iconButtonClass}
                             aria-label={`Configurar o estoque de ${product.name}`}
                             title="Configurar"
                           >
@@ -437,6 +400,13 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                             className="font-mono font-semibold text-accent hover:underline"
                           >
                             Comanda #{movement.saleNumber}
+                          </Link>
+                        ) : movement.purchaseId ? (
+                          <Link
+                            href={`/${salonId}/inventory/purchases`}
+                            className="font-semibold text-accent hover:underline"
+                          >
+                            Ver compras
                           </Link>
                         ) : (
                           (movement.notes ?? "—")
@@ -630,6 +600,44 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                   onChange={(event) => setBarcode(event.target.value)}
                   className={inputClass}
                 />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="settings-brand" className={labelClass}>
+                  Marca
+                </label>
+                <select
+                  id="settings-brand"
+                  value={brandId}
+                  disabled={isPending}
+                  onChange={(event) => setBrandId(event.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Sem marca</option>
+                  {data.brands.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="settings-category" className={labelClass}>
+                  Categoria
+                </label>
+                <select
+                  id="settings-category"
+                  value={categoryId}
+                  disabled={isPending}
+                  onChange={(event) => setCategoryId(event.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Sem categoria</option>
+                  {data.categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
