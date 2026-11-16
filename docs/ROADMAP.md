@@ -351,7 +351,7 @@ Branch `claude/fase-1-comandas` (sai de `claude/fase-0-permissoes`).
 
 | Peça | Onde | Estado |
 |---|---|---|
-| Migration | `supabase/migrations/037_sales.sql` | Aplicada em produção (15/nov/2026) e conferida por leitura; **falta registrar** em `supabase_migrations.schema_migrations` |
+| Migration | `supabase/migrations/037_sales.sql` | Aplicada e registrada em produção (15/nov/2026), conferida por leitura |
 | Tabelas | `packages/db/src/schema.ts` (`paymentMethods`, `saleCounters`, `sales`, `saleItems`, `salePayments`) | Feito |
 | Regra pura (itens, totais, faturamento) | `packages/db/src/domain/sales.ts` | Feito, com testes |
 | Gravação (criar, salvar, faturar, reabrir, excluir, listar) | `packages/db/src/services/sales.service.ts` | Feito, **sem teste contra banco** |
