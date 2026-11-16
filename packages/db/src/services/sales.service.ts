@@ -25,6 +25,7 @@ import {
 } from "../domain/sales"
 import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
+import { recordSaleCashMovements } from "./cash.service"
 
 /**
  * Comandas (docs/ROADMAP.md, fase 1).
@@ -308,9 +309,10 @@ export async function invoiceSaleService(input: {
   payments: InvoicePaymentDraft[]
   userId: string
   /**
-   * Gera as contas a receber no financeiro (fase 2). Quem decide é a action: só
-   * com o módulo `finance` ligado no salão. Desligado, a comanda fatura como na
-   * fase 1 e nenhuma tabela do financeiro é tocada.
+   * Gera as contas a receber no financeiro e a entrada do dinheiro no caixa aberto
+   * (fase 2). Quem decide é a action: só com o módulo `finance` ligado no salão.
+   * Desligado, a comanda fatura como na fase 1 e nenhuma tabela do financeiro ou do
+   * caixa é tocada.
    */
   recordFinance?: boolean
 }): Promise<ActionResult<void>> {
@@ -398,6 +400,13 @@ export async function invoiceSaleService(input: {
             userId: input.userId,
             payments: insertedPayments,
             now,
+          })
+
+          // E o que foi pago em dinheiro entra no caixa aberto, se houver um.
+          await recordSaleCashMovements(tx, {
+            salonId: input.salonId,
+            userId: input.userId,
+            payments: insertedPayments,
           })
         }
       }

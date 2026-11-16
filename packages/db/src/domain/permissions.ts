@@ -32,6 +32,9 @@ export const PERMISSION_CATALOG = {
   // Financeiro (fase 2). `settle` = dar baixa e estornar; `settings` = contas e
   // plano de categorias.
   finance: ['access', 'create', 'delete', 'settle', 'settings'],
+  // Caixa (fase 2). `operate` = abrir, suprimento, sangria e fechar. Sem
+  // `view_all` a pessoa vê só o histórico dos caixas que ela abriu.
+  cash: ['access', 'operate', 'view_all'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG

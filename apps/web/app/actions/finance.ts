@@ -148,6 +148,7 @@ export async function getFinanceFormOptions(salonId: string): Promise<FinanceFor
         delete: permissions.has("finance.delete"),
         settle: permissions.has("finance.settle"),
         settings: permissions.has("finance.settings"),
+        cash: permissions.has("cash.access"),
       },
     }
   } catch (error) {

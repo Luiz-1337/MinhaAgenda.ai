@@ -1102,6 +1102,67 @@ export const financialTransactions = pgTable(
 )
 
 // ============================================================================
+// TABLES - Caixa (migration 039)
+// ============================================================================
+// O dinheiro vivo da gaveta: quem abriu, o que entrou e saiu, e como fechou. É
+// controle de operação, separado das contas financeiras. Regra em domain/cash.ts.
+
+export type CashSessionStatus = 'open' | 'closed'
+export type CashMovementKind = 'supply' | 'withdrawal' | 'sale'
+
+export const cashSessions = pgTable(
+  'cash_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    status: text('status').$type<CashSessionStatus>().default('open').notNull(),
+    openedBy: uuid('opened_by').references(() => profiles.id, { onDelete: 'set null' }),
+    openedAt: timestamp('opened_at').defaultNow().notNull(),
+    openingAmount: numeric('opening_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    closedBy: uuid('closed_by').references(() => profiles.id, { onDelete: 'set null' }),
+    closedAt: timestamp('closed_at'),
+    // Gravados SÓ no fechamento (CHECK no banco). Com o caixa aberto, o esperado é
+    // sempre calculado a partir dos movimentos.
+    expectedAmount: numeric('expected_amount', { precision: 12, scale: 2 }),
+    countedAmount: numeric('counted_amount', { precision: 12, scale: 2 }),
+    // contado − esperado: positivo é sobra, negativo é falta.
+    difference: numeric('difference', { precision: 12, scale: 2 }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    // Um caixa aberto por salão.
+    uniqueIndex('cash_sessions_one_open_per_salon').on(table.salonId).where(sql`status = 'open'`),
+    index('cash_sessions_salon_opened_idx').on(table.salonId, table.openedAt.desc())
+  ]
+)
+
+export const cashMovements = pgTable(
+  'cash_movements',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    cashSessionId: uuid('cash_session_id').references(() => cashSessions.id, { onDelete: 'cascade' }).notNull(),
+    // supply = suprimento · withdrawal = sangria · sale = venda em dinheiro (entra
+    // sozinha pelo faturamento da comanda)
+    kind: text('kind').$type<CashMovementKind>().notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    description: text('description'),
+    // CASCADE de propósito: reabrir a comanda apaga o pagamento, e a entrada dele
+    // no caixa some junto.
+    salePaymentId: uuid('sale_payment_id').references(() => salePayments.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('cash_movements_session_idx').on(table.cashSessionId, table.createdAt),
+    index('cash_movements_salon_idx').on(table.salonId),
+    uniqueIndex('cash_movements_sale_payment_unique').on(table.salePaymentId).where(sql`sale_payment_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(

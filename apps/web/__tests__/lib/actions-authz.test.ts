@@ -29,6 +29,7 @@ const GUARDED_FILES = [
   "payment-methods.ts",
   "finance.ts",
   "finance-settings.ts",
+  "cash.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */

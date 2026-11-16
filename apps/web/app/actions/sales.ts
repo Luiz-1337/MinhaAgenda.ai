@@ -153,6 +153,7 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/schedule`)
   // E geram (ou apagam) contas a receber, quando o financeiro está ligado.
   revalidatePath(`/${salonId}/finance`)
+  revalidatePath(`/${salonId}/finance/cash`)
 }
 
 // ============================================================================

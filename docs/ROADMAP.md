@@ -5,9 +5,9 @@
 **Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
 Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
-nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2d e 2g implementadas na
-branch `claude/fase-2-financeiro`, com a migration 038 aplicada; fases 0 a 2 testadas
-em uso num salão — ver §6.8. Fases 3
+nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2e e 2g implementadas na
+branch `claude/fase-2-financeiro`; migration 038 aplicada, **039 (caixa) não
+aplicada**; fases 0 a 2 testadas em uso num salão, exceto o caixa — ver §6.7 e §6.8. Fases 3
 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -434,7 +434,7 @@ A fase é grande demais para uma entrega só. Ordem e estado:
 | 2c | Novo recebimento, nova despesa, transferência, baixa, estorno, exclusão, lista com filtros e totais, saldo por conta | Feita |
 | 2d | Editar lançamento manual em aberto; lançamento que se repete todo mês | Feita |
 | 2g | Resumo do mês: recebido, pago, resultado, a receber, a pagar, atrasado, por categoria, por forma de pagamento e fluxo de caixa por dia | Feita (em tabelas, sem gráficos) |
-| 2e | Caixa: abrir, suprimento, sangria, fechar, conferência, histórico | Pendente |
+| 2e | Caixa: abrir, suprimento, sangria, fechar com conferência, histórico; comanda paga em dinheiro entra sozinha | Feita — **migration 039 não aplicada** |
 | 2f | Débito e crédito de cliente; faturar comanda com valor em aberto | Pendente |
 
 ### 6.2 Modelo de dados (migration `038_finance.sql`)
@@ -491,6 +491,26 @@ Campos centrais de `financial_transactions`:
     (regime de caixa); a receber e a pagar são pelo VENCIMENTO. Atrasado independe
     do mês escolhido.
 
+Caixa (fatia 2e) — o dono escolheu seguir com estes padrões, em 15/nov/2026:
+
+14. **Um caixa aberto por salão**, com quem abriu registrado. O banco garante (índice
+    único parcial); duas abas abrindo ao mesmo tempo não criam dois.
+15. **O caixa é separado das contas financeiras.** Ele controla o dinheiro vivo da
+    gaveta e não gera lançamento em conta: suprimento e sangria NÃO mexem em saldo.
+    Uma sangria que vira depósito no banco ainda precisa de uma transferência
+    lançada à parte no financeiro.
+16. **Comanda paga em dinheiro entra sozinha** no caixa aberto: só forma de pagamento
+    do tipo "Dinheiro", e só se houver caixa aberto. Sem caixa aberto a comanda
+    fatura normalmente e nada é registrado — o caixa não trava a venda.
+17. **Reabrir a comanda tira a entrada do caixa**, mesmo que o caixa já esteja
+    fechado. O esperado, o contado e a diferença gravados no fechamento NÃO mudam —
+    o histórico fica como foi fechado.
+18. **Sangria maior que o dinheiro em caixa é barrada.**
+19. **O esperado só é gravado no fechamento**; com o caixa aberto é sempre calculado
+    (inicial + suprimentos + vendas em dinheiro − sangrias).
+20. **Diferença não impede fechar.** Sobra e falta ficam registradas no histórico.
+21. **Caixa fechado não se reabre nem se edita** nesta fatia.
+
 Perguntas a confirmar com o dono (a auditoria não cobre):
 
 - Cartão: a conta a receber deve dar baixa sozinha no dia do recebimento, ou alguém
@@ -503,6 +523,7 @@ Perguntas a confirmar com o dono (a auditoria não cobre):
 | Recurso | Ações |
 |---|---|
 | `finance` | `access`, `create`, `delete`, `settle` (dar baixa e estornar), `settings` (contas e categorias) |
+| `cash` | `access`, `operate` (abrir, suprimento, sangria, fechar), `view_all` (histórico de todos; sem ela, só os caixas que a pessoa abriu) |
 
 Módulo `finance` em `salons.settings.modules`. Sem perfil configurado, gerentes e
 dono têm tudo e a equipe não tem nada.
@@ -513,6 +534,7 @@ dono têm tudo e a equipe não tem nada.
 |---|---|---|
 | Financeiro | `/[salonId]/finance` | Saldo por conta, filtros (tipo, situação, conta, vencimento), totais do filtro, lista de lançamentos, novo recebimento, nova despesa (com "repetir por meses"), edição, transferência, baixa, estorno, exclusão |
 | Resumo do mês | `/[salonId]/finance/summary?month=AAAA-MM` | Recebido, pago, resultado, a receber, a pagar, atrasado; receitas e despesas por categoria; recebimentos por forma de pagamento; fluxo de caixa por dia |
+| Caixa | `/[salonId]/finance/cash` | Abrir com saldo inicial; com o caixa aberto: inicial, vendas em dinheiro, suprimentos, sangrias, esperado, movimentos, suprimento, sangria e fechar (com a diferença ao vivo); histórico dos caixas fechados |
 | Contas e categorias | `/[salonId]/finance/settings` | Contas com saldo, plano de categorias em duas colunas |
 | Formas de pagamento | `/[salonId]/salon-settings/payment-methods` | Ganhou o campo "Conta de destino" (só com o módulo ligado) |
 
@@ -524,6 +546,8 @@ dono têm tudo e a equipe não tem nada.
 | Regra pura | `packages/db/src/domain/finance.ts` |
 | Gravação e leitura | `packages/db/src/services/finance.service.ts` |
 | Comanda → financeiro | `recordSaleTransactions`, chamado por `invoiceSaleService` |
+| Caixa | `packages/db/src/domain/cash.ts`, `services/cash.service.ts`, `apps/web/app/actions/cash.ts`, `apps/web/app/[salonId]/finance/cash/`, `supabase/migrations/039_cash_sessions.sql` |
+| Comanda → caixa | `recordSaleCashMovements`, chamado por `invoiceSaleService` |
 | Actions | `apps/web/app/actions/finance.ts`, `finance-settings.ts` |
 | Telas | `apps/web/app/[salonId]/finance/` |
 | Testes | `apps/web/__tests__/lib/services/finance-domain.test.ts` |
@@ -536,6 +560,11 @@ lint, testes e `next build`.
 
 - **Migration 038: aplicada e registrada em produção** (15/nov/2026). As fatias 2d e
   2g não precisaram de migration.
+- **Migration 039 (caixa): escrita, NÃO aplicada.** Ela tem que entrar ANTES de o
+  código do caixa chegar a qualquer ambiente que use o banco de produção — inclusive
+  o preview da Vercel. Com o módulo `finance` ligado (hoje, só o Salão TOP), faturar
+  uma comanda passa a consultar `cash_sessions`; sem a tabela, o faturamento falha.
+  Por isso o commit do caixa NÃO foi publicado: fica local até a 039 ser aplicada.
 - **Ordem de deploy.** A 038 tinha que vir antes do código — ela adiciona
   `payment_methods.account_id`, e o INSERT do Drizzle lista todas as colunas da
   tabela. Já está cumprido.
@@ -566,7 +595,11 @@ Ainda não testado:
   de teste em 16/nov às 9h, ligado à comanda #3);
 - produto na comanda (o salão não tem produto ativo);
 - restrição por perfil, logado como outro usuário;
-- fatias 2d e 2g, escritas depois do teste.
+- caixa (fatia 2e), escrito depois e ainda sem a migration 039 aplicada.
+
+As fatias 2d e 2g foram testadas em uso no mesmo dia, num segundo preview: despesa
+repetida por três meses com a primeira paga, edição de uma parcela e o resumo de
+novembro e dezembro, todos batendo com o banco.
 
 Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
 

@@ -26,6 +26,7 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   sales: "Comandas",
   payment_methods: "Formas de pagamento",
   finance: "Financeiro",
+  cash: "Caixa",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
@@ -42,6 +43,7 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   edit_invoiced: "Reabrir faturada",
   settle: "Dar baixa e estornar",
   settings: "Contas e categorias",
+  operate: "Abrir, movimentar e fechar",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */
@@ -49,4 +51,5 @@ export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, strin
   schedule: "“Ver de todos” libera a agenda dos outros profissionais.",
   access_profiles: "Quem gerencia perfis define o que os outros podem.",
   sales: "Sem “Ver de todos”, a pessoa vê só as comandas com item dela.",
+  cash: "Sem “Ver de todos”, a pessoa vê só o histórico dos caixas que abriu.",
 }

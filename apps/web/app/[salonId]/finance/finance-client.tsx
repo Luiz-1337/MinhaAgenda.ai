@@ -18,6 +18,7 @@ import {
   Save,
   Settings2,
   Trash2,
+  Wallet,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -369,6 +370,15 @@ export function FinanceClient({
             <BarChart3 size={16} />
             Resumo do mês
           </Link>
+          {options.can.cash && (
+            <Link
+              href={`/${salonId}/finance/cash`}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Wallet size={16} />
+              Caixa
+            </Link>
+          )}
           {options.can.settings && (
             <Link
               href={`/${salonId}/finance/settings`}

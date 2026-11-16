@@ -82,7 +82,7 @@ export interface FinanceFormOptions {
   accounts: FinanceAccountDTO[]
   categories: FinanceCategoryDTO[]
   /** Cortesia de tela — a trava é no servidor. */
-  can: { create: boolean; delete: boolean; settle: boolean; settings: boolean }
+  can: { create: boolean; delete: boolean; settle: boolean; settings: boolean; cash: boolean }
 }
 
 export interface CreateFinanceTransactionInput {
