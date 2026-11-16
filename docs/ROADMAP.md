@@ -6,8 +6,9 @@
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
 Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
 nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2e e 2g implementadas na
-branch `claude/fase-2-financeiro`; migration 038 aplicada, **039 (caixa) não
-aplicada**; fases 0 a 2 testadas em uso num salão, exceto o caixa — ver §6.7 e §6.8. Fases 3
+branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
+testadas em uso num salão — ver §6.7 e §6.8. Da fase 2 falta a fatia 2f (débito de
+cliente). Fases 3
 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -434,7 +435,7 @@ A fase é grande demais para uma entrega só. Ordem e estado:
 | 2c | Novo recebimento, nova despesa, transferência, baixa, estorno, exclusão, lista com filtros e totais, saldo por conta | Feita |
 | 2d | Editar lançamento manual em aberto; lançamento que se repete todo mês | Feita |
 | 2g | Resumo do mês: recebido, pago, resultado, a receber, a pagar, atrasado, por categoria, por forma de pagamento e fluxo de caixa por dia | Feita (em tabelas, sem gráficos) |
-| 2e | Caixa: abrir, suprimento, sangria, fechar com conferência, histórico; comanda paga em dinheiro entra sozinha | Feita — **migration 039 não aplicada** |
+| 2e | Caixa: abrir, suprimento, sangria, fechar com conferência, histórico; comanda paga em dinheiro entra sozinha | Feita e testada em uso |
 | 2f | Débito e crédito de cliente; faturar comanda com valor em aberto | Pendente |
 
 ### 6.2 Modelo de dados (migration `038_finance.sql`)
@@ -560,11 +561,10 @@ lint, testes e `next build`.
 
 - **Migration 038: aplicada e registrada em produção** (15/nov/2026). As fatias 2d e
   2g não precisaram de migration.
-- **Migration 039 (caixa): escrita, NÃO aplicada.** Ela tem que entrar ANTES de o
-  código do caixa chegar a qualquer ambiente que use o banco de produção — inclusive
-  o preview da Vercel. Com o módulo `finance` ligado (hoje, só o Salão TOP), faturar
-  uma comanda passa a consultar `cash_sessions`; sem a tabela, o faturamento falha.
-  Por isso o commit do caixa NÃO foi publicado: fica local até a 039 ser aplicada.
+- **Migration 039 (caixa): aplicada e registrada em produção** (15/nov/2026), antes
+  de o código do caixa ser publicado. A ordem importava: com o módulo `finance`
+  ligado, faturar uma comanda passa a consultar `cash_sessions`, e sem a tabela o
+  faturamento falharia — inclusive no preview da Vercel, que usa o banco de produção.
 - **Ordem de deploy.** A 038 tinha que vir antes do código — ela adiciona
   `payment_methods.account_id`, e o INSERT do Drizzle lista todas as colunas da
   tabela. Já está cumprido.
@@ -595,11 +595,19 @@ Ainda não testado:
   de teste em 16/nov às 9h, ligado à comanda #3);
 - produto na comanda (o salão não tem produto ativo);
 - restrição por perfil, logado como outro usuário;
-- caixa (fatia 2e), escrito depois e ainda sem a migration 039 aplicada.
 
 As fatias 2d e 2g foram testadas em uso no mesmo dia, num segundo preview: despesa
 repetida por três meses com a primeira paga, edição de uma parcela e o resumo de
 novembro e dezembro, todos batendo com o banco.
+
+O caixa (fatia 2e) foi testado em uso num terceiro preview, também em 15/nov:
+abertura com R$ 100,00, suprimento de R$ 50,00, sangria de R$ 500,00 recusada e de
+R$ 30,00 aceita, comanda #4 paga em "Teste Dinheiro" entrando sozinha (esperado
+R$ 290,00), fechamento com R$ 285,00 contados registrando falta de R$ 5,00, e a
+reabertura da comanda tirando a entrada dos movimentos sem mudar os números do
+fechamento. O teste revelou que a coluna Operador saía vazia (`profiles.full_name`
+não é preenchido); corrigido para cair em nome + sobrenome e depois e-mail — essa
+correção ainda não foi vista em uso.
 
 Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
 
@@ -608,8 +616,9 @@ Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
 - salvar um serviço apaga os vínculos de todo profissional que não seja o dono.
 
 Dados de teste deixados no Salão TOP: contas "Teste Banco" e "Teste Caixa",
-categoria "Teste Aluguel", formas "Teste PIX" e "Teste Credito", comandas #1 e #2
-excluídas, comanda #3 aberta, um agendamento cancelado e um pendente. O serviço
+categoria "Teste Aluguel", formas "Teste PIX", "Teste Credito" e "Teste Dinheiro",
+comandas #1, #2 e #4 excluídas, comanda #3 aberta, um caixa fechado (com suprimento
+e sangria de teste), um agendamento cancelado e um pendente. O serviço
 "Corte de Cabelo Masculino" passou do Marcos Affonso para o profissional do dono.
 
 Ligar o módulo num salão (depois da 038 aplicada e do código publicado):

@@ -27,6 +27,18 @@ import type { ActionResult } from "./appointments"
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
+/**
+ * Nome de quem operou o caixa. `profiles.full_name` costuma estar vazio (o nome que
+ * aparece no topo do painel vem do cadastro de login, não desta tabela), então cai
+ * para nome + sobrenome e, por fim, para o e-mail. Sem isso o histórico mostrava
+ * "—" na coluna Operador — visto no teste em uso de 15/nov/2026.
+ */
+const operatorName = sql<string | null>`coalesce(
+  nullif(trim(${profiles.fullName}), ''),
+  nullif(trim(concat_ws(' ', ${profiles.firstName}, ${profiles.lastName})), ''),
+  ${profiles.email}
+)`
+
 class CashRuleError extends Error {}
 
 function fail(message: string): never {
@@ -278,7 +290,7 @@ export async function getOpenCashSessionService(salonId: string): Promise<OpenCa
     .select({
       id: cashSessions.id,
       openedAt: cashSessions.openedAt,
-      openedByName: profiles.fullName,
+      openedByName: operatorName,
       openingAmount: cashSessions.openingAmount,
       notes: cashSessions.notes,
     })
@@ -296,7 +308,7 @@ export async function getOpenCashSessionService(salonId: string): Promise<OpenCa
       amount: cashMovements.amount,
       description: cashMovements.description,
       createdAt: cashMovements.createdAt,
-      createdByName: profiles.fullName,
+      createdByName: operatorName,
       saleId: sales.id,
       saleNumber: sales.number,
       customerName: customers.name,
@@ -345,7 +357,14 @@ export async function listClosedCashSessionsService(input: {
   )
 
   // Dois joins na mesma tabela (quem abriu, quem fechou): o segundo por subconsulta.
-  const closedByName = sql<string | null>`(select p.full_name from profiles p where p.id = ${cashSessions.closedBy})`
+  const closedByName = sql<string | null>`(
+    select coalesce(
+      nullif(trim(p.full_name), ''),
+      nullif(trim(concat_ws(' ', p.first_name, p.last_name)), ''),
+      p.email
+    )
+    from profiles p where p.id = ${cashSessions.closedBy}
+  )`
 
   const [rows, [{ total }]] = await Promise.all([
     db
@@ -353,7 +372,7 @@ export async function listClosedCashSessionsService(input: {
         id: cashSessions.id,
         openedAt: cashSessions.openedAt,
         closedAt: cashSessions.closedAt,
-        openedByName: profiles.fullName,
+        openedByName: operatorName,
         closedByName,
         openingAmount: cashSessions.openingAmount,
         expectedAmount: cashSessions.expectedAmount,
