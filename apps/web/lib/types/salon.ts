@@ -2,6 +2,7 @@
  * Tipos relacionados a salões
  */
 
+import type { SalonModule } from "@repo/db"
 import type { ProfessionalRole } from "./professional"
 
 export type PlanTier = 'SOLO' | 'PRO' | 'ENTERPRISE'
@@ -27,4 +28,6 @@ export interface SalonListItem {
   subscriptionStatus: SubscriptionStatus
   /** Quando o status mudou pela última vez — base para o cálculo da janela de trial */
   subscriptionStatusChangedAt?: string | Date | null
+  /** Módulos ligados neste salão (`salons.settings.modules`) — chave de piloto. */
+  modules: SalonModule[]
 }
