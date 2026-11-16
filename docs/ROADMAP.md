@@ -12,8 +12,8 @@ feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para d
 crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e #16).
 Fase 3 (comissões): fatia 3a feita na branch `claude/fase-3-comissoes` (publicada,
 sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §7.7.
-Fatia 3b (auxiliar) escrita na mesma branch, **não publicada: a migration 042 tem de
-ser aplicada antes do push** — ver §7.8. Fases 4 em diante: planejamento.
+Fatia 3b (auxiliar) feita na mesma branch e publicada, com a migration 042 aplicada
+em 16/nov/2026 e testada em uso — ver §7.8. Fases 4 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -714,7 +714,7 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita — migration 041 aplicada e testada em uso em 16/nov/2026 (§7.7) |
-| 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita em código — **migration 042 não aplicada**, não publicada, sem teste em uso (§7.8) |
+| 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
 | 3c | Vales e bonificações do profissional | Pendente |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro | Pendente |
 | 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
@@ -925,17 +925,39 @@ UPDATE salons
 
 ### 7.8 Fatia 3b — estado (16/nov/2026)
 
-- Escrita na branch `claude/fase-3-comissoes`, em commit local. Typecheck, lint dos
-  arquivos alterados e testes passando (o exemplo de R$ 231,24 da auditoria é teste).
-- **Migration 042: escrita, NÃO aplicada. NÃO publicar antes de aplicar.** Diferente
-  da 041, ela acrescenta colunas em tabelas que o código já lê e grava
-  (`sale_items.assistant_id` e `commission_entries.assistant_deduction`). O preview
-  da branch usa o banco de produção: publicado sem a 042, salvar comanda e abrir o
-  extrato falham nesse preview. Produção (`main`) não é afetada.
-- Sem teste em uso. Roteiro: regra de auxiliar de 10% sobre o valor do serviço,
-  saindo do profissional; comanda de R$ 600,00 a 50% no crédito com auxiliar →
-  profissional R$ 231,24, auxiliar R$ 60,00; trocar para "do salão" e recalcular →
-  profissional R$ 291,24.
+- Na branch `claude/fase-3-comissoes`, publicada, ainda sem PR. Typecheck, lint dos
+  arquivos alterados e testes passando (o exemplo de R$ 231,24 da auditoria é
+  teste); o build do preview da Vercel passou.
+- **Migration 042: aplicada em produção em 16/nov/2026**, conferida por leitura (as
+  duas colunas, a tabela com RLS e `deny_all`, sem acesso para
+  `anon`/`authenticated`, os dois CHECKs). **Falta o registro em
+  `schema_migrations`** (nome `commission_assistants`) — ver §8.
+- Em outro ambiente, **aplicar a 042 antes de publicar o código**: diferente da 041,
+  ela acrescenta colunas em tabelas que o código já lê e grava
+  (`sale_items.assistant_id` e `commission_entries.assistant_deduction`). Sem elas,
+  salvar comanda e abrir o extrato falham.
+
+Teste em uso (16/nov/2026, preview da branch, salão de teste, comanda #7):
+
+- Padrão do salão de 50% para um serviço e regra de auxiliar de 10% sobre o valor
+  do serviço, saindo do profissional. Comanda de R$ 600,00 no crédito (2,92%), com
+  auxiliar no item → profissional com R$ 300,00 de comissão, R$ 8,76 de taxa,
+  R$ 60,00 de auxiliar e **R$ 231,24 a receber**; auxiliar com **R$ 60,00**, sem
+  taxa. É o exemplo da auditoria, conferido na tela e no banco.
+- O resumo "Por profissional" apareceu (dois profissionais no período) com o valor
+  do item contado uma vez: R$ 600,00 e "1 item"; o auxiliar aparece como "0 + 1 como
+  auxiliar".
+- Trocar a regra para "Do salão" e recalcular o período → profissional de volta a
+  R$ 291,24, auxiliar ainda com R$ 60,00, e a coluna "Auxiliar" some do extrato.
+- Reabrir a comanda apagou as duas linhas (a do profissional e a do auxiliar); o
+  aviso de reabrir já fala das comissões.
+- Limpeza: comanda #7 excluída e as duas regras de teste removidas.
+
+Não testado em uso: exceção de quem auxilia (regra própria do profissional),
+percentual sobre a comissão do profissional, valor fixo, comissão do profissional
+que não cobre o auxiliar, auxiliar com regra de data própria, e a comanda vista por
+quem só auxiliou e não tem "Ver todas". Os cinco primeiros têm teste automático da
+regra pura; a visibilidade, não.
 
 ## 8. Pendências do dono
 
@@ -950,6 +972,6 @@ UPDATE salons
 | Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Registrar a migration 041 em `schema_migrations` com o nome `commissions` (ela já está aplicada) | Histórico de migrations fiel ao banco |
-| Aplicar e registrar a migration 042 (nome `commission_assistants`) | Publicação e teste em uso da fatia 3b |
+| Registrar a migration 042 em `schema_migrations` com o nome `commission_assistants` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar) | Fatias 3c em diante |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
