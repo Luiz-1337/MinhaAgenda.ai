@@ -2,8 +2,9 @@
 
 **Criado:** 15 de novembro de 2026
 **Origem:** "Auditoria Funcional — Belasis" (13/nov/2026, 80 itens, conta admin, somente leitura).
-**Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`), **migration 036
-ainda não aplicada** — ver §4.5. Fases 1 em diante: planejamento.
+**Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
+publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
+Fases 1 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -149,7 +150,7 @@ Telas:
 
 | Peça | Onde | Estado |
 |---|---|---|
-| Migration | `supabase/migrations/036_access_profiles.sql` | Escrita, **não aplicada** |
+| Migration | `supabase/migrations/036_access_profiles.sql` | Aplicada e registrada em produção (15/nov/2026) |
 | Tabela e colunas | `packages/db/src/schema.ts` (`accessProfiles`, `professionals.accessProfileId`, `customPermissions`) | Feito |
 | Catálogo e regra pura | `packages/db/src/domain/permissions.ts` | Feito, com testes |
 | Guard `can()` | `apps/web/lib/services/permissions.service.ts` | Feito |
@@ -157,10 +158,11 @@ Telas:
 | Actions | `apps/web/app/actions/access-profiles.ts` | Feito |
 | Tela | `apps/web/app/[salonId]/salon-settings/access-profiles/` | Feita, **não testada no navegador** (sem `.env` no checkout) |
 
-**Ordem de deploy — obrigatória.** A migration 036 tem que estar aplicada ANTES do
-código ir para produção: o `schema.ts` já declara as colunas novas de
-`professionals`, e toda consulta do Drizzle que lê a linha inteira passa a pedi-las.
-A migration é aditiva, então aplicá-la antes não afeta o código atual.
+**Ordem de deploy.** A migration 036 tinha que estar aplicada ANTES do código ir para
+produção — o `schema.ts` já declara as colunas novas de `professionals`, e toda
+consulta do Drizzle que lê a linha inteira passa a pedi-las. Isso já está cumprido:
+o código pode ser publicado. Conferido no banco após aplicar: 0 perfis, 0 de 28
+profissionais configurados, nenhum salão com módulo ligado.
 
 **Ligar o módulo num salão** (a tela só aparece onde estiver ligado):
 
