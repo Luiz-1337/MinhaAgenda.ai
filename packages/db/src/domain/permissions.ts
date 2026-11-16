@@ -40,7 +40,8 @@ export const PERMISSION_CATALOG = {
   // Comissões (fase 3). Sem `view_all` a pessoa vê só o próprio extrato.
   // `configure` = regras do salão, comissão por item e recalcular período.
   // `adjust` = lançar e excluir vales e bonificações.
-  commissions: ['access', 'view_all', 'configure', 'adjust'],
+  // `pay` = pagar comissões e estornar pagamentos.
+  commissions: ['access', 'view_all', 'configure', 'adjust', 'pay'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG

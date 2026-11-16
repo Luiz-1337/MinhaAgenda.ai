@@ -1,5 +1,5 @@
 /**
- * Tipos das telas de comissão (docs/ROADMAP.md, fase 3, fatias 3a a 3c).
+ * Tipos das telas de comissão (docs/ROADMAP.md, fase 3, fatias 3a a 3d).
  *
  * Atravessam a fronteira servidor → cliente: datas de calendário como
  * "YYYY-MM-DD", dinheiro como string de coluna numeric ou em centavos inteiros (o
@@ -13,8 +13,11 @@ import type {
   CommissionConfig,
   CommissionDateBasis,
   CommissionEntryRow,
+  CommissionOpenRow,
+  CommissionPaymentRow,
   CommissionProfessionalTotals,
   CommissionRateKind,
+  CommissionReceipt,
   CommissionShareMode,
   CommissionTotals,
 } from "@repo/db"
@@ -22,6 +25,18 @@ import type {
 export type CommissionEntryDTO = CommissionEntryRow
 export type CommissionConfigDTO = CommissionConfig
 export type CommissionAdjustmentDTO = CommissionAdjustmentRow
+export type CommissionOpenRowDTO = CommissionOpenRow
+export type CommissionPaymentDTO = CommissionPaymentRow
+export type CommissionReceiptDTO = CommissionReceipt
+
+/**
+ * De onde um pagamento (ou um vale) pode sair. Vazio quando o salão não usa o
+ * financeiro ou a pessoa não pode lançar nele — aí nada é registrado lá.
+ */
+export interface CommissionFinanceOptions {
+  accounts: { id: string; name: string }[]
+  categories: { id: string; name: string }[]
+}
 
 export interface CommissionStatementFilters {
   /** "YYYY-MM-DD". Ausentes = mês corrente em Brasília. */
@@ -53,10 +68,57 @@ export interface CommissionStatementDTO {
   professionals: { id: string; name: string }[]
   /** Hoje em Brasília ("YYYY-MM-DD") — data sugerida de um lançamento novo. */
   today: string
+  /** Contas para registrar a saída de um vale. */
+  finance: CommissionFinanceOptions
   /** Cortesias de tela — a trava é no servidor. */
   canViewAll: boolean
   canConfigure: boolean
   canAdjust: boolean
+  canPay: boolean
+}
+
+export interface CommissionPaymentsFilters {
+  /** "Em aberto até" ("YYYY-MM-DD"). Ausente = hoje em Brasília. */
+  until?: string
+  /** Período da lista de pagamentos, pelo dia do pagamento. Ausente = mês corrente. */
+  from?: string
+  to?: string
+}
+
+export interface CommissionPaymentsDTO {
+  until: string
+  from: string
+  to: string
+  /** Hoje em Brasília ("YYYY-MM-DD") — dia sugerido do pagamento. */
+  today: string
+  /** O que está em aberto até `until`, por profissional. */
+  open: CommissionOpenRowDTO[]
+  payments: CommissionPaymentDTO[]
+  paymentsTruncated: boolean
+  /** Soma do que foi pago no período da lista, em centavos. */
+  paidCents: number
+  finance: CommissionFinanceOptions
+  canPay: boolean
+  canViewAll: boolean
+}
+
+export interface PayCommissionsInput {
+  salonId: string
+  /** Quita tudo o que está em aberto até este dia. */
+  cutoffDate: string
+  /** Dia em que o dinheiro foi entregue. */
+  paidOn: string
+  notes?: string | null
+  /** Conta de saída. Ausente = não registrar no financeiro. */
+  accountId?: string | null
+  categoryId?: string | null
+  /** O líquido que a tela mostrou para cada um, em centavos. */
+  professionals: { professionalId: string; expectedCents: number }[]
+}
+
+export interface CommissionReceiptsDTO {
+  salonName: string
+  receipts: CommissionReceiptDTO[]
 }
 
 export interface CreateCommissionAdjustmentInput {
@@ -68,6 +130,9 @@ export interface CreateCommissionAdjustmentInput {
   /** "YYYY-MM-DD": o dia em que entra no extrato. */
   referenceDate: string
   notes?: string | null
+  /** Só em vale: a conta de onde o dinheiro saiu. Ausente = não registrar no financeiro. */
+  accountId?: string | null
+  categoryId?: string | null
 }
 
 export interface SaveCommissionSettingsInput {

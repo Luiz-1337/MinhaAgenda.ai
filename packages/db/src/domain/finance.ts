@@ -85,7 +85,7 @@ export type ManualTransactionDraft = {
 
 export type PlannedTransaction = {
   direction: 'in' | 'out'
-  kind: 'sale' | 'manual' | 'transfer'
+  kind: 'sale' | 'manual' | 'transfer' | 'commission'
   status: 'open' | 'paid'
   description: string
   amount: string
@@ -324,8 +324,15 @@ export function planTransfer(
 // Baixa, estorno e exclusão
 // ============================================================================
 
+/**
+ * Saída gerada por um pagamento de comissão ou por um vale (fase 3). É consequência
+ * do que foi feito em Comissões: quem a desfaz é o estorno do pagamento ou a
+ * exclusão do vale — nunca a tela do financeiro.
+ */
+const COMMISSION_BLOCKER = 'Lançamento de comissão não se altera aqui: estorne o pagamento ou exclua o vale em Comissões'
+
 export type TransactionState = {
-  kind: 'sale' | 'manual' | 'transfer'
+  kind: 'sale' | 'manual' | 'transfer' | 'commission'
   status: 'open' | 'paid'
   accountId: string | null
 }
@@ -358,6 +365,8 @@ export function planSettle(
 /** Estornar a baixa: volta a "a receber / a pagar". Devolve o motivo se não pode. */
 export function unsettleBlocker(transaction: TransactionState): string | null {
   if (transaction.status !== 'paid') return 'Este lançamento não está baixado'
+  // Comissão só existe paga (CHECK no banco): voltar para "a pagar" quebraria o vínculo.
+  if (transaction.kind === 'commission') return COMMISSION_BLOCKER
   // Transferência só existe paga: desfazer é excluir as duas pernas.
   if (transaction.kind === 'transfer') return 'Transferência não se estorna: exclua a transferência'
   return null
@@ -368,6 +377,7 @@ export function editBlocker(transaction: TransactionState): string | null {
   // Lançamento de comanda espelha a comanda; transferência são duas pernas que têm
   // que continuar iguais. Nenhum dos dois se edita por aqui.
   if (transaction.kind === 'sale') return 'Lançamento de comanda não se edita aqui: reabra a comanda'
+  if (transaction.kind === 'commission') return COMMISSION_BLOCKER
   if (transaction.kind === 'transfer') return 'Transferência não se edita: exclua e lance de novo'
   // Editar o valor de algo já baixado mudaria o saldo sem deixar rastro.
   if (transaction.status === 'paid') return 'Estorne a baixa antes de editar'
@@ -378,6 +388,7 @@ export function editBlocker(transaction: TransactionState): string | null {
 export function deleteBlocker(transaction: TransactionState): string | null {
   // O lançamento de venda é consequência da comanda: quem o desfaz é a reabertura.
   if (transaction.kind === 'sale') return 'Lançamento de comanda não se exclui aqui: reabra a comanda'
+  if (transaction.kind === 'commission') return COMMISSION_BLOCKER
   if (transaction.kind === 'manual' && transaction.status === 'paid') {
     return 'Estorne a baixa antes de excluir'
   }

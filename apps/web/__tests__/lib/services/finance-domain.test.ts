@@ -295,6 +295,16 @@ describe("baixa, estorno e exclusão", () => {
     expect(deleteBlocker(paid)).toContain("Estorne")
     expect(deleteBlocker(saleOpen)).toContain("reabra a comanda")
   })
+
+  it("saída de comissão não se edita, não se estorna e não se exclui pelo financeiro", () => {
+    // Nasce paga e com conta (pagamento de comissão ou vale): quem a desfaz é o
+    // estorno do pagamento ou a exclusão do vale, em Comissões.
+    const commission = { kind: "commission" as const, status: "paid" as const, accountId: "acc-banco" }
+
+    expect(editBlocker(commission)).toContain("Comissões")
+    expect(unsettleBlocker(commission)).toContain("Comissões")
+    expect(deleteBlocker(commission)).toContain("Comissões")
+  })
 })
 
 describe("planSaleTransactions — o que o faturamento gera", () => {

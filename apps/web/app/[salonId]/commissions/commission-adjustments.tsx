@@ -29,6 +29,9 @@ function formatDate(value: string): string {
  * Vale abate o que o profissional tem a receber; bonificação soma. Não há edição:
  * corrigir é excluir e lançar de novo, para o extrato nunca mudar sem deixar rastro
  * de quem lançou.
+ *
+ * Um vale pode registrar de qual conta o dinheiro saiu (fatia 3d): vira uma despesa
+ * paga no financeiro. Lançamento que já entrou num pagamento não se exclui.
  */
 export function CommissionAdjustments({
   salonId,
@@ -37,6 +40,7 @@ export function CommissionAdjustments({
   professionals,
   defaultProfessionalId,
   today,
+  accounts,
   canAdjust,
 }: {
   salonId: string
@@ -47,6 +51,8 @@ export function CommissionAdjustments({
   defaultProfessionalId: string | null
   /** Hoje em Brasília ("YYYY-MM-DD"), vindo do servidor. */
   today: string
+  /** Contas de onde um vale pode sair. Vazio = a pessoa não lança no financeiro. */
+  accounts: { id: string; name: string }[]
   canAdjust: boolean
 }) {
   const router = useRouter()
@@ -58,7 +64,11 @@ export function CommissionAdjustments({
   const [referenceDate, setReferenceDate] = useState(today)
   const [amount, setAmount] = useState("")
   const [notes, setNotes] = useState("")
+  const [accountId, setAccountId] = useState("")
   const [toDelete, setToDelete] = useState<CommissionAdjustmentDTO | null>(null)
+
+  // Só o vale tira dinheiro na hora; a bonificação sai junto com a comissão.
+  const offersAccount = kind === "advance" && accounts.length > 0
 
   function submit() {
     if (!professionalId) {
@@ -83,6 +93,7 @@ export function CommissionAdjustments({
         amount: value,
         referenceDate,
         notes: notes.trim() || null,
+        accountId: offersAccount && accountId ? accountId : null,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -209,11 +220,35 @@ export function CommissionAdjustments({
               className={inputClass}
             />
           </div>
-          <p className="md:col-span-9 text-xs text-muted-foreground">
+          {offersAccount && (
+            <div className="md:col-span-4 flex flex-col gap-1">
+              <label htmlFor="adjustment-account" className={labelClass}>
+                Saiu de qual conta? (opcional)
+              </label>
+              <select
+                id="adjustment-account"
+                value={accountId}
+                disabled={isPending}
+                onChange={(event) => setAccountId(event.target.value)}
+                className={inputClass}
+              >
+                <option value="">Não registrar no financeiro</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <p className={`${offersAccount ? "md:col-span-5" : "md:col-span-9"} text-xs text-muted-foreground`}>
             {kind === "advance"
-              ? "O vale abate o que o profissional tem a receber no período da data escolhida."
-              : "A bonificação soma ao que o profissional tem a receber no período da data escolhida."}{" "}
-            O lançamento não gera movimento no financeiro.
+              ? "O vale abate o que o profissional tem a receber a partir da data escolhida."
+              : "A bonificação soma ao que o profissional tem a receber e sai junto com o pagamento da comissão."}{" "}
+            {kind === "advance" &&
+              (offersAccount && accountId
+                ? "A saída entra como despesa paga no financeiro."
+                : "Sem conta, nada é lançado no financeiro.")}
           </p>
           <div className="md:col-span-3 flex justify-end">
             <Button onClick={submit} disabled={isPending}>
@@ -246,23 +281,36 @@ export function CommissionAdjustments({
                     {formatDate(adjustment.referenceDate)}
                   </td>
                   <td className="p-3 text-foreground">{adjustment.professionalName}</td>
-                  <td className="p-3 text-muted-foreground">{COMMISSION_ADJUSTMENT_KIND_LABELS[adjustment.kind]}</td>
+                  <td className="p-3 text-muted-foreground">
+                    {COMMISSION_ADJUSTMENT_KIND_LABELS[adjustment.kind]}
+                    {adjustment.accountName && (
+                      <span className="block text-[11px]">saiu de {adjustment.accountName}</span>
+                    )}
+                  </td>
                   <td className="p-3 text-muted-foreground">{adjustment.notes ?? "—"}</td>
                   <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground whitespace-nowrap">
                     {adjustment.kind === "advance" ? "− " : "+ "}
                     {formatBRL(adjustment.amount)}
+                    {adjustment.paidOn && (
+                      <span className="block font-sans text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        No pagamento de {formatDate(adjustment.paidOn)}
+                      </span>
+                    )}
                   </td>
                   {canAdjust && (
                     <td className="p-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setToDelete(adjustment)}
-                        disabled={isPending}
-                        className="p-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60"
-                        aria-label={`Excluir ${COMMISSION_ADJUSTMENT_KIND_LABELS[adjustment.kind].toLowerCase()} de ${adjustment.professionalName} em ${formatDate(adjustment.referenceDate)}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {/* O que já entrou num pagamento só sai estornando o pagamento. */}
+                      {!adjustment.paidOn && (
+                        <button
+                          type="button"
+                          onClick={() => setToDelete(adjustment)}
+                          disabled={isPending}
+                          className="p-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-60"
+                          aria-label={`Excluir ${COMMISSION_ADJUSTMENT_KIND_LABELS[adjustment.kind].toLowerCase()} de ${adjustment.professionalName} em ${formatDate(adjustment.referenceDate)}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -285,7 +333,7 @@ export function CommissionAdjustments({
         title="Excluir lançamento"
         description={
           toDelete
-            ? `${COMMISSION_ADJUSTMENT_KIND_LABELS[toDelete.kind]} de ${formatBRL(toDelete.amount)} de ${toDelete.professionalName} sai do extrato. Esta ação não pode ser desfeita.`
+            ? `${COMMISSION_ADJUSTMENT_KIND_LABELS[toDelete.kind]} de ${formatBRL(toDelete.amount)} de ${toDelete.professionalName} sai do extrato${toDelete.accountName ? `, e a despesa lançada em ${toDelete.accountName} sai do financeiro` : ""}. Esta ação não pode ser desfeita.`
             : ""
         }
         confirmText="Excluir"

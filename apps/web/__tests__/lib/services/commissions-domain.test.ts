@@ -1,15 +1,20 @@
 import { describe, it, expect } from "vitest"
 import {
   DEFAULT_COMMISSION_SETTINGS,
+  advancePaidDate,
+  commissionEntryKey,
   commissionNetCents,
   commissionTotals,
   parseCommissionRate,
   planAssistantRule,
   planCommissionAdjustment,
+  planCommissionPayment,
+  planCommissionPaymentBatch,
   planCommissionRule,
   planSaleCommissions,
   resolveCommissionRate,
   resolveCommissionSettings,
+  unpaidPlannedEntries,
   type CommissionAssistantRuleRow,
   type CommissionSaleInput,
 } from "@repo/db/src/domain/commissions"
@@ -616,5 +621,150 @@ describe("vales e bonificações", () => {
 
   it("vale maior que a comissão deixa o líquido negativo, não zero", () => {
     expect(commissionNetCents({ amountCents: 9708, advanceCents: 15000, bonusCents: 0 })).toBe(-5292)
+  })
+})
+
+// ============================================================================
+// Pagamento de comissão (fatia 3d)
+// ============================================================================
+
+describe("pagamento de comissão", () => {
+  // 16/nov/2026, 15h em Brasília.
+  const now = new Date("2026-11-16T18:00:00Z")
+
+  describe("o lote", () => {
+    const draft = { cutoffDate: "2026-11-30", paidOn: "2026-11-16", notes: "  quinzena  ", professionals: 2 }
+
+    it("aceita a data de corte, o dia do pagamento e apara a observação", () => {
+      expect(planCommissionPaymentBatch(draft, now)).toEqual({
+        ok: true,
+        cutoffDate: "2026-11-30",
+        paidOn: "2026-11-16",
+        notes: "quinzena",
+      })
+      expect(planCommissionPaymentBatch({ ...draft, notes: "   " }, now)).toMatchObject({ ok: true, notes: null })
+    })
+
+    it("o dia do pagamento não pode ser futuro: é quando o dinheiro FOI entregue", () => {
+      expect(planCommissionPaymentBatch({ ...draft, paidOn: "2026-11-17" }, now).ok).toBe(false)
+      // Ontem pode: pagamento registrado no dia seguinte.
+      expect(planCommissionPaymentBatch({ ...draft, paidOn: "2026-11-15" }, now).ok).toBe(true)
+    })
+
+    it("a data de corte pode ser futura: adiantar o que ainda vai liberar é escolha de quem paga", () => {
+      expect(planCommissionPaymentBatch({ ...draft, cutoffDate: "2026-12-31" }, now).ok).toBe(true)
+    })
+
+    it("datas inválidas, lote vazio, lote grande demais e observação longa são barrados", () => {
+      expect(planCommissionPaymentBatch({ ...draft, cutoffDate: "30/11/2026" }, now).ok).toBe(false)
+      expect(planCommissionPaymentBatch({ ...draft, paidOn: "2026-02-30" }, now).ok).toBe(false)
+      expect(planCommissionPaymentBatch({ ...draft, professionals: 0 }, now).ok).toBe(false)
+      expect(planCommissionPaymentBatch({ ...draft, professionals: 201 }, now).ok).toBe(false)
+      expect(planCommissionPaymentBatch({ ...draft, notes: "x".repeat(501) }, now).ok).toBe(false)
+    })
+  })
+
+  describe("quanto pagar a um profissional", () => {
+    const entries = [{ amount: "145.62" }, { amount: "97.08" }]
+
+    it("valor pago = comissões − vales + bonificações", () => {
+      const plan = planCommissionPayment({
+        entries,
+        adjustments: [
+          { kind: "advance", amount: "100.00" },
+          { kind: "bonus", amount: "50.00" },
+        ],
+      })
+
+      expect(plan).toEqual({
+        ok: true,
+        entriesAmount: "242.70",
+        advancesAmount: "100.00",
+        bonusesAmount: "50.00",
+        amount: "192.70",
+        amountCents: 19270,
+      })
+    })
+
+    it("só bonificação, sem comissão nenhuma, também se paga", () => {
+      const plan = planCommissionPayment({ entries: [], adjustments: [{ kind: "bonus", amount: "80.00" }] })
+      expect(plan).toMatchObject({ ok: true, entriesAmount: "0.00", amount: "80.00" })
+    })
+
+    it("nada em aberto não é pagamento", () => {
+      expect(planCommissionPayment({ entries: [], adjustments: [] }).ok).toBe(false)
+    })
+
+    it("vale maior que a comissão não se paga nem se quita: o saldo fica em aberto", () => {
+      const plan = planCommissionPayment({
+        entries: [{ amount: "97.08" }],
+        adjustments: [{ kind: "advance", amount: "300.00" }],
+      })
+      expect(plan.ok).toBe(false)
+    })
+
+    it("comissão e vale que se anulam quitam com valor zero, sem sair dinheiro", () => {
+      const plan = planCommissionPayment({
+        entries: [{ amount: "100.00" }],
+        adjustments: [{ kind: "advance", amount: "100.00" }],
+      })
+      expect(plan).toMatchObject({ ok: true, amount: "0.00", amountCents: 0 })
+    })
+
+    it("recusa quando a soma mudou desde que a tela foi aberta", () => {
+      // A tela mostrava R$ 242,70; alguém lançou um vale de R$ 50,00 nesse meio-tempo.
+      const plan = planCommissionPayment({
+        entries,
+        adjustments: [{ kind: "advance", amount: "50.00" }],
+        expectedCents: 24270,
+      })
+      expect(plan.ok).toBe(false)
+
+      expect(planCommissionPayment({ entries, adjustments: [], expectedCents: 24270 }).ok).toBe(true)
+    })
+
+    it("soma em centavos: 0,10 + 0,20 é 0,30, não 0,30000000000000004", () => {
+      const plan = planCommissionPayment({ entries: [{ amount: "0.10" }, { amount: "0.20" }], adjustments: [] })
+      expect(plan).toMatchObject({ ok: true, amount: "0.30", amountCents: 30 })
+    })
+  })
+
+  describe("comissão paga é fotografia", () => {
+    const planned = planSaleCommissions(sale())
+
+    it("a chave de uma linha é o item, a pessoa e o papel", () => {
+      expect(commissionEntryKey({ saleItemId: "item-1", professionalId: PRO, role: "professional" })).toBe(
+        "item-1|pro-1|professional"
+      )
+      expect(commissionEntryKey({ saleItemId: "item-1", professionalId: PRO, role: "assistant" })).not.toBe(
+        commissionEntryKey({ saleItemId: "item-1", professionalId: PRO, role: "professional" })
+      )
+    })
+
+    it("o recálculo regrava só o que está em aberto", () => {
+      expect(planned).toHaveLength(1)
+      expect(unpaidPlannedEntries(planned, new Set())).toEqual(planned)
+
+      const paid = new Set([commissionEntryKey(planned[0])])
+      expect(unpaidPlannedEntries(planned, paid)).toEqual([])
+    })
+
+    it("pagar o profissional não congela a linha do auxiliar do mesmo item", () => {
+      const paid = new Set([commissionEntryKey({ saleItemId: "item-1", professionalId: PRO, role: "professional" })])
+      const assistantLine = { ...planned[0], professionalId: "aux-1", role: "assistant" as const }
+
+      expect(unpaidPlannedEntries([planned[0], assistantLine], paid)).toEqual([assistantLine])
+    })
+  })
+
+  describe("o dia em que o dinheiro do vale saiu", () => {
+    it("data de hoje ou passada vale como está", () => {
+      expect(advancePaidDate("2026-11-16", now)).toBe("2026-11-16")
+      expect(advancePaidDate("2026-11-10", now)).toBe("2026-11-10")
+    })
+
+    it("vale para descontar no mês que vem: o dinheiro saiu hoje, não na data do extrato", () => {
+      expect(advancePaidDate("2026-12-05", now)).toBe("2026-11-16")
+    })
   })
 })

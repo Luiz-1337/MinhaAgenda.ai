@@ -61,12 +61,50 @@ export const createCommissionAdjustmentSchema = z.object({
   amount: z.number().finite().positive("Informe um valor maior que zero").max(1_000_000, "Valor inválido"),
   referenceDate: calendarDate,
   notes: z.string().max(500, "Observação muito longa").nullish(),
+  accountId: z.string().uuid().nullish(),
+  categoryId: z.string().uuid().nullish(),
 })
 
 export const deleteCommissionAdjustmentSchema = z.object({
   salonId: z.string().uuid(),
   adjustmentId: z.string().uuid(),
 })
+
+export const commissionPaymentsFiltersSchema = z.object({
+  until: calendarDate.optional(),
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+})
+
+export const payCommissionsSchema = z.object({
+  salonId: z.string().uuid(),
+  cutoffDate: calendarDate,
+  paidOn: calendarDate,
+  notes: z.string().max(500, "Observação muito longa").nullish(),
+  accountId: z.string().uuid().nullish(),
+  categoryId: z.string().uuid().nullish(),
+  professionals: z
+    .array(
+      z.object({
+        professionalId: z.string().uuid(),
+        expectedCents: z.number().int().min(0).max(100_000_000_00),
+      })
+    )
+    .min(1, "Escolha ao menos um profissional")
+    .max(200, "Pague no máximo 200 profissionais por vez"),
+})
+
+export const undoCommissionPaymentSchema = z.object({
+  salonId: z.string().uuid(),
+  paymentId: z.string().uuid(),
+})
+
+export const commissionReceiptsSchema = z
+  .object({
+    paymentId: z.string().uuid().optional(),
+    batchId: z.string().uuid().optional(),
+  })
+  .refine((value) => !!value.paymentId !== !!value.batchId, "Informe o pagamento ou o lote")
 
 export const recalculateCommissionsSchema = z.object({
   salonId: z.string().uuid(),

@@ -28,7 +28,7 @@ import {
 import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
-import { syncSaleCommissions } from "./commissions.service"
+import { saleHasPaidCommissions, syncSaleCommissions } from "./commissions.service"
 import { isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 
@@ -607,6 +607,12 @@ export async function reopenSaleService(input: {
       const sale = await lockSale(tx, input.salonId, input.saleId)
       if (!sale) fail("Comanda não encontrada")
       if (sale.status !== "invoiced") fail("Só uma comanda faturada pode ser reaberta")
+
+      // Comissão paga trava a reabertura, com o módulo ligado ou não: reabrir
+      // deixaria o profissional com um recibo de um item que não existe mais.
+      if (await saleHasPaidCommissions(tx, { salonId: input.salonId, saleId: sale.id })) {
+        fail("A comissão desta comanda já foi paga. Estorne o pagamento em Comissões antes de reabrir")
+      }
 
       const now = new Date()
 

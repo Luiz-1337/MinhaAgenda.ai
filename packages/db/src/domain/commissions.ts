@@ -631,6 +631,149 @@ export function commissionNetCents(input: { amountCents: number; advanceCents: n
 }
 
 // ============================================================================
+// Pagamento de comissão (fatia 3d)
+// ============================================================================
+
+/** O mesmo item, a mesma pessoa, o mesmo papel: a identidade de uma linha do extrato. */
+export function commissionEntryKey(entry: {
+  saleItemId: string
+  professionalId: string
+  role: CommissionRole
+}): string {
+  return `${entry.saleItemId}|${entry.professionalId}|${entry.role}`
+}
+
+/**
+ * Das linhas recalculadas de uma comanda, só as que ainda NÃO foram pagas.
+ *
+ * Comissão paga é fotografia: o recibo já foi assinado por aquele valor. Regra
+ * nova, taxa nova ou débito recebido depois não mexem nela — para mudar, estorna-se
+ * o pagamento primeiro.
+ */
+export function unpaidPlannedEntries(
+  planned: readonly PlannedCommissionEntry[],
+  paidKeys: ReadonlySet<string>
+): PlannedCommissionEntry[] {
+  return planned.filter((entry) => !paidKeys.has(commissionEntryKey(entry)))
+}
+
+const MAX_PAYMENT_NOTES = 500
+/** Profissionais num mesmo lote. */
+export const MAX_PAYMENT_BATCH = 200
+
+export type CommissionPaymentBatchPlan =
+  | { ok: true; cutoffDate: string; paidOn: string; notes: string | null }
+  | { ok: false; error: string }
+
+/**
+ * Valida o que é comum ao lote: até quando quitar, o dia do pagamento e a observação.
+ *
+ * O dia do pagamento não pode ser futuro — é o dia em que o dinheiro FOI entregue.
+ * A data de corte pode: é escolha de quem paga adiantar o que ainda vai liberar.
+ */
+export function planCommissionPaymentBatch(
+  draft: { cutoffDate: unknown; paidOn: unknown; notes?: unknown; professionals: number },
+  now: Date
+): CommissionPaymentBatchPlan {
+  if (!isCalendarDate(draft.cutoffDate)) return { ok: false, error: 'Informe até que dia pagar' }
+  if (!isCalendarDate(draft.paidOn)) return { ok: false, error: 'Informe o dia do pagamento' }
+  if (draft.paidOn > brazilToday(now)) return { ok: false, error: 'O pagamento não pode ter data futura' }
+
+  if (!Number.isInteger(draft.professionals) || draft.professionals < 1) {
+    return { ok: false, error: 'Escolha ao menos um profissional' }
+  }
+  if (draft.professionals > MAX_PAYMENT_BATCH) {
+    return { ok: false, error: `Pague no máximo ${MAX_PAYMENT_BATCH} profissionais por vez` }
+  }
+
+  const notes = typeof draft.notes === 'string' ? draft.notes.trim() : ''
+  if (notes.length > MAX_PAYMENT_NOTES) {
+    return { ok: false, error: `A observação aceita no máximo ${MAX_PAYMENT_NOTES} caracteres` }
+  }
+
+  return { ok: true, cutoffDate: draft.cutoffDate, paidOn: draft.paidOn, notes: notes || null }
+}
+
+export type CommissionPaymentPlan =
+  | {
+      ok: true
+      entriesAmount: string
+      advancesAmount: string
+      bonusesAmount: string
+      amount: string
+      amountCents: number
+    }
+  | { ok: false; error: string }
+
+/**
+ * Quanto pagar a UM profissional: tudo o que está em aberto, de uma vez.
+ *
+ *   valor pago = comissões − vales + bonificações
+ *
+ *   - Nada em aberto não é pagamento.
+ *   - Líquido NEGATIVO não se paga nem se quita: o profissional está devendo, e o
+ *     que está em aberto continua em aberto até um pagamento futuro cobrir.
+ *   - Líquido ZERO quita (comissão e vale se anulam) sem sair dinheiro.
+ *   - `expectedCents` é o líquido que a tela mostrou. Se outro lançamento entrou
+ *     nesse meio-tempo, o pagamento é recusado em vez de sair por um valor que
+ *     ninguém conferiu.
+ */
+export function planCommissionPayment(input: {
+  entries: readonly { amount: string | number }[]
+  adjustments: readonly { kind: CommissionAdjustmentKind; amount: string | number }[]
+  expectedCents?: number | null
+}): CommissionPaymentPlan {
+  if (input.entries.length === 0 && input.adjustments.length === 0) {
+    return { ok: false, error: 'Nada em aberto para pagar' }
+  }
+
+  let entriesCents = 0
+  for (const entry of input.entries) entriesCents += toCents(entry.amount) ?? 0
+
+  let advanceCents = 0
+  let bonusCents = 0
+  for (const adjustment of input.adjustments) {
+    const cents = toCents(adjustment.amount) ?? 0
+    if (adjustment.kind === 'advance') advanceCents += cents
+    else bonusCents += cents
+  }
+
+  const netCents = commissionNetCents({ amountCents: entriesCents, advanceCents, bonusCents })
+
+  if (typeof input.expectedCents === 'number' && input.expectedCents !== netCents) {
+    return { ok: false, error: 'Os valores mudaram desde que a tela foi aberta. Atualize e confira de novo' }
+  }
+
+  if (netCents < 0) {
+    return {
+      ok: false,
+      error: 'Os vales passam do que há a receber: o saldo fica em aberto para o próximo pagamento',
+    }
+  }
+
+  return {
+    ok: true,
+    entriesAmount: centsToNumeric(entriesCents),
+    advancesAmount: centsToNumeric(advanceCents),
+    bonusesAmount: centsToNumeric(bonusCents),
+    amount: centsToNumeric(netCents),
+    amountCents: netCents,
+  }
+}
+
+/**
+ * O dia em que o dinheiro de um vale saiu, para o financeiro.
+ *
+ * A data do vale é o dia em que ele entra no EXTRATO, e pode ser futura (vale dado
+ * hoje para descontar no mês que vem). O dinheiro, porém, saiu no máximo hoje: data
+ * passada ou de hoje vale como está, data futura vira hoje.
+ */
+export function advancePaidDate(referenceDate: string, now: Date): string {
+  const today = brazilToday(now)
+  return referenceDate <= today ? referenceDate : today
+}
+
+// ============================================================================
 // Totais do extrato
 // ============================================================================
 

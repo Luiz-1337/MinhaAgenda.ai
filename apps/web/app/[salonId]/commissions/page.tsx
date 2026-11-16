@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Percent, Settings2, ShieldOff } from "lucide-react"
+import { HandCoins, Percent, Settings2, ShieldOff } from "lucide-react"
 import { centsToNumeric } from "@repo/db"
 import { getCommissionStatement } from "@/app/actions/commissions"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -83,15 +83,24 @@ export default async function CommissionsPage({
             </p>
           </div>
         </div>
-        {statement.canConfigure && (
+        <div className="flex items-center gap-2">
           <Link
-            href={`/${salonId}/commissions/settings`}
+            href={`/${salonId}/commissions/payments`}
             className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-muted/70 border border-border text-foreground rounded-lg text-sm font-semibold transition-colors"
           >
-            <Settings2 size={16} />
-            Configurar
+            <HandCoins size={16} />
+            Pagamentos
           </Link>
-        )}
+          {statement.canConfigure && (
+            <Link
+              href={`/${salonId}/commissions/settings`}
+              className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-muted/70 border border-border text-foreground rounded-lg text-sm font-semibold transition-colors"
+            >
+              <Settings2 size={16} />
+              Configurar
+            </Link>
+          )}
+        </div>
       </div>
 
       <CommissionFilters
@@ -214,6 +223,7 @@ export default async function CommissionsPage({
           professionals={statement.professionals}
           defaultProfessionalId={statement.professionalId}
           today={statement.today}
+          accounts={statement.finance.accounts}
           canAdjust={statement.canAdjust}
         />
       )}
@@ -280,7 +290,14 @@ export default async function CommissionsPage({
                         {Number(entry.assistantDeduction) > 0 ? formatBRL(entry.assistantDeduction) : "—"}
                       </td>
                     )}
-                    <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">{formatBRL(entry.amount)}</td>
+                    <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground whitespace-nowrap">
+                      {formatBRL(entry.amount)}
+                      {entry.paidOn && (
+                        <span className="block font-sans text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          Paga em {formatDate(entry.paidOn)}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

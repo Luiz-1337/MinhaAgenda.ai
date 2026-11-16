@@ -1077,7 +1077,7 @@ export const salePayments = pgTable(
 // passa por domain/finance.ts, em centavos inteiros.
 
 export type FinancialDirection = 'in' | 'out'
-export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer'
+export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer' | 'commission'
 export type FinancialTransactionStatus = 'open' | 'paid'
 
 export const financialTransactions = pgTable(
@@ -1087,7 +1087,8 @@ export const financialTransactions = pgTable(
     salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     direction: text('direction').$type<FinancialDirection>().notNull(),
     // sale = gerada pelo faturamento de uma comanda · manual = lançada na tela ·
-    // transfer = uma das duas pernas de uma transferência entre contas
+    // transfer = uma das duas pernas de uma transferência entre contas ·
+    // commission = saída gerada por um pagamento de comissão ou por um vale
     kind: text('kind').$type<FinancialTransactionKind>().notNull(),
     // open = a receber / a pagar · paid = baixada (paid_at preenchido — CHECK no banco)
     status: text('status').$type<FinancialTransactionStatus>().default('open').notNull(),
@@ -1113,6 +1114,13 @@ export const financialTransactions = pgTable(
     salePaymentId: uuid('sale_payment_id').references(() => salePayments.id, { onDelete: 'cascade' }),
     // As duas pernas de uma transferência compartilham este id.
     transferGroup: uuid('transfer_group'),
+    // Saída de comissão (migration 044): exatamente um dos dois quando kind é
+    // 'commission' (CHECK no banco). CASCADE de propósito: estornar o pagamento ou
+    // excluir o vale apaga a despesa que ele gerou.
+    commissionPaymentId: uuid('commission_payment_id').references(() => commissionPayments.id, { onDelete: 'cascade' }),
+    commissionAdjustmentId: uuid('commission_adjustment_id').references(() => commissionAdjustments.id, {
+      onDelete: 'cascade'
+    }),
     notes: text('notes'),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1124,7 +1132,13 @@ export const financialTransactions = pgTable(
     index('financial_transactions_account_paid_idx').on(table.accountId).where(sql`status = 'paid' AND account_id IS NOT NULL`),
     index('financial_transactions_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
     uniqueIndex('financial_transactions_sale_payment_unique').on(table.salePaymentId).where(sql`sale_payment_id IS NOT NULL`),
-    index('financial_transactions_transfer_idx').on(table.transferGroup).where(sql`transfer_group IS NOT NULL`)
+    index('financial_transactions_transfer_idx').on(table.transferGroup).where(sql`transfer_group IS NOT NULL`),
+    uniqueIndex('financial_transactions_commission_payment_unique')
+      .on(table.commissionPaymentId)
+      .where(sql`commission_payment_id IS NOT NULL`),
+    uniqueIndex('financial_transactions_commission_adjustment_unique')
+      .on(table.commissionAdjustmentId)
+      .where(sql`commission_adjustment_id IS NOT NULL`)
   ]
 )
 
@@ -1295,6 +1309,36 @@ export const commissionAssistantRules = pgTable(
   ]
 )
 
+// Pagamento de comissão (migration 044): um por profissional; os feitos juntos
+// compartilham `batchId`. Quita tudo o que estava em aberto até `cutoffDate`.
+export const commissionPayments = pgTable(
+  'commission_payments',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    batchId: uuid('batch_id').notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    cutoffDate: date('cutoff_date').notNull(),
+    // Fotografia do que foi quitado: o recibo não muda se algo for recalculado.
+    entriesAmount: numeric('entries_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    advancesAmount: numeric('advances_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    bonusesAmount: numeric('bonuses_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // entriesAmount − advancesAmount + bonusesAmount (CHECK no banco). Pode ser zero.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    paidOn: date('paid_on').notNull(),
+    // NULL = pago sem registrar no financeiro.
+    accountId: uuid('account_id').references(() => financialAccounts.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('commission_payments_salon_paid_idx').on(table.salonId, table.paidOn.desc()),
+    index('commission_payments_professional_idx').on(table.professionalId, table.paidOn.desc()),
+    index('commission_payments_batch_idx').on(table.batchId)
+  ]
+)
+
 export const commissionEntries = pgTable(
   'commission_entries',
   {
@@ -1321,12 +1365,19 @@ export const commissionEntries = pgTable(
     competenceDate: date('competence_date').notNull(),
     // NULL = aguardando o cliente pagar (regra "disponibilidade" com valor em aberto).
     releaseDate: date('release_date'),
+    // O pagamento que quitou esta comissão (migration 044). NULL = em aberto.
+    // Comissão paga não é recalculada nem apagada.
+    paymentId: uuid('payment_id').references(() => commissionPayments.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
     uniqueIndex('commission_entries_item_unique').on(table.saleItemId, table.professionalId, table.role),
     index('commission_entries_statement_idx').on(table.salonId, table.professionalId, table.releaseDate),
-    index('commission_entries_sale_idx').on(table.saleId)
+    index('commission_entries_sale_idx').on(table.saleId),
+    index('commission_entries_payment_idx').on(table.paymentId).where(sql`payment_id IS NOT NULL`),
+    index('commission_entries_open_idx')
+      .on(table.salonId, table.professionalId, table.releaseDate)
+      .where(sql`payment_id IS NULL`)
   ]
 )
 
@@ -1344,11 +1395,17 @@ export const commissionAdjustments = pgTable(
     // Dia em que entra no extrato (calendário de Brasília).
     referenceDate: date('reference_date').notNull(),
     notes: text('notes'),
+    // O pagamento em que este lançamento entrou (migration 044). NULL = em aberto.
+    paymentId: uuid('payment_id').references(() => commissionPayments.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
-    index('commission_adjustments_statement_idx').on(table.salonId, table.professionalId, table.referenceDate)
+    index('commission_adjustments_statement_idx').on(table.salonId, table.professionalId, table.referenceDate),
+    index('commission_adjustments_payment_idx').on(table.paymentId).where(sql`payment_id IS NOT NULL`),
+    index('commission_adjustments_open_idx')
+      .on(table.salonId, table.professionalId, table.referenceDate)
+      .where(sql`payment_id IS NULL`)
   ]
 )
 
