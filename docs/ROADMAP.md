@@ -10,9 +10,9 @@ branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
 testadas em uso num salão — ver §6.7 e §6.8. A fatia 2f (débito de cliente) está
 feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para depois o
 crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e #16).
-Fase 3 (comissões): fatia 3a escrita na branch `claude/fase-3-comissoes`, com a
-**migration 041 não aplicada** e sem teste em uso — ver §7. Fases 4 em diante:
-planejamento.
+Fase 3 (comissões): fatia 3a feita na branch `claude/fase-3-comissoes` (publicada,
+sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §7.7.
+Fases 4 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -712,7 +712,7 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 
 | Fatia | Entrega | Estado |
 |---|---|---|
-| 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita em código — **migration 041 não aplicada**, sem teste em uso |
+| 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita — migration 041 aplicada e testada em uso em 16/nov/2026 (§7.7) |
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Pendente |
 | 3c | Vales e bonificações do profissional | Pendente |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro | Pendente |
@@ -822,13 +822,43 @@ não depende de `finance`.
 
 ### 7.7 Estado da implementação (16/nov/2026)
 
-- Fatia 3a escrita na branch `claude/fase-3-comissoes` (sai de
-  `claude/fase-2-financeiro`). Typecheck, lint dos arquivos novos e testes passando.
-- **Migration 041: escrita, NÃO aplicada.** Ela só cria tabelas novas, então não há
-  ordem obrigatória entre aplicar e publicar: com o módulo `commissions` desligado,
-  nenhuma tabela de comissão é tocada. Com o módulo ligado e sem a 041, faturar e
-  reabrir comanda falham — **aplicar a 041 antes de ligar o módulo**.
-- Sem teste em uso.
+- Fatia 3a na branch `claude/fase-3-comissoes` (sai de `claude/fase-2-financeiro`),
+  publicada, ainda sem PR. Typecheck, lint dos arquivos novos e testes passando; o
+  build do preview da Vercel passou.
+- **Migration 041: aplicada em produção em 16/nov/2026**, conferida por leitura (três
+  tabelas com RLS, política `deny_all`, sem acesso para `anon`/`authenticated`).
+  **Falta o registro em `schema_migrations`** (nome `commissions`) — ver §8.
+  Ela só cria tabelas novas: com o módulo `commissions` desligado, nenhuma tabela de
+  comissão é tocada. Com o módulo ligado e sem a 041, faturar e reabrir comanda
+  falham — em outro ambiente, **aplicar a 041 antes de ligar o módulo**.
+- Módulo `commissions` ligado só no salão de teste (o mesmo da §6.8).
+
+Teste em uso (16/nov/2026, preview da branch, salão de teste, comanda #6):
+
+- Padrão do salão de 50% para um serviço; comanda de R$ 200,00 faturada no crédito
+  (taxa de 2,92%, 30 dias) → extrato com R$ 200,00 de base, R$ 100,00 de comissão,
+  R$ 2,92 de taxa e **R$ 97,08 a receber**, na data da comanda. É o exemplo da
+  auditoria, agora conferido na tela e no banco.
+- Trocar a regra do salão para "disponibilidade" **não mexeu** na comissão já
+  gravada (regra 8). Depois de "Recalcular período", ela saiu de novembro e foi para
+  16/dez/2026, o dia em que o crédito cai (regra 4).
+- Exceção do profissional para o mesmo serviço, R$ 30,00 fixos, venceu o padrão do
+  salão (regra 10): R$ 30,00 de comissão, R$ 0,88 de taxa, R$ 29,12 a receber. A
+  tela da exceção mostra "Padrão do salão: 50%" no item sem valor.
+- Reabrir a comanda apagou a comissão dela (regra 13).
+- Limpeza: comanda #6 excluída, as duas regras de teste removidas, regras do salão de
+  volta ao padrão (ficou a linha do salão em `commission_settings`, com os valores
+  padrão).
+
+Não testado em uso: resumo "Por profissional" (só aparece com mais de um
+profissional no período), aviso de comissão sem data (fiado sob "disponibilidade"),
+receber débito recalculando a comissão, os modos de taxa e de desconto fora do
+padrão, comissão de produto e a restrição de quem não tem "Ver de todos". Os modos
+de taxa e de desconto e a data de liberação têm teste automático da regra pura; o
+caminho deles pelo banco e pela tela, não.
+
+Achado do teste, não corrigido: o aviso de "Reabrir comanda" fala dos pagamentos e
+dos agendamentos, mas não diz que as comissões da comanda são apagadas.
 
 Ligar o módulo num salão (depois da 041 aplicada e do código publicado):
 
@@ -854,6 +884,6 @@ UPDATE salons
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
 | Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
-| Aplicar e registrar a migration 041 (nome `commissions`) e ligar o módulo `commissions` no salão de teste | Teste em uso da fatia 3a |
+| Registrar a migration 041 em `schema_migrations` com o nome `commissions` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga) | Fatias 3b em diante |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
