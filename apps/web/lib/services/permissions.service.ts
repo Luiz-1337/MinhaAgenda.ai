@@ -1,5 +1,14 @@
 import { cache } from "react"
-import { db, salons, professionals, eq, and } from "@repo/db"
+import {
+  db,
+  salons,
+  professionals,
+  accessProfiles,
+  eq,
+  and,
+  resolvePermissions,
+  type PermissionKey,
+} from "@repo/db"
 
 /**
  * Nível de acesso de um usuário a um salão.
@@ -95,3 +104,80 @@ export const canReadCrm = async (
   salonId: string,
   userId: string
 ): Promise<boolean> => (await getSalonAccess(salonId, userId)) !== 'none'
+
+// ============================================================================
+// Permissão por recurso × ação (docs/ROADMAP.md, fase 0)
+// ============================================================================
+
+/**
+ * Permissões efetivas do usuário no salão — o conjunto de chaves `recurso.acao`.
+ *
+ * A regra (dono, OWNER, personalizado, perfil, papel) é `resolvePermissions`, em
+ * `@repo/db`, pura e testada sem banco. Aqui só mora o I/O.
+ *
+ * Memoizada por request, como `getSalonAccess`: várias checagens `can()` na mesma
+ * action custam uma ida ao banco.
+ *
+ * Convive com `getSalonAccess`/`hasSalonPermission`, não os substitui: os
+ * chamadores antigos continuam no nível grosso (manage/read/none) e migram para
+ * `can()` quando a área for tocada. Módulo NOVO usa só `can()`.
+ */
+export const getSalonPermissions = cache(
+  async (salonId: string, userId: string): Promise<ReadonlySet<PermissionKey>> => {
+    if (!salonId || !userId) return new Set()
+
+    const salon = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { id: true, ownerId: true }
+    })
+
+    if (!salon) return new Set()
+    if (salon.ownerId === userId) return resolvePermissions(true, [])
+
+    // O join exige o MESMO salão no perfil. A FK não garante isso (um
+    // access_profile_id de outro salão é fisicamente gravável), então sem esta
+    // condição um perfil alheio daria permissão aqui.
+    const rows = await db
+      .select({
+        role: professionals.role,
+        isActive: professionals.isActive,
+        customPermissions: professionals.customPermissions,
+        accessProfileId: professionals.accessProfileId,
+        profilePermissions: accessProfiles.permissions,
+      })
+      .from(professionals)
+      .leftJoin(
+        accessProfiles,
+        and(
+          eq(accessProfiles.id, professionals.accessProfileId),
+          eq(accessProfiles.salonId, professionals.salonId)
+        )
+      )
+      .where(and(eq(professionals.salonId, salonId), eq(professionals.userId, userId)))
+
+    return resolvePermissions(
+      false,
+      rows.map((row) => ({
+        role: row.role,
+        isActive: row.isActive,
+        customPermissions: row.customPermissions,
+        // Perfil vinculado mas não encontrado pelo join (de outro salão) vale como
+        // perfil VAZIO, não como "sem perfil" — senão cairia no papel, e um MANAGER
+        // com vínculo quebrado voltaria a poder tudo.
+        profilePermissions: row.accessProfileId ? (row.profilePermissions ?? []) : null,
+      }))
+    )
+  }
+)
+
+/**
+ * O usuário pode fazer `recurso.acao` neste salão?
+ *
+ * Use no SERVIDOR, no começo da action/service. Esconder o botão na tela é
+ * cortesia; a trava é esta.
+ */
+export const can = async (
+  salonId: string,
+  userId: string,
+  permission: PermissionKey
+): Promise<boolean> => (await getSalonPermissions(salonId, userId)).has(permission)

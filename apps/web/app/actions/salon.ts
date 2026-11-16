@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { type CreateSalonSchema, type UpdateSalonSchema } from "@/lib/schemas"
 import type { ActionResult } from "@/lib/types/common"
-import { db, salons, professionals, profiles, eq, asc, or, and } from "@repo/db"
+import { db, salons, professionals, profiles, eq, asc, or, and, parseSalonModules } from "@repo/db"
 import type { SalonListItem } from "@/lib/types/salon"
 import { hasSalonPermission } from "@/lib/services/permissions.service"
 import { createSalonWithOwner } from "@/lib/services/salon.service"
@@ -52,7 +52,8 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
       ownerId: salons.ownerId,
       subscriptionStatus: salons.subscriptionStatus,
       subscriptionStatusChangedAt: salons.subscriptionStatusChangedAt,
-      professionalRole: professionals.role
+      professionalRole: professionals.role,
+      settings: salons.settings
     })
     .from(salons)
     .innerJoin(profiles, eq(profiles.id, salons.ownerId))
@@ -78,6 +79,8 @@ export async function getUserSalons(): Promise<SalonListItem[]> {
     planTier: s.tier as 'SOLO' | 'PRO' | 'ENTERPRISE',
     subscriptionStatus: s.subscriptionStatus as 'ACTIVE' | 'PAID' | 'PAST_DUE' | 'CANCELED' | 'TRIAL',
     subscriptionStatusChangedAt: s.subscriptionStatusChangedAt,
+    // Só a lista de módulos ligados vai para o cliente — nunca o settings inteiro.
+    modules: parseSalonModules(s.settings),
     // Prioridade: Se é dono -> MANAGER, senão usa a role do profissional (se for OWNER vira MANAGER), senão STAFF
     role: (s.ownerId === userId || s.professionalRole === 'OWNER' || s.professionalRole === 'MANAGER') ? 'MANAGER' : 'STAFF'
   }))

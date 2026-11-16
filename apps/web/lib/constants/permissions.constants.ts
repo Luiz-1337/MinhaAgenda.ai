@@ -1,0 +1,43 @@
+/**
+ * Rótulos em português do catálogo de permissões.
+ *
+ * O catálogo em si (quais recursos e ações existem) é de `@repo/db`
+ * (domain/permissions.ts). Aqui fica só o texto de tela. Os `Record` são tipados
+ * pelo catálogo: adicionar um recurso ou uma ação lá sem rótulo aqui não compila.
+ *
+ * Import pelo caminho do arquivo (e não pelo barrel `@repo/db`) porque este módulo
+ * é usado em componente client — o barrel arrasta o cliente Postgres.
+ */
+import { PERMISSION_CATALOG, type PermissionResource } from "@repo/db/src/domain/permissions"
+
+type PermissionAction = (typeof PERMISSION_CATALOG)[PermissionResource][number]
+
+export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
+  schedule: "Agenda",
+  customers: "Clientes",
+  services: "Serviços",
+  products: "Produtos",
+  team: "Equipe",
+  chat: "Conversas",
+  marketing: "Marketing",
+  reports: "Relatórios",
+  settings: "Configurações",
+  access_profiles: "Perfis de acesso",
+}
+
+export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
+  access: "Acessar",
+  create: "Criar",
+  edit: "Editar",
+  delete: "Excluir",
+  view_all: "Ver de todos",
+  view_phones: "Ver telefones",
+  notes: "Anotações",
+  manage: "Gerenciar",
+}
+
+/** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */
+export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, string>> = {
+  schedule: "“Ver de todos” libera a agenda dos outros profissionais.",
+  access_profiles: "Quem gerencia perfis define o que os outros podem.",
+}

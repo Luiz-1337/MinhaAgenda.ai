@@ -91,6 +91,7 @@ export { AppointmentRepository } from './infrastructure/repositories/appointment
 
 // Re-export domain
 export * from './domain/constants'
+export * from './domain/permissions'
 export * from './domain/errors/domain-error'
 export * from './domain/errors/integration-error'
 // appointment-status.enum removido: declarava um AppointmentStatus paralelo, com

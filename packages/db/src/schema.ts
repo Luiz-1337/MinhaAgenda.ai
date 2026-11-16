@@ -212,6 +212,25 @@ export const products = pgTable(
   ]
 )
 
+// Perfil de acesso reutilizável (migration 036). `permissions` é um array de
+// chaves do catálogo em domain/permissions.ts — ler SEMPRE por
+// sanitizePermissionKeys, nunca confiar no formato cru do jsonb.
+export const accessProfiles = pgTable(
+  'access_profiles',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    permissions: jsonb('permissions').default(sql`'[]'::jsonb`).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    // Único por salão sem diferenciar maiúsculas — índice de expressão da migration 036.
+    uniqueIndex('access_profiles_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)
+  ]
+)
+
 export const professionals = pgTable(
   'professionals',
   {
@@ -230,13 +249,18 @@ export const professionals = pgTable(
     commissionRate: numeric('commission_rate', { precision: 5, scale: 2 }).default('0').notNull(),
     serviceIds: jsonb('service_ids'), // IDs dos serviços que o profissional executa
     googleCalendarId: text('google_calendar_id'), // ID do calendário secundário no Google Calendar
+    // Permissões (migration 036). As duas NULL = segue o papel, como sempre foi.
+    // customPermissions preenchido = "Personalizado", com prioridade sobre o perfil.
+    accessProfileId: uuid('access_profile_id').references(() => accessProfiles.id, { onDelete: 'set null' }),
+    customPermissions: jsonb('custom_permissions'),
     isActive: boolean('is_active').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
     index('professionals_salon_idx').on(table.salonId),
     index('professionals_user_idx').on(table.userId),
-    index('professionals_person_key_idx').on(table.personKey)
+    index('professionals_person_key_idx').on(table.personKey),
+    index('professionals_access_profile_idx').on(table.accessProfileId).where(sql`access_profile_id IS NOT NULL`)
   ]
 )
 

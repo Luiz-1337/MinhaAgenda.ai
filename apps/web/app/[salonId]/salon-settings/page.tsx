@@ -7,7 +7,7 @@ import { AIResumePolicyCard } from "@/components/dashboard/ai-resume-policy-card
 import { getCurrentSalon } from "@/app/actions/salon"
 import { useSalon } from "@/contexts/salon-context"
 import type { SalonDetails } from "@/app/actions/salon"
-import { Store, Save, ArrowLeft, Loader2 } from "lucide-react"
+import { Store, Save, ArrowLeft, ArrowRight, Loader2, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 
 export default function SalonSettingsPage() {
@@ -166,6 +166,29 @@ export default function SalonSettingsPage() {
             </div>
           ) : salonData && activeSalon ? (
             <div className="space-y-6">
+              {/* Só aparece no salão com o módulo ligado (piloto). A trava real é
+                  no servidor: a página e as actions conferem módulo e permissão. */}
+              {activeSalon.modules.includes("access_profiles") && (
+                <Link
+                  href={`/${activeSalon.id}/salon-settings/access-profiles`}
+                  className="block bg-card border border-border rounded-md p-6 hover:border-accent/30 transition-all group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-md bg-accent/10 text-accent group-hover:bg-accent/20 transition-colors">
+                        <ShieldCheck size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground">Perfis de acesso</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Defina o que cada pessoa da equipe pode ver e fazer
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight size={18} className="text-muted-foreground group-hover:text-accent transition-colors" />
+                  </div>
+                </Link>
+              )}
               <SalonEditForm
                 ref={formRef}
                 salon={salonData}
