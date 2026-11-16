@@ -21,7 +21,9 @@ uso — ver §7.10. As migrations 040 a 044 estão registradas em `schema_migrat
 Da fase 3 falta só a fatia 3e, que depende do estoque (fase 4).
 Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
 (publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026 e
-testada em uso — ver §8.7.
+testada em uso — ver §8.7. Fatia 4b (fornecedores, marcas, categorias e compras)
+feita em código na mesma branch — **a migration 046 ainda não foi aplicada e o
+código não foi publicado** — ver §8.8.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1175,7 +1177,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita — migration 045 aplicada, testada em uso em 16/nov/2026 (§8.7) |
-| 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Pendente |
+| 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita em código — **migration 046 não aplicada, sem publicar e sem teste em uso** (§8.8) |
 | 4c | Lotes e validades | Pendente |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"); com isso, a fatia 3e (custo adicional e consumo abatendo a comissão) | Pendente |
 | 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
@@ -1185,7 +1187,9 @@ O cadastro de produto que já existe (nome, descrição, preço, ativo) continua
 está e continua valendo para todo salão. O estoque é um módulo à parte, ligado
 salão a salão.
 
-### 8.2 Modelo de dados (migration `045_inventory.sql`)
+### 8.2 Modelo de dados (migrations 045 e 046)
+
+**045 (`045_inventory.sql`, fatia 4a):**
 
 - `products` ganha `track_stock` (o salão controla este produto?), `min_stock`,
   `cost_price`, `sku` e `barcode`. Todas com padrão ou nulas: o cadastro antigo e o
@@ -1195,6 +1199,22 @@ salão a salão.
   (na entrada), observação, quem lançou e, na venda, a comanda e o item.
 - **O saldo não é gravado**: é a soma de `stock_movements.quantity` do produto, como
   o saldo das contas do financeiro. Não há número para sair de sincronia.
+
+**046 (`046_purchases.sql`, fatia 4b):**
+
+- `suppliers` — fornecedores: nome (único no salão, sem diferenciar maiúsculas),
+  documento (CPF ou CNPJ, sem pontuação), telefone, e-mail, observações, ativo.
+- `product_brands` e `product_categories` — nome único no salão. `products` ganha
+  `brand_id` e `category_id` (FK `SET NULL`: apagar a marca não apaga produto).
+- `purchases` — a compra: fornecedor (opcional), data, número da nota, observações,
+  `items_amount`, `freight_amount`, `discount_amount` e `total_amount`, com CHECK
+  `total = itens + frete − desconto`.
+- `purchase_items` — produto, cópia do nome (`description`), quantidade, custo
+  unitário, total e `previous_cost` (o custo que o produto tinha antes).
+- `stock_movements` ganha `kind = 'purchase'`, `purchase_id` e `purchase_item_id`
+  (FK `CASCADE`, um movimento por item).
+- `financial_transactions` ganha `kind = 'purchase'` e `purchase_id` (FK `CASCADE`,
+  índice NÃO único: uma compra pode ter várias parcelas).
 
 ### 8.3 Regras de negócio
 
@@ -1215,7 +1235,7 @@ forem feitas". A baixa na venda foi **inferida** por ela (fluxo 3). Decidido aqu
 5. **Acerto de inventário recebe o que foi CONTADO** e grava a diferença. Contar o
    que o sistema já mostra não é movimento.
 6. **Entrada com custo atualiza o custo de compra do produto** (último preço pago).
-   Custo médio fica para a fatia 4b, junto com as compras.
+   A compra (fatia 4b) segue a mesma regra. Custo médio continua como pergunta.
 7. **"Abaixo do mínimo" é abaixo**: ter exatamente o mínimo ainda não pede compra.
    Zerado e negativo sempre pedem.
 8. **Sugestão de compra = mínimo − saldo**, só para produto controlado e com
@@ -1227,6 +1247,42 @@ forem feitas". A baixa na venda foi **inferida** por ela (fluxo 3). Decidido aqu
 11. **Quantidade com três casas**, como no item da comanda: produto fracionado (ml,
     g) cabe sem mudar o tipo depois.
 
+Compras (fatia 4b). A auditoria só lista as telas (Compras, Fornecedores, Marcas,
+Categorias) e o passo "Entrada por Compra" do fluxo 3; o que segue foi decidido
+aqui, **a confirmar com o dono**:
+
+12. **A compra não tem rascunho nem edição.** Lançou, valeu. Para corrigir,
+    exclui-se e lança-se de novo.
+13. **Total = itens + frete − desconto.** É o que se paga ao fornecedor e o que vai
+    para o financeiro. O desconto pode zerar a compra, não passar dela.
+14. **Só produto com controle ligado dá entrada no estoque.** Produto sem controle
+    entra na compra e tem o custo atualizado, mas não gera movimento (regra 1).
+15. **O custo do produto passa a ser o custo unitário da compra** (último preço
+    pago). Com o mesmo produto em dois itens, vale o último. Item a custo zero
+    (bonificação) não muda o custo. Frete e desconto NÃO são rateados no custo.
+16. **Fornecedor é opcional** na compra. A data não pode ser futura.
+17. **O financeiro é uma escolha de quem lança**, e só aparece com o módulo
+    `finance` ligado e a permissão `finance.create`:
+    - "Fica a pagar": de 1 a 24 parcelas mensais a partir do primeiro vencimento
+      (que não pode ser antes da compra). A soma das parcelas é exatamente o total;
+      os centavos que sobram vão para a última. A conta é opcional.
+    - "Já foi paga": uma despesa baixada no dia da compra; a conta é obrigatória.
+    - "Não lançar": a compra só mexe no estoque.
+18. **A competência de todas as parcelas é o dia da compra**: a despesa é do mês em
+    que se comprou.
+19. **Parcela de compra recebe baixa e estorno no Financeiro**, como qualquer
+    despesa. Editar e excluir por lá, não: quem a desfaz é a exclusão da compra.
+20. **Excluir a compra** desfaz a entrada no estoque e apaga as parcelas abertas.
+    **Com parcela paga, não exclui**: estorna-se a baixa antes.
+21. **Excluir a compra devolve o custo do produto** ao que era antes dela — só se o
+    custo atual ainda for o desta compra. Se já mudou depois, fica.
+22. **Fornecedor com compra não se exclui: desativa-se.** Marca e categoria podem
+    ser excluídas a qualquer momento; os produtos ficam, sem elas.
+23. **Documento do fornecedor sem conferência de dígito verificador.** Aceita CPF
+    (11 dígitos) e CNPJ (14 caracteres, letras incluídas — CNPJ alfanumérico).
+24. **Produto com venda ou compra não se apaga** (o banco recusa). A tela de
+    Produtos passou a dizer isso, em vez de "Falha ao excluir produto".
+
 Perguntas para o dono:
 
 - Vender sem saldo deve ser barrado, só avisar na comanda, ou seguir como está
@@ -1236,6 +1292,12 @@ Perguntas para o dono:
   estoque no próprio cadastro, ou basta a tela de Estoque?
 - A sugestão de compra deve repor até o mínimo (regra 8) ou até um "estoque ideal"
   separado?
+- A compra deve poder ser editada depois de lançada (regra 12), ou excluir e
+  lançar de novo basta?
+- Frete e desconto da nota devem entrar no custo do produto (rateio), ou o custo é
+  só o preço unitário (regra 15)?
+- Fornecedores devem ter permissão própria, separada do estoque, como na Belasis
+  (§8.4)? E devem aparecer nas despesas do Financeiro ("pago para fornecedor")?
 
 ### 8.4 Permissões e módulo
 
@@ -1246,7 +1308,13 @@ Módulo novo: `inventory` (ligado por salão). A baixa pela comanda depende de
 |---|---|
 | `inventory.access` | Ver o estoque e as movimentações |
 | `inventory.move` | Lançar entrada, saída e acerto de inventário |
-| `inventory.manage` | Ligar o controle do produto, estoque mínimo, custo e códigos |
+| `inventory.manage` | Ligar o controle do produto, estoque mínimo, custo e códigos; marca e categoria do produto; cadastro de fornecedores, marcas e categorias |
+| `inventory.purchase` | Lançar e excluir compras |
+
+Ver compras, fornecedores, marcas e categorias é `inventory.access`. A Belasis tem
+"Compras" e "Fornecedores" como recursos separados, cada um com Acessar, Criar,
+Editar e Excluir; aqui ficaram dentro de Estoque (decisão a confirmar). Gerar conta
+a pagar a partir da compra exige também `finance.create`.
 
 Para ligar no salão de teste:
 
@@ -1268,7 +1336,23 @@ UPDATE salons
   dia), com os filtros "Todos", "Para comprar" e "Sem controle"; "Movimentar"
   (entrada, saída, acerto) e "Configurar" por produto; e a movimentação recente,
   com filtro por produto e o link da comanda nas vendas.
-- **Comanda**: nada muda na tela. Faturar baixa, reabrir devolve.
+- **Comanda**: nada muda na tela. Faturar baixa, reabrir devolve (o aviso de
+  reabrir diz isso quando o módulo está ligado).
+- As telas do estoque têm uma barra em comum: Produtos e saldo · Compras ·
+  Fornecedores · Marcas e categorias.
+- **Compras** (`/[salonId]/inventory/purchases`): lista por período com data,
+  fornecedor, nota, itens, total e a situação no financeiro (fora do financeiro, a
+  pagar, paga em parte, paga); cada linha abre os itens; excluir.
+- **Nova compra** (`/[salonId]/inventory/purchases/new`): fornecedor, data, nota,
+  itens (produto, quantidade, custo unitário — vem preenchido com o último custo),
+  frete, desconto, total e a escolha do financeiro.
+- **Fornecedores** (`/[salonId]/inventory/suppliers`): cadastro, edição, desativar
+  e excluir (só sem compra).
+- **Marcas e categorias** (`/[salonId]/inventory/catalog`): as duas listas, com o
+  número de produtos de cada uma. A marca e a categoria do produto se escolhem em
+  Produtos e saldo > Configurar.
+- **Financeiro**: a parcela de compra aparece como despesa; aceita baixa e estorno,
+  não tem editar nem excluir.
 
 ### 8.6 Onde o código mora
 
@@ -1280,6 +1364,12 @@ UPDATE salons
 | Actions | `apps/web/app/actions/inventory.ts` |
 | Telas | `apps/web/app/[salonId]/inventory/` |
 | Testes | `apps/web/__tests__/lib/services/inventory-domain.test.ts` |
+| Compras — regra pura | `packages/db/src/domain/purchases.ts` (`planSupplier`, `planCatalogName`, `planPurchase`, `planPurchasePayables`, `splitInstallments`, `purchasePaymentStatus`, `purchaseDeleteBlocker`, `planCostRestore`) |
+| Compras — I/O | `packages/db/src/services/purchases.service.ts` |
+| Compras — parcela no financeiro | `PURCHASE_BLOCKER` em `packages/db/src/domain/finance.ts` (`editBlocker`, `deleteBlocker`) |
+| Compras — actions | `apps/web/app/actions/purchases.ts` |
+| Compras — telas | `apps/web/app/[salonId]/inventory/{purchases,suppliers,catalog}/`; peças comuns em `inventory-ui.tsx` |
+| Compras — testes | `apps/web/__tests__/lib/services/purchases-domain.test.ts` |
 
 ### 8.7 Fatia 4a — estado (16/nov/2026)
 
@@ -1330,6 +1420,41 @@ UPDATE salons
   Shampoo" (controle ligado, mínimo 5, custo R$ 20,00, saldo zero) e "Teste Pente"
   no salão de teste.
 
+### 8.8 Fatia 4b — estado (16/nov/2026)
+
+- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
+  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
+- **Migration 046: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
+  publicado: acrescenta colunas em `products`, `stock_movements` e
+  `financial_transactions`, e o INSERT do Drizzle lista todas as colunas. Com o
+  código novo e sem a 046, cadastrar produto, faturar comanda (com financeiro ou
+  estoque ligado) e lançar no financeiro falhariam em qualquer salão. Por isso o
+  código não foi publicado: o preview usa o banco de produção.
+- Antes de aplicar: cópia de segurança das tabelas tocadas que têm dados
+  (`products`, `stock_movements`, `financial_transactions`) no schema `backups`,
+  como manda o `docs/DATABASE.md`.
+- **Sem teste em uso.** Roteiro, depois de aplicar a 046 e publicar, no salão de
+  teste:
+  1. Marcas e categorias: criar uma marca e uma categoria; nome repetido é
+     recusado; em Produtos e saldo > Configurar, pôr as duas no Teste Shampoo → a
+     lista mostra "marca · categoria" e a contagem vira 1.
+  2. Fornecedores: cadastrar um com CNPJ; nome repetido é recusado; editar;
+     desativar → some da nova compra; reativar.
+  3. Compra a pagar: 10 Teste Shampoo a R$ 22,00 + 3 Teste Pente a R$ 4,00, frete
+     R$ 10,00, desconto R$ 2,00 → total R$ 240,00; "Fica a pagar" em 3 parcelas →
+     saldo do Shampoo sobe 10 com movimento "Compra", custo vira R$ 22,00, o Pente
+     não gera movimento mas o custo vira R$ 4,00; no Financeiro, 3 despesas de
+     R$ 80,00 "A pagar", sem editar nem excluir.
+  4. Dar baixa em uma parcela no Financeiro → a compra mostra "Paga 1 de 3" e
+     excluir a compra é recusado; estornar a baixa → excluir funciona: o saldo
+     volta, as parcelas somem e o custo do Shampoo volta a R$ 20,00.
+  5. Compra "Já foi paga" numa conta → despesa paga na data da compra; a compra
+     mostra "Paga".
+  6. Compra "Não lançar no financeiro" → "Fora do financeiro".
+  7. Fornecedor com compra não tem excluir; excluir produto com compra dá a
+     mensagem "Desative em vez de excluir".
+  Depois, limpar os dados de teste.
+
 ## 9. Pendências do dono
 
 | Pendência | Trava |
@@ -1343,6 +1468,7 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal) | Fatia 4b |
+| Aplicar a migration 046 (ou autorizar a aplicação) e publicar a fatia 4b — ver §8.8 | Teste em uso da fatia 4b |
+| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores) | Ajustes na fase 4 antes do piloto |
 | Dizer quando a cópia `backups.products_pre_045_20261116` pode ser apagada | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
