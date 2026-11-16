@@ -52,6 +52,8 @@ export type SaleItemDraft = {
   serviceId?: string | null
   productId?: string | null
   professionalId?: string | null
+  /** Quem auxiliou no serviço (fase 3, fatia 3b). Só em item de serviço. */
+  assistantId?: string | null
   quantity: number
   /** NULL = preço ainda não informado. Aceito enquanto aberta; barra o faturamento. */
   unitPrice: number | null
@@ -74,6 +76,7 @@ export type PlannedSaleItem = {
   productId: string | null
   description: string
   professionalId: string | null
+  assistantId: string | null
   quantity: string
   unitPrice: string | null
   discountAmount: string
@@ -143,6 +146,20 @@ export function planSaleItems(
       return { ok: false, error: `${label}: informe o profissional que executou o serviço` }
     }
 
+    // Auxiliar: opcional, só em serviço, do salão e diferente de quem executou.
+    const assistantId = draft.assistantId || null
+    if (assistantId) {
+      if (draft.kind !== 'service') {
+        return { ok: false, error: `${label}: só serviço pode ter auxiliar` }
+      }
+      if (!catalog.professionalIds.has(assistantId)) {
+        return { ok: false, error: `${label}: auxiliar não encontrado` }
+      }
+      if (assistantId === professionalId) {
+        return { ok: false, error: `${label}: o auxiliar não pode ser o próprio profissional` }
+      }
+    }
+
     if (!Number.isFinite(draft.quantity) || draft.quantity <= 0 || draft.quantity > MAX_QUANTITY) {
       return { ok: false, error: `${label}: quantidade inválida` }
     }
@@ -195,6 +212,7 @@ export function planSaleItems(
       productId,
       description,
       professionalId,
+      assistantId,
       quantity: milliToNumeric(quantityMilli),
       unitPrice: unitCents === null ? null : centsToNumeric(unitCents),
       discountAmount: centsToNumeric(itemDiscountCents),

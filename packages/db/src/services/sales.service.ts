@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, gte, inArray, lte, ne, or, sql } from "drizzle-orm"
+import { alias } from "drizzle-orm/pg-core"
 
 import {
   db,
@@ -30,6 +31,9 @@ import { recordSaleCashMovements } from "./cash.service"
 import { syncSaleCommissions } from "./commissions.service"
 import { isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
+
+/** `professionals` uma segunda vez, para o nome de quem auxiliou no item. */
+const assistants = alias(professionals, "assistants")
 
 /**
  * Comandas (docs/ROADMAP.md, fase 1).
@@ -98,7 +102,8 @@ async function loadCatalog(
 ): Promise<SaleCatalog> {
   const serviceIds = unique(drafts.map((d) => d.serviceId))
   const productIds = unique(drafts.map((d) => d.productId))
-  const professionalIds = unique(drafts.map((d) => d.professionalId))
+  // Quem executou e quem auxiliou: os dois têm de ser profissionais deste salão.
+  const professionalIds = unique(drafts.flatMap((d) => [d.professionalId, d.assistantId]))
   const appointmentIds = unique(drafts.map((d) => d.appointmentId))
 
   const [serviceRows, productRows, professionalRows, appointmentRows] = await Promise.all([
@@ -784,6 +789,8 @@ export type SaleDetail = {
     description: string
     professionalId: string | null
     professionalName: string | null
+    assistantId: string | null
+    assistantName: string | null
     quantity: string
     unitPrice: string | null
     discountAmount: string
@@ -840,6 +847,8 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         description: saleItems.description,
         professionalId: saleItems.professionalId,
         professionalName: professionals.name,
+        assistantId: saleItems.assistantId,
+        assistantName: assistants.name,
         quantity: saleItems.quantity,
         unitPrice: saleItems.unitPrice,
         discountAmount: saleItems.discountAmount,
@@ -848,6 +857,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
       })
       .from(saleItems)
       .leftJoin(professionals, eq(professionals.id, saleItems.professionalId))
+      .leftJoin(assistants, eq(assistants.id, saleItems.assistantId))
       .where(and(eq(saleItems.saleId, saleId), eq(saleItems.salonId, salonId)))
       .orderBy(saleItems.position),
     db
@@ -936,7 +946,8 @@ export type ListSalesFilters = {
   onlyWithDebt?: boolean
   /**
    * Quem não tem `sales.view_all` vê só as próprias: as que criou e as que têm
-   * item de um vínculo de profissional dele neste salão.
+   * item de um vínculo de profissional dele neste salão — como quem executou ou
+   * como auxiliar.
    */
   visibleTo?: { userId: string; professionalIds: string[] }
   limit: number
@@ -973,7 +984,14 @@ export async function listSalesService(
                 .select({ saleId: saleItems.saleId })
                 .from(saleItems)
                 .where(
-                  and(eq(saleItems.salonId, filters.salonId), inArray(saleItems.professionalId, professionalIds))
+                  and(
+                    eq(saleItems.salonId, filters.salonId),
+                    // Quem auxiliou também vê a comanda: a comissão dele sai dela.
+                    or(
+                      inArray(saleItems.professionalId, professionalIds),
+                      inArray(saleItems.assistantId, professionalIds)
+                    )
+                  )
                 )
             )
           )!

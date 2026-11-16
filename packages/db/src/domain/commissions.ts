@@ -14,7 +14,14 @@
  * DINHEIRO EM CENTAVOS INTEIROS e percentual em centésimos de ponto (50% = 5000),
  * pelo mesmo motivo de domain/sales.ts.
  */
-import type { CommissionDateBasis, CommissionRateKind, CommissionShareMode } from '../schema'
+import type {
+  CommissionAssistantBase,
+  CommissionAssistantDeduct,
+  CommissionDateBasis,
+  CommissionRateKind,
+  CommissionRole,
+  CommissionShareMode,
+} from '../schema'
 import { brazilToday } from './finance'
 import { centsToNumeric, toCents } from './sales'
 
@@ -185,6 +192,78 @@ export function planCommissionRule(draft: { kind: unknown; value: unknown }): Co
 }
 
 // ============================================================================
+// Comissão como auxiliar (fatia 3b)
+// ============================================================================
+
+export const COMMISSION_ASSISTANT_BASES: readonly CommissionAssistantBase[] = ['gross', 'commission']
+export const COMMISSION_ASSISTANT_DEDUCTS: readonly CommissionAssistantDeduct[] = ['professional', 'salon']
+
+/** Linha de `commission_assistant_rules`. */
+export type CommissionAssistantRuleRow = {
+  /** NULL = padrão do salão para o serviço. */
+  professionalId: string | null
+  serviceId: string
+  kind: CommissionRateKind
+  value: string | number
+  base: unknown
+  deductFrom: unknown
+}
+
+/** Regra de auxiliar já validada. */
+export type CommissionAssistantRule = {
+  rate: CommissionRate
+  base: CommissionAssistantBase
+  deductFrom: CommissionAssistantDeduct
+}
+
+function isAssistantBase(value: unknown): value is CommissionAssistantBase {
+  return typeof value === 'string' && (COMMISSION_ASSISTANT_BASES as readonly string[]).includes(value)
+}
+
+function isAssistantDeduct(value: unknown): value is CommissionAssistantDeduct {
+  return typeof value === 'string' && (COMMISSION_ASSISTANT_DEDUCTS as readonly string[]).includes(value)
+}
+
+function parseAssistantRule(rule: CommissionAssistantRuleRow | null | undefined): CommissionAssistantRule | null {
+  if (!rule) return null
+  const rate = parseCommissionRate(rule)
+  if (!rate || !isAssistantBase(rule.base) || !isAssistantDeduct(rule.deductFrom)) return null
+  return { rate, base: rule.base, deductFrom: rule.deductFrom }
+}
+
+/**
+ * Qual regra vale para quem auxiliou: a dele para aquele serviço → o padrão do
+ * salão para o serviço → nenhuma. Não há "percentual geral de auxiliar": sem regra,
+ * o auxiliar aparece no extrato com zero.
+ */
+export function resolveAssistantRule(input: {
+  assistantRule?: CommissionAssistantRuleRow | null
+  salonRule?: CommissionAssistantRuleRow | null
+}): CommissionAssistantRule | null {
+  return parseAssistantRule(input.assistantRule) ?? parseAssistantRule(input.salonRule)
+}
+
+export type CommissionAssistantRulePlan =
+  | { ok: true; kind: CommissionRateKind; value: string; base: CommissionAssistantBase; deductFrom: CommissionAssistantDeduct }
+  | { ok: false; error: string }
+
+/** Valida uma regra de auxiliar vinda do formulário e devolve o que gravar. */
+export function planAssistantRule(draft: {
+  kind: unknown
+  value: unknown
+  base: unknown
+  deductFrom: unknown
+}): CommissionAssistantRulePlan {
+  const rate = planCommissionRule(draft)
+  if (!rate.ok) return rate
+  if (!isAssistantDeduct(draft.deductFrom)) return { ok: false, error: 'Informe de quem sai a comissão do auxiliar' }
+  // Valor fixo não incide sobre nada: a base gravada é sempre a padrão.
+  if (rate.kind === 'fixed') return { ...rate, base: 'gross', deductFrom: draft.deductFrom }
+  if (!isAssistantBase(draft.base)) return { ok: false, error: 'Informe sobre o que incide a comissão do auxiliar' }
+  return { ...rate, base: draft.base, deductFrom: draft.deductFrom }
+}
+
+// ============================================================================
 // O cálculo
 // ============================================================================
 
@@ -193,6 +272,8 @@ export type CommissionSaleItem = {
   serviceId: string | null
   productId: string | null
   professionalId: string | null
+  /** Quem auxiliou (só em serviço). */
+  assistantId?: string | null
   /** numeric(10,3) do banco. */
   quantity: string | number
   discountAmount: string | number
@@ -218,20 +299,24 @@ export type CommissionSaleInput = {
   /** Todos os pagamentos gravados da comanda. */
   payments: readonly { feeAmount: string | number; settlesOn: string }[]
   salonSettings: CommissionSettingsRow | null
-  /** Profissionais DESTE salão que aparecem nos itens. */
+  /** Profissionais DESTE salão que aparecem nos itens — quem executou e quem auxiliou. */
   professionals: ReadonlyMap<string, { commissionRate: string | number | null; settings: CommissionSettingsRow | null }>
   rules: readonly CommissionRuleRow[]
+  assistantRules?: readonly CommissionAssistantRuleRow[]
 }
 
 export type PlannedCommissionEntry = {
   saleItemId: string
+  /** Quem recebe: o profissional, ou o auxiliar quando `role` é 'assistant'. */
   professionalId: string
-  role: 'professional'
+  role: CommissionRole
   baseAmount: string
   rateKind: CommissionRateKind
   rateValue: string
   grossAmount: string
   feeAmount: string
+  /** Quanto da comissão do profissional foi para o auxiliar. Zero na linha do auxiliar. */
+  assistantDeduction: string
   amount: string
   competenceDate: string
   releaseDate: string | null
@@ -340,6 +425,17 @@ function feeShare(input: {
  *   - 'competence': no dia da comanda (calendário de Brasília);
  *   - 'availability': quando o salão recebe — o último dia de recebimento entre os
  *     pagamentos. Enquanto houver valor em aberto (fiado), fica sem data.
+ *
+ * Auxiliar (fatia 3b): o serviço com auxiliar ganha uma segunda linha, a dele. A
+ * regra diz quanto (percentual sobre o valor do serviço ou sobre a comissão do
+ * profissional, ou valor fixo por unidade) e de quem sai. Saindo do profissional, é
+ * o "desconto de auxiliar" da Belasis, conferido na auditoria: R$ 600, 50%, taxa
+ * R$ 8,76, auxiliar R$ 60 → R$ 231,24.
+ *   - O auxiliar não paga taxa: a do profissional já é calculada sobre a comissão
+ *     inteira, antes do desconto.
+ *   - O auxiliar recebe o valor da regra mesmo que a comissão do profissional não
+ *     cubra: o profissional vai a zero e a diferença fica por conta do salão.
+ *   - A data segue a regra de QUEM RECEBE (o auxiliar pode ter exceção própria).
  */
 export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissionEntry[] {
   const saleTotalCents = toCents(input.sale.total) ?? 0
@@ -356,6 +452,18 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
   for (const rule of input.rules) {
     rules.set(ruleKey(rule.professionalId, rule.serviceId, rule.productId), rule)
   }
+
+  const assistantRules = new Map<string, CommissionAssistantRuleRow>()
+  for (const rule of input.assistantRules ?? []) {
+    assistantRules.set(`${rule.professionalId ?? '*'}|${rule.serviceId}`, rule)
+  }
+
+  const releaseDateFor = (settings: CommissionSettings): string | null =>
+    settings.dateBasis === 'competence'
+      ? competenceDate
+      : amountDueCents > 0
+        ? null
+        : (lastSettlement ?? competenceDate)
 
   const entries: PlannedCommissionEntry[] = []
 
@@ -376,12 +484,14 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
 
     const totalCents = Math.max(0, toCents(item.total) ?? 0)
     const discountCents = Math.max(0, toCents(item.discountAmount) ?? 0)
-    const quantity = Number(item.quantity)
+    const rawQuantity = Number(item.quantity)
+    const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0 ? rawQuantity : 0
+    const grossCents = totalCents + discountCents
 
     const { baseCents, commissionCents } = grossCommission({
       rate,
-      quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
-      grossCents: totalCents + discountCents,
+      quantity,
+      grossCents,
       discountCents,
       totalCents,
       discountMode: settings.discountMode,
@@ -395,12 +505,47 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
       commissionCents,
     })
 
-    const releaseDate =
-      settings.dateBasis === 'competence'
-        ? competenceDate
-        : amountDueCents > 0
-          ? null
-          : (lastSettlement ?? competenceDate)
+    // Auxiliar: só em serviço, só quem é do salão e nunca o próprio profissional.
+    const assistantId =
+      item.serviceId && item.assistantId && item.assistantId !== item.professionalId ? item.assistantId : null
+    const assistant = assistantId ? input.professionals.get(assistantId) : undefined
+
+    let assistantEntry: PlannedCommissionEntry | null = null
+    let deductionCents = 0
+
+    if (assistantId && assistant && item.serviceId) {
+      const rule = resolveAssistantRule({
+        assistantRule: assistantRules.get(`${assistantId}|${item.serviceId}`),
+        salonRule: assistantRules.get(`*|${item.serviceId}`),
+      })
+
+      // Sem regra o auxiliar entra com zero: a linha mostra que ele participou.
+      const assistantRate: CommissionRate = rule?.rate ?? { kind: 'percent', basisPoints: 0 }
+      const assistantBaseCents = rule?.base === 'commission' ? commissionCents : grossCents
+      const assistantCents =
+        assistantRate.kind === 'percent'
+          ? Math.round((assistantBaseCents * assistantRate.basisPoints) / 10_000)
+          : Math.round(assistantRate.cents * quantity)
+
+      if (rule?.deductFrom === 'professional') {
+        // O desconto nunca deixa a comissão do profissional negativa.
+        deductionCents = Math.min(assistantCents, commissionCents - feeCents)
+      }
+
+      assistantEntry = {
+        saleItemId: item.id,
+        professionalId: assistantId,
+        role: 'assistant',
+        baseAmount: centsToNumeric(assistantBaseCents),
+        ...commissionRateToColumns(assistantRate),
+        grossAmount: centsToNumeric(assistantCents),
+        feeAmount: centsToNumeric(0),
+        assistantDeduction: centsToNumeric(0),
+        amount: centsToNumeric(assistantCents),
+        competenceDate,
+        releaseDate: releaseDateFor(resolveCommissionSettings(input.salonSettings, assistant.settings)),
+      }
+    }
 
     entries.push({
       saleItemId: item.id,
@@ -410,10 +555,13 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
       ...commissionRateToColumns(rate),
       grossAmount: centsToNumeric(commissionCents),
       feeAmount: centsToNumeric(feeCents),
-      amount: centsToNumeric(commissionCents - feeCents),
+      assistantDeduction: centsToNumeric(deductionCents),
+      amount: centsToNumeric(commissionCents - feeCents - deductionCents),
       competenceDate,
-      releaseDate,
+      releaseDate: releaseDateFor(settings),
     })
+
+    if (assistantEntry) entries.push(assistantEntry)
   }
 
   return entries
@@ -429,7 +577,9 @@ export type CommissionTotals = {
   /** Comissões antes da taxa. */
   grossCents: number
   feeCents: number
-  /** O que há a receber. */
+  /** Quanto das comissões foi para auxiliares ("desconto de auxiliar"). */
+  assistantCents: number
+  /** O que há a receber: comissões − taxas − desconto de auxiliar. */
   amountCents: number
   count: number
 }
@@ -439,15 +589,24 @@ export function commissionTotals(
     baseAmount: string | number
     grossAmount: string | number
     feeAmount: string | number
+    assistantDeduction?: string | number
     amount: string | number
   }[]
 ): CommissionTotals {
-  const totals: CommissionTotals = { baseCents: 0, grossCents: 0, feeCents: 0, amountCents: 0, count: 0 }
+  const totals: CommissionTotals = {
+    baseCents: 0,
+    grossCents: 0,
+    feeCents: 0,
+    assistantCents: 0,
+    amountCents: 0,
+    count: 0,
+  }
 
   for (const row of rows) {
     totals.baseCents += toCents(row.baseAmount) ?? 0
     totals.grossCents += toCents(row.grossAmount) ?? 0
     totals.feeCents += toCents(row.feeAmount) ?? 0
+    totals.assistantCents += toCents(row.assistantDeduction ?? 0) ?? 0
     totals.amountCents += toCents(row.amount) ?? 0
     totals.count += 1
   }

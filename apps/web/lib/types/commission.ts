@@ -1,11 +1,13 @@
 /**
- * Tipos das telas de comissão (docs/ROADMAP.md, fase 3, fatia 3a).
+ * Tipos das telas de comissão (docs/ROADMAP.md, fase 3, fatias 3a e 3b).
  *
  * Atravessam a fronteira servidor → cliente: datas de calendário como
  * "YYYY-MM-DD", dinheiro como string de coluna numeric ou em centavos inteiros (o
  * que o servidor já somou).
  */
 import type {
+  CommissionAssistantBase,
+  CommissionAssistantDeduct,
   CommissionConfig,
   CommissionDateBasis,
   CommissionEntryRow,
@@ -68,6 +70,25 @@ export interface SaveCommissionRulesInput {
   professionalId: string | null
   /** A tabela inteira do alvo: item que não vem fica sem regra. */
   rules: CommissionRuleInput[]
+}
+
+export interface CommissionAssistantRuleInput {
+  serviceId: string
+  kind: CommissionRateKind
+  /** Percentual (0 a 100) ou reais por unidade. */
+  value: number
+  /** Sobre o que o percentual incide. Ignorado em valor fixo. */
+  base: CommissionAssistantBase
+  /** De quem sai a comissão do auxiliar. */
+  deductFrom: CommissionAssistantDeduct
+}
+
+export interface SaveCommissionAssistantRulesInput {
+  salonId: string
+  /** NULL = padrão do salão por serviço. */
+  professionalId: string | null
+  /** A tabela inteira do alvo: serviço que não vem fica sem regra. */
+  rules: CommissionAssistantRuleInput[]
 }
 
 export interface RecalculateCommissionsInput {

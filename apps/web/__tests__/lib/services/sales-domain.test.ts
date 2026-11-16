@@ -145,6 +145,28 @@ describe("planSaleItems — o que é barrado", () => {
     expectError([service({ professionalId: "pro-de-fora" })], "profissional não encontrado")
   })
 
+  it("auxiliar: só em serviço, do salão e diferente de quem executou", () => {
+    const ok = planSaleItems(CUSTOMER, [service({ assistantId: "pro-2" })], catalog)
+    expect(ok.ok && ok.items[0].assistantId).toBe("pro-2")
+
+    // Sem auxiliar é o caso comum: grava nulo, não string vazia.
+    const none = planSaleItems(CUSTOMER, [service({ assistantId: "" })], catalog)
+    expect(none.ok && none.items[0].assistantId).toBeNull()
+
+    expect(planSaleItems(CUSTOMER, [service({ assistantId: "pro-outro-salao" })], catalog)).toMatchObject({
+      ok: false,
+      error: "Item 1: auxiliar não encontrado",
+    })
+    expect(planSaleItems(CUSTOMER, [service({ assistantId: "pro-1" })], catalog)).toMatchObject({
+      ok: false,
+      error: "Item 1: o auxiliar não pode ser o próprio profissional",
+    })
+    expect(planSaleItems(CUSTOMER, [product({ assistantId: "pro-2" })], catalog)).toMatchObject({
+      ok: false,
+      error: "Item 1: só serviço pode ter auxiliar",
+    })
+  })
+
   it("serviço sem profissional — produto pode ficar sem", () => {
     expectError([service({ professionalId: null })], "informe o profissional")
     expect(planSaleItems(CUSTOMER, [product({ professionalId: null })], catalog).ok).toBe(true)

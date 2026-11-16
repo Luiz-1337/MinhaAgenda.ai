@@ -12,7 +12,8 @@ feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para d
 crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e #16).
 Fase 3 (comissões): fatia 3a feita na branch `claude/fase-3-comissoes` (publicada,
 sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §7.7.
-Fases 4 em diante: planejamento.
+Fatia 3b (auxiliar) escrita na mesma branch, **não publicada: a migration 042 tem de
+ser aplicada antes do push** — ver §7.8. Fases 4 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -713,14 +714,15 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita — migration 041 aplicada e testada em uso em 16/nov/2026 (§7.7) |
-| 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Pendente |
+| 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita em código — **migration 042 não aplicada**, não publicada, sem teste em uso (§7.8) |
 | 3c | Vales e bonificações do profissional | Pendente |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro | Pendente |
 | 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
 
-### 7.2 Modelo de dados (migration `041_commissions.sql`)
+### 7.2 Modelo de dados (migrations `041_commissions.sql` e `042_commission_assistants.sql`)
 
-Três tabelas novas; nenhuma tabela existente é alterada.
+A 041 cria três tabelas novas e não altera nenhuma existente. A 042 (fatia 3b) cria
+uma quarta e acrescenta uma coluna em `sale_items` e outra em `commission_entries`.
 
 - `commission_settings` — as regras gerais. Uma linha do salão (`professional_id`
   NULL) e, se houver, uma por profissional que foge da regra do salão. Cada campo
@@ -731,7 +733,16 @@ Três tabelas novas; nenhuma tabela existente é alterada.
 - `commission_entries` — o extrato: uma linha por item de comanda faturada, com a
   base, a regra usada, a comissão, a parcela da taxa e o valor a receber já
   calculados. `release_date` é o dia em que fica disponível (NULL = aguardando o
-  cliente pagar). `role` já aceita `assistant` para a fatia 3b.
+  cliente pagar). `role` é `professional` ou `assistant`. Na linha do profissional,
+  `assistant_deduction` (042) guarda quanto da comissão foi para o auxiliar:
+  a receber = comissão − taxa − desconto de auxiliar.
+- `sale_items.assistant_id` (042) — quem auxiliou naquele serviço. Opcional; só em
+  item de serviço e nunca a mesma pessoa que executou (CHECK no banco).
+- `commission_assistant_rules` (042) — quanto o auxiliar ganha por serviço: padrão do
+  salão (`professional_id` NULL) e exceção de quem auxilia. Além de `kind` e `value`,
+  tem `base` (`gross` = sobre o valor do serviço; `commission` = sobre a comissão do
+  profissional) e `deduct_from` (`professional` ou `salon`). Tabela própria, para as
+  consultas da comissão do profissional não precisarem saber que ela existe.
 
 O percentual geral do profissional continua onde sempre esteve:
 `professionals.commission_rate`, editado no cadastro em Equipe.
@@ -741,8 +752,10 @@ O percentual geral do profissional continua onde sempre esteve:
 Da auditoria (RN-COM, confirmada por cálculo sobre dados reais):
 
 1. **Fórmula:** disponível = valor × %comissão − valor × %taxa da comanda ×
-   %comissão. Conferido: item de R$ 200, 50%, taxa de 2,92% → R$ 2,92 de taxa,
-   R$ 97,08 disponível. Os dois exemplos da auditoria são testes automáticos.
+   %comissão − desconto de auxiliar. Conferido: item de R$ 200, 50%, taxa de 2,92% →
+   R$ 2,92 de taxa, R$ 97,08 disponível; com auxiliar, item de R$ 600, 50%, taxa
+   R$ 8,76, auxiliar R$ 60 → R$ 231,24. Os exemplos da auditoria são testes
+   automáticos.
 2. **Taxa da comanda** é a soma das taxas dos pagamentos, repartida entre os itens
    pelo valor de cada um. Com mais de uma forma de pagamento vale a média ponderada.
 3. **Item sem comissão aparece no extrato com zero** (regra de 0%, item de cortesia):
@@ -780,6 +793,30 @@ Decididas aqui, porque a auditoria não cobre — **a confirmar com o dono**:
 14. **Sem "Ver de todos", a pessoa vê só o próprio extrato** — as comissões dos
     vínculos de profissional do usuário dela.
 
+Auxiliar (fatia 3b). Da auditoria vêm os três campos da regra — de quem desconta,
+valor percentual ou fixo, e sobre o quê — e o exemplo da regra 1. O resto foi
+decidido aqui, **a confirmar com o dono**:
+
+15. **O auxiliar é do item da comanda**, opcional, só em serviço, e nunca a mesma
+    pessoa que executou. Ele ganha a própria linha no extrato, marcada "Auxiliar".
+16. **Qual regra vale:** a de quem auxilia para aquele serviço → o padrão do salão
+    para o serviço → nenhuma. Não existe "percentual geral de auxiliar": sem regra,
+    o auxiliar aparece no extrato com zero (como na regra 3).
+17. **O auxiliar não paga taxa de pagamento.** A taxa do profissional já é calculada
+    sobre a comissão inteira, antes do desconto — é o que os números da auditoria
+    mostram (R$ 8,76 = 2,92% de R$ 300, não de R$ 240).
+18. **"Sobre a comissão do profissional"** é a comissão antes da taxa. **"Sobre o
+    valor do serviço"** é o valor do item antes do desconto. Valor fixo é por
+    unidade (regra 11).
+19. **O auxiliar recebe o valor da regra mesmo que a comissão do profissional não
+    cubra.** O profissional vai a zero (regra 12) e a diferença fica por conta do
+    salão.
+20. **A data de disponibilidade do auxiliar segue a regra dele**, não a de quem
+    executou.
+21. **Quem auxiliou vê a comanda** mesmo sem "Ver todas", como quem executou.
+22. **No resumo, o valor do item conta uma vez só**, na linha de quem executou; a
+    linha do auxiliar é do mesmo item.
+
 Perguntas para o dono:
 
 - O percentual geral do profissional deve vencer o padrão do item? Hoje o item vence.
@@ -788,6 +825,11 @@ Perguntas para o dono:
 - A regra 13 e a 8 mudam quando houver pagamento de comissão (fatia 3d): comissão
   já paga precisa ficar congelada. Proposta: comanda com comissão paga não reabre
   sem estornar o pagamento.
+- Auxiliar: quando a comissão do profissional não cobre o auxiliar (regra 19), o
+  salão completa ou o auxiliar recebe só o que houver? Hoje o salão completa.
+- Auxiliar: o percentual "sobre o valor do serviço" deve seguir a regra de desconto
+  do salão (regra 6)? Hoje é sempre sobre o valor cheio.
+- Um serviço pode ter mais de um auxiliar? Hoje é um por item.
 
 ### 7.4 Permissões e módulo
 
@@ -804,21 +846,26 @@ não depende de `finance`.
 
 - **Comissões** (`/[salonId]/commissions`): filtro de período e de profissional na
   URL, totais (valor dos itens, comissões, taxas, a receber), aviso do que está sem
-  data, resumo por profissional e a lista detalhada item a item.
+  data, resumo por profissional e a lista detalhada item a item. Com auxiliar no
+  período, aparece a coluna "Auxiliar" (o desconto) e a linha de quem auxiliou.
 - **Configurar comissões** (`/[salonId]/commissions/settings`): regras do salão;
   comissão por item, escolhendo entre o padrão do salão e um profissional (que
-  também mostra as regras gerais dele, com "Seguir o salão"); recalcular período.
+  também mostra as regras gerais dele, com "Seguir o salão"); comissão como
+  auxiliar por serviço, para o mesmo alvo (tipo, valor, sobre o quê e de quem sai);
+  recalcular período.
+- **Comanda**: com o módulo ligado, o item de serviço ganha o campo "Auxiliar
+  (opcional)", e o aviso de reabrir diz que as comissões são apagadas.
 
 ### 7.6 Onde o código mora
 
 | O quê | Onde |
 |---|---|
-| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`) |
+| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`, `resolveAssistantRule`, `planAssistantRule`); o auxiliar do item é validado em `domain/sales.ts` (`planSaleItems`) |
 | I/O | `packages/db/src/services/commissions.service.ts` |
 | Comanda → comissão | `syncSaleCommissions`, chamado por `invoiceSaleService`, `receiveSaleDebtPaymentService` e `reopenSaleService` quando a action passa `recordCommissions` |
 | Actions | `apps/web/app/actions/commissions.ts` |
 | Telas | `apps/web/app/[salonId]/commissions/` |
-| Testes | `apps/web/__tests__/lib/services/commissions-domain.test.ts` |
+| Testes | `apps/web/__tests__/lib/services/commissions-domain.test.ts` e, para o auxiliar no item, `sales-domain.test.ts` |
 
 ### 7.7 Estado da implementação (16/nov/2026)
 
@@ -860,6 +907,10 @@ caminho deles pelo banco e pela tela, não.
 Achado do teste, não corrigido: o aviso de "Reabrir comanda" fala dos pagamentos e
 dos agendamentos, mas não diz que as comissões da comanda são apagadas.
 
+Depois do teste, corrigido junto com a fatia 3b: o aviso de reabrir passou a falar
+das comissões, e o total "N itens" do extrato contava profissionais, não itens (com
+um profissional só, como no teste, o número coincidia).
+
 Ligar o módulo num salão (depois da 041 aplicada e do código publicado):
 
 ```sql
@@ -871,6 +922,20 @@ UPDATE salons
        )
  WHERE id = '<id do salão>';
 ```
+
+### 7.8 Fatia 3b — estado (16/nov/2026)
+
+- Escrita na branch `claude/fase-3-comissoes`, em commit local. Typecheck, lint dos
+  arquivos alterados e testes passando (o exemplo de R$ 231,24 da auditoria é teste).
+- **Migration 042: escrita, NÃO aplicada. NÃO publicar antes de aplicar.** Diferente
+  da 041, ela acrescenta colunas em tabelas que o código já lê e grava
+  (`sale_items.assistant_id` e `commission_entries.assistant_deduction`). O preview
+  da branch usa o banco de produção: publicado sem a 042, salvar comanda e abrir o
+  extrato falham nesse preview. Produção (`main`) não é afetada.
+- Sem teste em uso. Roteiro: regra de auxiliar de 10% sobre o valor do serviço,
+  saindo do profissional; comanda de R$ 600,00 a 50% no crédito com auxiliar →
+  profissional R$ 231,24, auxiliar R$ 60,00; trocar para "do salão" e recalcular →
+  profissional R$ 291,24.
 
 ## 8. Pendências do dono
 
@@ -885,5 +950,6 @@ UPDATE salons
 | Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Registrar a migration 041 em `schema_migrations` com o nome `commissions` (ela já está aplicada) | Histórico de migrations fiel ao banco |
-| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga) | Fatias 3b em diante |
+| Aplicar e registrar a migration 042 (nome `commission_assistants`) | Publicação e teste em uso da fatia 3b |
+| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar) | Fatias 3c em diante |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

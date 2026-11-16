@@ -1027,6 +1027,9 @@ export const saleItems = pgTable(
     // Cópia do nome no momento da venda: renomear o serviço não muda o histórico.
     description: text('description').notNull(),
     professionalId: uuid('professional_id').references(() => professionals.id),
+    // Quem auxiliou no serviço (migration 042). Só em item de serviço, e nunca o
+    // mesmo profissional que executou (CHECK no banco).
+    assistantId: uuid('assistant_id').references(() => professionals.id),
     quantity: numeric('quantity', { precision: 10, scale: 3 }).default('1').notNull(),
     // NULL enquanto aberta = preço ainda não informado (faixa / sob avaliação).
     unitPrice: numeric('unit_price', { precision: 12, scale: 2 }),
@@ -1040,6 +1043,7 @@ export const saleItems = pgTable(
     index('sale_items_sale_idx').on(table.saleId, table.position),
     index('sale_items_salon_idx').on(table.salonId),
     index('sale_items_professional_idx').on(table.professionalId).where(sql`professional_id IS NOT NULL`),
+    index('sale_items_assistant_idx').on(table.assistantId).where(sql`assistant_id IS NOT NULL`),
     uniqueIndex('sale_items_appointment_unique').on(table.appointmentId).where(sql`appointment_id IS NOT NULL`)
   ]
 )
@@ -1198,6 +1202,10 @@ export type CommissionDateBasis = 'competence' | 'availability'
 export type CommissionShareMode = 'proportional' | 'salon' | 'professional' | 'split'
 export type CommissionRateKind = 'percent' | 'fixed'
 export type CommissionRole = 'professional' | 'assistant'
+/** Sobre o que incide o percentual do auxiliar: o valor do serviço ou a comissão do profissional. */
+export type CommissionAssistantBase = 'gross' | 'commission'
+/** De quem sai a comissão do auxiliar. */
+export type CommissionAssistantDeduct = 'salon' | 'professional'
 
 export const commissionSettings = pgTable(
   'commission_settings',
@@ -1255,6 +1263,36 @@ export const commissionRules = pgTable(
   ]
 )
 
+// Quanto o auxiliar ganha por serviço (migration 042). Tabela própria: as consultas
+// da comissão do profissional não precisam saber que ela existe.
+export const commissionAssistantRules = pgTable(
+  'commission_assistant_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = padrão do salão para o serviço. Preenchido = o que aquele profissional
+    // ganha quando é o auxiliar.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<CommissionRateKind>().notNull(),
+    // 'percent': 0 a 100. 'fixed': reais por unidade.
+    value: numeric('value', { precision: 12, scale: 2 }).notNull(),
+    base: text('base').$type<CommissionAssistantBase>().default('gross').notNull(),
+    deductFrom: text('deduct_from').$type<CommissionAssistantDeduct>().default('professional').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_assistant_rules_salon_unique')
+      .on(table.salonId, table.serviceId)
+      .where(sql`professional_id IS NULL`),
+    uniqueIndex('commission_assistant_rules_professional_unique')
+      .on(table.professionalId, table.serviceId)
+      .where(sql`professional_id IS NOT NULL`),
+    index('commission_assistant_rules_salon_idx').on(table.salonId)
+  ]
+)
+
 export const commissionEntries = pgTable(
   'commission_entries',
   {
@@ -1273,7 +1311,10 @@ export const commissionEntries = pgTable(
     grossAmount: numeric('gross_amount', { precision: 12, scale: 2 }).notNull(),
     // Parcela da taxa que coube ao profissional.
     feeAmount: numeric('fee_amount', { precision: 12, scale: 2 }).default('0').notNull(),
-    // O que o profissional tem a receber.
+    // Quanto desta comissão foi para o auxiliar (migration 042). Só na linha do
+    // profissional; a do auxiliar é o que ele recebe.
+    assistantDeduction: numeric('assistant_deduction', { precision: 12, scale: 2 }).default('0').notNull(),
+    // O que há a receber: grossAmount − feeAmount − assistantDeduction.
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     competenceDate: date('competence_date').notNull(),
     // NULL = aguardando o cliente pagar (regra "disponibilidade" com valor em aberto).

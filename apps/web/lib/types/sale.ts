@@ -69,6 +69,9 @@ export interface SaleItemDTO {
   description: string
   professionalId: string | null
   professionalName: string | null
+  /** Quem auxiliou no serviço (fase 3, fatia 3b). */
+  assistantId: string | null
+  assistantName: string | null
   quantity: string
   unitPrice: string | null
   discountAmount: string
@@ -115,6 +118,8 @@ export interface SaleFormOptions {
   products: { id: string; name: string; price: number | null }[]
   professionals: { id: string; name: string }[]
   paymentMethods: PaymentMethodDTO[]
+  /** O salão tem o módulo `commissions`: a comanda mostra o auxiliar do serviço. */
+  commissionsEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean
@@ -185,6 +190,8 @@ export interface SaleItemInput {
   serviceId?: string | null
   productId?: string | null
   professionalId?: string | null
+  /** Só em serviço; nunca o mesmo que `professionalId`. */
+  assistantId?: string | null
   quantity: number
   unitPrice: number | null
   discountAmount: number

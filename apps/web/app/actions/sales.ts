@@ -104,7 +104,8 @@ async function ownProfessionalIds(salonId: string, userId: string): Promise<stri
 /**
  * O usuário pode ver ESTA comanda?
  *
- * Sem `sales.view_all`, só as próprias (criou, ou tem item de um vínculo dele); sem
+ * Sem `sales.view_all`, só as próprias (criou, ou tem item de um vínculo dele, como
+ * profissional ou como auxiliar); sem
  * `sales.view_invoiced`, nenhuma faturada. Devolve a mesma mensagem de "não
  * encontrada" nos dois casos — não confirma a existência de uma comanda que a
  * pessoa não pode ver.
@@ -125,7 +126,10 @@ async function loadVisibleSale(
 
   if (!permissions.has("sales.view_all") && sale.createdBy !== userId) {
     const mine = new Set(await ownProfessionalIds(salonId, userId))
-    const hasOwnItem = sale.items.some((item) => item.professionalId && mine.has(item.professionalId))
+    const hasOwnItem = sale.items.some(
+      (item) =>
+        (item.professionalId && mine.has(item.professionalId)) || (item.assistantId && mine.has(item.assistantId))
+    )
     if (!hasOwnItem) return { error: "Comanda não encontrada" }
   }
 
@@ -232,7 +236,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
   if ("error" in auth) return auth
 
   try {
-    const [serviceRows, productRows, professionalRows, methodRows, permissions] = await Promise.all([
+    const [serviceRows, productRows, professionalRows, methodRows, permissions, commissionsEnabled] = await Promise.all([
       db
         .select({
           id: services.id,
@@ -269,6 +273,8 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
         .where(and(eq(paymentMethods.salonId, salonId), eq(paymentMethods.isActive, true)))
         .orderBy(asc(paymentMethods.name)),
       getSalonPermissions(salonId, auth.userId),
+      // Com comissões ligadas, o serviço da comanda aceita auxiliar (fase 3, fatia 3b).
+      salonHasModule(salonId, "commissions"),
     ])
 
     return {
@@ -279,6 +285,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       // A conta de destino não interessa à tela da comanda (e a coluna só existe
       // depois da migration 038) — por isso não é lida aqui.
       paymentMethods: methodRows.map((method) => ({ ...method, accountId: null })),
+      commissionsEnabled,
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),

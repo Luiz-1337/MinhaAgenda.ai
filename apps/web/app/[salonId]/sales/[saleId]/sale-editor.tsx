@@ -49,6 +49,8 @@ type ItemRow = {
   /** id do serviço ou do produto, conforme `kind`. Vazio = ainda não escolhido. */
   refId: string
   professionalId: string
+  /** Quem auxiliou no serviço. Vazio = sem auxiliar. */
+  assistantId: string
   quantity: string
   unitPrice: string
   discount: string
@@ -114,6 +116,7 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
       kind: "service" as const,
       refId: item.serviceId,
       professionalId: item.professionalId,
+      assistantId: "",
       quantity: "1",
       unitPrice: moneyToInput(item.suggestedPrice),
       discount: "",
@@ -125,6 +128,7 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
     kind: item.kind,
     refId: (item.kind === "service" ? item.serviceId : item.productId) ?? "",
     professionalId: item.professionalId ?? "",
+    assistantId: item.assistantId ?? "",
     quantity: Number(item.quantity).toLocaleString("pt-BR", { maximumFractionDigits: 3 }),
     unitPrice: moneyToInput(item.unitPrice),
     discount: Number(item.discountAmount) > 0 ? moneyToInput(item.discountAmount) : "",
@@ -208,9 +212,18 @@ export function SaleEditor({
 
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
-    const extra = (sale?.items ?? [])
-      .filter((i) => i.professionalId && !known.has(i.professionalId))
-      .map((i) => ({ id: i.professionalId as string, name: i.professionalName ?? "Profissional" }))
+    // Profissional ou auxiliar que saiu do salão continua aparecendo na comanda dele.
+    const extra: { id: string; name: string }[] = []
+    for (const item of sale?.items ?? []) {
+      for (const [id, name] of [
+        [item.professionalId, item.professionalName],
+        [item.assistantId, item.assistantName],
+      ]) {
+        if (!id || known.has(id)) continue
+        known.add(id)
+        extra.push({ id, name: name ?? "Profissional" })
+      }
+    }
     return [...options.professionals, ...extra]
   }, [options.professionals, sale])
 
@@ -237,7 +250,17 @@ export function SaleEditor({
   function addRow(kind: "service" | "product") {
     setRows((current) => [
       ...current,
-      { key: nextKey(), kind, refId: "", professionalId: "", quantity: "1", unitPrice: "", discount: "", appointmentId: null },
+      {
+        key: nextKey(),
+        kind,
+        refId: "",
+        professionalId: "",
+        assistantId: "",
+        quantity: "1",
+        unitPrice: "",
+        discount: "",
+        appointmentId: null,
+      },
     ])
     setDirty(true)
   }
@@ -268,6 +291,9 @@ export function SaleEditor({
       const label = `Item ${index + 1}`
       if (!row.refId) return `${label}: escolha o ${row.kind === "service" ? "serviço" : "produto"}`
       if (row.kind === "service" && !row.professionalId) return `${label}: informe o profissional`
+      if (row.assistantId && row.assistantId === row.professionalId) {
+        return `${label}: o auxiliar não pode ser o próprio profissional`
+      }
 
       const quantity = parseQuantity(row.quantity)
       if (quantity === null) return `${label}: quantidade inválida`
@@ -283,6 +309,7 @@ export function SaleEditor({
         serviceId: row.kind === "service" ? row.refId : null,
         productId: row.kind === "product" ? row.refId : null,
         professionalId: row.professionalId || null,
+        assistantId: row.kind === "service" ? row.assistantId || null : null,
         quantity,
         unitPrice,
         discountAmount,
@@ -661,7 +688,13 @@ export function SaleEditor({
                         id={`${row.key}-pro`}
                         value={row.professionalId}
                         disabled={!editable}
-                        onChange={(event) => updateRow(row.key, { professionalId: event.target.value })}
+                        onChange={(event) =>
+                          updateRow(row.key, {
+                            professionalId: event.target.value,
+                            // Quem executa não pode ser o próprio auxiliar.
+                            ...(event.target.value === row.assistantId ? { assistantId: "" } : {}),
+                          })
+                        }
                         className={inputClass}
                       >
                         <option value="">{row.kind === "service" ? "Selecione…" : "—"}</option>
@@ -719,6 +752,31 @@ export function SaleEditor({
                         className={inputClass}
                       />
                     </div>
+
+                    {/* Auxiliar: com comissões ligadas, ou quando o item já tem um gravado. */}
+                    {row.kind === "service" && (options.commissionsEnabled || row.assistantId) && (
+                      <div className="md:order-last md:col-start-5 md:col-span-3 space-y-1">
+                        <label htmlFor={`${row.key}-assistant`} className="text-[11px] font-semibold text-muted-foreground">
+                          Auxiliar (opcional)
+                        </label>
+                        <select
+                          id={`${row.key}-assistant`}
+                          value={row.assistantId}
+                          disabled={!editable}
+                          onChange={(event) => updateRow(row.key, { assistantId: event.target.value })}
+                          className={inputClass}
+                        >
+                          <option value="">Sem auxiliar</option>
+                          {professionalOptions
+                            .filter((option) => option.id !== row.professionalId)
+                            .map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
 
                     <div className="md:col-span-2 flex items-center justify-between md:justify-end gap-2">
                       <div className="text-right">
@@ -1034,7 +1092,13 @@ export function SaleEditor({
         onClose={() => setConfirmReopen(false)}
         onConfirm={doReopen}
         title="Reabrir comanda"
-        description="Os pagamentos registrados serão removidos e os agendamentos desta comanda voltam para confirmado, sem valor cobrado. Depois de editar, é preciso faturar de novo."
+        description={
+          "Os pagamentos registrados serão removidos e os agendamentos desta comanda voltam para confirmado, sem valor cobrado." +
+          (options.commissionsEnabled
+            ? " As comissões desta comanda são apagadas e voltam a ser calculadas quando ela for faturada."
+            : "") +
+          " Depois de editar, é preciso faturar de novo."
+        }
         confirmText="Reabrir"
         type="warning"
       />

@@ -7,8 +7,15 @@ import { toast } from "sonner"
 import { ArrowLeft, RefreshCw, Save, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
-import { recalculateCommissions, saveCommissionRules, saveCommissionSettings } from "@/app/actions/commissions"
 import {
+  recalculateCommissions,
+  saveCommissionAssistantRules,
+  saveCommissionRules,
+  saveCommissionSettings,
+} from "@/app/actions/commissions"
+import {
+  COMMISSION_ASSISTANT_BASE_LABELS,
+  COMMISSION_ASSISTANT_DEDUCT_LABELS,
   COMMISSION_DATE_BASIS_LABELS,
   COMMISSION_DISCOUNT_MODE_LABELS,
   COMMISSION_FEE_MODE_LABELS,
@@ -18,13 +25,25 @@ import {
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 // Caminho do arquivo, não o barrel `@repo/db`: o barrel arrasta o cliente Postgres.
 import { DEFAULT_COMMISSION_SETTINGS } from "@repo/db/src/domain/commissions"
-import type { CommissionDateBasis, CommissionRateKind, CommissionShareMode } from "@repo/db"
-import type { CommissionConfigDTO, CommissionRuleInput } from "@/lib/types/commission"
+import type {
+  CommissionAssistantBase,
+  CommissionAssistantDeduct,
+  CommissionDateBasis,
+  CommissionRateKind,
+  CommissionShareMode,
+} from "@repo/db"
+import type {
+  CommissionAssistantRuleInput,
+  CommissionConfigDTO,
+  CommissionRuleInput,
+} from "@/lib/types/commission"
 
 const DATE_BASES = Object.keys(COMMISSION_DATE_BASIS_LABELS) as CommissionDateBasis[]
 const FEE_MODES = Object.keys(COMMISSION_FEE_MODE_LABELS) as CommissionShareMode[]
 const DISCOUNT_MODES = Object.keys(COMMISSION_DISCOUNT_MODE_LABELS) as CommissionShareMode[]
 const RATE_KINDS = Object.keys(COMMISSION_RATE_KIND_LABELS) as CommissionRateKind[]
+const ASSISTANT_BASES = Object.keys(COMMISSION_ASSISTANT_BASE_LABELS) as CommissionAssistantBase[]
+const ASSISTANT_DEDUCTS = Object.keys(COMMISSION_ASSISTANT_DEDUCT_LABELS) as CommissionAssistantDeduct[]
 
 const inputClass =
   "w-full bg-card border border-border rounded-md px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-60 disabled:cursor-not-allowed"
@@ -34,9 +53,12 @@ const sectionTitleClass =
 
 type SettingsValues = CommissionConfigDTO["salonSettings"]
 type RuleDraft = { kind: CommissionRateKind; value: string }
+type AssistantDraft = RuleDraft & { base: CommissionAssistantBase; deductFrom: CommissionAssistantDeduct }
 type Item = { key: string; id: string; name: string; type: "service" | "product" }
 
 const NO_OVERRIDE: SettingsValues = { dateBasis: null, feeMode: null, discountMode: null }
+/** Como a linha de auxiliar abre: 10% do valor do serviço, saindo do profissional, é o caso comum. */
+const NEW_ASSISTANT_DRAFT: AssistantDraft = { kind: "percent", value: "", base: "gross", deductFrom: "professional" }
 
 /** Chave de uma regra na tela: alvo ("" = salão) + item. */
 function draftKey(scope: string, itemKey: string): string {
@@ -49,6 +71,12 @@ function percentLabel(value: string | number): string {
 
 function ruleLabel(rule: RuleDraft): string {
   return rule.kind === "fixed" ? `${formatBRL(parseBRL(rule.value))} fixo` : percentLabel(parseBRL(rule.value) ?? 0)
+}
+
+/** "10% sobre valor do serviço, do profissional" — a regra de auxiliar por extenso. */
+function assistantRuleLabel(rule: AssistantDraft): string {
+  const over = rule.kind === "percent" ? ` sobre ${COMMISSION_ASSISTANT_BASE_LABELS[rule.base].toLowerCase()}` : ""
+  return `${ruleLabel(rule)}${over}, ${COMMISSION_ASSISTANT_DEDUCT_LABELS[rule.deductFrom].toLowerCase()}`
 }
 
 /** "50.00" → "50"; "12.50" → "12,5". Para abrir o campo como a pessoa digitaria. */
@@ -90,6 +118,20 @@ export function CommissionSettingsClient({
     for (const rule of config.rules) {
       const itemKey = rule.serviceId ? `s:${rule.serviceId}` : `p:${rule.productId}`
       initial[draftKey(rule.professionalId ?? "", itemKey)] = { kind: rule.kind, value: toFieldValue(rule.value) }
+    }
+    return initial
+  })
+
+  // Comissão como auxiliar: mesma chave (alvo + serviço), tabela à parte.
+  const [assistantDrafts, setAssistantDrafts] = useState<Record<string, AssistantDraft>>(() => {
+    const initial: Record<string, AssistantDraft> = {}
+    for (const rule of config.assistantRules) {
+      initial[draftKey(rule.professionalId ?? "", rule.serviceId)] = {
+        kind: rule.kind,
+        value: toFieldValue(rule.value),
+        base: rule.base,
+        deductFrom: rule.deductFrom,
+      }
     }
     return initial
   })
@@ -173,6 +215,46 @@ export function CommissionSettingsClient({
       () => (professional ? `Comissões de ${professional.name} salvas` : "Comissões por item salvas"),
       () => saveCommissionRules({ salonId, professionalId: professional?.id ?? null, rules })
     )
+  }
+
+  function setAssistantDraft(serviceId: string, patch: Partial<AssistantDraft>) {
+    const key = draftKey(scope, serviceId)
+    setAssistantDrafts((current) => {
+      const previous: AssistantDraft = current[key] ?? NEW_ASSISTANT_DRAFT
+      return { ...current, [key]: { ...previous, ...patch } }
+    })
+  }
+
+  function saveAssistantRules() {
+    const rules: CommissionAssistantRuleInput[] = []
+
+    for (const service of config.services) {
+      const draft = assistantDrafts[draftKey(scope, service.id)]
+      if (!draft || draft.value.trim() === "") continue
+
+      const value = parseBRL(draft.value)
+      if (value === null || value < 0 || (draft.kind === "percent" && value > 100)) {
+        toast.error(`Comissão de auxiliar inválida em "${service.name}"`)
+        return
+      }
+
+      rules.push({ serviceId: service.id, kind: draft.kind, value, base: draft.base, deductFrom: draft.deductFrom })
+    }
+
+    run(
+      () => (professional ? `Comissões de auxiliar de ${professional.name} salvas` : "Comissões de auxiliar salvas"),
+      () => saveCommissionAssistantRules({ salonId, professionalId: professional?.id ?? null, rules })
+    )
+  }
+
+  /** O que vale para o serviço quando o campo de auxiliar está vazio. */
+  function assistantFallbackHint(serviceId: string): string {
+    if (!professional) return "Sem regra: o auxiliar entra no extrato com zero"
+
+    const salonRule = assistantDrafts[draftKey("", serviceId)]
+    if (salonRule && salonRule.value.trim() !== "") return `Padrão do salão: ${assistantRuleLabel(salonRule)}`
+
+    return "Sem padrão do salão: entra no extrato com zero"
   }
 
   function runRecalculate() {
@@ -460,6 +542,132 @@ export function CommissionSettingsClient({
               <Button onClick={saveRules} disabled={isPending}>
                 <Save size={16} />
                 {professional ? `Salvar comissões de ${professional.name}` : "Salvar comissões por item"}
+              </Button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Comissão como auxiliar: mesmo alvo escolhido acima */}
+      <section className="bg-card border border-border rounded-md">
+        <h3 className={sectionTitleClass}>Comissão como auxiliar</h3>
+        <div className="p-4 flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            {professional
+              ? `O que ${professional.name} ganha quando é o auxiliar de um serviço. Serviço sem valor aqui segue o padrão do salão.`
+              : "O que o auxiliar de cada serviço ganha, seja quem for. O auxiliar é escolhido no item da comanda."}{" "}
+            Vale para o alvo escolhido em &quot;Configurar para&quot;. O auxiliar não paga taxa de pagamento; quando
+            sai do profissional, o valor é descontado da comissão dele.
+          </p>
+
+          {config.services.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum serviço ativo no salão.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 text-xs text-muted-foreground">
+                    <th scope="col" className="p-3 text-left font-semibold">Serviço</th>
+                    <th scope="col" className="p-3 text-left font-semibold w-24">Tipo</th>
+                    <th scope="col" className="p-3 text-left font-semibold w-32">Comissão</th>
+                    <th scope="col" className="p-3 text-left font-semibold w-56">Sobre</th>
+                    <th scope="col" className="p-3 text-left font-semibold w-44">Sai</th>
+                    <th scope="col" className="p-3 text-left font-semibold">Sem valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {config.services.map((service) => {
+                    const draft = assistantDrafts[draftKey(scope, service.id)]
+                    const current = draft ?? NEW_ASSISTANT_DRAFT
+                    const fieldId = `assistant-rule-${service.id}`
+
+                    return (
+                      <tr key={service.id}>
+                        <th scope="row" className="p-3 text-left font-normal text-foreground">
+                          <label htmlFor={fieldId}>{service.name}</label>
+                        </th>
+                        <td className="p-2">
+                          <select
+                            aria-label={`Tipo de comissão de auxiliar de ${service.name}`}
+                            value={current.kind}
+                            disabled={isPending}
+                            onChange={(event) =>
+                              setAssistantDraft(service.id, { kind: event.target.value as CommissionRateKind })
+                            }
+                            className={inputClass}
+                          >
+                            {RATE_KINDS.map((kind) => (
+                              <option key={kind} value={kind}>
+                                {COMMISSION_RATE_KIND_LABELS[kind]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-2">
+                          <input
+                            id={fieldId}
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="—"
+                            value={current.value}
+                            disabled={isPending}
+                            onChange={(event) => setAssistantDraft(service.id, { value: event.target.value })}
+                            className={inputClass}
+                          />
+                        </td>
+                        <td className="p-2">
+                          <select
+                            aria-label={`Sobre o que incide a comissão de auxiliar de ${service.name}`}
+                            value={current.base}
+                            // Valor fixo não incide sobre nada.
+                            disabled={isPending || current.kind === "fixed"}
+                            onChange={(event) =>
+                              setAssistantDraft(service.id, { base: event.target.value as CommissionAssistantBase })
+                            }
+                            className={inputClass}
+                          >
+                            {ASSISTANT_BASES.map((base) => (
+                              <option key={base} value={base}>
+                                {COMMISSION_ASSISTANT_BASE_LABELS[base]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-2">
+                          <select
+                            aria-label={`De quem sai a comissão de auxiliar de ${service.name}`}
+                            value={current.deductFrom}
+                            disabled={isPending}
+                            onChange={(event) =>
+                              setAssistantDraft(service.id, {
+                                deductFrom: event.target.value as CommissionAssistantDeduct,
+                              })
+                            }
+                            className={inputClass}
+                          >
+                            {ASSISTANT_DEDUCTS.map((deduct) => (
+                              <option key={deduct} value={deduct}>
+                                {COMMISSION_ASSISTANT_DEDUCT_LABELS[deduct]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {current.value.trim() !== "" ? "" : assistantFallbackHint(service.id)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {config.services.length > 0 && (
+            <div className="flex justify-end">
+              <Button onClick={saveAssistantRules} disabled={isPending}>
+                <Save size={16} />
+                {professional ? `Salvar auxiliar de ${professional.name}` : "Salvar comissões de auxiliar"}
               </Button>
             </div>
           )}

@@ -9,6 +9,7 @@ import {
   listCommissionProfessionalsService,
   monthRange,
   recalculateCommissionsService,
+  saveCommissionAssistantRulesService,
   saveCommissionRulesService,
   saveCommissionSettingsService,
   centsToNumeric,
@@ -21,6 +22,7 @@ import { formatZodError } from "@/lib/services/validation.service"
 import {
   commissionStatementFiltersSchema,
   recalculateCommissionsSchema,
+  saveCommissionAssistantRulesSchema,
   saveCommissionRulesSchema,
   saveCommissionSettingsSchema,
 } from "@/lib/schemas/commissions.schema"
@@ -30,12 +32,13 @@ import type {
   CommissionStatementDTO,
   CommissionStatementFilters,
   RecalculateCommissionsInput,
+  SaveCommissionAssistantRulesInput,
   SaveCommissionRulesInput,
   SaveCommissionSettingsInput,
 } from "@/lib/types/commission"
 
 /**
- * Comissões (docs/ROADMAP.md, fase 3, fatia 3a).
+ * Comissões (docs/ROADMAP.md, fase 3, fatias 3a e 3b).
  *
  * Toda action começa em `authorizeSalon`: sessão → módulo `commissions` ligado no
  * salão → permissão `commissions.*`. O `salonId` chega do cliente, então estar
@@ -128,14 +131,20 @@ export async function getCommissionStatement(
       rows: statement.rows,
       truncated: statement.truncated,
       byProfessional: statement.byProfessional,
-      totals: commissionTotals(
-        statement.byProfessional.map((row) => ({
-          baseAmount: centsToNumeric(row.baseCents),
-          grossAmount: centsToNumeric(row.grossCents),
-          feeAmount: centsToNumeric(row.feeCents),
-          amount: centsToNumeric(row.amountCents),
-        }))
-      ),
+      totals: {
+        ...commissionTotals(
+          statement.byProfessional.map((row) => ({
+            baseAmount: centsToNumeric(row.baseCents),
+            grossAmount: centsToNumeric(row.grossCents),
+            feeAmount: centsToNumeric(row.feeCents),
+            assistantDeduction: centsToNumeric(row.assistantCents),
+            amount: centsToNumeric(row.amountCents),
+          }))
+        ),
+        // `commissionTotals` conta linhas — aqui, profissionais. O número de itens
+        // é a soma dos itens que cada um executou.
+        count: statement.byProfessional.reduce((sum, row) => sum + row.count, 0),
+      },
       pending: statement.pending,
       professionals: visible.map((professional) => ({ id: professional.id, name: professional.name })),
       canViewAll,
@@ -189,6 +198,23 @@ export async function saveCommissionRules(input: SaveCommissionRulesInput): Prom
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   const result = await saveCommissionRulesService(parsed.data)
+  if (!result.success) return { error: result.error }
+
+  revalidateCommissions(parsed.data.salonId)
+  return { success: true, data: result.data }
+}
+
+/** Troca as comissões de auxiliar do salão, ou as de um profissional quando ele auxilia. */
+export async function saveCommissionAssistantRules(
+  input: SaveCommissionAssistantRulesInput
+): Promise<ActionResult<{ rules: number }>> {
+  const auth = await authorizeSalon(input?.salonId, "commissions.configure")
+  if ("error" in auth) return auth
+
+  const parsed = saveCommissionAssistantRulesSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const result = await saveCommissionAssistantRulesService(parsed.data)
   if (!result.success) return { error: result.error }
 
   revalidateCommissions(parsed.data.salonId)

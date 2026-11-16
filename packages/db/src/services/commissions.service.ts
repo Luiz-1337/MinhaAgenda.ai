@@ -1,7 +1,8 @@
-import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm"
 
 import {
   db,
+  commissionAssistantRules,
   commissionEntries,
   commissionRules,
   commissionSettings,
@@ -13,10 +14,18 @@ import {
   sales,
   services,
 } from "../index"
-import type { CommissionDateBasis, CommissionRateKind, CommissionShareMode } from "../schema"
+import type {
+  CommissionAssistantBase,
+  CommissionAssistantDeduct,
+  CommissionDateBasis,
+  CommissionRateKind,
+  CommissionRole,
+  CommissionShareMode,
+} from "../schema"
 import {
   isCommissionDateBasis,
   isCommissionShareMode,
+  planAssistantRule,
   planCommissionRule,
   planSaleCommissions,
 } from "../domain/commissions"
@@ -25,7 +34,7 @@ import { toCents } from "../domain/sales"
 import type { ActionResult } from "./appointments"
 
 /**
- * Comissões (docs/ROADMAP.md, fase 3, fatia 3a).
+ * Comissões (docs/ROADMAP.md, fase 3, fatias 3a e 3b).
  *
  * Só I/O: carrega o que a regra pura (domain/commissions.ts) precisa, deixa ela
  * decidir e grava. Quem autoriza é a Server Action.
@@ -93,6 +102,7 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
       serviceId: saleItems.serviceId,
       productId: saleItems.productId,
       professionalId: saleItems.professionalId,
+      assistantId: saleItems.assistantId,
       quantity: saleItems.quantity,
       discountAmount: saleItems.discountAmount,
       total: saleItems.total,
@@ -100,10 +110,13 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
     .from(saleItems)
     .where(and(eq(saleItems.saleId, input.saleId), eq(saleItems.salonId, input.salonId)))
 
-  const professionalIds = unique(items.map((item) => item.professionalId))
+  // Quem executou e quem auxiliou: os dois recebem, os dois podem ter exceção.
+  const professionalIds = unique(items.flatMap((item) => [item.professionalId, item.assistantId]))
   if (professionalIds.length === 0) return
 
-  const [payments, professionalRows, settingsRows, ruleRows] = await Promise.all([
+  const assistantIds = unique(items.map((item) => item.assistantId))
+
+  const [payments, professionalRows, settingsRows, ruleRows, assistantRuleRows] = await Promise.all([
     tx
       .select({ feeAmount: salePayments.feeAmount, settlesOn: salePayments.settlesOn })
       .from(salePayments)
@@ -143,6 +156,28 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
           or(isNull(commissionRules.professionalId), inArray(commissionRules.professionalId, professionalIds))
         )
       ),
+    // Regras de auxiliar: só quando algum item tem auxiliar.
+    assistantIds.length
+      ? tx
+          .select({
+            professionalId: commissionAssistantRules.professionalId,
+            serviceId: commissionAssistantRules.serviceId,
+            kind: commissionAssistantRules.kind,
+            value: commissionAssistantRules.value,
+            base: commissionAssistantRules.base,
+            deductFrom: commissionAssistantRules.deductFrom,
+          })
+          .from(commissionAssistantRules)
+          .where(
+            and(
+              eq(commissionAssistantRules.salonId, input.salonId),
+              or(
+                isNull(commissionAssistantRules.professionalId),
+                inArray(commissionAssistantRules.professionalId, assistantIds)
+              )
+            )
+          )
+      : [],
   ])
 
   const settingsByProfessional = new Map(
@@ -161,6 +196,7 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
       ])
     ),
     rules: ruleRows,
+    assistantRules: assistantRuleRows,
   })
 
   if (entries.length === 0) return
@@ -243,6 +279,16 @@ export type CommissionRuleValues = {
   value: string
 }
 
+export type CommissionAssistantRuleValues = {
+  /** NULL = padrão do salão para o serviço. */
+  professionalId: string | null
+  serviceId: string
+  kind: CommissionRateKind
+  value: string
+  base: CommissionAssistantBase
+  deductFrom: CommissionAssistantDeduct
+}
+
 export type CommissionConfig = {
   salonSettings: CommissionSettingsValues
   professionals: {
@@ -257,6 +303,8 @@ export type CommissionConfig = {
   services: { id: string; name: string }[]
   products: { id: string; name: string }[]
   rules: CommissionRuleValues[]
+  /** Quanto cada um ganha como auxiliar, por serviço. */
+  assistantRules: CommissionAssistantRuleValues[]
 }
 
 function toSettingsValues(row: { dateBasis: unknown; feeMode: unknown; discountMode: unknown }): CommissionSettingsValues {
@@ -269,7 +317,7 @@ function toSettingsValues(row: { dateBasis: unknown; feeMode: unknown; discountM
 
 /** Tudo o que a tela de configuração mostra, de uma vez. */
 export async function getCommissionConfigService(salonId: string): Promise<CommissionConfig> {
-  const [settingsRows, professionalRows, serviceRows, productRows, ruleRows] = await Promise.all([
+  const [settingsRows, professionalRows, serviceRows, productRows, ruleRows, assistantRuleRows] = await Promise.all([
     db
       .select({
         professionalId: commissionSettings.professionalId,
@@ -309,6 +357,17 @@ export async function getCommissionConfigService(salonId: string): Promise<Commi
       })
       .from(commissionRules)
       .where(eq(commissionRules.salonId, salonId)),
+    db
+      .select({
+        professionalId: commissionAssistantRules.professionalId,
+        serviceId: commissionAssistantRules.serviceId,
+        kind: commissionAssistantRules.kind,
+        value: commissionAssistantRules.value,
+        base: commissionAssistantRules.base,
+        deductFrom: commissionAssistantRules.deductFrom,
+      })
+      .from(commissionAssistantRules)
+      .where(eq(commissionAssistantRules.salonId, salonId)),
   ])
 
   const salonRow = settingsRows.find((row) => !row.professionalId)
@@ -328,6 +387,7 @@ export async function getCommissionConfigService(salonId: string): Promise<Commi
     services: serviceRows,
     products: productRows,
     rules: ruleRows,
+    assistantRules: assistantRuleRows,
   }
 }
 
@@ -484,6 +544,79 @@ export async function saveCommissionRulesService(input: {
   }
 }
 
+/**
+ * Troca TODAS as regras de auxiliar de um alvo: o padrão do salão (`professionalId`
+ * NULL) ou o que um profissional ganha quando auxilia. Serviço que não vem na lista
+ * fica sem regra.
+ */
+export async function saveCommissionAssistantRulesService(input: {
+  salonId: string
+  professionalId: string | null
+  rules: { serviceId: string; kind: unknown; value: unknown; base: unknown; deductFrom: unknown }[]
+}): Promise<ActionResult<{ rules: number }>> {
+  try {
+    if (input.rules.length > MAX_COMMISSION_RULES) fail(`No máximo ${MAX_COMMISSION_RULES} regras por vez`)
+
+    const planned: Omit<CommissionAssistantRuleValues, "professionalId">[] = []
+    const seen = new Set<string>()
+
+    for (const rule of input.rules) {
+      if (seen.has(rule.serviceId)) fail("Há mais de uma regra de auxiliar para o mesmo serviço")
+      seen.add(rule.serviceId)
+
+      const plan = planAssistantRule(rule)
+      if (!plan.ok) fail(plan.error)
+
+      planned.push({
+        serviceId: rule.serviceId,
+        kind: plan.kind,
+        value: plan.value,
+        base: plan.base,
+        deductFrom: plan.deductFrom,
+      })
+    }
+
+    await db.transaction(async (tx) => {
+      if (input.professionalId) await assertProfessionalInSalon(tx, input.salonId, input.professionalId)
+
+      const serviceIds = planned.map((rule) => rule.serviceId)
+      const serviceRows = serviceIds.length
+        ? await tx
+            .select({ id: services.id })
+            .from(services)
+            .where(and(eq(services.salonId, input.salonId), inArray(services.id, serviceIds)))
+        : []
+
+      if (serviceRows.length !== serviceIds.length) fail("Serviço não encontrado")
+
+      await tx
+        .delete(commissionAssistantRules)
+        .where(
+          and(
+            eq(commissionAssistantRules.salonId, input.salonId),
+            input.professionalId
+              ? eq(commissionAssistantRules.professionalId, input.professionalId)
+              : isNull(commissionAssistantRules.professionalId)
+          )
+        )
+
+      if (planned.length > 0) {
+        await tx.insert(commissionAssistantRules).values(
+          planned.map((rule) => ({
+            ...rule,
+            salonId: input.salonId,
+            professionalId: input.professionalId,
+          }))
+        )
+      }
+    })
+
+    return { success: true, data: { rules: planned.length } }
+  } catch (error) {
+    return toFailure(error, "Não foi possível salvar as comissões de auxiliar")
+  }
+}
+
 // ============================================================================
 // Extrato
 // ============================================================================
@@ -497,24 +630,35 @@ export type CommissionEntryRow = {
   customerName: string | null
   description: string
   quantity: string
+  /** Quem recebe: o profissional, ou o auxiliar quando `role` é 'assistant'. */
   professionalId: string
   professionalName: string
+  role: CommissionRole
   baseAmount: string
   rateKind: CommissionRateKind
   rateValue: string
   grossAmount: string
   feeAmount: string
+  /** Quanto desta comissão foi para o auxiliar. */
+  assistantDeduction: string
   amount: string
 }
 
 export type CommissionProfessionalTotals = {
   professionalId: string
   professionalName: string
+  /** Valor dos itens que ele executou (não soma os que só auxiliou). */
   baseCents: number
+  /** Comissões antes da taxa — como profissional e como auxiliar. */
   grossCents: number
   feeCents: number
+  /** Quanto das comissões dele foi para auxiliares. */
+  assistantCents: number
   amountCents: number
+  /** Itens que ele executou. */
   count: number
+  /** Itens em que ele foi o auxiliar. */
+  assistantCount: number
 }
 
 export type CommissionStatement = {
@@ -567,11 +711,13 @@ export async function listCommissionEntriesService(input: {
         quantity: saleItems.quantity,
         professionalId: commissionEntries.professionalId,
         professionalName: professionals.name,
+        role: commissionEntries.role,
         baseAmount: commissionEntries.baseAmount,
         rateKind: commissionEntries.rateKind,
         rateValue: commissionEntries.rateValue,
         grossAmount: commissionEntries.grossAmount,
         feeAmount: commissionEntries.feeAmount,
+        assistantDeduction: commissionEntries.assistantDeduction,
         amount: commissionEntries.amount,
       })
       .from(commissionEntries)
@@ -580,17 +726,27 @@ export async function listCommissionEntriesService(input: {
       .innerJoin(professionals, eq(professionals.id, commissionEntries.professionalId))
       .leftJoin(customers, eq(customers.id, sales.customerId))
       .where(inPeriod)
-      .orderBy(asc(commissionEntries.releaseDate), asc(sales.number), asc(saleItems.position))
+      // No mesmo item, a linha do profissional vem antes da do auxiliar.
+      .orderBy(
+        asc(commissionEntries.releaseDate),
+        asc(sales.number),
+        asc(saleItems.position),
+        desc(commissionEntries.role)
+      )
       .limit(input.limit + 1),
     db
       .select({
         professionalId: commissionEntries.professionalId,
         professionalName: professionals.name,
-        base: sql<string>`coalesce(sum(${commissionEntries.baseAmount}), 0)`,
+        // O valor do item entra uma vez só, na linha de quem executou: a do
+        // auxiliar é do MESMO item e dobraria o total.
+        base: sql<string>`coalesce(sum(${commissionEntries.baseAmount}) filter (where ${commissionEntries.role} = 'professional'), 0)`,
         gross: sql<string>`coalesce(sum(${commissionEntries.grossAmount}), 0)`,
         fee: sql<string>`coalesce(sum(${commissionEntries.feeAmount}), 0)`,
+        assistant: sql<string>`coalesce(sum(${commissionEntries.assistantDeduction}), 0)`,
         amount: sql<string>`coalesce(sum(${commissionEntries.amount}), 0)`,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`(count(*) filter (where ${commissionEntries.role} = 'professional'))::int`,
+        assistantCount: sql<number>`(count(*) filter (where ${commissionEntries.role} = 'assistant'))::int`,
       })
       .from(commissionEntries)
       .innerJoin(sales, eq(sales.id, commissionEntries.saleId))
@@ -617,8 +773,10 @@ export async function listCommissionEntriesService(input: {
       baseCents: toCents(row.base) ?? 0,
       grossCents: toCents(row.gross) ?? 0,
       feeCents: toCents(row.fee) ?? 0,
+      assistantCents: toCents(row.assistant) ?? 0,
       amountCents: toCents(row.amount) ?? 0,
       count: row.count,
+      assistantCount: row.assistantCount,
     })),
     pending: { count: pending?.count ?? 0, amountCents: toCents(pending?.amount) ?? 0 },
   }

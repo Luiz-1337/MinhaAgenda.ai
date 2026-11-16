@@ -4,7 +4,13 @@
  * Os valores possíveis são de `@repo/db` (schema.ts); aqui fica só o português. Os
  * `Record` são tipados pelos tipos de lá: um valor novo sem rótulo não compila.
  */
-import type { CommissionDateBasis, CommissionRateKind, CommissionShareMode } from "@repo/db"
+import type {
+  CommissionAssistantBase,
+  CommissionAssistantDeduct,
+  CommissionDateBasis,
+  CommissionRateKind,
+  CommissionShareMode,
+} from "@repo/db"
 
 export const COMMISSION_DATE_BASIS_LABELS: Record<CommissionDateBasis, string> = {
   competence: "Competência — no dia da comanda",
@@ -28,6 +34,16 @@ export const COMMISSION_DISCOUNT_MODE_LABELS: Record<CommissionShareMode, string
 export const COMMISSION_RATE_KIND_LABELS: Record<CommissionRateKind, string> = {
   percent: "%",
   fixed: "R$",
+}
+
+export const COMMISSION_ASSISTANT_BASE_LABELS: Record<CommissionAssistantBase, string> = {
+  gross: "Valor do serviço",
+  commission: "Comissão do profissional",
+}
+
+export const COMMISSION_ASSISTANT_DEDUCT_LABELS: Record<CommissionAssistantDeduct, string> = {
+  professional: "Do profissional",
+  salon: "Do salão",
 }
 
 export const COMMISSION_SETTINGS_HINTS = {

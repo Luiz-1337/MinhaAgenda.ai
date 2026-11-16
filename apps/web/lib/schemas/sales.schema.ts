@@ -13,6 +13,7 @@ export const saleItemSchema = z.object({
   serviceId: z.string().uuid().nullish(),
   productId: z.string().uuid().nullish(),
   professionalId: z.string().uuid().nullish(),
+  assistantId: z.string().uuid().nullish(),
   quantity: z.number().finite().positive().max(9999),
   unitPrice: money.nullable(),
   discountAmount: money,

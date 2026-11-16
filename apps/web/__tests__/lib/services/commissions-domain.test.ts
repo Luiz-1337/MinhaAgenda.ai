@@ -3,10 +3,12 @@ import {
   DEFAULT_COMMISSION_SETTINGS,
   commissionTotals,
   parseCommissionRate,
+  planAssistantRule,
   planCommissionRule,
   planSaleCommissions,
   resolveCommissionRate,
   resolveCommissionSettings,
+  type CommissionAssistantRuleRow,
   type CommissionSaleInput,
 } from "@repo/db/src/domain/commissions"
 
@@ -368,10 +370,200 @@ describe("totais do extrato", () => {
         { baseAmount: "200.00", grossAmount: "100.00", feeAmount: "2.92", amount: "97.08" },
         { baseAmount: "0.10", grossAmount: "0.20", feeAmount: "0.00", amount: "0.20" },
       ])
-    ).toEqual({ baseCents: 20010, grossCents: 10020, feeCents: 292, amountCents: 9728, count: 2 })
+    ).toEqual({ baseCents: 20010, grossCents: 10020, feeCents: 292, assistantCents: 0, amountCents: 9728, count: 2 })
+  })
+
+  it("o desconto de auxiliar entra na conta: comissões − taxas − auxiliar = a receber", () => {
+    const totals = commissionTotals([
+      { baseAmount: "600.00", grossAmount: "300.00", feeAmount: "8.76", assistantDeduction: "60.00", amount: "231.24" },
+      { baseAmount: "0.00", grossAmount: "60.00", feeAmount: "0.00", assistantDeduction: "0.00", amount: "60.00" },
+    ])
+    expect(totals.assistantCents).toBe(6000)
+    expect(totals.grossCents - totals.feeCents - totals.assistantCents).toBe(totals.amountCents)
   })
 
   it("lista vazia dá zero", () => {
-    expect(commissionTotals([])).toEqual({ baseCents: 0, grossCents: 0, feeCents: 0, amountCents: 0, count: 0 })
+    expect(commissionTotals([])).toEqual({
+      baseCents: 0,
+      grossCents: 0,
+      feeCents: 0,
+      assistantCents: 0,
+      amountCents: 0,
+      count: 0,
+    })
+  })
+})
+
+// ============================================================================
+// Comissão como auxiliar (fatia 3b)
+// ============================================================================
+
+const AUX = "pro-aux"
+
+function assistantRule(overrides: Partial<CommissionAssistantRuleRow> = {}): CommissionAssistantRuleRow {
+  return { professionalId: null, serviceId: SERVICE, kind: "percent", value: "10.00", base: "gross", deductFrom: "professional", ...overrides }
+}
+
+/** Serviço de R$ 600 a 50%, crédito a 2,92% (taxa de R$ 17,52), com auxiliar. */
+function saleWithAssistant(overrides: Partial<CommissionSaleInput> = {}): CommissionSaleInput {
+  return sale({
+    sale: { saleDate: new Date("2026-11-17T01:00:00Z"), total: "600.00", amountDue: "0.00" },
+    items: [
+      { id: "item-1", serviceId: SERVICE, productId: null, professionalId: PRO, assistantId: AUX, quantity: "1.000", discountAmount: "0.00", total: "600.00" },
+    ],
+    payments: [{ feeAmount: "17.52", settlesOn: "2026-12-16" }],
+    professionals: new Map([
+      [PRO, { commissionRate: "50.00", settings: null }],
+      [AUX, { commissionRate: "0.00", settings: null }],
+    ]),
+    assistantRules: [assistantRule()],
+    ...overrides,
+  })
+}
+
+describe("comissão como auxiliar", () => {
+  it("exemplo da auditoria: R$ 600, 50%, taxa R$ 8,76, auxiliar R$ 60 → R$ 231,24", () => {
+    const [professional, assistant] = planSaleCommissions(saleWithAssistant())
+
+    expect(professional).toMatchObject({
+      professionalId: PRO,
+      role: "professional",
+      grossAmount: "300.00",
+      feeAmount: "8.76",
+      assistantDeduction: "60.00",
+      amount: "231.24",
+    })
+    // A linha do auxiliar: o que ele recebe, sem taxa e sem desconto.
+    expect(assistant).toMatchObject({
+      saleItemId: "item-1",
+      professionalId: AUX,
+      role: "assistant",
+      baseAmount: "600.00",
+      rateKind: "percent",
+      rateValue: "10.00",
+      grossAmount: "60.00",
+      feeAmount: "0.00",
+      assistantDeduction: "0.00",
+      amount: "60.00",
+    })
+  })
+
+  it("saindo do salão, a comissão do profissional não muda", () => {
+    const [professional, assistant] = planSaleCommissions(
+      saleWithAssistant({ assistantRules: [assistantRule({ deductFrom: "salon" })] })
+    )
+    expect(professional).toMatchObject({ assistantDeduction: "0.00", amount: "291.24" })
+    expect(assistant.amount).toBe("60.00")
+  })
+
+  it("percentual sobre a comissão do profissional (antes da taxa)", () => {
+    const [professional, assistant] = planSaleCommissions(
+      saleWithAssistant({ assistantRules: [assistantRule({ base: "commission", value: "20.00" })] })
+    )
+    // 20% de R$ 300,00.
+    expect(assistant).toMatchObject({ baseAmount: "300.00", grossAmount: "60.00", amount: "60.00" })
+    expect(professional.amount).toBe("231.24")
+  })
+
+  it("valor fixo é por unidade", () => {
+    const [, assistant] = planSaleCommissions(
+      saleWithAssistant({
+        items: [
+          { id: "item-1", serviceId: SERVICE, productId: null, professionalId: PRO, assistantId: AUX, quantity: "2.000", discountAmount: "0.00", total: "600.00" },
+        ],
+        assistantRules: [assistantRule({ kind: "fixed", value: "15.00" })],
+      })
+    )
+    expect(assistant).toMatchObject({ rateKind: "fixed", rateValue: "15.00", grossAmount: "30.00" })
+  })
+
+  it("a regra de quem auxilia vence o padrão do salão", () => {
+    const [professional, assistant] = planSaleCommissions(
+      saleWithAssistant({
+        assistantRules: [assistantRule(), assistantRule({ professionalId: AUX, value: "20.00" })],
+      })
+    )
+    expect(assistant.grossAmount).toBe("120.00")
+    expect(professional).toMatchObject({ assistantDeduction: "120.00", amount: "171.24" })
+  })
+
+  it("sem regra o auxiliar aparece com zero e nada é descontado", () => {
+    const [professional, assistant] = planSaleCommissions(saleWithAssistant({ assistantRules: [] }))
+    expect(professional).toMatchObject({ assistantDeduction: "0.00", amount: "291.24" })
+    expect(assistant).toMatchObject({ role: "assistant", rateValue: "0.00", grossAmount: "0.00", amount: "0.00" })
+  })
+
+  it("o desconto nunca deixa o profissional negativo — o auxiliar recebe inteiro", () => {
+    const [professional, assistant] = planSaleCommissions(
+      saleWithAssistant({
+        // Comissão de 5% = R$ 30,00; taxa R$ 0,88; auxiliar R$ 60,00.
+        professionals: new Map([
+          [PRO, { commissionRate: "5.00", settings: null }],
+          [AUX, { commissionRate: "0.00", settings: null }],
+        ]),
+      })
+    )
+    expect(professional).toMatchObject({ grossAmount: "30.00", feeAmount: "0.88", assistantDeduction: "29.12", amount: "0.00" })
+    expect(assistant.amount).toBe("60.00")
+  })
+
+  it("auxiliar igual ao profissional, de outro salão ou em produto é ignorado", () => {
+    const same = planSaleCommissions(
+      saleWithAssistant({
+        items: [
+          { id: "item-1", serviceId: SERVICE, productId: null, professionalId: PRO, assistantId: PRO, quantity: "1.000", discountAmount: "0.00", total: "600.00" },
+        ],
+      })
+    )
+    expect(same).toHaveLength(1)
+    expect(same[0]).toMatchObject({ role: "professional", assistantDeduction: "0.00" })
+
+    const outsider = planSaleCommissions(
+      saleWithAssistant({ professionals: new Map([[PRO, { commissionRate: "50.00", settings: null }]]) })
+    )
+    expect(outsider).toHaveLength(1)
+
+    const onProduct = planSaleCommissions(
+      saleWithAssistant({
+        items: [
+          { id: "item-1", serviceId: null, productId: PRODUCT, professionalId: PRO, assistantId: AUX, quantity: "1.000", discountAmount: "0.00", total: "600.00" },
+        ],
+      })
+    )
+    expect(onProduct).toHaveLength(1)
+  })
+
+  it("a data do auxiliar segue a regra dele, não a de quem executou", () => {
+    const [professional, assistant] = planSaleCommissions(
+      saleWithAssistant({
+        professionals: new Map([
+          [PRO, { commissionRate: "50.00", settings: null }],
+          [AUX, { commissionRate: "0.00", settings: { dateBasis: "availability", feeMode: null, discountMode: null } }],
+        ]),
+      })
+    )
+    expect(professional.releaseDate).toBe("2026-11-16")
+    expect(assistant.releaseDate).toBe("2026-12-16")
+  })
+
+  it("regra do formulário: valida tipo, valor, base e de quem sai", () => {
+    expect(planAssistantRule({ kind: "percent", value: 10, base: "commission", deductFrom: "salon" })).toEqual({
+      ok: true,
+      kind: "percent",
+      value: "10.00",
+      base: "commission",
+      deductFrom: "salon",
+    })
+    // Valor fixo não incide sobre nada: a base gravada é a padrão.
+    expect(planAssistantRule({ kind: "fixed", value: 15, base: "commission", deductFrom: "professional" })).toEqual({
+      ok: true,
+      kind: "fixed",
+      value: "15.00",
+      base: "gross",
+      deductFrom: "professional",
+    })
+    expect(planAssistantRule({ kind: "percent", value: 101, base: "gross", deductFrom: "salon" }).ok).toBe(false)
+    expect(planAssistantRule({ kind: "percent", value: 10, base: "tudo", deductFrom: "salon" }).ok).toBe(false)
+    expect(planAssistantRule({ kind: "percent", value: 10, base: "gross", deductFrom: "cliente" }).ok).toBe(false)
   })
 })

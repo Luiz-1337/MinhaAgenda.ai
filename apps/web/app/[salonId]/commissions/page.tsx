@@ -64,6 +64,9 @@ export default async function CommissionsPage({
   }
 
   const { totals } = statement
+  // A coluna "Auxiliar" só aparece quando alguma comissão do período foi dividida.
+  const showAssistant = totals.assistantCents > 0
+  const assistantItems = statement.byProfessional.reduce((sum, row) => sum + row.assistantCount, 0)
 
   return (
     <div className="flex flex-col h-full gap-6 overflow-y-auto custom-scrollbar">
@@ -98,9 +101,25 @@ export default async function CommissionsPage({
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Valor dos itens" value={money(totals.baseCents)} hint={`${totals.count} ${totals.count === 1 ? "item" : "itens"}`} />
-        <Stat label="Comissões" value={money(totals.grossCents)} hint="Antes das taxas" />
+        <Stat
+          label="Comissões"
+          value={money(totals.grossCents)}
+          hint={
+            assistantItems > 0
+              ? `Antes das taxas · inclui ${assistantItems} como auxiliar`
+              : "Antes das taxas"
+          }
+        />
         <Stat label="Taxas" value={money(totals.feeCents)} hint="Parte das taxas de pagamento" />
-        <Stat label="A receber" value={money(totals.amountCents)} hint="Comissões menos taxas" />
+        <Stat
+          label="A receber"
+          value={money(totals.amountCents)}
+          hint={
+            showAssistant
+              ? `Comissões menos taxas e ${money(totals.assistantCents)} repassados a auxiliar`
+              : "Comissões menos taxas"
+          }
+        />
       </div>
 
       {statement.pending.count > 0 && (
@@ -125,6 +144,7 @@ export default async function CommissionsPage({
                   <th scope="col" className="p-3 text-right font-semibold">Valor dos itens</th>
                   <th scope="col" className="p-3 text-right font-semibold">Comissões</th>
                   <th scope="col" className="p-3 text-right font-semibold">Taxas</th>
+                  {showAssistant && <th scope="col" className="p-3 text-right font-semibold">Auxiliar</th>}
                   <th scope="col" className="p-3 text-right font-semibold">A receber</th>
                 </tr>
               </thead>
@@ -132,10 +152,16 @@ export default async function CommissionsPage({
                 {statement.byProfessional.map((row) => (
                   <tr key={row.professionalId}>
                     <th scope="row" className="p-3 text-left font-semibold text-foreground">{row.professionalName}</th>
-                    <td className="p-3 text-right tabular-nums text-muted-foreground">{row.count}</td>
+                    <td className="p-3 text-right tabular-nums text-muted-foreground whitespace-nowrap">
+                      {row.count}
+                      {row.assistantCount > 0 && ` + ${row.assistantCount} como auxiliar`}
+                    </td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.baseCents)}</td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.grossCents)}</td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.feeCents)}</td>
+                    {showAssistant && (
+                      <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.assistantCents)}</td>
+                    )}
                     <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">{money(row.amountCents)}</td>
                   </tr>
                 ))}
@@ -167,6 +193,7 @@ export default async function CommissionsPage({
                   <th scope="col" className="p-3 text-right font-semibold">Regra</th>
                   <th scope="col" className="p-3 text-right font-semibold">Comissão</th>
                   <th scope="col" className="p-3 text-right font-semibold">Taxa</th>
+                  {showAssistant && <th scope="col" className="p-3 text-right font-semibold">Auxiliar</th>}
                   <th scope="col" className="p-3 text-right font-semibold">A receber</th>
                 </tr>
               </thead>
@@ -191,11 +218,21 @@ export default async function CommissionsPage({
                         <span className="text-muted-foreground"> × {Number(entry.quantity).toLocaleString("pt-BR")}</span>
                       )}
                     </td>
-                    <td className="p-3 text-muted-foreground">{entry.professionalName}</td>
+                    <td className="p-3 text-muted-foreground">
+                      {entry.professionalName}
+                      {entry.role === "assistant" && (
+                        <span className="ml-2 text-[11px] font-semibold uppercase text-accent">Auxiliar</span>
+                      )}
+                    </td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{formatBRL(entry.baseAmount)}</td>
                     <td className="p-3 text-right tabular-nums text-muted-foreground whitespace-nowrap">{rateLabel(entry)}</td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{formatBRL(entry.grossAmount)}</td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{formatBRL(entry.feeAmount)}</td>
+                    {showAssistant && (
+                      <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">
+                        {Number(entry.assistantDeduction) > 0 ? formatBRL(entry.assistantDeduction) : "—"}
+                      </td>
+                    )}
                     <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">{formatBRL(entry.amount)}</td>
                   </tr>
                 ))}
