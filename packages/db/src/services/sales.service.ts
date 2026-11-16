@@ -18,6 +18,7 @@ import {
   centsToNumeric,
   planInvoice,
   planSaleItems,
+  toCents,
   type InvoicePaymentDraft,
   type SaleCatalog,
   type SaleItemDraft,
@@ -511,6 +512,58 @@ export async function voidSaleService(input: {
   }
 }
 
+/**
+ * O agendamento foi CANCELADO: se ele está numa comanda aberta, o item sai e os
+ * totais são refeitos. Chamado por cancelAppointmentService.
+ *
+ * Comanda faturada não chega aqui na prática — faturar conclui o agendamento, e
+ * atendimento concluído não se cancela. Se chegar, fica como está: venda faturada
+ * não muda por efeito colateral.
+ *
+ * Devolve o número da comanda alterada (para o log), ou null se não havia nada.
+ */
+export async function detachCancelledAppointmentFromSale(input: {
+  salonId: string
+  appointmentId: string
+}): Promise<number | null> {
+  return db.transaction(async (tx) => {
+    const [item] = await tx
+      .select({ id: saleItems.id, saleId: saleItems.saleId })
+      .from(saleItems)
+      .where(and(eq(saleItems.appointmentId, input.appointmentId), eq(saleItems.salonId, input.salonId)))
+      .limit(1)
+
+    if (!item) return null
+
+    const sale = await lockSale(tx, input.salonId, item.saleId)
+    if (!sale || sale.status !== "open") return null
+
+    await tx.delete(saleItems).where(and(eq(saleItems.id, item.id), eq(saleItems.salonId, input.salonId)))
+
+    // Totais a partir do que ficou gravado: o total de cada item já é
+    // quantidade × unitário − desconto, calculado pela regra ao salvar.
+    const remaining = await tx
+      .select({ total: saleItems.total, discountAmount: saleItems.discountAmount })
+      .from(saleItems)
+      .where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
+
+    const totalCents = remaining.reduce((sum, r) => sum + (toCents(r.total) ?? 0), 0)
+    const discountCents = remaining.reduce((sum, r) => sum + (toCents(r.discountAmount) ?? 0), 0)
+
+    await tx
+      .update(sales)
+      .set({
+        subtotal: centsToNumeric(totalCents + discountCents),
+        discountTotal: centsToNumeric(discountCents),
+        total: centsToNumeric(totalCents),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
+
+    return sale.number
+  })
+}
+
 // ============================================================================
 // Leitura
 // ============================================================================
@@ -633,6 +686,26 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
     items,
     payments,
   }
+}
+
+/** Itens de várias comandas de uma vez — a aba Vendas da ficha do cliente. */
+export async function listSaleItemSummariesService(
+  salonId: string,
+  saleIds: string[]
+): Promise<{ saleId: string; description: string; total: string; professionalName: string | null }[]> {
+  if (saleIds.length === 0) return []
+
+  return db
+    .select({
+      saleId: saleItems.saleId,
+      description: saleItems.description,
+      total: saleItems.total,
+      professionalName: professionals.name,
+    })
+    .from(saleItems)
+    .leftJoin(professionals, eq(professionals.id, saleItems.professionalId))
+    .where(and(eq(saleItems.salonId, salonId), inArray(saleItems.saleId, saleIds)))
+    .orderBy(saleItems.saleId, saleItems.position)
 }
 
 export type SaleListRow = {

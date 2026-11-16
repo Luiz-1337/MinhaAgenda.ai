@@ -4,8 +4,8 @@
 **Origem:** "Auditoria Funcional — Belasis" (13/nov/2026, 80 itens, conta admin, somente leitura).
 **Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
-Fase 1 (comandas) implementada em parte na branch `claude/fase-1-comandas` (ainda não
-publicada), com a migration 037 já aplicada em produção — ver §5.9. Fases 2 em diante: planejamento.
+Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
+nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fases 2 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -360,9 +360,9 @@ Branch `claude/fase-1-comandas` (sai de `claude/fase-0-permissoes`).
 | Lista e comanda | `/[salonId]/sales`, `/[salonId]/sales/[saleId]` (`new` = criar) | Feitas |
 | Criar comanda pelo agendamento | botão no diálogo do agendamento → `/sales/new?appointment=<id>` | Feito |
 | Menu "Comandas" | `components/dashboard/sidebar.tsx` | Feito (módulo ligado + `sales.access`) |
-| Agrupar agendamentos (Agenda → Ações) | — | **Pendente** |
-| Aba Vendas na ficha do cliente | — | **Pendente** |
-| Cancelar agendamento remove o item da comanda aberta (regra 9) | — | **Pendente** — hoje o faturamento recusa e pede para remover o item |
+| Agrupar agendamentos | botão "Agrupar em comanda" na agenda (`components/scheduler/group-appointments-dialog.tsx`) → `/sales/new?appointment=<id>&appointment=<id>` | Feito |
+| Vendas na ficha do cliente | `components/contacts/customer-sales-card.tsx` | Feito |
+| Cancelar agendamento remove o item da comanda aberta (regra 9) | `detachCancelledAppointmentFromSale`, chamado por `cancelAppointmentService` | Feito |
 
 Nenhuma tela foi aberta no navegador (sem `.env` no checkout): typecheck, lint, testes
 e `next build` passam, mas o fluxo nunca foi clicado. A gravação no banco
@@ -396,7 +396,16 @@ comanda; a equipe (STAFF) não tem nenhuma — precisa de um perfil de acesso.
 | Data retroativa | Livre, sem limite |
 | Quem fatura | Quem tiver a permissão `sales.invoice` — por padrão, gerentes e o dono |
 
-**Diferenças em relação ao plano da §5.3:**
+**Diferenças em relação ao plano da §5.3 e da §5.5:**
+
+- **"Agrupar em comanda" é um botão no topo da agenda**, não um item de menu
+  "Ações" (a agenda não tem esse menu). Lista os agendamentos do dia em foco, por
+  cliente, e junta os de UM cliente; se algum já está em outra comanda, avisa qual.
+- **Vendas na ficha é um cartão**, não uma aba — a ficha do cliente é uma página
+  só, sem abas. Mostra as últimas 50 comandas, sem filtro de período.
+- **A regra 9 roda em todo cancelamento** (painel, IA, sincronização com a agenda
+  oficial): é uma consulta a mais por cancelamento, pelo índice do agendamento. Se
+  falhar, o cancelamento segue e o item fica na comanda.
 
 - **Excluir** só vale para comanda aberta; a faturada precisa ser reaberta antes
   (regra 8 não dizia isso).

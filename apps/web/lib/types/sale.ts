@@ -110,18 +110,31 @@ export interface SaleFormOptions {
   }
 }
 
-/** Resultado de "Criar comanda" a partir de um agendamento. */
+/**
+ * Resultado de "Criar comanda" a partir de um ou mais agendamentos do MESMO
+ * cliente (um, pelo diálogo do agendamento; vários, por "Agrupar em comanda").
+ */
 export type SaleDraftFromAppointment =
   | { existingSaleId: string }
   | {
       customer: SaleCustomerOption
-      item: {
+      items: {
         appointmentId: string
         serviceId: string
         professionalId: string
         suggestedPrice: number | null
-      }
+      }[]
     }
+
+/** Uma linha da aba Vendas da ficha do cliente. */
+export interface CustomerSaleDTO {
+  id: string
+  number: number
+  status: SaleStatus
+  saleDate: string
+  total: string
+  items: { description: string; total: string; professionalName: string | null }[]
+}
 
 export interface SaleCustomerOption {
   id: string

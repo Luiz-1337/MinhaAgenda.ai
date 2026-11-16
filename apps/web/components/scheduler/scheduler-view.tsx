@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import dynamic from "next/dynamic"
-import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck } from "lucide-react"
+import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck, Receipt } from "lucide-react"
 import { DailyScheduler } from "./daily-scheduler"
 import { WeeklyScheduler } from "./weekly-scheduler"
 import { MonthlyScheduler } from "./monthly-scheduler"
@@ -15,6 +15,7 @@ const CreateAppointmentDialog = dynamic(
 import { getAppointments, getSchedulerHours, getPendingOutcomeCount } from "@/app/actions/appointments"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { AppointmentDetailDialog } from "./appointment-detail-dialog"
+import { GroupAppointmentsDialog } from "./group-appointments-dialog"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
 import {
@@ -25,7 +26,7 @@ import {
   startOfMonthBrazil,
   endOfMonthBrazil
 } from "@/lib/utils/timezone.utils"
-import { useSalonAuth } from "@/contexts/salon-context"
+import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +49,15 @@ interface Professional {
 
 export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   const { isSolo } = useSalonAuth()
+  // Comandas (docs/ROADMAP.md, fase 1): só no salão com o módulo ligado e para quem
+  // pode criar comanda. Cortesia de tela — a página da comanda confere de novo.
+  const { activeSalon } = useSalon()
+  const canCreateSale =
+    !!activeSalon &&
+    activeSalon.id === salonId &&
+    activeSalon.modules.includes("sales") &&
+    activeSalon.permissions.includes("sales.create")
+  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [viewType, setViewType] = useState<ViewType>("weekly")
   const [currentDate, setCurrentDate] = useState<Date>(() => {
     if (initialDate) {
@@ -279,6 +289,17 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
           >
             Hoje
           </button>
+          {canCreateSale && (
+            <button
+              onClick={() => setIsGroupDialogOpen(true)}
+              title="Juntar os agendamentos de um cliente neste dia em uma comanda"
+              className="flex-1 sm:flex-initial px-3 py-2 bg-card border border-border text-foreground rounded-lg text-xs sm:text-sm font-medium hover:bg-muted flex items-center justify-center gap-2 transition-colors"
+            >
+              <Receipt size={16} />
+              <span className="hidden sm:inline">Agrupar em comanda</span>
+              <span className="sm:hidden">Agrupar</span>
+            </button>
+          )}
           <button
             onClick={() => setIsCreateDialogOpen(true)}
             className="flex-1 sm:flex-initial px-3 py-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg text-xs sm:text-sm font-medium  flex items-center justify-center gap-2 transition-colors"
@@ -411,6 +432,18 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
         professionals={professionals}
         onSuccess={handleAppointmentChanged}
       />
+
+      {/* Agrupar agendamentos do dia em uma comanda. Montado só quando aberto, para
+          cada abertura começar com a seleção limpa. */}
+      {canCreateSale && isGroupDialogOpen && (
+        <GroupAppointmentsDialog
+          open
+          onOpenChange={setIsGroupDialogOpen}
+          salonId={salonId}
+          date={currentDate}
+          appointments={appointments}
+        />
+      )}
 
       {/* Appointment Detail / Delete Dialog */}
       <AppointmentDetailDialog

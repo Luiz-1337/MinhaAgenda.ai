@@ -107,18 +107,16 @@ type AppointmentDraft = Extract<SaleDraftFromAppointment, { customer: unknown }>
 function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null): ItemRow[] {
   if (!sale) {
     if (!draft) return []
-    return [
-      {
-        key: nextKey(),
-        kind: "service",
-        refId: draft.item.serviceId,
-        professionalId: draft.item.professionalId,
-        quantity: "1",
-        unitPrice: moneyToInput(draft.item.suggestedPrice),
-        discount: "",
-        appointmentId: draft.item.appointmentId,
-      },
-    ]
+    return draft.items.map((item) => ({
+      key: nextKey(),
+      kind: "service" as const,
+      refId: item.serviceId,
+      professionalId: item.professionalId,
+      quantity: "1",
+      unitPrice: moneyToInput(item.suggestedPrice),
+      discount: "",
+      appointmentId: item.appointmentId,
+    }))
   }
   return sale.items.map((item) => ({
     key: nextKey(),
@@ -146,7 +144,7 @@ export function SaleEditor({
   salonId: string
   sale: SaleDetailDTO | null
   options: SaleFormOptions
-  /** Comanda nova aberta a partir de um agendamento ("Criar comanda" na agenda). */
+  /** Comanda nova aberta a partir de agendamentos ("Criar comanda" / "Agrupar em comanda"). */
   draft: AppointmentDraft | null
   openInvoice: boolean
 }) {

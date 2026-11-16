@@ -23,6 +23,7 @@ import {
   type AgendaSyncContext,
 } from "./agenda-sync.service"
 import { processVacantSlot } from "./slot-filler.service"
+import { detachCancelledAppointmentFromSale } from "./sales.service"
 import { getGoogleFreeBusyForProfessional } from "./google-calendar"
 import { GOOGLE_BLOCKED_TIME_SERVICE_NAME, GOOGLE_CALENDAR_PLACEHOLDER_PHONE } from "../domain/constants"
 import type { AgendaProviderId } from "../domain/integrations/interfaces/agenda-provider.interface"
@@ -769,6 +770,19 @@ export async function cancelAppointmentService(input: {
       updatedAt: now,
     })
     .where(scope)
+
+  // Comandas: agendamento cancelado sai da comanda ABERTA em que estava, senão o
+  // faturamento dela travaria ("um agendamento desta comanda foi cancelado").
+  // Nunca bloqueia o cancelamento — o cliente pediu; uma falha aqui só deixa o item
+  // lá, e o faturamento avisa.
+  try {
+    await detachCancelledAppointmentFromSale({
+      salonId: existingAppointment.salonId,
+      appointmentId: existingAppointment.id,
+    })
+  } catch (error) {
+    console.error("Falha ao tirar o agendamento cancelado da comanda:", error)
+  }
 
   // Agenda oficial externa (ex.: Belasis): cancela lá também. Nunca bloqueia o
   // cancelamento — o cliente pediu. Se não chegou lá, marca a linha e um alerta no

@@ -15,10 +15,12 @@ import {
   asc,
   eq,
   ilike,
+  inArray,
   or,
   createSaleService,
   getSaleService,
   invoiceSaleService,
+  listSaleItemSummariesService,
   listSalesService,
   reopenSaleService,
   updateSaleService,
@@ -38,6 +40,7 @@ import {
 } from "@/lib/schemas/sales.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
+  CustomerSaleDTO,
   InvoiceSaleInput,
   SaleCustomerOption,
   SaleDetailDTO,
@@ -311,27 +314,34 @@ export async function searchSaleCustomers(
 }
 
 /**
- * Ponto de partida de uma comanda criada a partir de um agendamento (botão "Criar
- * comanda" na agenda): cliente, serviço, profissional e o valor sugerido.
+ * Ponto de partida de uma comanda criada a partir de agendamentos: cliente e, para
+ * cada agendamento, serviço, profissional e o valor sugerido.
  *
- * Se o agendamento JÁ está numa comanda, devolve o id dela — a tela abre a comanda
- * existente em vez de criar outra (o banco recusaria: um agendamento entra em no
- * máximo uma comanda).
+ * Um agendamento vem do botão "Criar comanda"; vários, de "Agrupar em comanda" na
+ * agenda — todos têm que ser do MESMO cliente.
+ *
+ * Um agendamento entra em no máximo uma comanda (o banco recusa a segunda). Se o
+ * pedido é de UM agendamento que já está numa comanda, devolve o id dela e a tela
+ * abre a que existe. Com vários, é erro: não dá para adivinhar em qual juntar.
  */
-export async function getSaleDraftFromAppointment(
+export async function getSaleDraftFromAppointments(
   salonId: string,
-  appointmentId: string
+  appointmentIds: string[]
 ): Promise<SaleDraftFromAppointment | { error: string }> {
   const auth = await authorizeSalon(salonId, "sales.create")
   if ("error" in auth) return auth
 
-  if (!/^[0-9a-f-]{36}$/i.test(appointmentId ?? "")) return { error: "Agendamento inválido" }
+  const ids = Array.from(new Set(appointmentIds ?? []))
+  if (ids.length === 0 || ids.length > 30 || ids.some((id) => !/^[0-9a-f-]{36}$/i.test(id))) {
+    return { error: "Agendamento inválido" }
+  }
 
   try {
-    const [row] = await db
+    const rows = await db
       .select({
         id: appointments.id,
         status: appointments.status,
+        date: appointments.date,
         professionalId: appointments.professionalId,
         serviceId: services.id,
         price: services.price,
@@ -347,35 +357,94 @@ export async function getSaleDraftFromAppointment(
       .from(appointments)
       .innerJoin(services, eq(services.id, appointments.serviceId))
       .innerJoin(customers, eq(customers.id, appointments.clientId))
-      .where(and(eq(appointments.id, appointmentId), eq(appointments.salonId, salonId)))
-      .limit(1)
+      .where(and(inArray(appointments.id, ids), eq(appointments.salonId, salonId)))
+      .orderBy(asc(appointments.date))
 
-    if (!row) return { error: "Agendamento não encontrado" }
-    if (row.status === "cancelled") return { error: "Este agendamento foi cancelado" }
+    // Faltou algum = não existe ou é de outro salão. Mesma resposta nos dois casos.
+    if (rows.length !== ids.length) return { error: "Agendamento não encontrado" }
+    if (rows.some((row) => row.status === "cancelled")) return { error: "Há agendamento cancelado na seleção" }
     // Bloqueio de horário (Google Calendar) não é atendimento.
-    if (row.isSystem) return { error: "Este horário é um bloqueio, não um atendimento" }
+    if (rows.some((row) => row.isSystem)) return { error: "Há um bloqueio de horário na seleção, não um atendimento" }
+    if (new Set(rows.map((row) => row.customerId)).size > 1) {
+      return { error: "Os agendamentos são de clientes diferentes" }
+    }
 
-    const [existing] = await db
-      .select({ saleId: sales.id })
+    const existing = await db
+      .select({ saleId: sales.id, number: sales.number })
       .from(saleItems)
       .innerJoin(sales, eq(sales.id, saleItems.saleId))
-      .where(and(eq(saleItems.appointmentId, appointmentId), eq(saleItems.salonId, salonId)))
+      .where(and(inArray(saleItems.appointmentId, ids), eq(saleItems.salonId, salonId)))
       .limit(1)
 
-    if (existing) return { existingSaleId: existing.saleId }
+    if (existing.length > 0) {
+      if (ids.length === 1) return { existingSaleId: existing[0].saleId }
+      return {
+        error: `Um dos agendamentos já está na comanda #${existing[0].number}. Abra essa comanda para incluir os outros.`,
+      }
+    }
 
+    const first = rows[0]
     return {
-      customer: { id: row.customerId, name: row.customerName, phone: row.customerPhone },
-      item: {
+      customer: { id: first.customerId, name: first.customerName, phone: first.customerPhone },
+      items: rows.map((row) => ({
         appointmentId: row.id,
         serviceId: row.serviceId,
         professionalId: row.professionalId,
         suggestedPrice: suggestedPriceFromService(row),
-      },
+      })),
     }
   } catch (error) {
-    console.error("Erro ao montar comanda a partir do agendamento:", error)
-    return { error: "Não foi possível abrir a comanda deste agendamento" }
+    console.error("Erro ao montar comanda a partir de agendamentos:", error)
+    return { error: "Não foi possível abrir a comanda destes agendamentos" }
+  }
+}
+
+/**
+ * Vendas de um cliente — a aba Vendas da ficha. Mesmas regras de visibilidade da
+ * lista de comandas (só as próprias sem `view_all`; sem faturadas sem
+ * `view_invoiced`). Excluídas não aparecem.
+ */
+export async function listCustomerSales(
+  salonId: string,
+  customerId: string
+): Promise<CustomerSaleDTO[] | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.access")
+  if ("error" in auth) return auth
+
+  if (!/^[0-9a-f-]{36}$/i.test(customerId ?? "")) return { error: "Cliente inválido" }
+
+  try {
+    const permissions = await getSalonPermissions(salonId, auth.userId)
+
+    const { rows } = await listSalesService({
+      salonId,
+      customerId,
+      excludeInvoiced: !permissions.has("sales.view_invoiced"),
+      visibleTo: permissions.has("sales.view_all")
+        ? undefined
+        : { userId: auth.userId, professionalIds: await ownProfessionalIds(salonId, auth.userId) },
+      limit: 50,
+      offset: 0,
+    })
+
+    const items = await listSaleItemSummariesService(
+      salonId,
+      rows.map((row) => row.id)
+    )
+
+    return rows.map((row) => ({
+      id: row.id,
+      number: row.number,
+      status: row.status,
+      saleDate: row.saleDate.toISOString(),
+      total: row.total,
+      items: items
+        .filter((item) => item.saleId === row.id)
+        .map(({ description, total, professionalName }) => ({ description, total, professionalName })),
+    }))
+  } catch (error) {
+    console.error("Erro ao listar vendas do cliente:", error)
+    return { error: "Não foi possível carregar as vendas do cliente" }
   }
 }
 

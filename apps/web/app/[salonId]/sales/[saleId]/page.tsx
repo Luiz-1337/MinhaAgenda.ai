@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { ArrowLeft, ShieldOff } from "lucide-react"
-import { getSale, getSaleDraftFromAppointment, getSaleFormOptions } from "@/app/actions/sales"
+import { getSale, getSaleDraftFromAppointments, getSaleFormOptions } from "@/app/actions/sales"
 import { SaleEditor } from "./sale-editor"
 
 function Blocked({ salonId, message }: { salonId: string; message: string }) {
@@ -43,9 +43,15 @@ export default async function SalePage({
     return <Blocked salonId={salonId} message="Você não tem permissão para criar comandas" />
   }
 
-  // "Criar comanda" na agenda chega como /sales/new?appointment=<id>.
-  const appointmentId = typeof query.appointment === "string" ? query.appointment : undefined
-  const draft = isNew && appointmentId ? await getSaleDraftFromAppointment(salonId, appointmentId) : null
+  // Da agenda: "Criar comanda" chega como /sales/new?appointment=<id>; "Agrupar em
+  // comanda" repete o parâmetro, um por agendamento.
+  const appointmentIds = Array.isArray(query.appointment)
+    ? query.appointment
+    : query.appointment
+      ? [query.appointment]
+      : []
+  const draft =
+    isNew && appointmentIds.length > 0 ? await getSaleDraftFromAppointments(salonId, appointmentIds) : null
 
   if (draft && "error" in draft) return <Blocked salonId={salonId} message={draft.error} />
   // O agendamento já está numa comanda: abre a que existe.
@@ -55,7 +61,7 @@ export default async function SalePage({
     <SaleEditor
       // A chave troca quando o status muda (faturar/reabrir), para a tela remontar
       // com o que o servidor gravou em vez de reaproveitar estado de edição.
-      key={sale ? `${sale.id}:${sale.status}` : `new:${appointmentId ?? ""}`}
+      key={sale ? `${sale.id}:${sale.status}` : `new:${appointmentIds.join(",")}`}
       salonId={salonId}
       sale={sale}
       options={options}
