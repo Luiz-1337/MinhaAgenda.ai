@@ -24,6 +24,7 @@ export default async function SalesPage({
     status: status === "open" || status === "invoiced" || status === "void" ? status : undefined,
     from: first(query.from) || undefined,
     to: first(query.to) || undefined,
+    debt: first(query.debt) === "1" ? true : undefined,
     page: Number.isInteger(page) && page > 0 ? page : 1,
   }
 

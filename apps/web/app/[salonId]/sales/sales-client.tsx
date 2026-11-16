@@ -40,6 +40,7 @@ export function SalesClient({
     if (next.status) params.set("status", next.status)
     if (next.from) params.set("from", next.from)
     if (next.to) params.set("to", next.to)
+    if (next.debt) params.set("debt", "1")
     if (next.page && next.page > 1) params.set("page", String(next.page))
 
     const query = params.toString()
@@ -76,15 +77,20 @@ export function SalesClient({
           </label>
           <select
             id="sales-status"
-            value={filters.status ?? ""}
-            onChange={(event) =>
-              setFilter({ status: (event.target.value || undefined) as SaleListFilters["status"] })
-            }
+            value={filters.debt ? "debt" : (filters.status ?? "")}
+            onChange={(event) => {
+              const value = event.target.value
+              // "Com valor em aberto" não é um status: é comanda finalizada que ainda
+              // tem débito do cliente.
+              if (value === "debt") setFilter({ status: undefined, debt: true })
+              else setFilter({ status: (value || undefined) as SaleListFilters["status"], debt: undefined })
+            }}
             className={controlClass}
           >
             <option value="">Pendentes e finalizadas</option>
             <option value="open">Pendentes</option>
             <option value="invoiced">Finalizadas</option>
+            <option value="debt">Com valor em aberto</option>
             <option value="void">Excluídas</option>
           </select>
         </div>
@@ -112,7 +118,7 @@ export function SalesClient({
             className={controlClass}
           />
         </div>
-        {(filters.status || filters.from || filters.to) && (
+        {(filters.status || filters.debt || filters.from || filters.to) && (
           <button
             onClick={() => navigate({})}
             className="px-3 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -163,6 +169,11 @@ export function SalesClient({
                   >
                     {SALE_STATUS_LABELS[sale.status]}
                   </span>
+                  {Number(sale.amountDue) > 0 && (
+                    <span className="block mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                      Em aberto {formatBRL(sale.amountDue)}
+                    </span>
+                  )}
                 </div>
                 <div className="md:col-span-2 text-muted-foreground text-xs truncate">
                   {sale.paymentMethods.length > 0 ? sale.paymentMethods.join(", ") : "—"}

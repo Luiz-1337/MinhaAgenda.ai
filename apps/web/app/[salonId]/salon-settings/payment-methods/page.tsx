@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { ArrowLeft, ShieldOff } from "lucide-react"
-import { listPaymentMethods } from "@/app/actions/payment-methods"
+import { listPaymentMethodAccounts, listPaymentMethods } from "@/app/actions/payment-methods"
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { can } from "@/lib/services/permissions.service"
 import { PaymentMethodsClient } from "./payment-methods-client"
@@ -14,7 +14,12 @@ export default async function PaymentMethodsPage({
 
   // A action confere sessão, módulo ligado e permissão. Sem acesso, a página mostra
   // o bloqueio no conteúdo — o menu continua onde está.
-  const methods = await listPaymentMethods(salonId)
+  const [methods, accountsRes] = await Promise.all([
+    listPaymentMethods(salonId),
+    listPaymentMethodAccounts(salonId),
+  ])
+  // Sem o financeiro (ou sem contas) a lista vem vazia e o campo não aparece.
+  const accounts = "error" in accountsRes ? [] : accountsRes
 
   if ("error" in methods) {
     return (
@@ -37,5 +42,5 @@ export default async function PaymentMethodsPage({
   const userId = await getSessionUserId()
   const canManage = userId ? await can(salonId, userId, "payment_methods.manage") : false
 
-  return <PaymentMethodsClient key={salonId} salonId={salonId} methods={methods} canManage={canManage} />
+  return <PaymentMethodsClient key={salonId} salonId={salonId} methods={methods} accounts={accounts} canManage={canManage} />
 }

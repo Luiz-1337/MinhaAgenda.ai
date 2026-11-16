@@ -17,9 +17,12 @@ import {
   ilike,
   inArray,
   or,
+  brazilToday,
   createSaleService,
+  getDebtTotalsService,
   getSaleService,
   invoiceSaleService,
+  receiveSaleDebtPaymentService,
   listSaleItemSummariesService,
   listSalesService,
   reopenSaleService,
@@ -35,13 +38,15 @@ import { formatZodError } from "@/lib/services/validation.service"
 import { suggestedPriceFromService, toAmount } from "@/lib/utils/money.utils"
 import {
   invoiceSaleSchema,
+  receiveSalePaymentSchema,
   saleListFiltersSchema,
   saveSaleSchema,
 } from "@/lib/schemas/sales.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
-  CustomerSaleDTO,
+  CustomerSalesOverview,
   InvoiceSaleInput,
+  ReceiveSalePaymentInput,
   SaleCustomerOption,
   SaleDetailDTO,
   SaleDraftFromAppointment,
@@ -137,12 +142,14 @@ function toDetailDTO(sale: SaleDetail): SaleDetailDTO {
     subtotal: sale.subtotal,
     discountTotal: sale.discountTotal,
     total: sale.total,
+    amountDue: sale.amountDue,
+    debtDueDate: sale.debtDueDate,
     invoicedAt: sale.invoicedAt ? sale.invoicedAt.toISOString() : null,
     voidedAt: sale.voidedAt ? sale.voidedAt.toISOString() : null,
     voidReason: sale.voidReason,
     customer: sale.customer,
     items: sale.items,
-    payments: sale.payments,
+    payments: sale.payments.map((payment) => ({ ...payment, paidAt: payment.paidAt.toISOString() })),
   }
 }
 
@@ -151,6 +158,10 @@ function revalidateSales(salonId: string, saleId?: string) {
   if (saleId) revalidatePath(`/${salonId}/sales/${saleId}`)
   // Faturar e reabrir mudam o desfecho de agendamentos.
   revalidatePath(`/${salonId}/schedule`)
+  // E geram (ou apagam) contas a receber, quando o financeiro está ligado.
+  revalidatePath(`/${salonId}/finance`)
+  revalidatePath(`/${salonId}/finance/cash`)
+  revalidatePath(`/${salonId}/finance/summary`)
 }
 
 // ============================================================================
@@ -175,6 +186,7 @@ export async function listSales(
       salonId,
       status: parsed.data.status,
       includeVoid: parsed.data.status === "void",
+      onlyWithDebt: parsed.data.debt,
       excludeInvoiced: !permissions.has("sales.view_invoiced"),
       // O filtro é pelo DIA DE BRASÍLIA (UTC−3, sem horário de verão desde 2019).
       from: parsed.data.from ? new Date(`${parsed.data.from}T00:00:00-03:00`) : undefined,
@@ -262,12 +274,15 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       services: serviceRows.map((s) => ({ id: s.id, name: s.name, suggestedPrice: suggestedPriceFromService(s) })),
       products: productRows.map((p) => ({ id: p.id, name: p.name, price: toAmount(p.price) })),
       professionals: professionalRows,
-      paymentMethods: methodRows,
+      // A conta de destino não interessa à tela da comanda (e a coluna só existe
+      // depois da migration 038) — por isso não é lida aqui.
+      paymentMethods: methodRows.map((method) => ({ ...method, accountId: null })),
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),
         delete: permissions.has("sales.delete"),
         invoice: permissions.has("sales.invoice"),
+        invoiceDebt: permissions.has("sales.invoice_debt"),
         reopen: permissions.has("sales.edit_invoiced"),
       },
     }
@@ -407,7 +422,7 @@ export async function getSaleDraftFromAppointments(
 export async function listCustomerSales(
   salonId: string,
   customerId: string
-): Promise<CustomerSaleDTO[] | { error: string }> {
+): Promise<CustomerSalesOverview | { error: string }> {
   const auth = await authorizeSalon(salonId, "sales.access")
   if ("error" in auth) return auth
 
@@ -427,21 +442,35 @@ export async function listCustomerSales(
       offset: 0,
     })
 
-    const items = await listSaleItemSummariesService(
-      salonId,
-      rows.map((row) => row.id)
-    )
+    const today = brazilToday(new Date())
+    // O total devido soma TODAS as comandas do cliente — só faz sentido para quem
+    // vê todas. Para os demais não é mostrado (um total parcial enganaria).
+    const seesEverything = permissions.has("sales.view_all") && permissions.has("sales.view_invoiced")
 
-    return rows.map((row) => ({
-      id: row.id,
-      number: row.number,
-      status: row.status,
-      saleDate: row.saleDate.toISOString(),
-      total: row.total,
-      items: items
-        .filter((item) => item.saleId === row.id)
-        .map(({ description, total, professionalName }) => ({ description, total, professionalName })),
-    }))
+    const [items, debt] = await Promise.all([
+      listSaleItemSummariesService(
+        salonId,
+        rows.map((row) => row.id)
+      ),
+      seesEverything ? getDebtTotalsService({ salonId, customerId, today }) : null,
+    ])
+
+    return {
+      sales: rows.map((row) => ({
+        id: row.id,
+        number: row.number,
+        status: row.status,
+        saleDate: row.saleDate.toISOString(),
+        total: row.total,
+        amountDue: row.amountDue,
+        debtDueDate: row.debtDueDate,
+        items: items
+          .filter((item) => item.saleId === row.id)
+          .map(({ description, total, professionalName }) => ({ description, total, professionalName })),
+      })),
+      debt,
+      today,
+    }
   } catch (error) {
     console.error("Erro ao listar vendas do cliente:", error)
     return { error: "Não foi possível carregar as vendas do cliente" }
@@ -499,11 +528,54 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
   const visible = await loadVisibleSale(parsed.data.salonId, auth.userId, parsed.data.saleId)
   if ("error" in visible) return visible
 
-  const result = await invoiceSaleService({ ...parsed.data, userId: auth.userId })
+  // Fiado é uma decisão, não um descuido: exige o pedido explícito da tela E a
+  // permissão própria. Sem os dois, faltar um centavo continua sendo erro.
+  const acceptDebt = parsed.data.acceptDebt === true
+  if (acceptDebt && !(await can(parsed.data.salonId, auth.userId, "sales.invoice_debt"))) {
+    return { error: "Você não tem permissão para faturar com valor em aberto" }
+  }
+
+  const result = await invoiceSaleService({
+    salonId: parsed.data.salonId,
+    saleId: parsed.data.saleId,
+    payments: parsed.data.payments,
+    userId: auth.userId,
+    allowDebt: acceptDebt,
+    debtDueDate: acceptDebt ? (parsed.data.debtDueDate ?? null) : null,
+    // Com o financeiro ligado, faturar gera as contas a receber (fase 2).
+    recordFinance: await salonHasModule(parsed.data.salonId, "finance"),
+  })
   if (!result.success) return { error: result.error }
 
   revalidateSales(parsed.data.salonId, parsed.data.saleId)
   return { success: true }
+}
+
+/**
+ * Recebe (todo ou parte de) o valor em aberto de uma comanda faturada. Exige
+ * `sales.invoice`: quem fatura também recebe.
+ */
+export async function receiveSalePayment(
+  input: ReceiveSalePaymentInput
+): Promise<ActionResult<{ remaining: string }>> {
+  const auth = await authorizeSalon(input?.salonId, "sales.invoice")
+  if ("error" in auth) return auth
+
+  const parsed = receiveSalePaymentSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const visible = await loadVisibleSale(parsed.data.salonId, auth.userId, parsed.data.saleId)
+  if ("error" in visible) return visible
+
+  const result = await receiveSaleDebtPaymentService({
+    ...parsed.data,
+    userId: auth.userId,
+    recordFinance: await salonHasModule(parsed.data.salonId, "finance"),
+  })
+  if (!result.success) return { error: result.error }
+
+  revalidateSales(parsed.data.salonId, parsed.data.saleId)
+  return { success: true, data: result.data }
 }
 
 /** Reabre uma comanda faturada (remove pagamentos e devolve os agendamentos). */

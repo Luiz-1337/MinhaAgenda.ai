@@ -5,7 +5,12 @@
 **Estado:** fase 0 implementada em código (branch `claude/fase-0-permissoes`, ainda não
 publicada); migration 036 aplicada e registrada em produção em 15/nov/2026 — ver §4.5.
 Fase 1 (comandas) implementada na branch `claude/fase-1-comandas` (ainda não publicada
-nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fases 2 em diante: planejamento.
+nem testada em uso), com a migration 037 já aplicada em produção — ver §5.9. Fase 2 (financeiro): fatias 2a a 2e e 2g implementadas na
+branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
+testadas em uso num salão — ver §6.7 e §6.8. A fatia 2f (débito de cliente) está
+feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para depois o
+crédito de cliente (2h). Fases 3
+em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -413,7 +418,289 @@ comanda; a equipe (STAFF) não tem nenhuma — precisa de um perfil de acesso.
   "Concluir" da agenda. A comanda pode ser aberta antes; só o faturamento espera.
 - **Agendamento marcado como falta** também barra o faturamento.
 
-## 6. Pendências do dono
+## 6. Fase 2 — Financeiro (detalhe)
+
+A comanda registra a venda e como ela foi paga. O financeiro registra o DINHEIRO:
+quando entra, em qual conta, quanto a maquininha levou e o que o salão tem a pagar.
+É também o que a comissão (fase 3) vai ler para saber quando um valor ficou
+disponível.
+
+### 6.1 Fatias
+
+A fase é grande demais para uma entrega só. Ordem e estado:
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 2a | Contas, plano de categorias, conta de destino da forma de pagamento | Feita |
+| 2b | Transações: faturar comanda gera conta a receber; reabrir desfaz | Feita |
+| 2c | Novo recebimento, nova despesa, transferência, baixa, estorno, exclusão, lista com filtros e totais, saldo por conta | Feita |
+| 2d | Editar lançamento manual em aberto; lançamento que se repete todo mês | Feita |
+| 2g | Resumo do mês: recebido, pago, resultado, a receber, a pagar, atrasado, por categoria, por forma de pagamento e fluxo de caixa por dia | Feita (em tabelas, sem gráficos) |
+| 2e | Caixa: abrir, suprimento, sangria, fechar com conferência, histórico; comanda paga em dinheiro entra sozinha | Feita e testada em uso |
+| 2f | Débito de cliente: faturar com valor em aberto e receber depois, em uma ou mais vezes | Feita — migration 040 aplicada em 16/nov/2026, testada em uso |
+| 2h | Crédito de cliente (saldo a favor, usado como forma de pagamento) | Pendente — ficou fora da 2f |
+
+### 6.2 Modelo de dados (migration `038_finance.sql`)
+
+| Tabela / coluna | O que é |
+|---|---|
+| `financial_accounts` | Onde o dinheiro está: banco, caixa, cofre. Tem saldo inicial; o saldo atual nunca é gravado, é sempre saldo inicial + entradas pagas − saídas pagas |
+| `financial_categories` | Plano de categorias, de receita e de despesa |
+| `financial_transactions` | Contas a receber e a pagar, e as transferências |
+| `payment_methods.account_id` | Conta de destino de cada forma de pagamento |
+
+Campos centrais de `financial_transactions`:
+
+| Campo | Regra |
+|---|---|
+| `direction` | `in` (entrada) ou `out` (saída) |
+| `kind` | `sale` (gerada por comanda), `manual` (lançada na tela), `transfer` (perna de transferência) |
+| `status` | `open` (a receber / a pagar) ou `paid` (baixada); paga exige `paid_at` |
+| `amount`, `fee_amount`, `net_amount` | Bruto, taxa e líquido. O líquido é gravado e é o que entra no saldo |
+| `due_date`, `competence_date` | Dias de calendário em Brasília, sem hora |
+| `sale_payment_id` | Aponta para o pagamento da comanda, com `ON DELETE CASCADE` |
+| `transfer_group` | Une as duas pernas de uma transferência |
+
+### 6.3 Regras de negócio
+
+1. **Faturar comanda gera uma conta a receber por pagamento.** A taxa da forma de
+   pagamento vira `fee_amount`; o líquido é o que entra no saldo.
+2. **Prazo zero nasce pago; com prazo nasce em aberto**, vencendo no dia do
+   recebimento. É a diferença entre vender e receber.
+3. **Reabrir a comanda apaga as contas a receber dela**, sem código: os pagamentos
+   são removidos e a chave estrangeira leva junto.
+4. **Só gera financeiro com o módulo `finance` ligado** no salão. Comandas faturadas
+   antes de ligar o módulo não entram — não há retroativo (pendente, se necessário).
+5. **Nada entra em saldo sem conta.** Dar baixa exige conta. Forma de pagamento sem
+   conta de destino não trava o faturamento: a venda entra como "sem conta" e fica
+   fora de todo saldo até alguém dar baixa informando a conta.
+6. **Baixa não pode ter data futura.**
+7. **Transferência são duas linhas pagas**, saída de uma conta e entrada na outra.
+   Não entra em receita nem despesa, nem nos totais da tela.
+8. **Excluir:** lançamento manual só em aberto (o baixado precisa ser estornado
+   antes); transferência exclui as duas pernas; lançamento de comanda não se exclui
+   — reabre-se a comanda.
+9. **Conta e categoria com lançamento não são excluídas**, são desativadas.
+10. **O tipo da categoria (receita/despesa) não muda na edição.**
+11. **Só se edita lançamento manual em aberto.** O baixado precisa ser estornado
+    antes; lançamento de comanda e transferência não se editam. O tipo (entrada ou
+    saída) não muda na edição.
+12. **Lançamento que se repete** cria uma linha por mês (até 60), numeradas
+    "(2/6)", a partir do vencimento informado. Dia 31 recua para o último dia nos
+    meses mais curtos e volta ao 31 quando existe. "Já pago" vale só para a
+    primeira. Depois de criadas, as linhas são independentes — não há "excluir as
+    próximas" (exigiria uma coluna de grupo, que ficou fora para não pedir migration).
+13. **O resumo separa duas perguntas:** recebido e pago são pelo DIA DA BAIXA
+    (regime de caixa); a receber e a pagar são pelo VENCIMENTO. Atrasado independe
+    do mês escolhido.
+
+Caixa (fatia 2e) — o dono escolheu seguir com estes padrões, em 15/nov/2026:
+
+14. **Um caixa aberto por salão**, com quem abriu registrado. O banco garante (índice
+    único parcial); duas abas abrindo ao mesmo tempo não criam dois.
+15. **O caixa é separado das contas financeiras.** Ele controla o dinheiro vivo da
+    gaveta e não gera lançamento em conta: suprimento e sangria NÃO mexem em saldo.
+    Uma sangria que vira depósito no banco ainda precisa de uma transferência
+    lançada à parte no financeiro.
+16. **Comanda paga em dinheiro entra sozinha** no caixa aberto: só forma de pagamento
+    do tipo "Dinheiro", e só se houver caixa aberto. Sem caixa aberto a comanda
+    fatura normalmente e nada é registrado — o caixa não trava a venda.
+17. **Reabrir a comanda tira a entrada do caixa**, mesmo que o caixa já esteja
+    fechado. O esperado, o contado e a diferença gravados no fechamento NÃO mudam —
+    o histórico fica como foi fechado.
+18. **Sangria maior que o dinheiro em caixa é barrada.**
+19. **O esperado só é gravado no fechamento**; com o caixa aberto é sempre calculado
+    (inicial + suprimentos + vendas em dinheiro − sangrias).
+20. **Diferença não impede fechar.** Sobra e falta ficam registradas no histórico.
+21. **Caixa fechado não se reabre nem se edita** nesta fatia.
+
+Débito de cliente (fatia 2f) — o dono escolheu seguir com estes padrões:
+
+22. **O débito é a própria comanda**, não uma tabela nova: `sales.amount_due` guarda
+    quanto da comanda faturada ainda não foi pago, e `sales.debt_due_date` quando a
+    cliente combinou de pagar (opcional).
+23. **Fiado é decisão, não descuido.** Faturar com valor em aberto exige a permissão
+    `sales.invoice_debt` E marcar "Deixar R$ X em aberto" na tela. Sem os dois,
+    faltar um centavo continua sendo erro. Pode ficar tudo em aberto (nenhum
+    pagamento).
+24. **Receber depois é mais um pagamento na mesma comanda.** Pode ser parcial e em
+    várias vezes. Usa a permissão `sales.invoice`: quem fatura também recebe.
+25. **Passar do valor nunca é aceito** — nem do total ao faturar, nem do valor em
+    aberto ao receber. O que sobraria seria crédito do cliente, que não existe (2h).
+26. **O pagamento de depois gera o mesmo que o de hoje:** conta a receber no
+    financeiro e entrada no caixa aberto se for dinheiro.
+27. **O fiado NÃO vira lançamento no financeiro enquanto não é pago.** Ele aparece no
+    resumo do mês como "Fiado de clientes", fora de "A receber" — somar os dois
+    contaria o mesmo dinheiro duas vezes quando o pagamento chegasse.
+28. **O agendamento fecha pelo valor cheio** no faturamento, mesmo com parte em
+    aberto: receita por competência. Receber depois não mexe no agendamento.
+29. **Reabrir a comanda zera o débito**, junto com os pagamentos.
+30. **Débito sem data combinada nunca conta como atrasado.**
+31. **O total devido na ficha** soma todas as comandas do cliente e só é mostrado a
+    quem vê todas as comandas (`sales.view_all` + `sales.view_invoiced`).
+
+Perguntas a confirmar com o dono (a auditoria não cobre):
+
+- Cartão: a conta a receber deve dar baixa sozinha no dia do recebimento, ou alguém
+  confere e dá baixa? Hoje é manual (fica "Atrasado" se ninguém baixar).
+- Comandas faturadas antes de ligar o módulo devem entrar no financeiro?
+- Quem pode ver o financeiro além do dono e dos gerentes?
+- Cliente com débito pode abrir comanda nova sem aviso? Hoje pode, e a tela da
+  comanda nova não avisa.
+
+### 6.4 Permissões e módulo
+
+| Recurso | Ações |
+|---|---|
+| `finance` | `access`, `create`, `delete`, `settle` (dar baixa e estornar), `settings` (contas e categorias) |
+| `cash` | `access`, `operate` (abrir, suprimento, sangria, fechar), `view_all` (histórico de todos; sem ela, só os caixas que a pessoa abriu) |
+
+Módulo `finance` em `salons.settings.modules`. Sem perfil configurado, gerentes e
+dono têm tudo e a equipe não tem nada.
+
+### 6.5 Telas
+
+| Tela | Rota | Conteúdo |
+|---|---|---|
+| Financeiro | `/[salonId]/finance` | Saldo por conta, filtros (tipo, situação, conta, vencimento), totais do filtro, lista de lançamentos, novo recebimento, nova despesa (com "repetir por meses"), edição, transferência, baixa, estorno, exclusão |
+| Resumo do mês | `/[salonId]/finance/summary?month=AAAA-MM` | Recebido, pago, resultado, a receber, a pagar, atrasado; receitas e despesas por categoria; recebimentos por forma de pagamento; fluxo de caixa por dia |
+| Caixa | `/[salonId]/finance/cash` | Abrir com saldo inicial; com o caixa aberto: inicial, vendas em dinheiro, suprimentos, sangrias, esperado, movimentos, suprimento, sangria e fechar (com a diferença ao vivo); histórico dos caixas fechados |
+| Contas e categorias | `/[salonId]/finance/settings` | Contas com saldo, plano de categorias em duas colunas |
+| Formas de pagamento | `/[salonId]/salon-settings/payment-methods` | Ganhou o campo "Conta de destino" (só com o módulo ligado) |
+
+### 6.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Tabelas | `packages/db/src/schema.ts` + `supabase/migrations/038_finance.sql` |
+| Regra pura | `packages/db/src/domain/finance.ts` |
+| Gravação e leitura | `packages/db/src/services/finance.service.ts` |
+| Comanda → financeiro | `recordSaleTransactions`, chamado por `invoiceSaleService` |
+| Caixa | `packages/db/src/domain/cash.ts`, `services/cash.service.ts`, `apps/web/app/actions/cash.ts`, `apps/web/app/[salonId]/finance/cash/`, `supabase/migrations/039_cash_sessions.sql` |
+| Comanda → caixa | `recordSaleCashMovements`, chamado por `invoiceSaleService` |
+| Débito de cliente | `planInvoice` (com `allowDebt`) e `planDebtPayment` em `domain/sales.ts`; `receiveSaleDebtPaymentService` e `getDebtTotalsService` em `services/sales.service.ts`; action `receiveSalePayment`; `supabase/migrations/040_sale_debt.sql` |
+| Actions | `apps/web/app/actions/finance.ts`, `finance-settings.ts` |
+| Telas | `apps/web/app/[salonId]/finance/` |
+| Testes | `apps/web/__tests__/lib/services/finance-domain.test.ts` |
+
+### 6.7 Estado da implementação (15/nov/2026)
+
+Branch `claude/fase-2-financeiro` (sai de `claude/fase-1-comandas`), publicada no
+GitHub, com preview na Vercel. Fatias 2a, 2b, 2c, 2d e 2g escritas. Passam typecheck,
+lint, testes e `next build`.
+
+- **Migration 038: aplicada e registrada em produção** (15/nov/2026). As fatias 2d e
+  2g não precisaram de migration.
+- **Migration 039 (caixa): aplicada e registrada em produção** (15/nov/2026), antes
+  de o código do caixa ser publicado. A ordem importava: com o módulo `finance`
+  ligado, faturar uma comanda passa a consultar `cash_sessions`, e sem a tabela o
+  faturamento falharia — inclusive no preview da Vercel, que usa o banco de produção.
+- **Ordem de deploy.** A 038 tinha que vir antes do código — ela adiciona
+  `payment_methods.account_id`, e o INSERT do Drizzle lista todas as colunas da
+  tabela. Já está cumprido.
+
+- **Migration 040 (débito): aplicada em produção em 16/nov/2026**, antes de o código
+  ser publicado. Mesma regra da 039: ela adiciona colunas a `sales`, e o INSERT do
+  Drizzle lista todas as colunas — sem elas, criar QUALQUER comanda falharia em todo
+  ambiente que usa o banco de produção. Falta só o registro em `schema_migrations`
+  (nome `sale_debt`) — ver §7.
+
+Onde o débito aparece na tela: no diálogo de faturar (caixa "Deixar R$ X em aberto"
+e data combinada), na comanda faturada (aviso "Em aberto" e botão "Receber"), na
+lista de comandas (filtro "Com valor em aberto" e o valor em cada linha), no cartão
+Vendas da ficha do cliente ("Deve R$ X em N comandas") e no resumo do mês ("Fiado de
+clientes").
+
+### 6.8 Teste em uso (15/nov/2026)
+
+Feito no preview da Vercel, no "Salão TOP" (`37dc22de…`), único salão com os módulos
+`access_profiles`, `sales` e `finance` ligados. O preview usa o banco de produção. O
+banco foi conferido por leitura a cada passo.
+
+Funcionou, sem nenhum erro do código novo:
+
+- contas, categoria e formas de pagamento com conta de destino;
+- comanda manual com desconto, numeração (#1, #2, #3) e faturamento dividido em
+  crédito e PIX, com taxa e prazo corretos;
+- financeiro: PIX nasce recebido e soma no saldo, crédito nasce a receber pelo
+  líquido; despesa, baixa, estorno, transferência e exclusões;
+- reabrir comanda (pagamentos e lançamentos somem) e excluir comanda;
+- perfil de acesso criado e excluído;
+- "Criar comanda" pelo agendamento, recusa de faturamento antes do horário, recusa
+  de um agendamento em duas comandas, "Agrupar em comanda" com dois agendamentos, e
+  cancelamento de agendamento tirando o item da comanda aberta.
+
+Em 16/nov/2026, depois das 9h, foi testado o que dependia do horário: faturar a
+comanda #3 concluiu o agendamento (`completed`, R$ 170,00, `outcome_source = 'sale'`)
+e gerou o lançamento no financeiro; reabrir devolveu o agendamento para
+`confirmed` sem valor e apagou pagamento e lançamento. A correção da coluna
+Operador do caixa também foi vista na tela.
+
+Também em 16/nov/2026 foi testado o débito de cliente (fatia 2f), na comanda #5 de
+R$ 170,00:
+
+- faturar com R$ 100,00 no PIX: sem marcar o fiado, "Faltam R$ 70,00" e o botão de
+  confirmar fica desligado; marcando "Deixar R$ 70,00 em aberto" e uma data
+  combinada já vencida, a comanda fatura com `amount_due = 70.00`;
+- a comanda mostra "Em aberto: R$ 70,00 de R$ 170,00 · venceu em …" e o botão
+  "Receber";
+- receber R$ 80,00 é recusado na tela ("Passou do valor em aberto em R$ 10,00") e
+  nada muda no banco;
+- receber R$ 30,00 no PIX deixa R$ 40,00 em aberto, com novo pagamento e novo
+  lançamento recebido no financeiro;
+- com R$ 40,00 em aberto: a lista filtra por "Com valor em aberto" e mostra o valor
+  na linha; a ficha do cliente mostra "Deve R$ 40,00 em 1 comanda · R$ 40,00
+  vencido"; o resumo do mês mostra "Fiado de clientes R$ 40,00", fora de "A receber";
+- receber os R$ 40,00 no crédito quita a comanda: `amount_due = 0`, a data combinada
+  é apagada, o aviso e o botão "Receber" somem, e o lançamento nasce a receber pelo
+  líquido (R$ 38,83, taxa de R$ 1,17) para 30 dias depois;
+- reabrir a comanda apagou os três pagamentos e os três lançamentos.
+
+Ainda não testado:
+
+- débito com pagamento em dinheiro entrando no caixa aberto;
+- total devido somando mais de uma comanda do mesmo cliente;
+- produto na comanda (o salão não tem produto ativo);
+- restrição por perfil, logado como outro usuário;
+
+As fatias 2d e 2g foram testadas em uso no mesmo dia, num segundo preview: despesa
+repetida por três meses com a primeira paga, edição de uma parcela e o resumo de
+novembro e dezembro, todos batendo com o banco.
+
+O caixa (fatia 2e) foi testado em uso num terceiro preview, também em 15/nov:
+abertura com R$ 100,00, suprimento de R$ 50,00, sangria de R$ 500,00 recusada e de
+R$ 30,00 aceita, comanda #4 paga em "Teste Dinheiro" entrando sozinha (esperado
+R$ 290,00), fechamento com R$ 285,00 contados registrando falta de R$ 5,00, e a
+reabertura da comanda tirando a entrada dos movimentos sem mudar os números do
+fechamento. O teste revelou que a coluna Operador saía vazia (`profiles.full_name`
+não é preenchido); corrigido para cair em nome + sobrenome e depois e-mail — essa
+correção ainda não foi vista em uso.
+
+Dois problemas ANTERIORES às fases novas, revelados pelo teste, no plano SOLO:
+
+- a tela "Novo Agendamento" deixa escolher um profissional, mas a action usa sempre
+  o do dono, sem avisar;
+- salvar um serviço apaga os vínculos de todo profissional que não seja o dono.
+
+Dados de teste deixados no Salão TOP: contas "Teste Banco" e "Teste Caixa",
+categoria "Teste Aluguel", formas "Teste PIX", "Teste Credito" e "Teste Dinheiro",
+comandas #1 a #5 excluídas, um caixa fechado (com suprimento e sangria de teste) e
+dois agendamentos de teste cancelados. O serviço
+"Corte de Cabelo Masculino" passou do Marcos Affonso para o profissional do dono.
+
+Ligar o módulo num salão (depois da 038 aplicada e do código publicado):
+
+```sql
+UPDATE salons
+   SET settings = jsonb_set(
+         coalesce(settings, '{}'::jsonb),
+         '{modules}',
+         coalesce(settings->'modules', '[]'::jsonb) || '["finance"]'::jsonb
+       )
+ WHERE id = '<id do salão>';
+```
+
+## 7. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -422,3 +709,7 @@ comanda; a equipe (STAFF) não tem nenhuma — precisa de um perfil de acesso.
 | Em qual salão sem Belasis pilotar | Fase 1 em produção |
 | Conta Belasis de teste para executar fluxos | Fidelidade das regras nas fases 2 a 5 |
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
+| Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
+| Registrar a migration 040 em `schema_migrations` com o nome `sale_debt` (ela já está aplicada) | Histórico de migrations fiel ao banco |
+| Revisar e mergear os PRs das fases 0, 1 e 2, nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
+| Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

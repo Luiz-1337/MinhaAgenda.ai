@@ -14,6 +14,8 @@ export interface PaymentMethodDTO {
   feePercent: string
   settlementDays: number
   isActive: boolean
+  /** Conta de destino no financeiro. Sempre null no salão sem o módulo `finance`. */
+  accountId: string | null
 }
 
 export interface SavePaymentMethodInput {
@@ -24,6 +26,8 @@ export interface SavePaymentMethodInput {
   feePercent: number
   settlementDays: number
   isActive: boolean
+  /** Só é gravada no salão com o módulo `finance`. */
+  accountId?: string | null
 }
 
 export interface SaleListItemDTO {
@@ -32,6 +36,9 @@ export interface SaleListItemDTO {
   status: SaleStatus
   saleDate: string
   total: string
+  /** Quanto da comanda faturada ainda não foi pago. "0.00" = quitada. */
+  amountDue: string
+  debtDueDate: string | null
   customerId: string
   customerName: string
   paymentMethods: string[]
@@ -49,6 +56,8 @@ export interface SaleListFilters {
   /** Datas no formato YYYY-MM-DD, no dia de Brasília. */
   from?: string
   to?: string
+  /** Só comandas faturadas com valor em aberto. */
+  debt?: boolean
   page?: number
 }
 
@@ -75,6 +84,8 @@ export interface SalePaymentDTO {
   feePercent: string
   feeAmount: string
   settlesOn: string
+  /** Quando o pagamento foi lançado (ISO) — o de hoje e o de depois, no débito. */
+  paidAt: string
 }
 
 export interface SaleDetailDTO {
@@ -86,6 +97,10 @@ export interface SaleDetailDTO {
   subtotal: string
   discountTotal: string
   total: string
+  /** Quanto ainda não foi pago. "0.00" = quitada (ou comanda não faturada). */
+  amountDue: string
+  /** Quando a cliente combinou de pagar ("YYYY-MM-DD"), se combinou. */
+  debtDueDate: string | null
   invoicedAt: string | null
   voidedAt: string | null
   voidReason: string | null
@@ -106,6 +121,8 @@ export interface SaleFormOptions {
     edit: boolean
     delete: boolean
     invoice: boolean
+    /** Faturar deixando valor em aberto (fiado). */
+    invoiceDebt: boolean
     reopen: boolean
   }
 }
@@ -133,7 +150,28 @@ export interface CustomerSaleDTO {
   status: SaleStatus
   saleDate: string
   total: string
+  amountDue: string
+  debtDueDate: string | null
   items: { description: string; total: string; professionalName: string | null }[]
+}
+
+/** Totais de débito: do cliente (na ficha) ou do salão (no resumo financeiro). */
+export interface DebtTotalsDTO {
+  openCents: number
+  overdueCents: number
+  count: number
+}
+
+/** O cartão Vendas da ficha do cliente. */
+export interface CustomerSalesOverview {
+  sales: CustomerSaleDTO[]
+  /**
+   * Quanto o cliente deve, somando TODAS as comandas dele. NULL para quem não vê
+   * todas as comandas — mostrar um total parcial seria pior que não mostrar.
+   */
+  debt: DebtTotalsDTO | null
+  /** O dia de hoje em Brasília, para marcar o que está atrasado. */
+  today: string
 }
 
 export interface SaleCustomerOption {
@@ -165,6 +203,20 @@ export interface SaveSaleInput {
 }
 
 export interface InvoiceSaleInput {
+  salonId: string
+  saleId: string
+  payments: { paymentMethodId: string; amount: number }[]
+  /**
+   * Confirma que os pagamentos somam menos que o total DE PROPÓSITO: a diferença
+   * fica em aberto como débito do cliente. Exige a permissão `sales.invoice_debt`.
+   */
+  acceptDebt?: boolean
+  /** Quando a cliente combinou de pagar ("YYYY-MM-DD"). Só com `acceptDebt`. */
+  debtDueDate?: string | null
+}
+
+/** Recebimento (todo ou parte) do valor em aberto de uma comanda faturada. */
+export interface ReceiveSalePaymentInput {
   salonId: string
   saleId: string
   payments: { paymentMethodId: string; amount: number }[]
