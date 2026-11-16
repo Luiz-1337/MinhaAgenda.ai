@@ -19,7 +19,10 @@ uso — ver §7.9. Fatia 3d (pagamento em lote, recibo e saída no financeiro) f
 mesma branch e publicada, com a migration 044 aplicada em 16/nov/2026 e testada em
 uso — ver §7.10. As migrations 040 a 044 estão registradas em `schema_migrations`.
 Da fase 3 falta só a fatia 3e, que depende do estoque (fase 4).
-Fases 4 em diante: planejamento.
+Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
+(publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026.
+**Ainda sem teste em uso**: o preview da branch nova pede login — ver §8.7.
+Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -1161,7 +1164,152 @@ Fica para depois (não é da auditoria ou depende de decisão do dono): texto do
 recibo configurável, forma de pagamento no pagamento de comissão, vale em dinheiro
 saindo do caixa aberto, "pagar salário" (ficha do profissional na Belasis).
 
-## 8. Pendências do dono
+## 8. Fase 4 — Produtos e estoque (detalhe)
+
+Responde: quanto há de cada produto, o que entrou, o que saiu e o que comprar.
+Parte da comanda (fase 1) e alimenta a comissão (fatia 3e). Itens da auditoria:
+T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
+
+### 8.1 Fatias
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita em código e publicada — migration 045 aplicada; **sem teste em uso** (§8.7) |
+| 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Pendente |
+| 4c | Lotes e validades | Pendente |
+| 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"); com isso, a fatia 3e (custo adicional e consumo abatendo a comissão) | Pendente |
+| 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
+| 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
+
+O cadastro de produto que já existe (nome, descrição, preço, ativo) continua como
+está e continua valendo para todo salão. O estoque é um módulo à parte, ligado
+salão a salão.
+
+### 8.2 Modelo de dados (migration `045_inventory.sql`)
+
+- `products` ganha `track_stock` (o salão controla este produto?), `min_stock`,
+  `cost_price`, `sku` e `barcode`. Todas com padrão ou nulas: o cadastro antigo e o
+  código antigo não percebem.
+- `stock_movements` — uma linha por entrada, saída, acerto ou venda: produto,
+  `kind` (`in`, `out`, `adjustment`, `sale`), `quantity` COM SINAL, custo unitário
+  (na entrada), observação, quem lançou e, na venda, a comanda e o item.
+- **O saldo não é gravado**: é a soma de `stock_movements.quantity` do produto, como
+  o saldo das contas do financeiro. Não há número para sair de sincronia.
+
+### 8.3 Regras de negócio
+
+A auditoria traz os campos do produto e a frase "controlar estoque: ajustado
+automaticamente conforme a utilização em comandas, pacotes e quando novas compras
+forem feitas". A baixa na venda foi **inferida** por ela (fluxo 3). Decidido aqui,
+**a confirmar com o dono**:
+
+1. **O salão escolhe o que controla.** Produto sem o controle ligado não baixa, não
+   tem saldo e não entra na sugestão de compra.
+2. **Ligar o controle começa em zero.** O saldo inicial entra por um acerto com o
+   que há na prateleira (o "Estoque inicial" da Belasis).
+3. **Faturar a comanda baixa os produtos controlados**; reabrir devolve. A baixa
+   aponta para a comanda e para o item. Reabrir devolve mesmo com o módulo
+   desligado depois — senão a baixa ficaria órfã.
+4. **Vender sem saldo não é barrado.** O produto já saiu da prateleira; o saldo
+   fica negativo e a tela avisa. O mesmo vale para a saída manual.
+5. **Acerto de inventário recebe o que foi CONTADO** e grava a diferença. Contar o
+   que o sistema já mostra não é movimento.
+6. **Entrada com custo atualiza o custo de compra do produto** (último preço pago).
+   Custo médio fica para a fatia 4b, junto com as compras.
+7. **"Abaixo do mínimo" é abaixo**: ter exatamente o mínimo ainda não pede compra.
+   Zerado e negativo sempre pedem.
+8. **Sugestão de compra = mínimo − saldo**, só para produto controlado e com
+   mínimo definido. A auditoria só diz que o relatório compara mínimo e atual.
+9. **Valor em estoque = saldo × custo de compra.** Saldo negativo ou produto sem
+   custo não entra.
+10. **Movimento não se edita nem se exclui.** Corrigir é lançar o contrário ou um
+    acerto — o histórico fica.
+11. **Quantidade com três casas**, como no item da comanda: produto fracionado (ml,
+    g) cabe sem mudar o tipo depois.
+
+Perguntas para o dono:
+
+- Vender sem saldo deve ser barrado, só avisar na comanda, ou seguir como está
+  (regra 4)?
+- O custo do produto deve ser o último preço pago (regra 6) ou o custo médio?
+- Quem cadastra o produto (hoje, quem gerencia o salão) deve ver os campos de
+  estoque no próprio cadastro, ou basta a tela de Estoque?
+- A sugestão de compra deve repor até o mínimo (regra 8) ou até um "estoque ideal"
+  separado?
+
+### 8.4 Permissões e módulo
+
+Módulo novo: `inventory` (ligado por salão). A baixa pela comanda depende de
+`sales`.
+
+| Permissão | O que libera |
+|---|---|
+| `inventory.access` | Ver o estoque e as movimentações |
+| `inventory.move` | Lançar entrada, saída e acerto de inventário |
+| `inventory.manage` | Ligar o controle do produto, estoque mínimo, custo e códigos |
+
+Para ligar no salão de teste:
+
+```sql
+UPDATE salons
+   SET settings = jsonb_set(
+         coalesce(settings, '{}'::jsonb),
+         '{modules}',
+         coalesce(settings->'modules', '[]'::jsonb) || '["inventory"]'::jsonb
+       )
+ WHERE id = '<id do salão>';
+```
+
+### 8.5 Telas
+
+- **Estoque** (`/[salonId]/inventory`): totais (produtos controlados, para comprar,
+  valor em estoque), a lista de produtos com saldo, mínimo, sugestão de compra,
+  custo, valor e situação (sem controle, negativo, zerado, abaixo do mínimo, em
+  dia), com os filtros "Todos", "Para comprar" e "Sem controle"; "Movimentar"
+  (entrada, saída, acerto) e "Configurar" por produto; e a movimentação recente,
+  com filtro por produto e o link da comanda nas vendas.
+- **Comanda**: nada muda na tela. Faturar baixa, reabrir devolve.
+
+### 8.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Regra pura | `packages/db/src/domain/inventory.ts` (`planStockMovement`, `planProductStockSettings`, `planSaleStockMovements`, `stockStatus`, `purchaseSuggestionMilli`, `stockValueCents`) |
+| I/O | `packages/db/src/services/inventory.service.ts` |
+| Comanda → estoque | `recordSaleStock` (em `invoiceSaleService`, quando a action passa `recordStock`) e `revertSaleStock` (em `reopenSaleService`, sempre) |
+| Actions | `apps/web/app/actions/inventory.ts` |
+| Telas | `apps/web/app/[salonId]/inventory/` |
+| Testes | `apps/web/__tests__/lib/services/inventory-domain.test.ts` |
+
+### 8.7 Fatia 4a — estado (16/nov/2026)
+
+- Na branch `claude/fase-4-estoque` (sai de `claude/fase-3-comissoes`), publicada,
+  sem PR. Typecheck, lint dos arquivos alterados e testes passando; o build do
+  preview da Vercel passou.
+- **Migration 045: aplicada em produção em 16/nov/2026** (pelo assistente, com a
+  autorização do dono para rodar migrations naquela sessão), conferida por leitura
+  (os 71 produtos intactos e nenhum com o controle ligado; `stock_movements` com
+  RLS, `deny_all`, sem acesso para `anon`/`authenticated`, índices e CHECKs) e
+  registrada em `schema_migrations` (nome `inventory`).
+- Cópia de segurança antes da 045: `backups.products_pre_045_20261116` (71 linhas).
+  **Apagar só com o OK do dono.**
+- Em outro ambiente, **aplicar a 045 antes de publicar o código**: ela acrescenta
+  colunas em `products`, que todo salão usa. Sem elas, cadastrar produto e abrir a
+  lista falham em qualquer salão.
+- **Sem teste em uso — travado por acesso.** O endereço do preview da branch nova
+  (`minha-agenda-ai-web-git-claude-fase-4-estoque-minhaagendaai.vercel.app`) pede
+  login, e a sessão do navegador é por endereço. O módulo `inventory` também ainda
+  **não foi ligado** em nenhum salão (nem no de teste), de propósito: nada muda para
+  ninguém até o teste.
+- Roteiro do teste, quando houver login: ligar o módulo no salão de teste (SQL da
+  §8.4); ligar o controle de um produto com mínimo 5 e custo; acerto para 10 →
+  saldo 10, "Em dia"; entrada de 2 com custo novo → saldo 12 e custo atualizado;
+  saída de 9 → saldo 3, "Abaixo do mínimo", sugestão de 2; comanda com 4 unidades
+  do produto faturada → saldo −1, "Negativo", movimento com o link da comanda;
+  reabrir a comanda → saldo 3 de novo; produto sem controle na mesma comanda não
+  gera movimento. Depois, limpar os dados de teste.
+
+## 9. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -1174,4 +1322,7 @@ saindo do caixa aberto, "pagar salário" (ficha do profissional na Belasis).
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
+| Entrar no preview da fase 4 (endereço na §8.7) para o teste em uso do estoque | Teste em uso da fatia 4a e as fatias seguintes da fase 4 |
+| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal) | Fatia 4b |
+| Dizer quando a cópia `backups.products_pre_045_20261116` pode ser apagada | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
