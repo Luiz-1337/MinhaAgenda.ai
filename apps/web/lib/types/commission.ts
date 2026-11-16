@@ -1,11 +1,13 @@
 /**
- * Tipos das telas de comissão (docs/ROADMAP.md, fase 3, fatias 3a e 3b).
+ * Tipos das telas de comissão (docs/ROADMAP.md, fase 3, fatias 3a a 3c).
  *
  * Atravessam a fronteira servidor → cliente: datas de calendário como
  * "YYYY-MM-DD", dinheiro como string de coluna numeric ou em centavos inteiros (o
  * que o servidor já somou).
  */
 import type {
+  CommissionAdjustmentKind,
+  CommissionAdjustmentRow,
   CommissionAssistantBase,
   CommissionAssistantDeduct,
   CommissionConfig,
@@ -19,6 +21,7 @@ import type {
 
 export type CommissionEntryDTO = CommissionEntryRow
 export type CommissionConfigDTO = CommissionConfig
+export type CommissionAdjustmentDTO = CommissionAdjustmentRow
 
 export interface CommissionStatementFilters {
   /** "YYYY-MM-DD". Ausentes = mês corrente em Brasília. */
@@ -39,11 +42,32 @@ export interface CommissionStatementDTO {
   totals: CommissionTotals
   /** Comissões sem data: aguardando o cliente pagar o valor em aberto. */
   pending: { count: number; amountCents: number }
+  /** Vales e bonificações do período. */
+  adjustments: CommissionAdjustmentDTO[]
+  adjustmentsTruncated: boolean
+  /** Somas do período; líquido = a receber − vales + bonificações (pode ser negativo). */
+  advanceCents: number
+  bonusCents: number
+  netCents: number
   /** Opções do filtro: todos, ou só os vínculos da própria pessoa. */
   professionals: { id: string; name: string }[]
+  /** Hoje em Brasília ("YYYY-MM-DD") — data sugerida de um lançamento novo. */
+  today: string
   /** Cortesias de tela — a trava é no servidor. */
   canViewAll: boolean
   canConfigure: boolean
+  canAdjust: boolean
+}
+
+export interface CreateCommissionAdjustmentInput {
+  salonId: string
+  professionalId: string
+  kind: CommissionAdjustmentKind
+  /** Sempre positivo: o tipo diz se soma ou abate. */
+  amount: number
+  /** "YYYY-MM-DD": o dia em que entra no extrato. */
+  referenceDate: string
+  notes?: string | null
 }
 
 export interface SaveCommissionSettingsInput {

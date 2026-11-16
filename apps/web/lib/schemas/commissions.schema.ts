@@ -54,6 +54,20 @@ export const saveCommissionAssistantRulesSchema = z.object({
     .max(1000, "No máximo 1000 regras por vez"),
 })
 
+export const createCommissionAdjustmentSchema = z.object({
+  salonId: z.string().uuid(),
+  professionalId: z.string().uuid({ message: "Escolha o profissional" }),
+  kind: z.enum(["advance", "bonus"]),
+  amount: z.number().finite().positive("Informe um valor maior que zero").max(1_000_000, "Valor inválido"),
+  referenceDate: calendarDate,
+  notes: z.string().max(500, "Observação muito longa").nullish(),
+})
+
+export const deleteCommissionAdjustmentSchema = z.object({
+  salonId: z.string().uuid(),
+  adjustmentId: z.string().uuid(),
+})
+
 export const recalculateCommissionsSchema = z.object({
   salonId: z.string().uuid(),
   from: calendarDate,

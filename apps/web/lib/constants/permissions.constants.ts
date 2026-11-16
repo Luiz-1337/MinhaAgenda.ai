@@ -47,6 +47,7 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   settings: "Contas e categorias",
   operate: "Abrir, movimentar e fechar",
   configure: "Configurar regras",
+  adjust: "Lançar vales e bonificações",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */

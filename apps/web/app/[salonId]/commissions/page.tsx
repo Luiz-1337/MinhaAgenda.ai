@@ -4,6 +4,7 @@ import { centsToNumeric } from "@repo/db"
 import { getCommissionStatement } from "@/app/actions/commissions"
 import { formatBRL } from "@/lib/utils/money.utils"
 import type { CommissionEntryDTO } from "@/lib/types/commission"
+import { CommissionAdjustments } from "./commission-adjustments"
 import { CommissionFilters } from "./commission-filters"
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -67,6 +68,8 @@ export default async function CommissionsPage({
   // A coluna "Auxiliar" só aparece quando alguma comissão do período foi dividida.
   const showAssistant = totals.assistantCents > 0
   const assistantItems = statement.byProfessional.reduce((sum, row) => sum + row.assistantCount, 0)
+  // Vales, bonificações e líquido só aparecem quando há lançamento no período.
+  const showAdjustments = statement.advanceCents > 0 || statement.bonusCents > 0
 
   return (
     <div className="flex flex-col h-full gap-6 overflow-y-auto custom-scrollbar">
@@ -122,6 +125,22 @@ export default async function CommissionsPage({
         />
       </div>
 
+      {showAdjustments && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Stat label="Vales" value={`− ${money(statement.advanceCents)}`} hint="Abatem o que há a receber" />
+          <Stat label="Bonificações" value={`+ ${money(statement.bonusCents)}`} hint="Somam ao que há a receber" />
+          <Stat
+            label="Líquido"
+            value={money(statement.netCents)}
+            hint={
+              statement.netCents < 0
+                ? "Negativo: os vales passam do que há a receber"
+                : "A receber menos vales, mais bonificações"
+            }
+          />
+        </div>
+      )}
+
       {statement.pending.count > 0 && (
         <p role="status" className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3 text-sm text-amber-800 dark:text-amber-200">
           {statement.pending.count === 1 ? "1 comissão" : `${statement.pending.count} comissões`} somando{" "}
@@ -146,6 +165,13 @@ export default async function CommissionsPage({
                   <th scope="col" className="p-3 text-right font-semibold">Taxas</th>
                   {showAssistant && <th scope="col" className="p-3 text-right font-semibold">Auxiliar</th>}
                   <th scope="col" className="p-3 text-right font-semibold">A receber</th>
+                  {showAdjustments && (
+                    <>
+                      <th scope="col" className="p-3 text-right font-semibold">Vales</th>
+                      <th scope="col" className="p-3 text-right font-semibold">Bonificações</th>
+                      <th scope="col" className="p-3 text-right font-semibold">Líquido</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -163,12 +189,33 @@ export default async function CommissionsPage({
                       <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.assistantCents)}</td>
                     )}
                     <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">{money(row.amountCents)}</td>
+                    {showAdjustments && (
+                      <>
+                        <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.advanceCents)}</td>
+                        <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.bonusCents)}</td>
+                        <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">{money(row.netCents)}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </section>
+      )}
+
+      {(statement.canAdjust || statement.adjustments.length > 0) && (
+        <CommissionAdjustments
+          // Trocar de período ou de profissional remonta o formulário no novo contexto.
+          key={`${statement.from}:${statement.to}:${statement.professionalId ?? ""}`}
+          salonId={salonId}
+          adjustments={statement.adjustments}
+          truncated={statement.adjustmentsTruncated}
+          professionals={statement.professionals}
+          defaultProfessionalId={statement.professionalId}
+          today={statement.today}
+          canAdjust={statement.canAdjust}
+        />
       )}
 
       <section className="bg-card border border-border rounded-md">

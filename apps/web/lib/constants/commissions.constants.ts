@@ -5,6 +5,7 @@
  * `Record` são tipados pelos tipos de lá: um valor novo sem rótulo não compila.
  */
 import type {
+  CommissionAdjustmentKind,
   CommissionAssistantBase,
   CommissionAssistantDeduct,
   CommissionDateBasis,
@@ -44,6 +45,11 @@ export const COMMISSION_ASSISTANT_BASE_LABELS: Record<CommissionAssistantBase, s
 export const COMMISSION_ASSISTANT_DEDUCT_LABELS: Record<CommissionAssistantDeduct, string> = {
   professional: "Do profissional",
   salon: "Do salão",
+}
+
+export const COMMISSION_ADJUSTMENT_KIND_LABELS: Record<CommissionAdjustmentKind, string> = {
+  advance: "Vale",
+  bonus: "Bonificação",
 }
 
 export const COMMISSION_SETTINGS_HINTS = {

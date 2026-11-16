@@ -1206,6 +1206,8 @@ export type CommissionRole = 'professional' | 'assistant'
 export type CommissionAssistantBase = 'gross' | 'commission'
 /** De quem sai a comissão do auxiliar. */
 export type CommissionAssistantDeduct = 'salon' | 'professional'
+/** 'advance' = vale (abate o que há a receber); 'bonus' = bonificação (soma). */
+export type CommissionAdjustmentKind = 'advance' | 'bonus'
 
 export const commissionSettings = pgTable(
   'commission_settings',
@@ -1325,6 +1327,28 @@ export const commissionEntries = pgTable(
     uniqueIndex('commission_entries_item_unique').on(table.saleItemId, table.professionalId, table.role),
     index('commission_entries_statement_idx').on(table.salonId, table.professionalId, table.releaseDate),
     index('commission_entries_sale_idx').on(table.saleId)
+  ]
+)
+
+// Vales e bonificações (migration 043): o que entra no extrato por fora dos itens.
+// Líquido = comissões a receber − vales + bonificações.
+export const commissionAdjustments = pgTable(
+  'commission_adjustments',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    kind: text('kind').$type<CommissionAdjustmentKind>().notNull(),
+    // Sempre positivo: o sinal vem de `kind`.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    // Dia em que entra no extrato (calendário de Brasília).
+    referenceDate: date('reference_date').notNull(),
+    notes: text('notes'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('commission_adjustments_statement_idx').on(table.salonId, table.professionalId, table.referenceDate)
   ]
 )
 

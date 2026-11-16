@@ -13,7 +13,9 @@ crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e
 Fase 3 (comissões): fatia 3a feita na branch `claude/fase-3-comissoes` (publicada,
 sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §7.7.
 Fatia 3b (auxiliar) feita na mesma branch e publicada, com a migration 042 aplicada
-em 16/nov/2026 e testada em uso — ver §7.8. Fases 4 em diante: planejamento.
+em 16/nov/2026 e testada em uso — ver §7.8. Fatia 3c (vales e bonificações) escrita na
+mesma branch, **não publicada: aplicar a migration 043 antes do push** — ver §7.9.
+Fases 4 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -715,14 +717,15 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 |---|---|---|
 | 3a | Regras do salão com exceção por profissional, comissão por item (percentual ou valor fixo), cálculo no faturamento, extrato detalhado e por profissional, recalcular período | Feita — migration 041 aplicada e testada em uso em 16/nov/2026 (§7.7) |
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
-| 3c | Vales e bonificações do profissional | Pendente |
-| 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro | Pendente |
+| 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita em código — **migration 043 não aplicada**, não publicada, sem teste em uso (§7.9) |
+| 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Pendente |
 | 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
 
-### 7.2 Modelo de dados (migrations `041_commissions.sql` e `042_commission_assistants.sql`)
+### 7.2 Modelo de dados (migrations `041_commissions.sql`, `042_commission_assistants.sql` e `043_commission_adjustments.sql`)
 
 A 041 cria três tabelas novas e não altera nenhuma existente. A 042 (fatia 3b) cria
 uma quarta e acrescenta uma coluna em `sale_items` e outra em `commission_entries`.
+A 043 (fatia 3c) cria `commission_adjustments` e não altera nenhuma existente.
 
 - `commission_settings` — as regras gerais. Uma linha do salão (`professional_id`
   NULL) e, se houver, uma por profissional que foge da regra do salão. Cada campo
@@ -743,6 +746,9 @@ uma quarta e acrescenta uma coluna em `sale_items` e outra em `commission_entrie
   tem `base` (`gross` = sobre o valor do serviço; `commission` = sobre a comissão do
   profissional) e `deduct_from` (`professional` ou `salon`). Tabela própria, para as
   consultas da comissão do profissional não precisarem saber que ela existe.
+- `commission_adjustments` (043) — vales e bonificações: profissional, `kind`
+  (`advance` = vale, `bonus` = bonificação), `amount` sempre positivo,
+  `reference_date` (o dia em que entra no extrato), observação e quem lançou.
 
 O percentual geral do profissional continua onde sempre esteve:
 `professionals.commission_rate`, editado no cadastro em Equipe.
@@ -817,6 +823,27 @@ decidido aqui, **a confirmar com o dono**:
 22. **No resumo, o valor do item conta uma vez só**, na linha de quem executou; a
     linha do auxiliar é do mesmo item.
 
+Vales e bonificações (fatia 3c). A auditoria traz os campos (tipo, vencimento,
+valor, observação, pagamento) e o rodapé do extrato (comissões, vales,
+bonificações, líquido). Decidido aqui, **a confirmar com o dono**:
+
+23. **Líquido = comissões a receber − vales + bonificações.** O vale abate, a
+    bonificação soma.
+24. **O líquido pode ficar negativo.** Vale maior que a comissão do período quer
+    dizer que o profissional está devendo; mostrar zero faria o salão pagar de novo.
+25. **A data do lançamento é o dia em que ele entra no extrato** (o "Vencimento" da
+    Belasis), não o dia em que o dinheiro foi entregue. Vale dado dia 20 para
+    descontar em dezembro leva a data de dezembro.
+26. **Não há edição: corrigir é excluir e lançar de novo.** Fica gravado quem lançou.
+27. **Vale e bonificação não geram movimento no financeiro nesta fatia.** A saída de
+    dinheiro do vale e o pagamento do líquido entram juntos na fatia 3d, para a
+    despesa não ser contada duas vezes.
+28. **O saldo não passa de um período para o outro sozinho.** Um líquido negativo
+    em novembro não aparece em dezembro; isso também é da fatia 3d (o pagamento em
+    lote é que fecha um período).
+29. **Sem "Ver de todos", a pessoa só lança e exclui nos próprios vínculos** — a
+    permissão de lançar não amplia o que ela enxerga.
+
 Perguntas para o dono:
 
 - O percentual geral do profissional deve vencer o padrão do item? Hoje o item vence.
@@ -830,6 +857,12 @@ Perguntas para o dono:
 - Auxiliar: o percentual "sobre o valor do serviço" deve seguir a regra de desconto
   do salão (regra 6)? Hoje é sempre sobre o valor cheio.
 - Um serviço pode ter mais de um auxiliar? Hoje é um por item.
+- Vale: ao lançar, o sistema deve registrar a saída do dinheiro no financeiro (e de
+  qual conta)? Hoje não registra nada (regra 27).
+- Vale maior que a comissão: o que sobra deve passar para o período seguinte
+  automaticamente? Hoje não passa (regra 28).
+- "Solicitações de saída" (retirada de produto pelo profissional, com "preço para
+  profissional") também abatem o líquido na Belasis. Ficam para a fase 4 (estoque).
 
 ### 7.4 Permissões e módulo
 
@@ -841,6 +874,7 @@ não depende de `finance`.
 | `commissions.access` | Ver o próprio extrato |
 | `commissions.view_all` | Ver o extrato de todos os profissionais |
 | `commissions.configure` | Regras do salão, exceções, comissão por item e recalcular |
+| `commissions.adjust` | Lançar e excluir vales e bonificações (fatia 3c) |
 
 ### 7.5 Telas
 
@@ -848,6 +882,9 @@ não depende de `finance`.
   URL, totais (valor dos itens, comissões, taxas, a receber), aviso do que está sem
   data, resumo por profissional e a lista detalhada item a item. Com auxiliar no
   período, aparece a coluna "Auxiliar" (o desconto) e a linha de quem auxiliou.
+  Seção "Vales e bonificações" com a lista do período e, para quem tem
+  `commissions.adjust`, o formulário de lançamento e a exclusão; havendo
+  lançamento, aparecem os totais de vales, bonificações e líquido.
 - **Configurar comissões** (`/[salonId]/commissions/settings`): regras do salão;
   comissão por item, escolhendo entre o padrão do salão e um profissional (que
   também mostra as regras gerais dele, com "Seguir o salão"); comissão como
@@ -860,7 +897,7 @@ não depende de `finance`.
 
 | O quê | Onde |
 |---|---|
-| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`, `resolveAssistantRule`, `planAssistantRule`); o auxiliar do item é validado em `domain/sales.ts` (`planSaleItems`) |
+| Regra pura | `packages/db/src/domain/commissions.ts` (`planSaleCommissions`, `resolveCommissionRate`, `resolveCommissionSettings`, `resolveAssistantRule`, `planAssistantRule`, `planCommissionAdjustment`, `commissionNetCents`); o auxiliar do item é validado em `domain/sales.ts` (`planSaleItems`) |
 | I/O | `packages/db/src/services/commissions.service.ts` |
 | Comanda → comissão | `syncSaleCommissions`, chamado por `invoiceSaleService`, `receiveSaleDebtPaymentService` e `reopenSaleService` quando a action passa `recordCommissions` |
 | Actions | `apps/web/app/actions/commissions.ts` |
@@ -959,6 +996,19 @@ que não cobre o auxiliar, auxiliar com regra de data própria, e a comanda vist
 quem só auxiliou e não tem "Ver todas". Os cinco primeiros têm teste automático da
 regra pura; a visibilidade, não.
 
+### 7.9 Fatia 3c — estado (16/nov/2026)
+
+- Escrita na branch `claude/fase-3-comissoes`, em commit local. Typecheck, lint dos
+  arquivos alterados e testes passando.
+- **Migration 043: escrita, NÃO aplicada. Aplicar antes de publicar.** Ela só cria
+  uma tabela nova, mas o extrato de comissões passa a consultá-la: publicado sem a
+  043, a tela de comissões falha nos salões com o módulo ligado (hoje, só o de
+  teste, no preview). Produção (`main`) não é afetada.
+- Sem teste em uso. Roteiro: com uma comissão de R$ 231,24 no período, lançar um
+  vale de R$ 100,00 e uma bonificação de R$ 50,00 → líquido de R$ 181,24; vale de
+  R$ 300,00 para quem não tem comissão → líquido negativo e o profissional aparece
+  no resumo; excluir os lançamentos → os totais voltam.
+
 ## 8. Pendências do dono
 
 | Pendência | Trava |
@@ -973,5 +1023,6 @@ regra pura; a visibilidade, não.
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Registrar a migration 041 em `schema_migrations` com o nome `commissions` (ela já está aplicada) | Histórico de migrations fiel ao banco |
 | Registrar a migration 042 em `schema_migrations` com o nome `commission_assistants` (ela já está aplicada) | Histórico de migrations fiel ao banco |
-| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar) | Fatias 3c em diante |
+| Aplicar e registrar a migration 043 (nome `commission_adjustments`) | Publicação e teste em uso da fatia 3c |
+| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, vales no financeiro) | Fatia 3d |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

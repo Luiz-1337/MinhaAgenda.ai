@@ -15,6 +15,7 @@
  * pelo mesmo motivo de domain/sales.ts.
  */
 import type {
+  CommissionAdjustmentKind,
   CommissionAssistantBase,
   CommissionAssistantDeduct,
   CommissionDateBasis,
@@ -22,7 +23,7 @@ import type {
   CommissionRole,
   CommissionShareMode,
 } from '../schema'
-import { brazilToday } from './finance'
+import { brazilToday, isCalendarDate } from './finance'
 import { centsToNumeric, toCents } from './sales'
 
 // ============================================================================
@@ -565,6 +566,68 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
   }
 
   return entries
+}
+
+// ============================================================================
+// Vales e bonificações (fatia 3c)
+// ============================================================================
+
+export const COMMISSION_ADJUSTMENT_KINDS: readonly CommissionAdjustmentKind[] = ['advance', 'bonus']
+
+const MAX_ADJUSTMENT_CENTS = 100_000_000 // R$ 1.000.000,00
+const MAX_ADJUSTMENT_NOTES = 500
+
+export type CommissionAdjustmentPlan =
+  | { ok: true; kind: CommissionAdjustmentKind; amount: string; referenceDate: string; notes: string | null }
+  | { ok: false; error: string }
+
+/**
+ * Valida um vale ou uma bonificação vindos do formulário e devolve o que gravar.
+ *
+ * O valor é sempre positivo — quem diz se soma ou abate é o tipo. Valor zero não é
+ * lançamento: é engano de digitação.
+ */
+export function planCommissionAdjustment(draft: {
+  kind: unknown
+  amount: unknown
+  referenceDate: unknown
+  notes?: unknown
+}): CommissionAdjustmentPlan {
+  if (draft.kind !== 'advance' && draft.kind !== 'bonus') {
+    return { ok: false, error: 'Escolha vale ou bonificação' }
+  }
+
+  const cents = typeof draft.amount === 'number' ? toCents(draft.amount) : null
+  if (cents === null || cents <= 0 || cents > MAX_ADJUSTMENT_CENTS) {
+    return { ok: false, error: 'Informe um valor maior que zero' }
+  }
+
+  if (!isCalendarDate(draft.referenceDate)) {
+    return { ok: false, error: 'Informe a data em que o lançamento entra no extrato' }
+  }
+
+  const notes = typeof draft.notes === 'string' ? draft.notes.trim() : ''
+  if (notes.length > MAX_ADJUSTMENT_NOTES) {
+    return { ok: false, error: `A observação aceita no máximo ${MAX_ADJUSTMENT_NOTES} caracteres` }
+  }
+
+  return {
+    ok: true,
+    kind: draft.kind,
+    amount: centsToNumeric(cents),
+    referenceDate: draft.referenceDate,
+    notes: notes || null,
+  }
+}
+
+/**
+ * O líquido do extrato: comissões a receber − vales + bonificações.
+ *
+ * Pode ficar NEGATIVO: vale maior que a comissão do período quer dizer que o
+ * profissional está devendo — e esconder isso em zero faria o salão pagar de novo.
+ */
+export function commissionNetCents(input: { amountCents: number; advanceCents: number; bonusCents: number }): number {
+  return input.amountCents - input.advanceCents + input.bonusCents
 }
 
 // ============================================================================

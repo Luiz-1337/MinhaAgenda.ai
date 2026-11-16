@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-
 
 import {
   db,
+  commissionAdjustments,
   commissionAssistantRules,
   commissionEntries,
   commissionRules,
@@ -15,6 +16,7 @@ import {
   services,
 } from "../index"
 import type {
+  CommissionAdjustmentKind,
   CommissionAssistantBase,
   CommissionAssistantDeduct,
   CommissionDateBasis,
@@ -23,9 +25,11 @@ import type {
   CommissionShareMode,
 } from "../schema"
 import {
+  commissionNetCents,
   isCommissionDateBasis,
   isCommissionShareMode,
   planAssistantRule,
+  planCommissionAdjustment,
   planCommissionRule,
   planSaleCommissions,
 } from "../domain/commissions"
@@ -34,7 +38,7 @@ import { toCents } from "../domain/sales"
 import type { ActionResult } from "./appointments"
 
 /**
- * Comissões (docs/ROADMAP.md, fase 3, fatias 3a e 3b).
+ * Comissões (docs/ROADMAP.md, fase 3, fatias 3a a 3c).
  *
  * Só I/O: carrega o que a regra pura (domain/commissions.ts) precisa, deixa ela
  * decidir e grava. Quem autoriza é a Server Action.
@@ -654,11 +658,28 @@ export type CommissionProfessionalTotals = {
   feeCents: number
   /** Quanto das comissões dele foi para auxiliares. */
   assistantCents: number
+  /** Comissões a receber: depois da taxa e do auxiliar, antes de vales e bonificações. */
   amountCents: number
   /** Itens que ele executou. */
   count: number
   /** Itens em que ele foi o auxiliar. */
   assistantCount: number
+  /** Vales do período (abatem). */
+  advanceCents: number
+  /** Bonificações do período (somam). */
+  bonusCents: number
+  /** amountCents − advanceCents + bonusCents. Pode ser negativo. */
+  netCents: number
+}
+
+export type CommissionAdjustmentRow = {
+  id: string
+  professionalId: string
+  professionalName: string
+  kind: CommissionAdjustmentKind
+  amount: string
+  referenceDate: string
+  notes: string | null
 }
 
 export type CommissionStatement = {
@@ -668,6 +689,9 @@ export type CommissionStatement = {
   byProfessional: CommissionProfessionalTotals[]
   /** Comissões sem data: aguardando o cliente pagar o que ficou em aberto. */
   pending: { count: number; amountCents: number }
+  /** Vales e bonificações do período, do mais recente para o mais antigo. */
+  adjustments: CommissionAdjustmentRow[]
+  adjustmentsTruncated: boolean
 }
 
 /**
@@ -686,7 +710,14 @@ export async function listCommissionEntriesService(input: {
   professionalIds?: string[]
   limit: number
 }): Promise<CommissionStatement> {
-  const empty: CommissionStatement = { rows: [], truncated: false, byProfessional: [], pending: { count: 0, amountCents: 0 } }
+  const empty: CommissionStatement = {
+    rows: [],
+    truncated: false,
+    byProfessional: [],
+    pending: { count: 0, amountCents: 0 },
+    adjustments: [],
+    adjustmentsTruncated: false,
+  }
 
   if (!isCalendarDate(input.from) || !isCalendarDate(input.to)) return empty
   if (input.professionalIds && input.professionalIds.length === 0) return empty
@@ -698,7 +729,14 @@ export async function listCommissionEntriesService(input: {
   )
   const inPeriod = and(scope, gte(commissionEntries.releaseDate, input.from), lte(commissionEntries.releaseDate, input.to))
 
-  const [rows, totals, [pending]] = await Promise.all([
+  const adjustmentsInPeriod = and(
+    eq(commissionAdjustments.salonId, input.salonId),
+    gte(commissionAdjustments.referenceDate, input.from),
+    lte(commissionAdjustments.referenceDate, input.to),
+    input.professionalIds ? inArray(commissionAdjustments.professionalId, input.professionalIds) : undefined
+  )
+
+  const [rows, totals, [pending], adjustmentRows, adjustmentTotals] = await Promise.all([
     db
       .select({
         id: commissionEntries.id,
@@ -762,23 +800,163 @@ export async function listCommissionEntriesService(input: {
       .from(commissionEntries)
       .innerJoin(sales, eq(sales.id, commissionEntries.saleId))
       .where(and(scope, isNull(commissionEntries.releaseDate))),
+    db
+      .select({
+        id: commissionAdjustments.id,
+        professionalId: commissionAdjustments.professionalId,
+        professionalName: professionals.name,
+        kind: commissionAdjustments.kind,
+        amount: commissionAdjustments.amount,
+        referenceDate: commissionAdjustments.referenceDate,
+        notes: commissionAdjustments.notes,
+      })
+      .from(commissionAdjustments)
+      .innerJoin(professionals, eq(professionals.id, commissionAdjustments.professionalId))
+      .where(adjustmentsInPeriod)
+      .orderBy(desc(commissionAdjustments.referenceDate), desc(commissionAdjustments.createdAt))
+      .limit(input.limit + 1),
+    db
+      .select({
+        professionalId: commissionAdjustments.professionalId,
+        professionalName: professionals.name,
+        advance: sql<string>`coalesce(sum(${commissionAdjustments.amount}) filter (where ${commissionAdjustments.kind} = 'advance'), 0)`,
+        bonus: sql<string>`coalesce(sum(${commissionAdjustments.amount}) filter (where ${commissionAdjustments.kind} = 'bonus'), 0)`,
+      })
+      .from(commissionAdjustments)
+      .innerJoin(professionals, eq(professionals.id, commissionAdjustments.professionalId))
+      .where(adjustmentsInPeriod)
+      .groupBy(commissionAdjustments.professionalId, professionals.name),
   ])
 
-  return {
-    rows: rows.slice(0, input.limit),
-    truncated: rows.length > input.limit,
-    byProfessional: totals.map((row) => ({
+  // Um profissional pode ter só vale no período (sem comissão nenhuma) e ainda
+  // assim precisa aparecer: é justamente quando ele fica devendo.
+  const byProfessional = new Map<string, CommissionProfessionalTotals>()
+
+  for (const row of totals) {
+    const amountCents = toCents(row.amount) ?? 0
+    byProfessional.set(row.professionalId, {
       professionalId: row.professionalId,
       professionalName: row.professionalName,
       baseCents: toCents(row.base) ?? 0,
       grossCents: toCents(row.gross) ?? 0,
       feeCents: toCents(row.fee) ?? 0,
       assistantCents: toCents(row.assistant) ?? 0,
-      amountCents: toCents(row.amount) ?? 0,
+      amountCents,
       count: row.count,
       assistantCount: row.assistantCount,
-    })),
+      advanceCents: 0,
+      bonusCents: 0,
+      netCents: amountCents,
+    })
+  }
+
+  for (const row of adjustmentTotals) {
+    const current = byProfessional.get(row.professionalId) ?? {
+      professionalId: row.professionalId,
+      professionalName: row.professionalName,
+      baseCents: 0,
+      grossCents: 0,
+      feeCents: 0,
+      assistantCents: 0,
+      amountCents: 0,
+      count: 0,
+      assistantCount: 0,
+      advanceCents: 0,
+      bonusCents: 0,
+      netCents: 0,
+    }
+    const advanceCents = toCents(row.advance) ?? 0
+    const bonusCents = toCents(row.bonus) ?? 0
+    byProfessional.set(row.professionalId, {
+      ...current,
+      advanceCents,
+      bonusCents,
+      netCents: commissionNetCents({ amountCents: current.amountCents, advanceCents, bonusCents }),
+    })
+  }
+
+  return {
+    rows: rows.slice(0, input.limit),
+    truncated: rows.length > input.limit,
+    byProfessional: Array.from(byProfessional.values()).sort((a, b) =>
+      a.professionalName.localeCompare(b.professionalName, "pt-BR")
+    ),
     pending: { count: pending?.count ?? 0, amountCents: toCents(pending?.amount) ?? 0 },
+    adjustments: adjustmentRows.slice(0, input.limit),
+    adjustmentsTruncated: adjustmentRows.length > input.limit,
+  }
+}
+
+// ============================================================================
+// Vales e bonificações
+// ============================================================================
+
+/** Lança um vale ou uma bonificação para um profissional do salão. */
+export async function createCommissionAdjustmentService(input: {
+  salonId: string
+  userId: string
+  professionalId: string
+  draft: { kind: unknown; amount: unknown; referenceDate: unknown; notes?: unknown }
+}): Promise<ActionResult<{ adjustmentId: string }>> {
+  try {
+    const plan = planCommissionAdjustment(input.draft)
+    if (!plan.ok) fail(plan.error)
+
+    const adjustmentId = await db.transaction(async (tx) => {
+      await assertProfessionalInSalon(tx, input.salonId, input.professionalId)
+
+      const [created] = await tx
+        .insert(commissionAdjustments)
+        .values({
+          salonId: input.salonId,
+          professionalId: input.professionalId,
+          kind: plan.kind,
+          amount: plan.amount,
+          referenceDate: plan.referenceDate,
+          notes: plan.notes,
+          createdBy: input.userId,
+        })
+        .returning({ id: commissionAdjustments.id })
+
+      return created.id
+    })
+
+    return { success: true, data: { adjustmentId } }
+  } catch (error) {
+    return toFailure(error, "Não foi possível salvar o lançamento")
+  }
+}
+
+/**
+ * Exclui um vale ou uma bonificação.
+ *
+ * `professionalIds`: indefinido = qualquer profissional do salão; lista = só os
+ * daqueles — quem não vê o extrato de todos não apaga lançamento de outra pessoa.
+ */
+export async function deleteCommissionAdjustmentService(input: {
+  salonId: string
+  adjustmentId: string
+  professionalIds?: string[]
+}): Promise<ActionResult<void>> {
+  try {
+    if (input.professionalIds && input.professionalIds.length === 0) fail("Lançamento não encontrado")
+
+    const deleted = await db
+      .delete(commissionAdjustments)
+      .where(
+        and(
+          eq(commissionAdjustments.id, input.adjustmentId),
+          eq(commissionAdjustments.salonId, input.salonId),
+          input.professionalIds ? inArray(commissionAdjustments.professionalId, input.professionalIds) : undefined
+        )
+      )
+      .returning({ id: commissionAdjustments.id })
+
+    if (deleted.length === 0) fail("Lançamento não encontrado")
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    return toFailure(error, "Não foi possível excluir o lançamento")
   }
 }
 

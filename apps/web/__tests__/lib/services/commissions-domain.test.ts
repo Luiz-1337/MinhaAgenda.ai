@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest"
 import {
   DEFAULT_COMMISSION_SETTINGS,
+  commissionNetCents,
   commissionTotals,
   parseCommissionRate,
   planAssistantRule,
+  planCommissionAdjustment,
   planCommissionRule,
   planSaleCommissions,
   resolveCommissionRate,
@@ -565,5 +567,54 @@ describe("comissão como auxiliar", () => {
     expect(planAssistantRule({ kind: "percent", value: 101, base: "gross", deductFrom: "salon" }).ok).toBe(false)
     expect(planAssistantRule({ kind: "percent", value: 10, base: "tudo", deductFrom: "salon" }).ok).toBe(false)
     expect(planAssistantRule({ kind: "percent", value: 10, base: "gross", deductFrom: "cliente" }).ok).toBe(false)
+  })
+})
+
+// ============================================================================
+// Vales e bonificações (fatia 3c)
+// ============================================================================
+
+describe("vales e bonificações", () => {
+  const draft = { kind: "advance", amount: 150, referenceDate: "2026-11-20", notes: "  adiantamento da quinzena  " }
+
+  it("grava o valor em reais com centavos, a data e a observação aparada", () => {
+    expect(planCommissionAdjustment(draft)).toEqual({
+      ok: true,
+      kind: "advance",
+      amount: "150.00",
+      referenceDate: "2026-11-20",
+      notes: "adiantamento da quinzena",
+    })
+    expect(planCommissionAdjustment({ kind: "bonus", amount: 0.1, referenceDate: "2026-11-20" })).toEqual({
+      ok: true,
+      kind: "bonus",
+      amount: "0.10",
+      referenceDate: "2026-11-20",
+      notes: null,
+    })
+  })
+
+  it("o valor é sempre positivo: zero, negativo e texto são barrados", () => {
+    expect(planCommissionAdjustment({ ...draft, amount: 0 }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, amount: -50 }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, amount: "150" }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, amount: Number.NaN }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, amount: 1_000_000.01 }).ok).toBe(false)
+  })
+
+  it("tipo desconhecido, data inválida e observação longa demais são barrados", () => {
+    expect(planCommissionAdjustment({ ...draft, kind: "desconto" }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, referenceDate: "20/11/2026" }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, referenceDate: "2026-02-30" }).ok).toBe(false)
+    expect(planCommissionAdjustment({ ...draft, notes: "x".repeat(501) }).ok).toBe(false)
+  })
+
+  it("líquido = a receber − vales + bonificações", () => {
+    expect(commissionNetCents({ amountCents: 23124, advanceCents: 10000, bonusCents: 5000 })).toBe(18124)
+    expect(commissionNetCents({ amountCents: 23124, advanceCents: 0, bonusCents: 0 })).toBe(23124)
+  })
+
+  it("vale maior que a comissão deixa o líquido negativo, não zero", () => {
+    expect(commissionNetCents({ amountCents: 9708, advanceCents: 15000, bonusCents: 0 })).toBe(-5292)
   })
 })
