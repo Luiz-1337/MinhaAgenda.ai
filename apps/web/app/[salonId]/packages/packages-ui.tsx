@@ -3,10 +3,12 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
-/** As telas de pacotes, lado a lado (docs/ROADMAP.md, fase 5). */
+/** As telas de pacotes e de assinaturas, lado a lado (docs/ROADMAP.md, fase 5). */
 const NAV_ITEMS = [
   { path: "", label: "Pacotes vendidos" },
   { path: "/templates", label: "Pacotes predefinidos" },
+  { path: "/subscriptions", label: "Assinaturas" },
+  { path: "/subscription-plans", label: "Planos de assinatura" },
 ] as const
 
 export function PackagesNav({ salonId }: { salonId: string }) {
@@ -14,7 +16,7 @@ export function PackagesNav({ salonId }: { salonId: string }) {
   const base = `/${salonId}/packages`
 
   return (
-    <nav aria-label="Telas de pacotes" className="flex flex-wrap items-center gap-2 flex-shrink-0">
+    <nav aria-label="Telas de pacotes e assinaturas" className="flex flex-wrap items-center gap-2 flex-shrink-0">
       {NAV_ITEMS.map((item) => {
         const href = `${base}${item.path}`
         const active = item.path === "" ? pathname === base : pathname.startsWith(href)

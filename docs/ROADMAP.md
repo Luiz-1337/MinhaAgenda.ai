@@ -40,7 +40,9 @@ venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
 `claude/fase-4-estoque`) e publicada, com a migration 051 aplicada e registrada
 em 17/nov/2026 e testada em uso — ver §9.7. Fatia 5b (usar o pacote na comanda)
 na mesma branch: migration 052 aplicada em 17/nov/2026, publicada e testada em
-uso — ver §9.8.
+uso — ver §9.8. Fatia 5c (assinaturas de cliente) feita na mesma branch — **em
+commit local, migration 053 NÃO aplicada, sem publicar e sem teste em uso** — ver
+§9.9.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1998,7 +2000,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 |---|---|---|
 | 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
 | 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita, migration 052 aplicada, publicada e testada em uso (§9.8) |
-| 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Pendente |
+| 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Feita em código — **migration 053 não aplicada, sem publicar e sem teste em uso** (§9.9) |
 | 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
 
 A página pública de planos com link copiável e a renovação automática de
@@ -2037,6 +2039,23 @@ Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 - **Não há tabela de consumo.** O saldo de uma linha é a quantidade dela menos a
   soma das quantidades dos itens de comandas FATURADAS que a citam. Reabrir a
   comanda que usou devolve o saldo sem desfazer nada.
+
+**Migration 053 (fatia 5c):**
+
+- **`subscription_plans`** — o plano: `name` (único no salão, sem diferença de
+  maiúscula), `description`, `price`, `interval_months` (1 a 36), `is_active`,
+  `is_visible`.
+- **`customer_subscriptions`** — a assinatura do cliente: `customer_id`,
+  `plan_id`, cópias de `name`, `price` e `interval_months`, `started_on`,
+  `deactivated_at` (NULL = em vigor). Uma em vigor por cliente e plano (índice
+  único parcial).
+- **`sale_items`** — `kind` aceita `subscription`, com
+  `customer_subscription_id` (sem ON DELETE). Item de assinatura tem quantidade 1.
+- **`customer_subscription_periods`** — o período pago: `subscription_id`,
+  `sale_id` e `sale_item_id` (único, CASCADE), `period_start`, `period_end` (o
+  vencimento), `amount`.
+- **Não há coluna de situação.** Ela sai dos períodos e de `deactivated_at`
+  (regra 26). Reabrir a comanda apaga o período e a situação volta sozinha.
 
 ### 9.3 Regras de negócio
 
@@ -2095,6 +2114,44 @@ Fatia 5b — usar o pacote:
 21. **Sem o módulo `packages`, a comanda não aceita item do pacote novo**; uma
     comanda que já tinha item do pacote ainda fatura (o saldo é conferido igual).
 
+Fatia 5c — assinaturas de cliente:
+
+22. **O plano de assinatura** tem nome, valor (maior que zero), periodicidade em
+    meses (a tela oferece mensal, bimestral, trimestral, semestral e anual),
+    ativo e visível. "Visível" só é guardado: a página pública de planos é da
+    fase 8.
+23. **A assinatura é o plano de UM cliente** e COPIA nome, valor e periodicidade
+    no dia em que é criada: mudar o plano depois não muda quem já assina. Uma em
+    vigor por cliente e plano. Nasce Pendente, sem cobrança.
+24. **Cobrar (ou renovar) é um item da comanda.** "Renovar" na tela de
+    Assinaturas abre uma comanda do cliente com o item, já no faturamento; a
+    comanda também tem "+ Assinatura" quando o cliente tem uma em vigor. O valor
+    da assinatura é sugestão: pode ser alterado e levar desconto. Quantidade 1,
+    uma cobrança por assinatura em cada comanda, vendedor opcional. Se já existe
+    comanda aberta com a cobrança, "Renovar" abre essa.
+25. **O período pago nasce quando a comanda é FATURADA.** Em dia (a assinatura
+    ainda vale no dia da comanda), emenda no vencimento atual — quem paga
+    adiantado não perde dias. Atrasada ou primeira cobrança, começa no dia da
+    comanda (Brasília). O vencimento é o mesmo dia do mês, N meses depois (31/jan
+    + 1 mês = 28 ou 29/fev), e a assinatura vale até ele, inclusive.
+26. **Situação**, sem coluna própria: Pendente (nunca paga), Ativa (o último
+    período vence hoje ou depois), Expirada (o último período venceu) e
+    Desativada (encerrada à mão — vale mais que as outras).
+27. **Reabrir a comanda apaga o período que ela pagou.** Só a última renovação
+    reabre: se a assinatura já foi renovada depois em outra comanda, a mensagem
+    diz qual reabrir primeiro. Excluir a comanda (aberta) solta a assinatura.
+28. **Desativar** não apaga o que foi pago; a assinatura deixa de aceitar
+    cobrança, e uma comanda aberta com o item dela não fatura. Pode ser
+    reativada. **Excluir** só a que nunca foi cobrada e não está em comanda.
+    Plano que já teve assinatura não se apaga: desativa-se.
+29. **Assinatura não gera comissão nem mexe no estoque.** O dinheiro entra pelo
+    pagamento da comanda, como qualquer item — inclusive fiado: faturou, o
+    período conta como pago.
+30. **Anda com o módulo `packages`** e as permissões dele (§9.4). Sem o módulo, a
+    comanda não aceita item de assinatura novo; a que já tinha ainda fatura.
+31. **A renovação é manual.** Não há cobrança automática nem aviso de vencimento
+    (dependem de pagamento online, fase 8).
+
 Perguntas para o dono:
 
 - Vender pacote pela comanda (regra 1) serve, ou a recepção precisa da tela
@@ -2114,6 +2171,17 @@ Perguntas para o dono:
   recepção "estende" na hora), ou vencido é vencido?
 - (5b) A comissão no uso deve seguir a regra do serviço (regra 18) ou ter um
   percentual próprio para sessões de pacote?
+- (5c) O que o assinante leva? Hoje a assinatura só registra a cobrança e a
+  situação; serviços inclusos por período ou desconto de assinante não existem.
+- (5c) Assinatura cobrada no fiado conta como paga (regra 29), ou só depois de o
+  dinheiro entrar?
+- (5c) Renovação atrasada começa no dia do pagamento (regra 25), ou cobra desde o
+  vencimento anterior?
+- (5c) Mudar o valor do plano deve mudar as assinaturas que já existem?
+- (5c) Quem vende a assinatura recebe comissão?
+- (5c) Assinaturas precisam de permissão própria, separada da de pacotes?
+- (5c) O salão quer avisar o cliente pelo WhatsApp quando a assinatura está para
+  vencer?
 
 ### 9.4 Permissões e módulo
 
@@ -2125,6 +2193,11 @@ Módulo `packages` em `salons.settings.modules`. Recurso novo:
 
 Vender é pela comanda, com as permissões de comanda. A Belasis tem Acessar,
 Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
+
+Assinaturas (5c) usam o mesmo módulo e as mesmas chaves: `packages.access` vê
+assinaturas e planos; `packages.manage` cria e altera planos e cria, desativa,
+reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o módulo
+`sales` e `sales.create`.
 
 ### 9.5 Telas
 
@@ -2144,6 +2217,17 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 - **Ficha do cliente (5b)**: cartão Pacotes (módulo ligado + `packages.access`):
   pacote, data, comanda, valor, validade, saldo de cada item, comandas em que foi
   usado e a situação.
+- **Assinaturas (5c)** (`/[salonId]/packages/subscriptions`): cliente, plano e
+  periodicidade, valor, desde, vencimento com a comanda que pagou, situação e a
+  cobrança aberta, se houver; filtros Todas, Pendentes, Ativas, Expiradas e
+  Desativadas, com os quatro totais; "Nova assinatura" (cliente + plano),
+  "Cobrar"/"Renovar", "Desativar"/"Reativar" e excluir a que nunca foi cobrada.
+- **Planos de assinatura (5c)** (`/[salonId]/packages/subscription-plans`): plano,
+  periodicidade, valor, assinantes e visível; "Novo plano", editar e excluir.
+- **Comanda (5c)**: "+ Assinatura" aparece quando o cliente tem assinatura em
+  vigor, com o vencimento de cada uma; o item entra com o valor da assinatura,
+  sem troca de item e com quantidade travada em 1. O aviso de reabrir diz que a
+  renovação é desfeita.
 
 ### 9.6 Onde o código mora
 
@@ -2157,6 +2241,7 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | Telas | `apps/web/app/[salonId]/packages/`; o item na comanda em `sales/[saleId]/sale-editor.tsx` |
 | Testes | `apps/web/__tests__/lib/services/packages-domain.test.ts`; uso (5b) em `package-usage-domain.test.ts` |
 | Uso (5b) | Migration `052_package_usage.sql`; regra `splitPackagePrice`, `planPackageUsage`, `packageUseValue` (`domain/packages.ts`), o item em `planSaleItems`, a base em `planSaleCommissions` (`packageValue`); I/O `loadPackageLines`, `salePackagesInUse`, `listCustomerPackageBalancesService` (`packages.service.ts`), chamados por `sales.service.ts` e `commissions.service.ts`; action `getSalePackageBalances` (`actions/sales.ts`); cartão `components/contacts/customer-packages-card.tsx` |
+| Assinaturas (5c) | Migration `053_subscriptions.sql`; tabelas `subscriptionPlans`, `customerSubscriptions`, `customerSubscriptionPeriods` e `saleItems.customerSubscriptionId`; regra em `domain/subscriptions.ts` (`planSubscriptionPlan`, `planCustomerSubscription`, `nextSubscriptionPeriod`, `planSubscriptionPeriods`, `customerSubscriptionStatus`, `subscriptionReopenBlocker`) e o item em `planSaleItems`; I/O em `services/subscriptions.service.ts` — a comanda chama `recordSaleSubscriptions` no faturamento e `saleSubscriptionsRenewedLater` + `revertSaleSubscriptions` na reabertura; actions em `actions/subscriptions.ts` e `getSaleSubscriptionOptions` em `actions/sales.ts`; telas em `app/[salonId]/packages/subscriptions/` e `subscription-plans/`; testes em `subscriptions-domain.test.ts` |
 
 ### 9.7 Fatia 5a — estado (17/nov/2026)
 
@@ -2269,6 +2354,29 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
   e o modelo apagados por SQL, pelo ID. Sem modelos, pacotes, pagamentos,
   comissões nem movimentos de estoque.
 
+### 9.9 Fatia 5c — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1086, db 296).
+- **Migration 053: NÃO aplicada.** Tem que entrar **antes** de o código ser
+  publicado: acrescenta a coluna `customer_subscription_id` em `sale_items`, e o
+  INSERT do Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda
+  falharia.
+- Antes de aplicar: cópia de segurança de `sale_items` no schema `backups` (as
+  três tabelas novas nascem vazias).
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar e publicar:
+  criar um plano mensal; criar a assinatura de uma cliente (Pendente); "Cobrar" →
+  comanda com o item, faturar → Ativa, vencimento um mês depois, comanda no
+  vencimento; "Renovar" de novo → o período emenda no vencimento; tentar reabrir
+  a primeira comanda (barrado, cita a segunda); reabrir a segunda (o vencimento
+  volta); "+ Assinatura" numa comanda nova da cliente; desativar com cobrança
+  aberta e tentar faturar (barrado); reativar; excluir assinatura nunca cobrada;
+  excluir plano com assinatura (barrado).
+- **Fora desta fatia:** as assinaturas na ficha do cliente; cobrança automática,
+  aviso de vencimento e página pública de planos (fase 8); o relatório de vendas
+  por assinatura (5d).
+
 ## 10. Pendências do dono
 
 | Pendência | Trava |
@@ -2283,5 +2391,6 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117` e `backups.customer_package_items_pre_052_20261117` podem ser apagadas | Limpeza do schema `backups` |
-| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão) | Ajustes na fase 5 antes do piloto |
+| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento) | Ajustes na fase 5 antes do piloto |
+| Aplicar a migration 053 (ou autorizar a aplicação) e publicar a fatia 5c — ver §9.9 | Teste em uso da fatia 5c |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

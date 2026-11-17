@@ -63,11 +63,13 @@ export interface SaleListFilters {
 
 export interface SaleItemDTO {
   id: string
-  /** "package" = venda de pacote predefinido (fase 5). */
-  kind: "service" | "product" | "package"
+  /** "package" = venda de pacote predefinido; "subscription" = cobrança de assinatura (fase 5). */
+  kind: "service" | "product" | "package" | "subscription"
   serviceId: string | null
   productId: string | null
   packageTemplateId: string | null
+  /** Item de assinatura (fatia 5c). NULL em comanda excluída. */
+  customerSubscriptionId: string | null
   description: string
   professionalId: string | null
   professionalName: string | null
@@ -198,7 +200,7 @@ export interface SaleCustomerOption {
 }
 
 export interface SaleItemInput {
-  kind: "service" | "product" | "package"
+  kind: "service" | "product" | "package" | "subscription"
   serviceId?: string | null
   productId?: string | null
   packageTemplateId?: string | null
@@ -211,6 +213,8 @@ export interface SaleItemInput {
   appointmentId?: string | null
   /** Item "do pacote" (fase 5): sem cobrança, quantidade inteira. */
   customerPackageItemId?: string | null
+  /** Item de assinatura (fatia 5c): a assinatura do cliente que ele cobra. */
+  customerSubscriptionId?: string | null
 }
 
 /**

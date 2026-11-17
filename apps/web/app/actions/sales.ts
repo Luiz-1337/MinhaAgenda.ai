@@ -24,6 +24,7 @@ import {
   getSaleService,
   invoiceSaleService,
   listCustomerPackageBalancesService,
+  listCustomerSubscriptionOptionsService,
   receiveSaleDebtPaymentService,
   listSaleItemSummariesService,
   listSalesService,
@@ -45,6 +46,7 @@ import {
   saveSaleSchema,
 } from "@/lib/schemas/sales.schema"
 import type { ActionResult } from "@/lib/types/common"
+import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
 import type {
   CustomerSalesOverview,
   InvoiceSaleInput,
@@ -173,6 +175,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/commissions`)
   // E o saldo dos pacotes (venda e uso — fase 5).
   revalidatePath(`/${salonId}/packages`)
+  // E a situação das assinaturas (cobrança — fase 5, fatia 5c).
+  revalidatePath(`/${salonId}/packages/subscriptions`)
 }
 
 // ============================================================================
@@ -374,6 +378,31 @@ export async function getSalePackageBalances(
   } catch (error) {
     console.error("Erro ao carregar o saldo de pacotes do cliente:", error)
     return { error: "Não foi possível carregar os pacotes do cliente" }
+  }
+}
+
+/**
+ * As assinaturas em vigor do cliente da comanda — o botão "+ Assinatura" (fase 5,
+ * fatia 5c). Vazio com o módulo `packages` desligado.
+ *
+ * Só com permissão de comanda: quem monta a comanda precisa ver as assinaturas do
+ * cliente, mesmo sem acesso à tela de Assinaturas.
+ */
+export async function getSaleSubscriptionOptions(
+  salonId: string,
+  customerId: string
+): Promise<SaleSubscriptionOptionDTO[] | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.access")
+  if ("error" in auth) return auth
+
+  if (!/^[0-9a-f-]{36}$/i.test(customerId ?? "")) return { error: "Cliente inválido" }
+
+  try {
+    if (!(await salonHasModule(salonId, "packages"))) return []
+    return await listCustomerSubscriptionOptionsService({ salonId, customerId, now: new Date() })
+  } catch (error) {
+    console.error("Erro ao carregar as assinaturas do cliente:", error)
+    return { error: "Não foi possível carregar as assinaturas do cliente" }
   }
 }
 

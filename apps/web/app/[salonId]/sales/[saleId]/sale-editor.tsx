@@ -23,6 +23,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
   getSalePackageBalances,
+  getSaleSubscriptionOptions,
   invoiceSale,
   receiveSalePayment,
   reopenSale,
@@ -42,6 +43,7 @@ import type {
   SaleItemInput,
   SalePackageBalanceDTO,
 } from "@/lib/types/sale"
+import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
 
 // ============================================================================
 // Estado de edição
@@ -49,8 +51,11 @@ import type {
 
 type ItemRow = {
   key: string
-  kind: "service" | "product" | "package"
-  /** id do serviço, do produto ou do pacote, conforme `kind`. Vazio = ainda não escolhido. */
+  kind: "service" | "product" | "package" | "subscription"
+  /**
+   * id do serviço, do produto, do pacote ou da assinatura do cliente, conforme
+   * `kind`. Vazio = ainda não escolhido.
+   */
   refId: string
   professionalId: string
   /** Quem auxiliou no serviço. Vazio = sem auxiliar. */
@@ -138,7 +143,14 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
   return sale.items.map((item) => ({
     key: nextKey(),
     kind: item.kind,
-    refId: (item.kind === "service" ? item.serviceId : item.kind === "package" ? item.packageTemplateId : item.productId) ?? "",
+    refId:
+      (item.kind === "service"
+        ? item.serviceId
+        : item.kind === "package"
+          ? item.packageTemplateId
+          : item.kind === "subscription"
+            ? item.customerSubscriptionId
+            : item.productId) ?? "",
     professionalId: item.professionalId ?? "",
     assistantId: item.assistantId ?? "",
     // Sem separador de milhar: "1.000" no campo seria relido como um.
@@ -235,6 +247,7 @@ export function SaleEditor({
   }, [options.packageTemplates, sale])
 
   const hasPackageItem = rows.some((row) => row.kind === "package")
+  const hasSubscriptionItem = rows.some((row) => row.kind === "subscription")
   const hasPackageUse = rows.some((row) => row.packageLineId !== null)
 
   // O que o cliente ainda tem nos pacotes (fase 5, fatia 5b). Recarrega quando o
@@ -268,6 +281,34 @@ export function SaleEditor({
   }, [balances, rows])
 
   const usableBalances = balances.filter((balance) => (availableByLine.get(balance.lineId) ?? 0) > 0)
+
+  // As assinaturas em vigor do cliente (fase 5, fatia 5c): cada uma pode entrar
+  // uma vez na comanda, como cobrança de um período.
+  const subscriptionsQuery = useQuery({
+    queryKey: ["sale-subscription-options", salonId, customerId],
+    queryFn: async (): Promise<SaleSubscriptionOptionDTO[]> => {
+      const result = await getSaleSubscriptionOptions(salonId, customerId as string)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: balancesEnabled,
+  })
+  const subscriptions = useMemo(
+    () => (balancesEnabled ? (subscriptionsQuery.data ?? []) : []),
+    [balancesEnabled, subscriptionsQuery.data]
+  )
+  const chargeableSubscriptions = subscriptions.filter(
+    (subscription) => !rows.some((row) => row.kind === "subscription" && row.refId === subscription.id)
+  )
+
+  // A assinatura do item gravado continua aparecendo, mesmo que o cliente mude.
+  const subscriptionOptions = useMemo(() => {
+    const known = new Set(subscriptions.map((s) => s.id))
+    const extra = (sale?.items ?? [])
+      .filter((i) => i.kind === "subscription" && i.customerSubscriptionId && !known.has(i.customerSubscriptionId))
+      .map((i) => ({ id: i.customerSubscriptionId as string, name: i.description }))
+    return [...subscriptions.map((s) => ({ id: s.id, name: `Assinatura: ${s.name}` })), ...extra]
+  }, [subscriptions, sale])
 
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
@@ -349,6 +390,29 @@ export function SaleEditor({
     setDirty(true)
   }
 
+  /** A cobrança de um período da assinatura do cliente, no valor dela. */
+  function addSubscriptionCharge(subscriptionId: string) {
+    const subscription = subscriptions.find((s) => s.id === subscriptionId)
+    if (!subscription) return
+    setRows((current) => [
+      ...current,
+      {
+        key: nextKey(),
+        kind: "subscription",
+        refId: subscription.id,
+        professionalId: "",
+        assistantId: "",
+        quantity: "1",
+        unitPrice: moneyToInput(subscription.price),
+        discount: "",
+        appointmentId: null,
+        packageLineId: null,
+        packageName: null,
+      },
+    ])
+    setDirty(true)
+  }
+
   function removeRow(key: string) {
     setRows((current) => current.filter((row) => row.key !== key))
     setDirty(true)
@@ -376,6 +440,7 @@ export function SaleEditor({
     for (const [index, row] of rows.entries()) {
       const label = `Item ${index + 1}`
       if (!row.refId) {
+        if (row.kind === "subscription") return `${label}: escolha a assinatura`
         return `${label}: escolha o ${row.kind === "service" ? "serviço" : row.kind === "package" ? "pacote" : "produto"}`
       }
       if (row.kind === "service" && !row.professionalId) return `${label}: informe o profissional`
@@ -407,6 +472,7 @@ export function SaleEditor({
         discountAmount,
         appointmentId: row.appointmentId,
         customerPackageItemId: row.packageLineId,
+        customerSubscriptionId: row.kind === "subscription" ? row.refId : null,
       })
     }
 
@@ -757,6 +823,27 @@ export function SaleEditor({
                     ))}
                   </select>
                 )}
+                {/* Cobrar a assinatura: só aparece quando o cliente tem uma em vigor. */}
+                {chargeableSubscriptions.length > 0 && (
+                  <select
+                    aria-label="Cobrar a assinatura do cliente"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) addSubscriptionCharge(event.target.value)
+                    }}
+                    className="px-3 py-1.5 rounded-md border border-accent/40 bg-accent/10 text-xs font-bold text-foreground hover:bg-accent/20 transition-colors cursor-pointer"
+                  >
+                    <option value="">+ Assinatura</option>
+                    {chargeableSubscriptions.map((subscription) => (
+                      <option key={subscription.id} value={subscription.id}>
+                        {subscription.name}
+                        {subscription.paidUntil
+                          ? ` (vence em ${subscription.paidUntil.split("-").reverse().join("/")})`
+                          : " (nunca cobrada)"}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
           </div>
@@ -770,8 +857,24 @@ export function SaleEditor({
               {rows.map((row, index) => {
                 const cents = rowCents(row)
                 const itemOptions =
-                  row.kind === "service" ? serviceOptions : row.kind === "package" ? packageOptions : productOptions
-                const itemLabel = row.kind === "service" ? "Serviço" : row.kind === "package" ? "Pacote" : "Produto"
+                  row.kind === "service"
+                    ? serviceOptions
+                    : row.kind === "package"
+                      ? packageOptions
+                      : row.kind === "subscription"
+                        ? subscriptionOptions
+                        : productOptions
+                const itemLabel =
+                  row.kind === "service"
+                    ? "Serviço"
+                    : row.kind === "package"
+                      ? "Pacote"
+                      : row.kind === "subscription"
+                        ? "Assinatura"
+                        : "Produto"
+                // A cobrança da assinatura e o item que sai do pacote não se trocam.
+                const fixedItem = row.packageLineId !== null || row.kind === "subscription"
+                const fixedQuantity = row.kind === "package" || row.kind === "subscription"
 
                 return (
                   <div key={row.key} className="p-3 grid gap-3 md:grid-cols-12 md:items-end">
@@ -793,8 +896,9 @@ export function SaleEditor({
                       <select
                         id={`${row.key}-item`}
                         value={row.refId}
-                        // O item do pacote é o da linha do pacote: não se troca.
-                        disabled={!editable || row.packageLineId !== null}
+                        // O item do pacote é o da linha do pacote, e a cobrança é a da
+                        // assinatura: não se trocam.
+                        disabled={!editable || fixedItem}
                         onChange={(event) => chooseItem(row, event.target.value)}
                         className={inputClass}
                       >
@@ -842,9 +946,16 @@ export function SaleEditor({
                         type="text"
                         inputMode="decimal"
                         value={row.quantity}
-                        // Um item de pacote é um pacote: a quantidade é sempre 1.
-                        disabled={!editable || row.kind === "package"}
-                        title={row.kind === "package" ? "Um item para cada pacote" : undefined}
+                        // Um item de pacote é um pacote, e um de assinatura é uma
+                        // cobrança: a quantidade é sempre 1.
+                        disabled={!editable || fixedQuantity}
+                        title={
+                          row.kind === "package"
+                            ? "Um item para cada pacote"
+                            : row.kind === "subscription"
+                              ? "Uma cobrança por comanda"
+                              : undefined
+                        }
                         onChange={(event) => updateRow(row.key, { quantity: event.target.value })}
                         className={inputClass}
                       />
@@ -1247,6 +1358,9 @@ export function SaleEditor({
             ? " Os pacotes vendidos nesta comanda deixam de existir e são criados de novo quando ela for faturada."
             : "") +
           (hasPackageUse ? " O que esta comanda usou dos pacotes do cliente volta para o saldo." : "") +
+          (hasSubscriptionItem
+            ? " A renovação de assinatura paga por esta comanda é desfeita e volta quando ela for faturada."
+            : "") +
           " Depois de editar, é preciso faturar de novo."
         }
         confirmText="Reabrir"

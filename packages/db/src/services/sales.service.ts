@@ -40,6 +40,13 @@ import {
   revertSalePackages,
   salePackagesInUse,
 } from "./packages.service"
+import {
+  loadSaleSubscriptions,
+  recordSaleSubscriptions,
+  revertSaleSubscriptions,
+  saleSubscriptionsRenewedLater,
+} from "./subscriptions.service"
+import { subscriptionReopenBlocker } from "../domain/subscriptions"
 import { brazilToday, isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 
@@ -125,8 +132,10 @@ async function loadCatalog(
   const appointmentIds = unique(drafts.map((d) => d.appointmentId))
   const packageTemplateIds = packagesEnabled ? unique(drafts.map((d) => d.packageTemplateId)) : []
   const packageLineIds = packagesEnabled ? unique(drafts.map((d) => d.customerPackageItemId)) : []
+  // Assinaturas andam com o mesmo módulo (fase 5, fatia 5c).
+  const subscriptionIds = packagesEnabled ? unique(drafts.map((d) => d.customerSubscriptionId)) : []
 
-  const [serviceRows, productRows, professionalRows, appointmentRows, packageTemplates, packageLines] =
+  const [serviceRows, productRows, professionalRows, appointmentRows, packageTemplates, packageLines, subscriptions] =
     await Promise.all([
     serviceIds.length
       ? executor
@@ -161,6 +170,7 @@ async function loadCatalog(
       : [],
     loadSalePackageTemplates(executor, salonId, packageTemplateIds),
     loadPackageLines(executor, { salonId, lineIds: packageLineIds, excludeSaleId: saleId }),
+    loadSaleSubscriptions(executor, salonId, subscriptionIds),
   ])
 
   return {
@@ -168,6 +178,7 @@ async function loadCatalog(
     products: new Map(productRows.map((r) => [r.id, { name: r.name }])),
     packageTemplates,
     packageLines,
+    subscriptions,
     professionalIds: new Set(professionalRows.map((r) => r.id)),
     appointments: new Map(appointmentRows.map((r) => [r.id, { customerId: r.customerId, status: r.status }])),
   }
@@ -602,6 +613,15 @@ export async function invoiceSaleService(input: {
         customerId: sale.customerId,
         saleDate: sale.saleDate,
       })
+
+      // Item de assinatura vira um período pago — também com o módulo ligado ou
+      // não (fase 5, fatia 5c). Assinatura desativada barra o faturamento.
+      const subscriptionError = await recordSaleSubscriptions(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        saleDate: sale.saleDate,
+      })
+      if (subscriptionError) fail(subscriptionError)
     })
 
     return { success: true, data: undefined }
@@ -724,6 +744,13 @@ export async function reopenSaleService(input: {
         )
       }
 
+      // Assinatura renovada depois em outra comanda: reabrir esta deixaria um
+      // buraco entre os períodos (fase 5, fatia 5c).
+      const renewedLater = subscriptionReopenBlocker(
+        await saleSubscriptionsRenewedLater(tx, { salonId: input.salonId, saleId: sale.id })
+      )
+      if (renewedLater) fail(renewedLater)
+
       const now = new Date()
 
       await tx
@@ -779,6 +806,9 @@ export async function reopenSaleService(input: {
 
       // Os pacotes que a comanda vendeu deixam de existir (fase 5).
       await revertSalePackages(tx, { salonId: input.salonId, saleId: sale.id })
+
+      // E os períodos de assinatura que ela pagou (fase 5, fatia 5c).
+      await revertSaleSubscriptions(tx, { salonId: input.salonId, saleId: sale.id })
     })
 
     return { success: true, data: undefined }
@@ -807,11 +837,11 @@ export async function voidSaleService(input: {
 
       const now = new Date()
 
-      // Solta o agendamento (pode entrar em outra comanda) e a linha do pacote (a
-      // comanda excluída não segura o pacote — fase 5).
+      // Solta o agendamento (pode entrar em outra comanda), a linha do pacote e a
+      // assinatura (a comanda excluída não segura nenhum dos dois — fase 5).
       await tx
         .update(saleItems)
-        .set({ appointmentId: null, customerPackageItemId: null })
+        .set({ appointmentId: null, customerPackageItemId: null, customerSubscriptionId: null })
         .where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
 
       await tx
@@ -907,10 +937,12 @@ export type SaleDetail = {
   customer: { id: string; name: string; phone: string }
   items: {
     id: string
-    kind: "service" | "product" | "package"
+    kind: "service" | "product" | "package" | "subscription"
     serviceId: string | null
     productId: string | null
     packageTemplateId: string | null
+    /** Item de assinatura (fase 5, fatia 5c). NULL em comanda excluída. */
+    customerSubscriptionId: string | null
     description: string
     professionalId: string | null
     professionalName: string | null
@@ -973,6 +1005,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         serviceId: saleItems.serviceId,
         productId: saleItems.productId,
         packageTemplateId: saleItems.packageTemplateId,
+        customerSubscriptionId: saleItems.customerSubscriptionId,
         description: saleItems.description,
         professionalId: saleItems.professionalId,
         professionalName: professionals.name,

@@ -48,8 +48,11 @@ const MAX_QUANTITY = 9999
 const MAX_UNIT_PRICE_CENTS = 100_000_000 // R$ 1.000.000,00
 
 export type SaleItemDraft = {
-  /** 'package' = venda de pacote predefinido (fase 5, fatia 5a). */
-  kind: 'service' | 'product' | 'package'
+  /**
+   * 'package' = venda de pacote predefinido (fase 5, fatia 5a).
+   * 'subscription' = cobrança de assinatura do cliente (fase 5, fatia 5c).
+   */
+  kind: 'service' | 'product' | 'package' | 'subscription'
   serviceId?: string | null
   productId?: string | null
   packageTemplateId?: string | null
@@ -66,6 +69,8 @@ export type SaleItemDraft = {
    * pacote do cliente. Não é cobrado — valor e desconto zero.
    */
   customerPackageItemId?: string | null
+  /** Item de assinatura (fase 5, fatia 5c): a assinatura do cliente que ele cobra. */
+  customerSubscriptionId?: string | null
 }
 
 /** O que o serviço carregou do banco, JÁ filtrado pelo salão. */
@@ -85,11 +90,16 @@ export type SaleCatalog = {
    * planPackageUsage (domain/packages.ts).
    */
   packageLines?: ReadonlyMap<string, { kind: 'service' | 'product'; serviceId: string | null; productId: string | null }>
+  /**
+   * Assinaturas de cliente que os itens citam (fatia 5c). Vazio quando o módulo
+   * está desligado — aí item de assinatura é "não encontrada".
+   */
+  subscriptions?: ReadonlyMap<string, { name: string; customerId: string; deactivated: boolean }>
 }
 
 export type PlannedSaleItem = {
   position: number
-  kind: 'service' | 'product' | 'package'
+  kind: 'service' | 'product' | 'package' | 'subscription'
   serviceId: string | null
   productId: string | null
   packageTemplateId: string | null
@@ -102,6 +112,7 @@ export type PlannedSaleItem = {
   total: string
   appointmentId: string | null
   customerPackageItemId: string | null
+  customerSubscriptionId: string | null
 }
 
 export type SaleItemsPlan =
@@ -133,6 +144,7 @@ export function planSaleItems(
 
   const items: PlannedSaleItem[] = []
   const seenAppointments = new Set<string>()
+  const seenSubscriptions = new Set<string>()
   let subtotalCents = 0
   let discountCents = 0
 
@@ -143,6 +155,7 @@ export function planSaleItems(
     let serviceId: string | null = null
     let productId: string | null = null
     let packageTemplateId: string | null = null
+    let customerSubscriptionId: string | null = null
 
     if (draft.kind === 'service') {
       const service = draft.serviceId ? catalog.services.get(draft.serviceId) : undefined
@@ -159,6 +172,27 @@ export function planSaleItems(
       if (!template || !draft.packageTemplateId) return { ok: false, error: `${label}: pacote não encontrado` }
       packageTemplateId = draft.packageTemplateId
       description = template.name
+    } else if (draft.kind === 'subscription') {
+      const subscription = draft.customerSubscriptionId
+        ? catalog.subscriptions?.get(draft.customerSubscriptionId)
+        : undefined
+      if (!subscription || !draft.customerSubscriptionId) {
+        return { ok: false, error: `${label}: assinatura não encontrada` }
+      }
+      if (subscription.customerId !== customerId) {
+        return { ok: false, error: `${label}: a assinatura é de outro cliente` }
+      }
+      if (subscription.deactivated) {
+        return { ok: false, error: `${label}: a assinatura "${subscription.name}" está desativada` }
+      }
+      // Uma cobrança por assinatura em cada comanda: para pagar dois períodos,
+      // duas comandas.
+      if (seenSubscriptions.has(draft.customerSubscriptionId)) {
+        return { ok: false, error: `${label}: a mesma assinatura aparece em dois itens` }
+      }
+      seenSubscriptions.add(draft.customerSubscriptionId)
+      customerSubscriptionId = draft.customerSubscriptionId
+      description = `Assinatura: ${subscription.name}`
     } else {
       return { ok: false, error: `${label}: tipo inválido` }
     }
@@ -195,6 +229,10 @@ export function planSaleItems(
     if (draft.kind === 'package' && quantityMilli !== 1000) {
       return { ok: false, error: `${label}: pacote vai com quantidade 1. Para vender mais de um, use um item para cada` }
     }
+    // Um item de assinatura é UMA cobrança (um período).
+    if (draft.kind === 'subscription' && quantityMilli !== 1000) {
+      return { ok: false, error: `${label}: assinatura vai com quantidade 1` }
+    }
 
     const unitCents = draft.unitPrice === null ? null : toCents(draft.unitPrice)
     if (draft.unitPrice !== null && (unitCents === null || unitCents < 0 || unitCents > MAX_UNIT_PRICE_CENTS)) {
@@ -219,6 +257,9 @@ export function planSaleItems(
     if (customerPackageItemId) {
       if (draft.kind === 'package') {
         return { ok: false, error: `${label}: pacote não pode sair de outro pacote` }
+      }
+      if (draft.kind === 'subscription') {
+        return { ok: false, error: `${label}: assinatura não sai de pacote` }
       }
       const line = catalog.packageLines?.get(customerPackageItemId)
       if (!line) return { ok: false, error: `${label}: item do pacote não encontrado` }
@@ -270,6 +311,7 @@ export function planSaleItems(
       total: centsToNumeric(grossCents - itemDiscountCents),
       appointmentId,
       customerPackageItemId,
+      customerSubscriptionId,
     })
   }
 
