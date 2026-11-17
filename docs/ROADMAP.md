@@ -23,7 +23,9 @@ Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
 (publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026 e
 testada em uso — ver §8.7. Fatia 4b (fornecedores, marcas, categorias e compras)
 feita na mesma branch e publicada, com a migration 046 aplicada e registrada em
-16/nov/2026 e testada em uso — ver §8.8.
+16/nov/2026 e testada em uso — ver §8.8. Fatia 4c (lotes e validades) feita em
+código na mesma branch — **a migration 047 ainda não foi aplicada e o código não
+foi publicado** — ver §8.9.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1178,7 +1180,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 |---|---|---|
 | 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita — migration 045 aplicada, testada em uso em 16/nov/2026 (§8.7) |
 | 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita — migration 046 aplicada, testada em uso em 16/nov/2026 (§8.8) |
-| 4c | Lotes e validades | Pendente |
+| 4c | Lotes e validades: registro de lote (código, fabricação, validade, quantidade), lote na entrada e no item da compra, o que resta por lote, aviso de vencidos e vencendo | Feita em código — **migration 047 não aplicada, sem publicar e sem teste em uso** (§8.9) |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"); com isso, a fatia 3e (custo adicional e consumo abatendo a comissão) | Pendente |
 | 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
 | 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
@@ -1187,7 +1189,7 @@ O cadastro de produto que já existe (nome, descrição, preço, ativo) continua
 está e continua valendo para todo salão. O estoque é um módulo à parte, ligado
 salão a salão.
 
-### 8.2 Modelo de dados (migrations 045 e 046)
+### 8.2 Modelo de dados (migrations 045 a 047)
 
 **045 (`045_inventory.sql`, fatia 4a):**
 
@@ -1215,6 +1217,15 @@ salão a salão.
   (FK `CASCADE`, um movimento por item).
 - `financial_transactions` ganha `kind = 'purchase'` e `purchase_id` (FK `CASCADE`,
   índice NÃO único: uma compra pode ter várias parcelas).
+
+**047 (`047_product_batches.sql`, fatia 4c):**
+
+- `product_batches` — um lote de um produto: `code`, `manufactured_on`,
+  `expires_on`, `quantity` (o que ENTROU com o lote), observação e
+  `stock_movement_id` (a entrada que trouxe o lote; NULL = registrado solto; FK
+  `CASCADE`). CHECK: código ou validade, e fabricação ≤ validade.
+- **O que resta em cada lote não é gravado**: é calculado a partir do saldo do
+  produto. Nenhuma tabela existente muda.
 
 ### 8.3 Regras de negócio
 
@@ -1283,6 +1294,33 @@ aqui, **a confirmar com o dono**:
 24. **Produto com venda ou compra não se apaga** (o banco recusa). A tela de
     Produtos passou a dizer isso, em vez de "Falha ao excluir produto".
 
+Lotes e validades (fatia 4c). A auditoria só traz as colunas da tela (Item, Lote,
+Fabricação, Validade, Quantidade); o que segue foi decidido aqui, **a confirmar com
+o dono**:
+
+25. **O lote guarda o que entrou; o que resta é calculado.** O saldo do produto é
+    distribuído pelos lotes dele supondo que **sai primeiro o que vence primeiro**
+    (PVPS). Lote sem validade sai por último; na mesma validade, sai primeiro o
+    registrado antes. É uma suposição — a tela diz isso.
+26. **A venda em comanda não escolhe lote** e não mudou. O mesmo vale para saída e
+    acerto: mexem no saldo, e os lotes acompanham.
+27. **Saldo maior que a soma dos lotes** é estoque sem lote (entrou antes de o
+    salão registrar lotes, ou sem lote). Saldo zerado ou negativo: nenhum lote tem
+    nada.
+28. **O lote nasce de três jeitos:** na entrada manual do estoque (campos
+    opcionais), no item da compra (lote e validade opcionais, só em produto
+    controlado) ou solto, na tela de lotes, para o que já está na prateleira.
+    **O lote solto não muda o saldo.**
+29. **Lote precisa de código ou de validade.** A fabricação não pode ser futura nem
+    depois da validade. Validade já vencida é aceita — é assim que o lote aparece
+    como vencido.
+30. **Situação do lote:** esgotado (não resta nada), vencido (resta e a validade
+    passou), vencendo (resta e vence em até 30 dias — vencer hoje ainda não é
+    vencido), em dia, sem validade. O aviso de 30 dias é fixo por enquanto.
+31. **Editar e excluir o lote não mudam o saldo.** Para tirar produto vencido do
+    estoque, lança-se uma saída. Excluir a compra apaga a entrada e o lote que veio
+    com ela.
+
 Perguntas para o dono:
 
 - Vender sem saldo deve ser barrado, só avisar na comanda, ou seguir como está
@@ -1298,6 +1336,10 @@ Perguntas para o dono:
   só o preço unitário (regra 15)?
 - Fornecedores devem ter permissão própria, separada do estoque, como na Belasis
   (§8.4)? E devem aparecer nas despesas do Financeiro ("pago para fornecedor")?
+- O que resta em cada lote pode ser calculado ("vence primeiro, sai primeiro",
+  regra 25), ou a comanda deve escolher de qual lote o produto saiu?
+- O aviso de validade em 30 dias (regra 30) serve, ou cada salão precisa escolher o
+  prazo? Produto vencido deve ser barrado na venda?
 
 ### 8.4 Permissões e módulo
 
@@ -1314,7 +1356,8 @@ Módulo novo: `inventory` (ligado por salão). A baixa pela comanda depende de
 Ver compras, fornecedores, marcas e categorias é `inventory.access`. A Belasis tem
 "Compras" e "Fornecedores" como recursos separados, cada um com Acessar, Criar,
 Editar e Excluir; aqui ficaram dentro de Estoque (decisão a confirmar). Gerar conta
-a pagar a partir da compra exige também `finance.create`.
+a pagar a partir da compra exige também `finance.create`. Registrar, corrigir e
+excluir lote é `inventory.move` (é operação de estoque, como a entrada).
 
 Para ligar no salão de teste:
 
@@ -1353,6 +1396,14 @@ UPDATE salons
   Produtos e saldo > Configurar.
 - **Financeiro**: a parcela de compra aparece como despesa; aceita baixa e estorno,
   não tem editar nem excluir.
+- **Lotes e validades** (`/[salonId]/inventory/batches`): totais (lotes em
+  estoque, vencidos, vencendo), a lista por validade com produto, lote, fabricação,
+  validade, quanto entrou, quanto resta e a situação, com os filtros "Em estoque",
+  "Vencidos e vencendo" e "Esgotados"; "Novo lote" (solto), editar e excluir.
+- **Produtos e saldo**: aviso no topo quando há lote vencido ou vencendo com
+  produto na prateleira; em Movimentar > Entrada, os campos opcionais Lote,
+  Fabricação e Validade.
+- **Nova compra**: no item de produto controlado, Lote e Validade opcionais.
 
 ### 8.6 Onde o código mora
 
@@ -1370,6 +1421,11 @@ UPDATE salons
 | Compras — actions | `apps/web/app/actions/purchases.ts` |
 | Compras — telas | `apps/web/app/[salonId]/inventory/{purchases,suppliers,catalog}/`; peças comuns em `inventory-ui.tsx` |
 | Compras — testes | `apps/web/__tests__/lib/services/purchases-domain.test.ts` |
+| Lotes — regra pura | `packages/db/src/domain/batches.ts` (`planBatch`, `hasBatchData`, `compareBatchesByConsumption`, `distributeBalance`, `batchStatus`, `daysBetween`, `EXPIRY_WARNING_DAYS`) |
+| Lotes — I/O | `packages/db/src/services/batches.service.ts`; `insertMovementBatch` é chamado por `createStockMovementService` e `createPurchaseService` |
+| Lotes — actions | `getBatches`, `saveBatch` e `deleteBatch` em `apps/web/app/actions/inventory.ts` |
+| Lotes — tela | `apps/web/app/[salonId]/inventory/batches/` |
+| Lotes — testes | `apps/web/__tests__/lib/services/batches-domain.test.ts` |
 
 ### 8.7 Fatia 4a — estado (16/nov/2026)
 
@@ -1477,6 +1533,35 @@ UPDATE salons
   fatias:** o fornecedor "Teste Distribuidora", a marca "Teste Marca" e a categoria
   "Teste Categoria", além dos dois produtos de teste.
 
+### 8.9 Fatia 4c — estado (17/nov/2026)
+
+- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
+  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
+- **Migration 047: NÃO aplicada.** Ela só cria `product_batches` — nenhuma tabela
+  existente muda. Mesmo assim tem que entrar **antes** de o código ser publicado: a
+  tela de Estoque passa a consultar a tabela (aviso de validade) e falharia nos
+  salões com o módulo `inventory` ligado (hoje, só o de teste).
+- **Sem teste em uso.** Roteiro, depois de aplicar a 047 e publicar, no salão de
+  teste (Teste Shampoo com saldo zero):
+  1. Movimentar > Entrada de 10 com lote "L1" e validade daqui a 10 dias → em
+     Lotes, "L1" entrou 10, resta 10, "Vencendo"; o estoque mostra o aviso de
+     validade.
+  2. Nova compra com 5 Teste Shampoo, lote "L2" e validade daqui a 1 ano → "L2"
+     entrou 5, resta 5, "Em dia", "veio de compra"; o item do Teste Pente (sem
+     controle) não mostra os campos de lote.
+  3. Saída de 12 → saldo 3: "L1" resta 0 ("Esgotado", fora de "Em estoque") e "L2"
+     resta 3; o aviso de validade some.
+  4. Novo lote solto "L0" com validade vencida e quantidade 2 → o saldo não muda
+     (3). Como o L0 é o que vence primeiro, é o primeiro a sair: L2 resta 3, L1 e
+     L0 restam 0. Acerto para 20 → L2 resta 5, L1 resta 10, L0 resta 2 ("Vencido",
+     e o aviso de validade volta) e sobram 3 sem lote.
+  5. Editar o "L0" (validade futura) → deixa de ser vencido; excluir o "L0" → some,
+     saldo igual.
+  6. Excluir a compra → o "L2" some com ela.
+  7. Lote sem código e sem validade é recusado; fabricação depois da validade é
+     recusada.
+  Depois, limpar os dados de teste.
+
 ## 9. Pendências do dono
 
 | Pendência | Trava |
@@ -1490,6 +1575,7 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores) | Ajustes na fase 4 antes do piloto |
+| Aplicar a migration 047 (ou autorizar a aplicação) e publicar a fatia 4c — ver §8.9 | Teste em uso da fatia 4c |
+| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade) | Ajustes na fase 4 antes do piloto |
 | Dizer quando as cópias `backups.products_pre_045_20261116` e `backups.products_pre_046_20261116` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
