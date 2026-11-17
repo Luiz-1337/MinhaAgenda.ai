@@ -38,7 +38,7 @@ testada em uso em 17/nov/2026 — ver §8.12.
 Fase 5 (pacotes e assinaturas): detalhada em §9. Fatia 5a (pacotes predefinidos e
 venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
 `claude/fase-4-estoque`) e publicada, com a migration 051 aplicada e registrada
-em 17/nov/2026 — **ainda sem teste em uso** — ver §9.7.
+em 17/nov/2026 e testada em uso — ver §9.7.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1994,7 +1994,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 
 | Fatia | Entrega | Estado |
 |---|---|---|
-| 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita, publicada na branch, migration 051 aplicada — **sem teste em uso** (§9.7) |
+| 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
 | 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Pendente |
 | 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Pendente |
 | 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
@@ -2118,22 +2118,42 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
   a coluna `package_template_id` em `sale_items`, e o INSERT do Drizzle lista
   todas as colunas — sem ela, salvar QUALQUER comanda falharia.
 - Módulo `packages` ligado no salão de teste em 17/nov/2026.
-- **Sem teste em uso** (a extensão do navegador ficou indisponível depois da
-  publicação). Roteiro, no salão de teste:
-  1. Pacotes predefinidos: criar "Teste 3 Cortes" com 3 sessões de Corte de
-     Cabelo Masculino e 1 Teste Shampoo, R$ 400,00, validade 30 dias → a lista
-     mostra os itens, R$ 400,00, "30 dias", 0 vendidos. Nome repetido é recusado.
-  2. Comanda nova: "+ Pacote" → escolher o pacote preenche R$ 400,00; quantidade
-     travada em 1; vendedor opcional; desconto de R$ 20,00 → total R$ 380,00.
-     Salvar (pendente) → Pacotes vendidos continua vazio.
-  3. Faturar → Pacotes vendidos mostra o pacote: data de hoje, comanda, cliente,
-     "3 de 3 · Corte…" e "1 de 1 · Teste Shampoo", validade hoje + 30, vendedor,
-     R$ 380,00, Disponível. O estoque do Teste Shampoo não muda; nenhuma comissão.
-  4. Excluir o modelo → recusado (já entrou em comanda); desativar → some do
-     "+ Pacote" de uma comanda nova.
-  5. Reabrir a comanda → o aviso fala dos pacotes; o pacote some da lista.
-     Faturar de novo → volta.
-  Depois, limpar os dados de teste.
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste. A
+  captura de tela do navegador falhou nesta sessão; as conferências foram pelo
+  texto da página, pelo estado dos campos (lido no navegador) e por leitura do
+  banco:
+  - Pacotes predefinidos vazio → "Nenhum pacote predefinido". Criado "Teste 3
+    Cortes" (3 × Corte de Cabelo Masculino, 1 × Teste Shampoo, R$ 400,00, 30 dias)
+    → a lista mostra os itens, "(produto)" no shampoo, R$ 400,00, "30 dias" e 0
+    vendidos. "teste 3 cortes" (minúsculas) é recusado: "Já existe um pacote com
+    esse nome".
+  - Comanda nova: "+ Pacote" lista só o pacote ativo; escolher preenche R$ 400,00;
+    a quantidade fica travada em 1; vendedor Marcos; desconto R$ 20,00 → total
+    R$ 380,00. Salva como #15, pendente: no banco, item `package` com o modelo,
+    quantidade 1, total 380,00 e nenhum pacote do cliente.
+  - Faturada em PIX → "Pacotes vendidos": 17/11/2026, Comanda #15, cliente, "3 de 3
+    · Corte de Cabelo Masculino" e "1 de 1 · Teste Shampoo", validade 17/12/2026,
+    Marcos Affonso, R$ 380,00, Disponível; totais 1/0/0. No banco: um lançamento de
+    R$ 380,00 no financeiro, nenhuma comissão e nenhum movimento de estoque.
+  - Excluir o modelo vendido → o diálogo já avisa que não pode; confirmar mostra
+    "Este pacote já foi usado em comanda. Desative-o em vez de excluir". Desativado
+    → a lista mostra "inativo" e 1 vendido; o "+ Pacote" de uma comanda nova fica
+    sem opção.
+  - Reabrir a #15 → o aviso inclui "Os pacotes vendidos nesta comanda deixam de
+    existir e são criados de novo quando ela for faturada"; a lista fica "Nenhum
+    pacote vendido". Faturada de novo (com o modelo já inativo) → o pacote volta,
+    igual.
+- **Não testado em uso:** editar um modelo (trocar itens, valor, validade) e
+  excluir um que nunca foi vendido; modelo sem validade ("Não vence"); vender dois
+  pacotes na mesma comanda; pacote junto com serviço e produto na mesma comanda;
+  fiado com pacote; os filtros Vencidos e Utilizados (só existem com o tempo ou com
+  a 5b); perfil só com `packages.access`; o módulo desligado com comanda aberta
+  que já tinha pacote.
+- Dados de teste limpos: a comanda #15 reaberta e excluída pela tela (fica como
+  excluída, como as anteriores); o item de pacote dela e o modelo apagados por SQL,
+  pelo ID — o modelo não sai pela tela porque a comanda excluída ainda apontava para
+  ele. Sem modelos, pacotes, pagamentos, lançamentos, comissões nem movimentos.
+  **Ficou:** o módulo `packages` ligado no salão de teste.
 
 ## 10. Pendências do dono
 
@@ -2149,6 +2169,5 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117` e `backups.sale_items_pre_051_20261117` podem ser apagadas | Limpeza do schema `backups` |
-| Reconectar a extensão do navegador (ou entrar no preview pelo navegador do app) para o teste em uso da fatia 5a — ver §9.7 | Teste em uso da fatia 5a |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão, pacote vencido, multiunidade) | Fatia 5b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
