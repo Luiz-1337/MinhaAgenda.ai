@@ -9,7 +9,7 @@ nem testada em uso), com a migration 037 já aplicada em produção — ver §5.
 branch `claude/fase-2-financeiro`; migrations 038 e 039 aplicadas; fases 0 a 2
 testadas em uso num salão — ver §6.7 e §6.8. A fatia 2f (débito de cliente) está
 feita, com a migration 040 aplicada em 16/nov/2026 e testada em uso. Fica para depois o
-crédito de cliente (2h). As fases 0 a 2 estão em três PRs abertos (#14, #15 e #16).
+crédito de cliente (2h). As fases 0 a 2 estão na `main` (PRs #14, #15 e #16, mergeados); as fases 3 e 4 estão no PR #17.
 Fase 3 (comissões): fatia 3a feita na branch `claude/fase-3-comissoes` (publicada,
 sem PR), com a migration 041 aplicada em 16/nov/2026 e testada em uso — ver §7.7.
 Fatia 3b (auxiliar) feita na mesma branch e publicada, com a migration 042 aplicada
