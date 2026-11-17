@@ -37,8 +37,8 @@ aplicada e registrada em 17/nov/2026 e testada em uso — ver §8.11. Fatia 4f
 testada em uso em 17/nov/2026 — ver §8.12.
 Fase 5 (pacotes e assinaturas): detalhada em §9. Fatia 5a (pacotes predefinidos e
 venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
-`claude/fase-4-estoque`) — **em commit local, migration 051 NÃO aplicada, sem
-publicar e sem teste em uso** — ver §9.7.
+`claude/fase-4-estoque`) e publicada, com a migration 051 aplicada e registrada
+em 17/nov/2026 — **ainda sem teste em uso** — ver §9.7.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1994,7 +1994,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 
 | Fatia | Entrega | Estado |
 |---|---|---|
-| 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita em código — **migration 051 não aplicada, sem publicar e sem teste em uso** (§9.7) |
+| 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita, publicada na branch, migration 051 aplicada — **sem teste em uso** (§9.7) |
 | 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Pendente |
 | 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Pendente |
 | 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
@@ -2104,16 +2104,22 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 
 ### 9.7 Fatia 5a — estado (17/nov/2026)
 
-- Na branch `claude/fase-5-pacotes` (sai de `claude/fase-4-estoque`), **em commit
-  local, sem publicar**. Typecheck (db e web), lint dos arquivos alterados e
+- Na branch `claude/fase-5-pacotes` (sai de `claude/fase-4-estoque`),
+  **publicada**. Typecheck (db, web e mcp-server), lint dos arquivos alterados e
   testes passando.
-- **Migration 051: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
-  publicado: acrescenta a coluna `package_template_id` em `sale_items`, e o INSERT
-  do Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda falharia.
-- Antes de aplicar: cópia de segurança de `sale_items` no schema `backups`.
-- Para usar num salão: ligar o módulo `packages` (além de `sales`).
-- **Sem teste em uso.** Roteiro, depois de aplicar a 051, publicar e ligar o
-  módulo no salão de teste:
+- **Migration 051: aplicada em produção em 17/nov/2026** (pelo assistente, com a
+  autorização do dono dada na hora), conferida por leitura (as quatro tabelas com
+  RLS, `deny_all` e sem acesso para `anon`; os três CHECKs de `sale_items`; as 19
+  linhas de `sale_items` intactas) e registrada em `schema_migrations` (nome
+  `packages`).
+- Cópia de segurança antes da 051: `backups.sale_items_pre_051_20261117` (19
+  linhas). **Apagar só com o OK do dono.**
+- Em outro ambiente, **aplicar a 051 antes de publicar o código**: ela acrescenta
+  a coluna `package_template_id` em `sale_items`, e o INSERT do Drizzle lista
+  todas as colunas — sem ela, salvar QUALQUER comanda falharia.
+- Módulo `packages` ligado no salão de teste em 17/nov/2026.
+- **Sem teste em uso** (a extensão do navegador ficou indisponível depois da
+  publicação). Roteiro, no salão de teste:
   1. Pacotes predefinidos: criar "Teste 3 Cortes" com 3 sessões de Corte de
      Cabelo Masculino e 1 Teste Shampoo, R$ 400,00, validade 30 dias → a lista
      mostra os itens, R$ 400,00, "30 dias", 0 vendidos. Nome repetido é recusado.
@@ -2142,7 +2148,7 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117` e `backups.products_pre_050_20261117` podem ser apagadas | Limpeza do schema `backups` |
-| Aplicar a migration 051 (ou autorizar a aplicação) e publicar a fatia 5a — ver §9.7 | Teste em uso da fatia 5a |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117` e `backups.sale_items_pre_051_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Reconectar a extensão do navegador (ou entrar no preview pelo navegador do app) para o teste em uso da fatia 5a — ver §9.7 | Teste em uso da fatia 5a |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão, pacote vencido, multiunidade) | Fatia 5b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
