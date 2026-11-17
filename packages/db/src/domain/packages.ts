@@ -184,7 +184,51 @@ export type TemplateForSale = {
     /** Nome do serviço ou produto agora — vira a cópia do pacote do cliente. */
     description: string
     quantity: number
+    /**
+     * Preço de tabela do serviço ou produto agora (numeric do banco). É o peso do
+     * rateio do preço do pacote entre as linhas. NULL ou zero = sem peso.
+     */
+    listPrice?: string | number | null
   }[]
+}
+
+/**
+ * Reparte o preço pago pelo pacote entre as linhas (fatia 5b): é o "valor" de
+ * cada linha, de onde sai o valor de cada sessão — a base da comissão de quem
+ * executa.
+ *
+ * Proporcional ao preço de tabela × quantidade de cada linha: num pacote de 3
+ * cortes (R$ 50) e 1 hidratação (R$ 150) por R$ 270, o corte vale 3×50/300 do
+ * pacote. Sem nenhum preço de tabela, reparte pela quantidade. Em centavos, com o
+ * resto distribuído pelas maiores frações: a soma das linhas é EXATAMENTE o preço.
+ */
+export function splitPackagePrice(
+  priceCents: number,
+  lines: readonly { quantity: number; listPrice?: string | number | null }[]
+): number[] {
+  if (lines.length === 0) return []
+  const total = Math.max(0, Math.round(priceCents))
+
+  const priced = lines.map((line) => Math.max(0, toCents(line.listPrice ?? null) ?? 0) * Math.max(0, line.quantity))
+  const weights = priced.some((weight) => weight > 0) ? priced : lines.map((line) => Math.max(0, line.quantity))
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
+  if (weightSum <= 0) return lines.map((_, index) => (index === 0 ? total : 0))
+
+  const exact = weights.map((weight) => (total * weight) / weightSum)
+  const shares = exact.map(Math.floor)
+  let rest = total - shares.reduce((sum, share) => sum + share, 0)
+
+  // Maior fração primeiro; empate fica com a linha de cima.
+  const order = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index)
+  for (const { index } of order) {
+    if (rest <= 0) break
+    shares[index] += 1
+    rest -= 1
+  }
+
+  return shares
 }
 
 export type PlannedCustomerPackage = {
@@ -202,6 +246,8 @@ export type PlannedCustomerPackage = {
     productId: string | null
     description: string
     quantity: number
+    /** Parte do preço do pacote que cabe à linha (numeric(12,2)). */
+    value: string
   }[]
 }
 
@@ -225,6 +271,9 @@ export function planCustomerPackages(input: {
     const template = input.templates.get(item.packageTemplateId)
     if (!template) continue
 
+    const priceCents = Math.max(0, toCents(item.total) ?? 0)
+    const values = splitPackagePrice(priceCents, template.items)
+
     planned.push({
       saleItemId: item.id,
       templateId: item.packageTemplateId,
@@ -232,7 +281,7 @@ export function planCustomerPackages(input: {
       soldOn,
       expiresOn: packageExpiry(soldOn, template.validityDays),
       sellerId: item.professionalId,
-      price: centsToNumeric(Math.max(0, toCents(item.total) ?? 0)),
+      price: centsToNumeric(priceCents),
       items: template.items.map((line, position) => ({
         position,
         kind: line.kind,
@@ -240,6 +289,7 @@ export function planCustomerPackages(input: {
         productId: line.productId,
         description: line.description,
         quantity: line.quantity,
+        value: centsToNumeric(values[position] ?? 0),
       })),
     })
   }
@@ -268,4 +318,113 @@ export function customerPackageStatus(input: {
   // Vale ATÉ o dia da validade, inclusive.
   if (input.expiresOn !== null && input.expiresOn < input.today) return 'expired'
   return 'active'
+}
+
+// ============================================================================
+// Uso do pacote na comanda (fatia 5b)
+// ============================================================================
+
+/**
+ * Uma linha do pacote do cliente, como o serviço a carrega para conferir um uso.
+ *
+ * Não há tabela de consumo: usar é ter um item de comanda FATURADA apontando para
+ * a linha. `used` é o que as OUTRAS comandas faturadas já usaram — reabrir uma
+ * comanda devolve o saldo sem que nada precise ser desfeito.
+ */
+export type PackageLine = {
+  customerPackageId: string
+  customerId: string
+  packageName: string
+  kind: PackageItemKind
+  serviceId: string | null
+  productId: string | null
+  description: string
+  quantity: number
+  used: number
+  soldOn: string
+  expiresOn: string | null
+}
+
+export type PackageUse = {
+  customerPackageItemId: string
+  /** numeric(10,3) do banco, ou número do formulário. */
+  quantity: string | number
+}
+
+function formatDay(day: string): string {
+  const [year, month, date] = day.split('-')
+  return `${date}/${month}/${year}`
+}
+
+/**
+ * Confere se a comanda pode usar estas linhas de pacote. Roda ao salvar (para
+ * avisar cedo) e de novo ao faturar, com as linhas travadas — é no faturamento que
+ * o saldo baixa.
+ *
+ *   - a linha é do pacote DESTE cliente;
+ *   - a comanda é do período do pacote: não antes da compra, não depois da
+ *     validade (vale até o último dia, inclusive);
+ *   - a soma dos itens da comanda que usam a mesma linha cabe no saldo.
+ */
+export function planPackageUsage(input: {
+  customerId: string
+  /** Dia da comanda em Brasília ("YYYY-MM-DD"). */
+  saleDay: string
+  uses: readonly PackageUse[]
+  lines: ReadonlyMap<string, PackageLine>
+}): { ok: true } | { ok: false; error: string } {
+  const usedByLine = new Map<string, number>()
+
+  for (const use of input.uses) {
+    const quantity = Number(use.quantity)
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(quantity)) {
+      return { ok: false, error: 'A quantidade de um item do pacote tem de ser inteira' }
+    }
+    usedByLine.set(use.customerPackageItemId, (usedByLine.get(use.customerPackageItemId) ?? 0) + quantity)
+  }
+
+  for (const [lineId, quantity] of usedByLine) {
+    const line = input.lines.get(lineId)
+    if (!line) return { ok: false, error: 'Um item do pacote não foi encontrado' }
+
+    const label = `Pacote "${line.packageName}"`
+    if (line.customerId !== input.customerId) {
+      return { ok: false, error: `${label}: é de outro cliente` }
+    }
+    if (input.saleDay < line.soldOn) {
+      return { ok: false, error: `${label}: a comanda é de antes da compra do pacote` }
+    }
+    if (line.expiresOn !== null && input.saleDay > line.expiresOn) {
+      return { ok: false, error: `${label}: venceu em ${formatDay(line.expiresOn)}` }
+    }
+
+    const remaining = Math.max(0, line.quantity - line.used)
+    if (quantity > remaining) {
+      return {
+        ok: false,
+        error:
+          remaining === 0
+            ? `${label}: ${line.description} não tem mais saldo`
+            : `${label}: ${line.description} tem saldo de ${remaining}, e a comanda usa ${quantity}`,
+      }
+    }
+  }
+
+  return { ok: true }
+}
+
+/**
+ * Quanto vale o que um item da comanda usou de uma linha: o valor da linha
+ * dividido pelas sessões dela, vezes as usadas. É a base da comissão de quem
+ * executou (o item em si não é cobrado). Arredonda por item, ao centavo.
+ */
+export function packageUseValue(input: {
+  lineValue: string | number
+  lineQuantity: number
+  usedQuantity: string | number
+}): string {
+  const valueCents = Math.max(0, toCents(input.lineValue) ?? 0)
+  const used = Number(input.usedQuantity)
+  if (input.lineQuantity <= 0 || !Number.isFinite(used) || used <= 0) return centsToNumeric(0)
+  return centsToNumeric(Math.round((valueCents * used) / input.lineQuantity))
 }

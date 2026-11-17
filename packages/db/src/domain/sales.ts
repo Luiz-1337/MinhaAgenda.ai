@@ -61,6 +61,11 @@ export type SaleItemDraft = {
   unitPrice: number | null
   discountAmount: number
   appointmentId?: string | null
+  /**
+   * Item "do pacote" (fase 5, fatia 5b): serviço ou produto que sai de uma linha do
+   * pacote do cliente. Não é cobrado — valor e desconto zero.
+   */
+  customerPackageItemId?: string | null
 }
 
 /** O que o serviço carregou do banco, JÁ filtrado pelo salão. */
@@ -74,6 +79,12 @@ export type SaleCatalog = {
   packageTemplates: ReadonlyMap<string, { name: string }>
   professionalIds: ReadonlySet<string>
   appointments: ReadonlyMap<string, { customerId: string; status: string }>
+  /**
+   * Linhas de pacote de cliente que os itens citam (fatia 5b). Aqui só se confere
+   * que o item É o da linha; saldo, validade e dono do pacote são de
+   * planPackageUsage (domain/packages.ts).
+   */
+  packageLines?: ReadonlyMap<string, { kind: 'service' | 'product'; serviceId: string | null; productId: string | null }>
 }
 
 export type PlannedSaleItem = {
@@ -90,6 +101,7 @@ export type PlannedSaleItem = {
   discountAmount: string
   total: string
   appointmentId: string | null
+  customerPackageItemId: string | null
 }
 
 export type SaleItemsPlan =
@@ -201,6 +213,26 @@ export function planSaleItems(
       return { ok: false, error: `${label}: o desconto é maior que o valor do item` }
     }
 
+    // Item do pacote: é exatamente o serviço (ou produto) da linha, sem cobrança e
+    // em quantidade inteira — sessões e unidades.
+    const customerPackageItemId = draft.customerPackageItemId || null
+    if (customerPackageItemId) {
+      if (draft.kind === 'package') {
+        return { ok: false, error: `${label}: pacote não pode sair de outro pacote` }
+      }
+      const line = catalog.packageLines?.get(customerPackageItemId)
+      if (!line) return { ok: false, error: `${label}: item do pacote não encontrado` }
+      if (line.kind !== draft.kind || line.serviceId !== serviceId || line.productId !== productId) {
+        return { ok: false, error: `${label}: não é o item do pacote` }
+      }
+      if (unitCents !== 0 || itemDiscountCents !== 0) {
+        return { ok: false, error: `${label}: item do pacote não é cobrado` }
+      }
+      if (quantityMilli % 1000 !== 0) {
+        return { ok: false, error: `${label}: a quantidade do pacote é inteira` }
+      }
+    }
+
     const appointmentId = draft.appointmentId || null
     if (appointmentId) {
       if (draft.kind !== 'service') {
@@ -237,6 +269,7 @@ export function planSaleItems(
       discountAmount: centsToNumeric(itemDiscountCents),
       total: centsToNumeric(grossCents - itemDiscountCents),
       appointmentId,
+      customerPackageItemId,
     })
   }
 

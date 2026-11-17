@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm"
 
 import {
   db,
@@ -21,13 +21,14 @@ import {
   planCustomerPackages,
   planPackageTemplate,
   type CustomerPackageStatus,
+  type PackageLine,
   type PackageTemplateDraft,
   type TemplateForSale,
 } from "../domain/packages"
 import type { ActionResult } from "./appointments"
 
 /**
- * Pacotes (docs/ROADMAP.md, fase 5, fatia 5a).
+ * Pacotes (docs/ROADMAP.md, fase 5, fatias 5a e 5b).
  *
  * Só I/O: carrega o que a regra pura (domain/packages.ts) precisa, deixa ela
  * decidir e grava. Quem autoriza é a Server Action.
@@ -80,6 +81,55 @@ function unique(values: (string | null | undefined)[]): string[] {
 
 /** Nome do serviço ou do produto de uma linha de pacote. */
 const itemDescription = sql<string>`coalesce(${services.name}, ${products.name}, '')`
+
+/** Preço de tabela do serviço ou do produto — o peso do rateio do preço do pacote. */
+const itemListPrice = sql<string | null>`coalesce(${services.price}, ${products.price})`
+
+/**
+ * Quanto cada linha de pacote já foi usada em comandas FATURADAS (fatia 5b). Não há
+ * tabela de consumo: o item da comanda é o registro do uso. `excludeSaleId` tira a
+ * comanda que está sendo conferida — o uso dela é o que se quer saber se cabe.
+ */
+async function usedByLine(
+  executor: typeof db | Tx,
+  salonId: string,
+  lineIds: string[],
+  excludeSaleId?: string
+): Promise<Map<string, { used: number; sales: { saleId: string; number: number }[] }>> {
+  const result = new Map<string, { used: number; sales: { saleId: string; number: number }[] }>()
+  if (lineIds.length === 0) return result
+
+  const rows = await executor
+    .select({
+      lineId: saleItems.customerPackageItemId,
+      quantity: saleItems.quantity,
+      saleId: sales.id,
+      number: sales.number,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(sales.id, saleItems.saleId))
+    .where(
+      and(
+        eq(saleItems.salonId, salonId),
+        eq(sales.salonId, salonId),
+        eq(sales.status, "invoiced"),
+        inArray(saleItems.customerPackageItemId, lineIds),
+        excludeSaleId ? ne(sales.id, excludeSaleId) : undefined
+      )
+    )
+    .orderBy(asc(sales.number))
+
+  for (const row of rows) {
+    if (!row.lineId) continue
+    const entry = result.get(row.lineId) ?? { used: 0, sales: [] }
+    entry.used += Number(row.quantity)
+    if (!entry.sales.some((sale) => sale.saleId === row.saleId)) {
+      entry.sales.push({ saleId: row.saleId, number: row.number })
+    }
+    result.set(row.lineId, entry)
+  }
+  return result
+}
 
 // ============================================================================
 // Modelos (pacotes predefinidos)
@@ -301,13 +351,16 @@ export type CustomerPackageRow = {
   quantity: number
   remaining: number
   status: CustomerPackageStatus
+  /** Comandas faturadas que usaram o pacote (fatia 5b). */
+  uses: { saleId: string; number: number }[]
 }
 
 /**
  * Pacotes vendidos do salão, do mais recente para o mais antigo. `customerId`
  * filtra por cliente.
  *
- * Na fatia 5a nada consome sessão ainda: o que resta é a quantidade vendida.
+ * O saldo de cada linha é a quantidade vendida menos o que as comandas faturadas
+ * usaram (fatia 5b).
  */
 export async function listCustomerPackagesService(input: {
   salonId: string
@@ -347,6 +400,7 @@ export async function listCustomerPackagesService(input: {
   const itemRows = ids.length
     ? await db
         .select({
+          id: customerPackageItems.id,
           customerPackageId: customerPackageItems.customerPackageId,
           kind: customerPackageItems.kind,
           description: customerPackageItems.description,
@@ -362,11 +416,25 @@ export async function listCustomerPackagesService(input: {
         .orderBy(asc(customerPackageItems.position))
     : []
 
+  const usage = await usedByLine(
+    db,
+    input.salonId,
+    itemRows.map((item) => item.id)
+  )
+
   const itemsByPackage = new Map<string, CustomerPackageRow["items"]>()
-  for (const { customerPackageId, ...item } of itemRows) {
+  const usesByPackage = new Map<string, CustomerPackageRow["uses"]>()
+  for (const { id, customerPackageId, ...item } of itemRows) {
+    const used = usage.get(id)
     const list = itemsByPackage.get(customerPackageId) ?? []
-    list.push({ ...item, remaining: item.quantity })
+    list.push({ ...item, remaining: Math.max(0, item.quantity - (used?.used ?? 0)) })
     itemsByPackage.set(customerPackageId, list)
+
+    const uses = usesByPackage.get(customerPackageId) ?? []
+    for (const sale of used?.sales ?? []) {
+      if (!uses.some((existing) => existing.saleId === sale.saleId)) uses.push(sale)
+    }
+    usesByPackage.set(customerPackageId, uses)
   }
 
   const today = brazilToday(input.now)
@@ -382,6 +450,7 @@ export async function listCustomerPackagesService(input: {
         quantity,
         remaining,
         status: customerPackageStatus({ expiresOn: row.expiresOn, remaining, today }),
+        uses: (usesByPackage.get(row.id) ?? []).sort((a, b) => a.number - b.number),
       }
     }),
     truncated: packageRows.length > input.limit,
@@ -431,6 +500,7 @@ export async function recordSalePackages(
         productId: packageTemplateItems.productId,
         description: itemDescription,
         quantity: packageTemplateItems.quantity,
+        listPrice: itemListPrice,
       })
       .from(packageTemplateItems)
       .leftJoin(services, eq(services.id, packageTemplateItems.serviceId))
@@ -467,6 +537,33 @@ export async function recordSalePackages(
 }
 
 /**
+ * Comandas (abertas ou faturadas) que usam um pacote vendido por esta comanda.
+ * Reabrir a comanda que vendeu apagaria o pacote — e a sessão já usada ficaria
+ * apontando para nada; quem reabre pergunta antes.
+ */
+export async function salePackagesInUse(
+  tx: Tx,
+  input: { salonId: string; saleId: string }
+): Promise<{ saleId: string; number: number }[]> {
+  const rows = await tx
+    .selectDistinct({ saleId: sales.id, number: sales.number })
+    .from(saleItems)
+    .innerJoin(sales, eq(sales.id, saleItems.saleId))
+    .innerJoin(customerPackageItems, eq(customerPackageItems.id, saleItems.customerPackageItemId))
+    .innerJoin(customerPackages, eq(customerPackages.id, customerPackageItems.customerPackageId))
+    .where(
+      and(
+        eq(saleItems.salonId, input.salonId),
+        eq(customerPackages.salonId, input.salonId),
+        eq(customerPackages.saleId, input.saleId),
+        ne(sales.status, "void")
+      )
+    )
+    .orderBy(asc(sales.number))
+  return rows
+}
+
+/**
  * Desfaz os pacotes de uma comanda que está sendo reaberta. Roda DENTRO da
  * transação da reabertura. Os itens do pacote vão junto (CASCADE).
  */
@@ -494,4 +591,123 @@ export async function loadSalePackageTemplates(
 and(eq(packageTemplates.salonId, salonId), inArray(packageTemplates.id, templateIds))
     )
   return new Map(rows.map((row) => [row.id, { name: row.name }]))
+}
+
+// ============================================================================
+// Uso do pacote na comanda (fatia 5b)
+// ============================================================================
+
+/**
+ * As linhas de pacote que uma comanda cita, com o que OUTRAS comandas faturadas já
+ * usaram. Escopado pelo salão: linha de outro salão não aparece, e a regra trata
+ * como inexistente.
+ *
+ * `lock`: trava as linhas (FOR UPDATE) antes de somar o uso — é o que o
+ * faturamento faz, para que duas comandas faturadas ao mesmo tempo não usem a
+ * mesma última sessão. A trava vem ANTES da soma: a segunda espera a primeira
+ * terminar e já soma o uso dela.
+ */
+export async function loadPackageLines(
+  executor: typeof db | Tx,
+  input: { salonId: string; lineIds: string[]; excludeSaleId?: string; lock?: boolean }
+): Promise<Map<string, PackageLine>> {
+  const lineIds = unique(input.lineIds)
+  if (lineIds.length === 0) return new Map()
+
+  const query = executor
+    .select({
+      id: customerPackageItems.id,
+      customerPackageId: customerPackages.id,
+      customerId: customerPackages.customerId,
+      packageName: customerPackages.name,
+      kind: customerPackageItems.kind,
+      serviceId: customerPackageItems.serviceId,
+      productId: customerPackageItems.productId,
+      description: customerPackageItems.description,
+      quantity: customerPackageItems.quantity,
+      soldOn: customerPackages.soldOn,
+      expiresOn: customerPackages.expiresOn,
+    })
+    .from(customerPackageItems)
+    .innerJoin(customerPackages, eq(customerPackages.id, customerPackageItems.customerPackageId))
+    .where(
+      and(
+        eq(customerPackageItems.salonId, input.salonId),
+        eq(customerPackages.salonId, input.salonId),
+        inArray(customerPackageItems.id, lineIds)
+      )
+    )
+
+  const rows = input.lock ? await query.for("update", { of: customerPackageItems }) : await query
+  const usage = await usedByLine(executor, input.salonId, lineIds, input.excludeSaleId)
+
+  return new Map(
+    rows.map(({ id, ...row }) => [id, { ...row, used: usage.get(id)?.used ?? 0 }])
+  )
+}
+
+export type CustomerPackageBalance = {
+  /** A linha do pacote — o que o item "do pacote" da comanda cita. */
+  lineId: string
+  customerPackageId: string
+  packageName: string
+  kind: PackageItemKind
+  serviceId: string | null
+  productId: string | null
+  description: string
+  quantity: number
+  remaining: number
+  soldOn: string
+  expiresOn: string | null
+}
+
+/**
+ * O que o cliente ainda pode usar: as linhas com saldo dos pacotes dentro da
+ * validade, para o botão "+ Do pacote" da comanda. `excludeSaleId` tira a própria
+ * comanda da conta (se ela foi faturada e reaberta, o uso dela volta ao saldo).
+ */
+export async function listCustomerPackageBalancesService(input: {
+  salonId: string
+  customerId: string
+  now: Date
+  excludeSaleId?: string
+}): Promise<CustomerPackageBalance[]> {
+  const today = brazilToday(input.now)
+
+  const rows = await db
+    .select({
+      lineId: customerPackageItems.id,
+      customerPackageId: customerPackages.id,
+      packageName: customerPackages.name,
+      kind: customerPackageItems.kind,
+      serviceId: customerPackageItems.serviceId,
+      productId: customerPackageItems.productId,
+      description: customerPackageItems.description,
+      quantity: customerPackageItems.quantity,
+      soldOn: customerPackages.soldOn,
+      expiresOn: customerPackages.expiresOn,
+    })
+    .from(customerPackageItems)
+    .innerJoin(customerPackages, eq(customerPackages.id, customerPackageItems.customerPackageId))
+    .where(
+      and(
+        eq(customerPackageItems.salonId, input.salonId),
+        eq(customerPackages.salonId, input.salonId),
+        eq(customerPackages.customerId, input.customerId),
+        sql`(${customerPackages.expiresOn} IS NULL OR ${customerPackages.expiresOn} >= ${today}::date)`
+      )
+    )
+    .orderBy(asc(customerPackages.soldOn), asc(customerPackages.createdAt), asc(customerPackageItems.position))
+    .limit(200)
+
+  const usage = await usedByLine(
+    db,
+    input.salonId,
+    rows.map((row) => row.lineId),
+    input.excludeSaleId
+  )
+
+  return rows
+    .map((row) => ({ ...row, remaining: Math.max(0, row.quantity - (usage.get(row.lineId)?.used ?? 0)) }))
+    .filter((row) => row.remaining > 0)
 }

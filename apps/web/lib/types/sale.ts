@@ -79,6 +79,10 @@ export interface SaleItemDTO {
   discountAmount: string
   total: string
   appointmentId: string | null
+  /** Item "do pacote" (fase 5): a linha do pacote do cliente que ele usa. */
+  customerPackageItemId: string | null
+  /** Nome do pacote de onde o item sai. */
+  packageName: string | null
 }
 
 export interface SalePaymentDTO {
@@ -205,6 +209,26 @@ export interface SaleItemInput {
   unitPrice: number | null
   discountAmount: number
   appointmentId?: string | null
+  /** Item "do pacote" (fase 5): sem cobrança, quantidade inteira. */
+  customerPackageItemId?: string | null
+}
+
+/**
+ * O que o cliente ainda pode usar dos pacotes dele: uma linha com saldo de um
+ * pacote dentro da validade (fase 5, fatia 5b).
+ */
+export interface SalePackageBalanceDTO {
+  lineId: string
+  customerPackageId: string
+  packageName: string
+  kind: "service" | "product"
+  serviceId: string | null
+  productId: string | null
+  description: string
+  quantity: number
+  /** Saldo sem contar esta comanda. */
+  remaining: number
+  expiresOn: string | null
 }
 
 export interface SaveSaleInput {

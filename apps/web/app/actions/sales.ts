@@ -23,6 +23,7 @@ import {
   getDebtTotalsService,
   getSaleService,
   invoiceSaleService,
+  listCustomerPackageBalancesService,
   receiveSaleDebtPaymentService,
   listSaleItemSummariesService,
   listSalesService,
@@ -54,6 +55,7 @@ import type {
   SaleFormOptions,
   SaleListFilters,
   SaleListPage,
+  SalePackageBalanceDTO,
   SaveSaleInput,
 } from "@/lib/types/sale"
 
@@ -169,6 +171,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/finance/summary`)
   // E as comissões dos itens, quando o módulo está ligado.
   revalidatePath(`/${salonId}/commissions`)
+  // E o saldo dos pacotes (venda e uso — fase 5).
+  revalidatePath(`/${salonId}/packages`)
 }
 
 // ============================================================================
@@ -323,6 +327,53 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
   } catch (error) {
     console.error("Erro ao carregar opções da comanda:", error)
     return { error: "Não foi possível carregar os dados da comanda" }
+  }
+}
+
+/**
+ * O que o cliente da comanda ainda pode usar dos pacotes dele — o botão "+ Do
+ * pacote" (fase 5, fatia 5b). Vazio com o módulo `packages` desligado. `saleId`
+ * tira a própria comanda da conta do saldo.
+ *
+ * Só com permissão de comanda: quem monta a comanda precisa ver o saldo, mesmo sem
+ * acesso à tela de Pacotes.
+ */
+export async function getSalePackageBalances(
+  salonId: string,
+  customerId: string,
+  saleId?: string
+): Promise<SalePackageBalanceDTO[] | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.access")
+  if ("error" in auth) return auth
+
+  const uuid = /^[0-9a-f-]{36}$/i
+  if (!uuid.test(customerId ?? "")) return { error: "Cliente inválido" }
+  if (saleId !== undefined && !uuid.test(saleId)) return { error: "Comanda inválida" }
+
+  try {
+    if (!(await salonHasModule(salonId, "packages"))) return []
+
+    const balances = await listCustomerPackageBalancesService({
+      salonId,
+      customerId,
+      now: new Date(),
+      excludeSaleId: saleId,
+    })
+    return balances.map((balance) => ({
+      lineId: balance.lineId,
+      customerPackageId: balance.customerPackageId,
+      packageName: balance.packageName,
+      kind: balance.kind,
+      serviceId: balance.serviceId,
+      productId: balance.productId,
+      description: balance.description,
+      quantity: balance.quantity,
+      remaining: balance.remaining,
+      expiresOn: balance.expiresOn,
+    }))
+  } catch (error) {
+    console.error("Erro ao carregar o saldo de pacotes do cliente:", error)
+    return { error: "Não foi possível carregar os pacotes do cliente" }
   }
 }
 

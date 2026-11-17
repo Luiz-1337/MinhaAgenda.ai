@@ -19,6 +19,7 @@ export const saleItemSchema = z.object({
   unitPrice: money.nullable(),
   discountAmount: money,
   appointmentId: z.string().uuid().nullish(),
+  customerPackageItemId: z.string().uuid().nullish(),
 })
 
 export const saveSaleSchema = z.object({

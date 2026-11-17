@@ -9,6 +9,7 @@ import {
   commissionPayments,
   commissionRules,
   commissionSettings,
+  customerPackageItems,
   customers,
   financialAccounts,
   financialCategories,
@@ -48,6 +49,7 @@ import {
 import { isCalendarDate, paidAtFromDate } from "../domain/finance"
 import { itemCostCents } from "../domain/consumption"
 import { centsToNumeric, toCents } from "../domain/sales"
+import { packageUseValue } from "../domain/packages"
 import type { ActionResult } from "./appointments"
 import { loadServiceCosts } from "./consumption.service"
 
@@ -139,9 +141,22 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
       quantity: saleItems.quantity,
       discountAmount: saleItems.discountAmount,
       total: saleItems.total,
+      customerPackageItemId: saleItems.customerPackageItemId,
     })
     .from(saleItems)
     .where(and(eq(saleItems.saleId, input.saleId), eq(saleItems.salonId, input.salonId)))
+
+  // Item do pacote (fase 5): a comissão é sobre o que a sessão vale no pacote.
+  const packageLineIds = unique(items.map((item) => item.customerPackageItemId))
+  const packageLines = new Map(
+    (packageLineIds.length
+      ? await tx
+          .select({ id: customerPackageItems.id, value: customerPackageItems.value, quantity: customerPackageItems.quantity })
+          .from(customerPackageItems)
+          .where(and(eq(customerPackageItems.salonId, input.salonId), inArray(customerPackageItems.id, packageLineIds)))
+      : []
+    ).map((line) => [line.id, line])
+  )
 
   // Quem executou e quem auxiliou: os dois recebem, os dois podem ter exceção.
   const professionalIds = unique(items.flatMap((item) => [item.professionalId, item.assistantId]))
@@ -224,12 +239,18 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
 
   const planned = planSaleCommissions({
     sale,
-    items: items.map((item) => ({
-      ...item,
-      costAmount: item.serviceId
-        ? centsToNumeric(itemCostCents(serviceCosts.get(item.serviceId) ?? 0, item.quantity))
-        : null,
-    })),
+    items: items.map(({ customerPackageItemId, ...item }) => {
+      const line = customerPackageItemId ? packageLines.get(customerPackageItemId) : undefined
+      return {
+        ...item,
+        costAmount: item.serviceId
+          ? centsToNumeric(itemCostCents(serviceCosts.get(item.serviceId) ?? 0, item.quantity))
+          : null,
+        packageValue: line
+          ? packageUseValue({ lineValue: line.value, lineQuantity: line.quantity, usedQuantity: item.quantity })
+          : null,
+      }
+    }),
     payments,
     salonSettings: settingsRows.find((row) => !row.professionalId) ?? null,
     professionals: new Map(

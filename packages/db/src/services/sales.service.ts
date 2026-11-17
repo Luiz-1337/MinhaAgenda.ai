@@ -4,6 +4,8 @@ import { alias } from "drizzle-orm/pg-core"
 import {
   db,
   appointments,
+  customerPackageItems,
+  customerPackages,
   customers,
   paymentMethods,
   products,
@@ -25,13 +27,20 @@ import {
   type SaleCatalog,
   type SaleItemDraft,
 } from "../domain/sales"
+import { planPackageUsage, type PackageLine } from "../domain/packages"
 import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
 import { saleHasPaidCommissions, syncSaleCommissions } from "./commissions.service"
 import { recordSaleStock, revertSaleStock } from "./inventory.service"
-import { loadSalePackageTemplates, recordSalePackages, revertSalePackages } from "./packages.service"
-import { isCalendarDate } from "../domain/finance"
+import {
+  loadPackageLines,
+  loadSalePackageTemplates,
+  recordSalePackages,
+  revertSalePackages,
+  salePackagesInUse,
+} from "./packages.service"
+import { brazilToday, isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 
 /** `professionals` uma segunda vez, para o nome de quem auxiliou no item. */
@@ -101,17 +110,24 @@ async function loadCatalog(
   executor: Executor,
   salonId: string,
   drafts: readonly SaleItemDraft[],
-  /** Módulo `packages` ligado: só então item de pacote é aceito (fase 5). */
-  packagesEnabled = false
-): Promise<SaleCatalog> {
+  /**
+   * Módulo `packages` ligado: só então item de pacote (venda) e item do pacote
+   * (uso) são aceitos (fase 5).
+   */
+  packagesEnabled = false,
+  /** A comanda que está sendo salva: o uso dela não conta no saldo. */
+  saleId?: string
+): Promise<SaleCatalog & { packageLines: Map<string, PackageLine> }> {
   const serviceIds = unique(drafts.map((d) => d.serviceId))
   const productIds = unique(drafts.map((d) => d.productId))
   // Quem executou e quem auxiliou: os dois têm de ser profissionais deste salão.
   const professionalIds = unique(drafts.flatMap((d) => [d.professionalId, d.assistantId]))
   const appointmentIds = unique(drafts.map((d) => d.appointmentId))
   const packageTemplateIds = packagesEnabled ? unique(drafts.map((d) => d.packageTemplateId)) : []
+  const packageLineIds = packagesEnabled ? unique(drafts.map((d) => d.customerPackageItemId)) : []
 
-  const [serviceRows, productRows, professionalRows, appointmentRows, packageTemplates] = await Promise.all([
+  const [serviceRows, productRows, professionalRows, appointmentRows, packageTemplates, packageLines] =
+    await Promise.all([
     serviceIds.length
       ? executor
           .select({ id: services.id, name: services.name })
@@ -144,15 +160,41 @@ async function loadCatalog(
           .where(and(eq(appointments.salonId, salonId), inArray(appointments.id, appointmentIds)))
       : [],
     loadSalePackageTemplates(executor, salonId, packageTemplateIds),
+    loadPackageLines(executor, { salonId, lineIds: packageLineIds, excludeSaleId: saleId }),
   ])
 
   return {
     services: new Map(serviceRows.map((r) => [r.id, { name: r.name }])),
     products: new Map(productRows.map((r) => [r.id, { name: r.name }])),
     packageTemplates,
+    packageLines,
     professionalIds: new Set(professionalRows.map((r) => r.id)),
     appointments: new Map(appointmentRows.map((r) => [r.id, { customerId: r.customerId, status: r.status }])),
   }
+}
+
+/**
+ * Os itens "do pacote" cabem no saldo, são do pacote deste cliente e a comanda
+ * está no período do pacote (fatia 5b). Aborta a transação se não.
+ */
+function assertPackageUsage(input: {
+  customerId: string
+  saleDate: Date
+  items: readonly { customerPackageItemId: string | null; quantity: string }[]
+  lines: ReadonlyMap<string, PackageLine>
+}): void {
+  const uses = input.items.flatMap((item) =>
+    item.customerPackageItemId ? [{ customerPackageItemId: item.customerPackageItemId, quantity: item.quantity }] : []
+  )
+  if (uses.length === 0) return
+
+  const usage = planPackageUsage({
+    customerId: input.customerId,
+    saleDay: brazilToday(input.saleDate),
+    uses,
+    lines: input.lines,
+  })
+  if (!usage.ok) fail(usage.error)
 }
 
 async function assertCustomerInSalon(executor: Executor, salonId: string, customerId: string): Promise<void> {
@@ -229,6 +271,12 @@ export async function createSaleService(
       const catalog = await loadCatalog(tx, input.salonId, input.items, input.packagesEnabled)
       const plan = planSaleItems(input.customerId, input.items, catalog)
       if (!plan.ok) fail(plan.error)
+      assertPackageUsage({
+        customerId: input.customerId,
+        saleDate: input.saleDate,
+        items: plan.items,
+        lines: catalog.packageLines,
+      })
 
       const number = await nextSaleNumber(tx, input.salonId)
 
@@ -279,9 +327,15 @@ export async function updateSaleService(
 
       await assertCustomerInSalon(tx, input.salonId, input.customerId)
 
-      const catalog = await loadCatalog(tx, input.salonId, input.items, input.packagesEnabled)
+      const catalog = await loadCatalog(tx, input.salonId, input.items, input.packagesEnabled, sale.id)
       const plan = planSaleItems(input.customerId, input.items, catalog)
       if (!plan.ok) fail(plan.error)
+      assertPackageUsage({
+        customerId: input.customerId,
+        saleDate: input.saleDate,
+        items: plan.items,
+        lines: catalog.packageLines,
+      })
 
       await tx.delete(saleItems).where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
 
@@ -431,9 +485,26 @@ export async function invoiceSaleService(input: {
           unitPrice: saleItems.unitPrice,
           total: saleItems.total,
           appointmentId: saleItems.appointmentId,
+          customerPackageItemId: saleItems.customerPackageItemId,
+          quantity: saleItems.quantity,
         })
         .from(saleItems)
         .where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
+
+      // Itens do pacote: é aqui que o saldo baixa. As linhas ficam travadas até o
+      // fim da transação — outra comanda que use a mesma linha espera, e já soma
+      // este uso (fase 5). Com o módulo ligado ou não: a comanda já tem o item.
+      assertPackageUsage({
+        customerId: sale.customerId,
+        saleDate: sale.saleDate,
+        items,
+        lines: await loadPackageLines(tx, {
+          salonId: input.salonId,
+          lineIds: unique(items.map((item) => item.customerPackageItemId)),
+          excludeSaleId: sale.id,
+          lock: true,
+        }),
+      })
 
       const methodIds = unique(input.payments.map((p) => p.paymentMethodId))
       const appointmentIds = unique(items.map((i) => i.appointmentId))
@@ -643,6 +714,16 @@ export async function reopenSaleService(input: {
         fail("A comissão desta comanda já foi paga. Estorne o pagamento em Comissões antes de reabrir")
       }
 
+      // Pacote vendido aqui e já usado em outra comanda: reabrir apagaria o pacote
+      // e a sessão usada ficaria sem origem (fase 5).
+      const usedIn = await salePackagesInUse(tx, { salonId: input.salonId, saleId: sale.id })
+      if (usedIn.length > 0) {
+        const numbers = usedIn.map((other) => `#${other.number}`).join(", ")
+        fail(
+          `Um pacote vendido nesta comanda já está em uso (comanda ${numbers}). Tire o item do pacote de lá antes de reabrir esta`
+        )
+      }
+
       const now = new Date()
 
       await tx
@@ -726,9 +807,11 @@ export async function voidSaleService(input: {
 
       const now = new Date()
 
+      // Solta o agendamento (pode entrar em outra comanda) e a linha do pacote (a
+      // comanda excluída não segura o pacote — fase 5).
       await tx
         .update(saleItems)
-        .set({ appointmentId: null })
+        .set({ appointmentId: null, customerPackageItemId: null })
         .where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
 
       await tx
@@ -838,6 +921,9 @@ export type SaleDetail = {
     discountAmount: string
     total: string
     appointmentId: string | null
+    /** Item "do pacote" (fase 5): a linha usada e o nome do pacote. */
+    customerPackageItemId: string | null
+    packageName: string | null
   }[]
   payments: {
     id: string
@@ -897,10 +983,14 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         discountAmount: saleItems.discountAmount,
         total: saleItems.total,
         appointmentId: saleItems.appointmentId,
+        customerPackageItemId: saleItems.customerPackageItemId,
+        packageName: customerPackages.name,
       })
       .from(saleItems)
       .leftJoin(professionals, eq(professionals.id, saleItems.professionalId))
       .leftJoin(assistants, eq(assistants.id, saleItems.assistantId))
+      .leftJoin(customerPackageItems, eq(customerPackageItems.id, saleItems.customerPackageItemId))
+      .leftJoin(customerPackages, eq(customerPackages.id, customerPackageItems.customerPackageId))
       .where(and(eq(saleItems.saleId, saleId), eq(saleItems.salonId, salonId)))
       .orderBy(saleItems.position),
     db

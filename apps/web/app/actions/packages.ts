@@ -18,7 +18,7 @@ import type { ActionResult } from "@/lib/types/common"
 import type { CustomerPackagesDTO, PackageTemplatesDTO, SavePackageTemplateInput } from "@/lib/types/packages"
 
 /**
- * Pacotes (docs/ROADMAP.md, fase 5, fatia 5a).
+ * Pacotes (docs/ROADMAP.md, fase 5, fatias 5a e 5b).
  *
  * Toda action começa em `authorizeSalon`: sessão → módulo `packages` ligado no
  * salão → permissão `packages.*`. O `salonId` chega do cliente, então estar logado
@@ -104,14 +104,22 @@ export async function deletePackageTemplate(input: { salonId: string; templateId
   return { success: true, data: undefined }
 }
 
-/** Pacotes vendidos, com o que resta de cada um. */
-export async function getCustomerPackages(salonId: string): Promise<CustomerPackagesDTO | { error: string }> {
+/**
+ * Pacotes vendidos, com o que resta de cada um. `customerId` filtra por cliente — a
+ * aba Pacotes da ficha do cliente.
+ */
+export async function getCustomerPackages(
+  salonId: string,
+  customerId?: string
+): Promise<CustomerPackagesDTO | { error: string }> {
   const auth = await authorizeSalon(salonId, "packages.access")
   if ("error" in auth) return auth
 
+  if (customerId !== undefined && !/^[0-9a-f-]{36}$/i.test(customerId)) return { error: "Cliente inválido" }
+
   try {
     const [list, permissions, salesEnabled] = await Promise.all([
-      listCustomerPackagesService({ salonId, limit: PACKAGE_ROWS, now: new Date() }),
+      listCustomerPackagesService({ salonId, customerId, limit: PACKAGE_ROWS, now: new Date() }),
       getSalonPermissions(salonId, auth.userId),
       salonHasModule(salonId, "sales"),
     ])

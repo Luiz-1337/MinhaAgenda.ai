@@ -19,7 +19,8 @@ import {
   unique,
   bigint,
   customType,
-  primaryKey
+  primaryKey,
+  type AnyPgColumn
 } from 'drizzle-orm/pg-core'
 
 import type { LeadSource } from './domain/constants'
@@ -1070,6 +1071,12 @@ export const saleItems = pgTable(
     // Só em item de pacote (migration 051, CHECK no banco). Sem ON DELETE: modelo
     // vendido não se apaga.
     packageTemplateId: uuid('package_template_id').references(() => packageTemplates.id),
+    // Item "do pacote" (migration 052): serviço ou produto que sai de uma linha do
+    // pacote do cliente, sem cobrança (CHECK no banco). Sem ON DELETE: pacote em uso
+    // não some.
+    // Tipo explícito: sale_items → customer_package_items → customer_packages →
+    // sale_items é circular, e o TypeScript não infere.
+    customerPackageItemId: uuid('customer_package_item_id').references((): AnyPgColumn => customerPackageItems.id),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -1080,7 +1087,10 @@ export const saleItems = pgTable(
     uniqueIndex('sale_items_appointment_unique').on(table.appointmentId).where(sql`appointment_id IS NOT NULL`),
     index('sale_items_package_template_idx')
       .on(table.packageTemplateId)
-      .where(sql`package_template_id IS NOT NULL`)
+      .where(sql`package_template_id IS NOT NULL`),
+    index('sale_items_customer_package_item_idx')
+      .on(table.customerPackageItemId)
+      .where(sql`customer_package_item_id IS NOT NULL`)
   ]
 )
 
@@ -1813,7 +1823,10 @@ export const customerPackageItems = pgTable(
     productId: uuid('product_id').references(() => products.id),
     // Cópia do nome na venda.
     description: text('description').notNull(),
-    quantity: integer('quantity').notNull()
+    quantity: integer('quantity').notNull(),
+    // Parte do preço do pacote que cabe a esta linha (migration 052): a base da
+    // comissão de quem executa cada sessão.
+    value: numeric('value', { precision: 12, scale: 2 }).default('0').notNull()
   },
   (table) => [index('customer_package_items_package_idx').on(table.customerPackageId, table.position)]
 )

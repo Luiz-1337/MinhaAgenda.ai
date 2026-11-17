@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
   CalendarCheck,
@@ -21,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
+  getSalePackageBalances,
   invoiceSale,
   receiveSalePayment,
   reopenSale,
@@ -38,6 +40,7 @@ import type {
   SaleDraftFromAppointment,
   SaleFormOptions,
   SaleItemInput,
+  SalePackageBalanceDTO,
 } from "@/lib/types/sale"
 
 // ============================================================================
@@ -56,6 +59,9 @@ type ItemRow = {
   unitPrice: string
   discount: string
   appointmentId: string | null
+  /** Item "do pacote" (fase 5): a linha do pacote do cliente. Sem cobrança. */
+  packageLineId: string | null
+  packageName: string | null
 }
 
 type PaymentRow = { key: string; methodId: string; amount: string }
@@ -125,6 +131,8 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
       unitPrice: moneyToInput(item.suggestedPrice),
       discount: "",
       appointmentId: item.appointmentId,
+      packageLineId: null,
+      packageName: null,
     }))
   }
   return sale.items.map((item) => ({
@@ -138,6 +146,8 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
     unitPrice: moneyToInput(item.unitPrice),
     discount: Number(item.discountAmount) > 0 ? moneyToInput(item.discountAmount) : "",
     appointmentId: item.appointmentId,
+    packageLineId: item.customerPackageItemId,
+    packageName: item.packageName,
   }))
 }
 
@@ -225,6 +235,39 @@ export function SaleEditor({
   }, [options.packageTemplates, sale])
 
   const hasPackageItem = rows.some((row) => row.kind === "package")
+  const hasPackageUse = rows.some((row) => row.packageLineId !== null)
+
+  // O que o cliente ainda tem nos pacotes (fase 5, fatia 5b). Recarrega quando o
+  // cliente muda; o saldo não conta esta comanda.
+  const customerId = customer?.id ?? null
+  const saleId = sale?.id
+  const balancesEnabled = options.packagesEnabled && editable && customerId !== null
+  const balancesQuery = useQuery({
+    queryKey: ["sale-package-balances", salonId, customerId, saleId ?? null],
+    queryFn: async (): Promise<SalePackageBalanceDTO[]> => {
+      const result = await getSalePackageBalances(salonId, customerId as string, saleId)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: balancesEnabled,
+  })
+  const balances = useMemo(
+    () => (balancesEnabled ? (balancesQuery.data ?? []) : []),
+    [balancesEnabled, balancesQuery.data]
+  )
+
+  // Saldo de cada linha descontando o que os itens desta comanda já usam.
+  const availableByLine = useMemo(() => {
+    const available = new Map(balances.map((balance) => [balance.lineId, balance.remaining]))
+    for (const row of rows) {
+      if (!row.packageLineId || !available.has(row.packageLineId)) continue
+      const quantity = parseQuantity(row.quantity) ?? 0
+      available.set(row.packageLineId, (available.get(row.packageLineId) ?? 0) - quantity)
+    }
+    return available
+  }, [balances, rows])
+
+  const usableBalances = balances.filter((balance) => (availableByLine.get(balance.lineId) ?? 0) > 0)
 
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
@@ -276,6 +319,31 @@ export function SaleEditor({
         unitPrice: "",
         discount: "",
         appointmentId: null,
+        packageLineId: null,
+        packageName: null,
+      },
+    ])
+    setDirty(true)
+  }
+
+  /** Uma sessão (ou unidade) do pacote do cliente: sem cobrança. */
+  function addPackageUse(lineId: string) {
+    const balance = balances.find((b) => b.lineId === lineId)
+    if (!balance) return
+    setRows((current) => [
+      ...current,
+      {
+        key: nextKey(),
+        kind: balance.kind,
+        refId: (balance.kind === "service" ? balance.serviceId : balance.productId) ?? "",
+        professionalId: "",
+        assistantId: "",
+        quantity: "1",
+        unitPrice: "0,00",
+        discount: "",
+        appointmentId: null,
+        packageLineId: balance.lineId,
+        packageName: balance.packageName,
       },
     ])
     setDirty(true)
@@ -318,10 +386,13 @@ export function SaleEditor({
       const quantity = parseQuantity(row.quantity)
       if (quantity === null) return `${label}: quantidade inválida`
 
-      const unitPrice = row.unitPrice.trim() === "" ? null : parseBRL(row.unitPrice)
+      if (row.packageLineId && !Number.isInteger(quantity)) return `${label}: a quantidade do pacote é inteira`
+
+      // Item do pacote não é cobrado: valor e desconto zero, sempre.
+      const unitPrice = row.packageLineId ? 0 : row.unitPrice.trim() === "" ? null : parseBRL(row.unitPrice)
       if (row.unitPrice.trim() !== "" && (unitPrice === null || unitPrice < 0)) return `${label}: valor inválido`
 
-      const discountAmount = row.discount.trim() === "" ? 0 : parseBRL(row.discount)
+      const discountAmount = row.packageLineId ? 0 : row.discount.trim() === "" ? 0 : parseBRL(row.discount)
       if (discountAmount === null || discountAmount < 0) return `${label}: desconto inválido`
 
       items.push({
@@ -335,6 +406,7 @@ export function SaleEditor({
         unitPrice,
         discountAmount,
         appointmentId: row.appointmentId,
+        customerPackageItemId: row.packageLineId,
       })
     }
 
@@ -667,6 +739,24 @@ export function SaleEditor({
                     Pacote
                   </button>
                 )}
+                {/* Usar o pacote: só aparece quando o cliente tem saldo. */}
+                {usableBalances.length > 0 && (
+                  <select
+                    aria-label="Usar o pacote do cliente"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) addPackageUse(event.target.value)
+                    }}
+                    className="px-3 py-1.5 rounded-md border border-accent/40 bg-accent/10 text-xs font-bold text-foreground hover:bg-accent/20 transition-colors cursor-pointer"
+                  >
+                    <option value="">+ Do pacote</option>
+                    {usableBalances.map((balance) => (
+                      <option key={balance.lineId} value={balance.lineId}>
+                        {balance.packageName} · {balance.description} (saldo {availableByLine.get(balance.lineId)})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
           </div>
@@ -694,11 +784,17 @@ export function SaleEditor({
                             agendamento
                           </span>
                         )}
+                        {row.packageLineId && (
+                          <span className="text-accent truncate" title="Sai do pacote do cliente, sem cobrança">
+                            do pacote {row.packageName ?? ""}
+                          </span>
+                        )}
                       </label>
                       <select
                         id={`${row.key}-item`}
                         value={row.refId}
-                        disabled={!editable}
+                        // O item do pacote é o da linha do pacote: não se troca.
+                        disabled={!editable || row.packageLineId !== null}
                         onChange={(event) => chooseItem(row, event.target.value)}
                         className={inputClass}
                       >
@@ -764,7 +860,8 @@ export function SaleEditor({
                         inputMode="decimal"
                         placeholder="0,00"
                         value={row.unitPrice}
-                        disabled={!editable}
+                        disabled={!editable || row.packageLineId !== null}
+                        title={row.packageLineId ? "Item do pacote não é cobrado" : undefined}
                         onChange={(event) => updateRow(row.key, { unitPrice: event.target.value })}
                         className={inputClass}
                       />
@@ -780,7 +877,7 @@ export function SaleEditor({
                         inputMode="decimal"
                         placeholder="0,00"
                         value={row.discount}
-                        disabled={!editable}
+                        disabled={!editable || row.packageLineId !== null}
                         onChange={(event) => updateRow(row.key, { discount: event.target.value })}
                         className={inputClass}
                       />
@@ -815,10 +912,23 @@ export function SaleEditor({
                       <div className="text-right">
                         <p className="text-[11px] font-semibold text-muted-foreground">Total</p>
                         <p className="font-mono text-sm font-medium text-foreground tabular-nums">
-                          {row.unitPrice.trim() === ""
-                            ? "—"
-                            : formatBRL(centsToNumeric(Math.max(0, cents.gross - cents.discount)))}
+                          {row.packageLineId
+                            ? "Pacote"
+                            : row.unitPrice.trim() === ""
+                              ? "—"
+                              : formatBRL(centsToNumeric(Math.max(0, cents.gross - cents.discount)))}
                         </p>
+                        {row.packageLineId && editable && availableByLine.has(row.packageLineId) && (
+                          <p
+                            className={`text-[11px] ${
+                              (availableByLine.get(row.packageLineId) ?? 0) < 0 ? "text-destructive" : "text-muted-foreground"
+                            }`}
+                          >
+                            {(availableByLine.get(row.packageLineId) ?? 0) < 0
+                              ? "passa do saldo"
+                              : `sobram ${availableByLine.get(row.packageLineId)}`}
+                          </p>
+                        )}
                       </div>
                       {editable && (
                         <button
@@ -1136,6 +1246,7 @@ export function SaleEditor({
           (hasPackageItem
             ? " Os pacotes vendidos nesta comanda deixam de existir e são criados de novo quando ela for faturada."
             : "") +
+          (hasPackageUse ? " O que esta comanda usou dos pacotes do cliente volta para o saldo." : "") +
           " Depois de editar, é preciso faturar de novo."
         }
         confirmText="Reabrir"

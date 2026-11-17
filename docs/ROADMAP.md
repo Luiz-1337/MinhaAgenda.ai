@@ -38,7 +38,9 @@ testada em uso em 17/nov/2026 — ver §8.12.
 Fase 5 (pacotes e assinaturas): detalhada em §9. Fatia 5a (pacotes predefinidos e
 venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
 `claude/fase-4-estoque`) e publicada, com a migration 051 aplicada e registrada
-em 17/nov/2026 e testada em uso — ver §9.7.
+em 17/nov/2026 e testada em uso — ver §9.7. Fatia 5b (usar o pacote na comanda)
+feita na mesma branch — **em commit local, migration 052 NÃO aplicada, sem
+publicar e sem teste em uso** — ver §9.8.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1995,7 +1997,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
-| 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Pendente |
+| 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita em código — **migration 052 não aplicada, sem publicar e sem teste em uso** (§9.8) |
 | 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Pendente |
 | 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
 
@@ -2024,6 +2026,17 @@ DELETE). Item de pacote tem quantidade 1 (CHECK).
 
 Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 `anon`/`authenticated`.
+
+**Migration 052 (fatia 5b):**
+
+- `customer_package_items.value` numeric(12,2) — a parte do preço pago pelo pacote
+  que cabe à linha (rateio no faturamento, regra 15).
+- `sale_items.customer_package_item_id` (sem ON DELETE) — o item "do pacote": de
+  qual linha do pacote do cliente ele sai. CHECK: só em serviço ou produto, com
+  total e desconto zero e quantidade inteira.
+- **Não há tabela de consumo.** O saldo de uma linha é a quantidade dela menos a
+  soma das quantidades dos itens de comandas FATURADAS que a citam. Reabrir a
+  comanda que usou devolve o saldo sem desfazer nada.
 
 ### 9.3 Regras de negócio
 
@@ -2054,6 +2067,34 @@ Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
     item). Mas uma comanda faturada com pacote cria o pacote mesmo que o módulo
     tenha sido desligado depois: o cliente pagou.
 
+Fatia 5b — usar o pacote:
+
+14. **Usar é um item da comanda "do pacote"**: o serviço (ou produto) da linha do
+    pacote, sem cobrança (valor e desconto zero, travados), quantidade inteira. O
+    serviço continua exigindo quem executou. Pode vir de agendamento; o
+    agendamento fecha com valor cobrado zero (a receita entrou na venda do pacote).
+15. **O valor de cada linha é o preço pago pelo pacote rateado** pelo preço de
+    tabela × quantidade das linhas, no faturamento da venda (sem preço de tabela,
+    pela quantidade). Em centavos, a soma das linhas é o preço. O valor de uma
+    sessão é o valor da linha ÷ sessões.
+16. **O saldo baixa quando a comanda que usa é FATURADA** e volta quando ela é
+    reaberta. Ao faturar, as linhas usadas ficam travadas (FOR UPDATE) até o fim
+    — duas comandas não usam a mesma última sessão. Salvar também confere, para
+    avisar cedo, mas a palavra final é do faturamento.
+17. **Só o pacote do próprio cliente**, só com saldo, e só no período do pacote: a
+    data da comanda (Brasília) entre a compra e o último dia da validade,
+    inclusive. Vencido não se usa (regra provisória — ver perguntas).
+18. **Comissão no USO**, para quem executou, sobre o valor da sessão (regra 15),
+    pela regra de comissão do serviço — sem desconto e sem taxa (a taxa foi da
+    comanda que vendeu o pacote). A venda do pacote continua sem comissão (regra 9).
+19. **Estoque**: o produto do pacote e o consumo do serviço do pacote baixam o
+    estoque no faturamento da comanda que usa, como qualquer item.
+20. **A comanda que vendeu um pacote não reabre se ele está em uso** em outra
+    comanda (aberta ou faturada) — reabrir apagaria o pacote. A mensagem diz qual
+    comanda. Excluir a comanda (aberta) que usava solta a ligação.
+21. **Sem o módulo `packages`, a comanda não aceita item do pacote novo**; uma
+    comanda que já tinha item do pacote ainda fatura (o saldo é conferido igual).
+
 Perguntas para o dono:
 
 - Vender pacote pela comanda (regra 1) serve, ou a recepção precisa da tela
@@ -2067,6 +2108,12 @@ Perguntas para o dono:
 - Pacote vencido com saldo: o salão estende a validade, devolve dinheiro, ou só
   perde?
 - O pacote deve poder ser usado em outro salão da mesma rede (multiunidade)?
+- (5b) O rateio do preço do pacote pelo preço de tabela (regra 15) serve, ou cada
+  linha do modelo deve ter o seu valor informado à mão?
+- (5b) Usar sessão de pacote vencido deve ser possível com uma permissão (a
+  recepção "estende" na hora), ou vencido é vencido?
+- (5b) A comissão no uso deve seguir a regra do serviço (regra 18) ou ter um
+  percentual próprio para sessões de pacote?
 
 ### 9.4 Permissões e módulo
 
@@ -2089,6 +2136,14 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
   inclui, valor, validade, vendidos), "Novo pacote", editar e excluir.
 - **Comanda**: botão "+ Pacote" (com o módulo ligado), quantidade travada em 1; o
   aviso de reabrir diz que os pacotes da comanda deixam de existir.
+- **Comanda (5b)**: "+ Do pacote" aparece quando o cliente tem saldo, com cada
+  linha ("pacote · serviço (saldo N)"); o item entra com valor e desconto travados,
+  "do pacote X" no rótulo, "Pacote" no total e quanto sobra do saldo. O aviso de
+  reabrir diz que o usado volta para o saldo.
+- **Pacotes (5b)**: a disponibilidade mostra o saldo real e "Usado em #N".
+- **Ficha do cliente (5b)**: cartão Pacotes (módulo ligado + `packages.access`):
+  pacote, data, comanda, valor, validade, saldo de cada item, comandas em que foi
+  usado e a situação.
 
 ### 9.6 Onde o código mora
 
@@ -2100,7 +2155,8 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | I/O | `packages/db/src/services/packages.service.ts`; a comanda chama `recordSalePackages` no faturamento e `revertSalePackages` na reabertura (`sales.service.ts`) |
 | Actions | `apps/web/app/actions/packages.ts`; a venda em `apps/web/app/actions/sales.ts` |
 | Telas | `apps/web/app/[salonId]/packages/`; o item na comanda em `sales/[saleId]/sale-editor.tsx` |
-| Testes | `apps/web/__tests__/lib/services/packages-domain.test.ts` |
+| Testes | `apps/web/__tests__/lib/services/packages-domain.test.ts`; uso (5b) em `package-usage-domain.test.ts` |
+| Uso (5b) | Migration `052_package_usage.sql`; regra `splitPackagePrice`, `planPackageUsage`, `packageUseValue` (`domain/packages.ts`), o item em `planSaleItems`, a base em `planSaleCommissions` (`packageValue`); I/O `loadPackageLines`, `salePackagesInUse`, `listCustomerPackageBalancesService` (`packages.service.ts`), chamados por `sales.service.ts` e `commissions.service.ts`; action `getSalePackageBalances` (`actions/sales.ts`); cartão `components/contacts/customer-packages-card.tsx` |
 
 ### 9.7 Fatia 5a — estado (17/nov/2026)
 
@@ -2155,6 +2211,25 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
   ele. Sem modelos, pacotes, pagamentos, lançamentos, comissões nem movimentos.
   **Ficou:** o módulo `packages` ligado no salão de teste.
 
+### 9.8 Fatia 5b — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1044, db 296).
+- **Migration 052: NÃO aplicada.** Tem que entrar **antes** de o código ser
+  publicado: acrescenta colunas em `sale_items` e `customer_package_items`, e o
+  INSERT do Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda
+  falharia.
+- Antes de aplicar: cópia de segurança de `sale_items` e `customer_package_items`
+  no schema `backups`.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar e publicar:
+  modelo com 3 cortes + 1 Teste Shampoo; vender e faturar; comanda nova do mesmo
+  cliente com "+ Do pacote" (corte com profissional, shampoo); faturar sem
+  pagamento → saldo 2 de 3 e 0 de 1, "Usado em #N", comissão sobre o valor da
+  sessão, baixa do shampoo no estoque; tentar usar além do saldo; tentar reabrir
+  a comanda da venda (barrado); reabrir a do uso (saldo volta); cartão Pacotes na
+  ficha do cliente.
+
 ## 10. Pendências do dono
 
 | Pendência | Trava |
@@ -2169,5 +2244,6 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117` e `backups.sale_items_pre_051_20261117` podem ser apagadas | Limpeza do schema `backups` |
-| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão, pacote vencido, multiunidade) | Fatia 5b |
+| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão) | Ajustes na fase 5 antes do piloto |
+| Aplicar a migration 052 (ou autorizar a aplicação) e publicar a fatia 5b — ver §9.8 | Teste em uso da fatia 5b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

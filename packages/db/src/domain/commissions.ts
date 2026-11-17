@@ -295,6 +295,14 @@ export type CommissionSaleItem = {
    * em serviço; ausente = sem custo.
    */
   costAmount?: string | number | null
+  /**
+   * Item "do pacote" (fase 5, fatia 5b): o que a sessão vale no pacote que o
+   * cliente pagou — a parte do preço do pacote que cabe à linha, dividida pelas
+   * sessões, vezes as usadas. O item não é cobrado (total zero); a comissão de quem
+   * executou é calculada sobre este valor, sem desconto e sem taxa (a taxa foi da
+   * comanda que vendeu o pacote). Ausente = item comum.
+   */
+  packageValue?: string | number | null
 }
 
 export type CommissionRuleRow = {
@@ -558,8 +566,12 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
       professionalDefaultPercent: professional.commissionRate,
     })
 
-    const totalCents = Math.max(0, toCents(item.total) ?? 0)
-    const discountCents = Math.max(0, toCents(item.discountAmount) ?? 0)
+    // O que o cliente pagou NESTE item — a parte dele na taxa da comanda.
+    const chargedCents = Math.max(0, toCents(item.total) ?? 0)
+    const fromPackage = item.packageValue !== null && item.packageValue !== undefined
+    // Do pacote: a base é o valor da sessão no pacote, sem desconto.
+    const totalCents = fromPackage ? Math.max(0, toCents(item.packageValue) ?? 0) : chargedCents
+    const discountCents = fromPackage ? 0 : Math.max(0, toCents(item.discountAmount) ?? 0)
     const rawQuantity = Number(item.quantity)
     const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0 ? rawQuantity : 0
     const grossCents = totalCents + discountCents
@@ -576,7 +588,7 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
     const feeCents = feeShare({
       rate,
       feeMode: settings.feeMode,
-      itemFee: saleTotalCents > 0 ? (totalCents * saleFeeCents) / saleTotalCents : 0,
+      itemFee: saleTotalCents > 0 ? (chargedCents * saleFeeCents) / saleTotalCents : 0,
       totalCents,
       commissionCents,
     })

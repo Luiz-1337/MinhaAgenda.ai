@@ -147,7 +147,9 @@ describe("planCustomerPackages", () => {
         expiresOn: "2026-12-30",
         sellerId: "pro-1",
         price: "850.00",
-        items: [{ position: 0, kind: "service", serviceId: "svc-laser", productId: null, description: "Laser", quantity: 5 }],
+        items: [
+          { position: 0, kind: "service", serviceId: "svc-laser", productId: null, description: "Laser", quantity: 5, value: "850.00" },
+        ],
       },
     ])
   })

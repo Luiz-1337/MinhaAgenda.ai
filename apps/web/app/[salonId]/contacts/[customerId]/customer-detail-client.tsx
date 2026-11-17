@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 import { TagPill } from "@/components/contacts/tag-pill"
 import { CustomerSalesCard } from "@/components/contacts/customer-sales-card"
+import { CustomerPackagesCard } from "@/components/contacts/customer-packages-card"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -213,6 +214,9 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
 
         {/* Vendas: só aparece no salão com o módulo de comandas ligado. */}
         <CustomerSalesCard salonId={salonId} customerId={detail.id} />
+
+        {/* Pacotes: só aparece no salão com o módulo de pacotes ligado (fase 5). */}
+        <CustomerPackagesCard salonId={salonId} customerId={detail.id} />
 
         {/* Notas */}
         <Card title="Notas de atendimento">

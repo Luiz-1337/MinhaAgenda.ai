@@ -4,22 +4,11 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { Gift } from "lucide-react"
 import { formatBRL } from "@/lib/utils/money.utils"
+import { PACKAGE_STATUS_CLASSES as STATUS_CLASSES, PACKAGE_STATUS_LABELS as STATUS_LABELS } from "@/lib/constants/packages.constants"
 import type { CustomerPackagesDTO } from "@/lib/types/packages"
 import type { CustomerPackageStatus } from "@repo/db"
 import { formatCalendarDate } from "../inventory/inventory-ui"
 import { PackagesNav } from "./packages-ui"
-
-const STATUS_LABELS: Record<CustomerPackageStatus, string> = {
-  active: "Disponível",
-  expired: "Vencido",
-  used: "Utilizado",
-}
-
-const STATUS_CLASSES: Record<CustomerPackageStatus, string> = {
-  active: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  expired: "bg-destructive/10 text-destructive",
-  used: "bg-muted text-muted-foreground",
-}
 
 type Filter = "all" | CustomerPackageStatus
 
@@ -34,8 +23,9 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 /**
- * Pacotes vendidos (docs/ROADMAP.md, fase 5, fatia 5a): cliente, data, validade,
- * pacote, vendedor e o que resta ("Disponibilidade" na Belasis).
+ * Pacotes vendidos (docs/ROADMAP.md, fase 5, fatias 5a e 5b): cliente, data,
+ * validade, pacote, vendedor, o que resta ("Disponibilidade" na Belasis) e as
+ * comandas que usaram.
  */
 export function PackagesClient({ salonId, data }: { salonId: string; data: CustomerPackagesDTO }) {
   const [filter, setFilter] = useState<Filter>("all")
@@ -60,7 +50,8 @@ export function PackagesClient({ salonId, data }: { salonId: string; data: Custo
           <div>
             <h2 className="text-2xl font-bold text-foreground tracking-tight">Pacotes</h2>
             <p className="text-xs text-muted-foreground">
-              Pacotes vendidos e o que resta de cada um. O pacote nasce quando a comanda que o vendeu é faturada.
+              Pacotes vendidos e o que resta de cada um. O pacote nasce quando a comanda que o vendeu é faturada, e
+              o saldo baixa quando a comanda que o usa é faturada.
             </p>
           </div>
         </div>
@@ -145,6 +136,19 @@ export function PackagesClient({ salonId, data }: { salonId: string; data: Custo
                           </li>
                         ))}
                       </ul>
+                      {pkg.uses.length > 0 && (
+                        <p className="mt-1 text-[11px]">
+                          Usado em{" "}
+                          {pkg.uses.map((use, index) => (
+                            <span key={use.saleId}>
+                              {index > 0 && ", "}
+                              <Link href={`/${salonId}/sales/${use.saleId}`} className="text-accent hover:underline">
+                                #{use.number}
+                              </Link>
+                            </span>
+                          ))}
+                        </p>
+                      )}
                     </td>
                     <td className="p-3 tabular-nums text-muted-foreground">
                       {pkg.expiresOn ? formatCalendarDate(pkg.expiresOn) : "Não vence"}
