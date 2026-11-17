@@ -66,6 +66,9 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
   const [quantity, setQuantity] = useState("")
   const [unitCost, setUnitCost] = useState("")
   const [notes, setNotes] = useState("")
+  const [batchCode, setBatchCode] = useState("")
+  const [manufacturedOn, setManufacturedOn] = useState("")
+  const [expiresOn, setExpiresOn] = useState("")
 
   const [configuring, setConfiguring] = useState<InventoryProductDTO | null>(null)
   const [trackStock, setTrackStock] = useState(false)
@@ -92,6 +95,9 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
     setQuantity("")
     setUnitCost("")
     setNotes("")
+    setBatchCode("")
+    setManufacturedOn("")
+    setExpiresOn("")
   }
 
   function openSettings(product: InventoryProductDTO) {
@@ -132,6 +138,10 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
         quantity: value,
         unitCost: cost,
         notes: notes.trim() || null,
+        // Lote só acompanha entrada; nos outros tipos os campos nem aparecem.
+        batchCode: kind === "in" ? batchCode.trim() || null : null,
+        manufacturedOn: kind === "in" ? manufacturedOn || null : null,
+        expiresOn: kind === "in" ? expiresOn || null : null,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -206,6 +216,26 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
       </div>
 
       <InventoryNav salonId={salonId} />
+
+      {(data.batchAlerts.expired > 0 || data.batchAlerts.expiring > 0) && (
+        <Link
+          href={`/${salonId}/inventory/batches`}
+          className="flex-shrink-0 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 hover:opacity-90 transition-opacity"
+        >
+          <strong>Validade:</strong>{" "}
+          {[
+            data.batchAlerts.expired > 0
+              ? `${data.batchAlerts.expired} ${data.batchAlerts.expired === 1 ? "lote vencido" : "lotes vencidos"}`
+              : null,
+            data.batchAlerts.expiring > 0
+              ? `${data.batchAlerts.expiring} ${data.batchAlerts.expiring === 1 ? "lote vencendo" : "lotes vencendo"}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" e ")}{" "}
+          com produto na prateleira. Ver lotes.
+        </Link>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Stat
@@ -494,6 +524,50 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                   onChange={(event) => setUnitCost(event.target.value)}
                   className={inputClass}
                 />
+              </div>
+            )}
+            {kind === "in" && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="movement-batch" className={labelClass}>
+                    Lote (opcional)
+                  </label>
+                  <input
+                    id="movement-batch"
+                    type="text"
+                    maxLength={60}
+                    value={batchCode}
+                    disabled={isPending}
+                    onChange={(event) => setBatchCode(event.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="movement-manufactured" className={labelClass}>
+                    Fabricação
+                  </label>
+                  <input
+                    id="movement-manufactured"
+                    type="date"
+                    value={manufacturedOn}
+                    disabled={isPending}
+                    onChange={(event) => setManufacturedOn(event.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="movement-expires" className={labelClass}>
+                    Validade
+                  </label>
+                  <input
+                    id="movement-expires"
+                    type="date"
+                    value={expiresOn}
+                    disabled={isPending}
+                    onChange={(event) => setExpiresOn(event.target.value)}
+                    className={inputClass}
+                  />
+                </div>
               </div>
             )}
             <div className="flex flex-col gap-1">

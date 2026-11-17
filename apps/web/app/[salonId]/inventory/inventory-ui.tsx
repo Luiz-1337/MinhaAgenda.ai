@@ -77,11 +77,12 @@ export function Modal({
 const NAV_ITEMS = [
   { path: "", label: "Produtos e saldo" },
   { path: "/purchases", label: "Compras" },
+  { path: "/batches", label: "Lotes e validades" },
   { path: "/suppliers", label: "Fornecedores" },
   { path: "/catalog", label: "Marcas e categorias" },
 ] as const
 
-/** As quatro telas do estoque, lado a lado. */
+/** As telas do estoque, lado a lado. */
 export function InventoryNav({ salonId }: { salonId: string }) {
   const pathname = usePathname()
   const base = `/${salonId}/inventory`

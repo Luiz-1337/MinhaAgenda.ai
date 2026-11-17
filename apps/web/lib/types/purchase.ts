@@ -102,7 +102,14 @@ export interface CreatePurchaseInput {
   notes?: string | null
   freight?: number | null
   discount?: number | null
-  items: { productId: string; quantity: number; unitCost: number }[]
+  items: {
+    productId: string
+    quantity: number
+    unitCost: number
+    /** Lote e validade do item (fatia 4c). Só em produto com controle de estoque. */
+    batchCode?: string | null
+    expiresOn?: string | null
+  }[]
   /** Ausente ou NULL = não lança no financeiro. */
   finance?: {
     paid: boolean

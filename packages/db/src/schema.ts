@@ -1476,6 +1476,43 @@ export const stockMovements = pgTable(
 )
 
 // ============================================================================
+// TABLES - Lotes e validades (migration 047)
+// ============================================================================
+// Um lote guarda o que ENTROU com ele. O que resta de cada lote não é gravado: é
+// calculado a partir do saldo do produto, supondo que sai primeiro o que vence
+// primeiro. Regra em domain/batches.ts.
+
+export const productBatches = pgTable(
+  'product_batches',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = o salão registrou só a validade (CHECK: código ou validade).
+    code: text('code'),
+    // Dias de calendário ("YYYY-MM-DD").
+    manufacturedOn: date('manufactured_on'),
+    expiresOn: date('expires_on'),
+    // O que entrou com este lote.
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    notes: text('notes'),
+    // A entrada (manual ou de compra) que trouxe o lote. NULL = registrado solto.
+    // CASCADE de propósito: excluir a compra apaga a entrada, e o lote vai junto.
+    stockMovementId: uuid('stock_movement_id').references(() => stockMovements.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('product_batches_salon_expiry_idx').on(table.salonId, table.expiresOn),
+    index('product_batches_product_idx').on(table.productId, table.expiresOn),
+    uniqueIndex('product_batches_movement_unique')
+      .on(table.stockMovementId)
+      .where(sql`stock_movement_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
 // TABLES - Compras, fornecedores, marcas e categorias (migration 046)
 // ============================================================================
 // A compra é um documento: fornecedor, data, nota e itens. Ela dá entrada no

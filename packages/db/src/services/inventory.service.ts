@@ -18,7 +18,9 @@ import {
   planStockMovement,
   toMilli,
 } from "../domain/inventory"
+import { hasBatchData, planBatch } from "../domain/batches"
 import type { ActionResult } from "./appointments"
+import { insertMovementBatch } from "./batches.service"
 
 /**
  * Estoque (docs/ROADMAP.md, fase 4, fatia 4a).
@@ -188,12 +190,16 @@ export async function listStockMovementsService(input: {
 /**
  * Lança uma entrada, uma saída ou um acerto de inventário num produto controlado.
  * Devolve o saldo depois do movimento.
+ *
+ * Com `batch`, a ENTRADA registra também o lote que veio com ela (fatia 4c), com a
+ * mesma quantidade do movimento.
  */
 export async function createStockMovementService(input: {
   salonId: string
   userId: string
   productId: string
   draft: { kind: unknown; quantity: unknown; unitCost?: unknown; notes?: unknown }
+  batch?: { code?: unknown; manufacturedOn?: unknown; expiresOn?: unknown } | null
 }): Promise<ActionResult<{ movementId: string; balance: string }>> {
   try {
     const result = await db.transaction(async (tx) => {
@@ -209,6 +215,15 @@ export async function createStockMovementService(input: {
       const currentMilli = await productBalanceMilli(tx, input.salonId, product.id)
       const plan = planStockMovement(input.draft, currentMilli)
       if (!plan.ok) fail(plan.error)
+
+      // O lote é validado ANTES de gravar o movimento: data errada não pode deixar
+      // a entrada lançada sem o lote que veio com ela.
+      let batchPlan: ReturnType<typeof planBatch> | null = null
+      if (hasBatchData(input.batch)) {
+        if (plan.kind !== "in") fail("Lote só se informa em entrada")
+        batchPlan = planBatch({ ...input.batch, quantity: Number(plan.quantity) }, new Date())
+        if (!batchPlan.ok) fail(batchPlan.error)
+      }
 
       const [created] = await tx
         .insert(stockMovements)
@@ -230,6 +245,16 @@ export async function createStockMovementService(input: {
           .update(products)
           .set({ costPrice: plan.unitCost })
           .where(and(eq(products.id, product.id), eq(products.salonId, input.salonId)))
+      }
+
+      if (batchPlan?.ok) {
+        await insertMovementBatch(tx, {
+          salonId: input.salonId,
+          userId: input.userId,
+          productId: product.id,
+          stockMovementId: created.id,
+          plan: batchPlan,
+        })
       }
 
       return { movementId: created.id, balanceMilli: plan.balanceMilli }

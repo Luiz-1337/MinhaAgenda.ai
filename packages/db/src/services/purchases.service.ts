@@ -28,6 +28,7 @@ import {
 } from "../domain/purchases"
 import { toCents } from "../domain/sales"
 import type { ActionResult } from "./appointments"
+import { insertMovementBatch } from "./batches.service"
 
 /**
  * Compras, fornecedores e marcas/categorias de produto (docs/ROADMAP.md, fase 4,
@@ -635,7 +636,35 @@ export async function createPurchaseService(input: {
           purchaseItemId: itemIdByPosition.get(item.position) ?? fail("Item da compra não foi gravado"),
           createdBy: input.userId,
         }))
-      if (movements.length > 0) await tx.insert(stockMovements).values(movements)
+      if (movements.length > 0) {
+        const createdMovements = await tx
+          .insert(stockMovements)
+          .values(movements)
+          .returning({ id: stockMovements.id, purchaseItemId: stockMovements.purchaseItemId })
+
+        // O lote informado no item nasce da entrada que o item deu (fatia 4c).
+        const movementIdByItem = new Map(createdMovements.map((row) => [row.purchaseItemId, row.id]))
+        for (const item of plan.items) {
+          if (!item.batch) continue
+          const stockMovementId = movementIdByItem.get(itemIdByPosition.get(item.position) ?? null)
+          if (!stockMovementId) fail("A entrada do lote não foi gravada")
+
+          await insertMovementBatch(tx, {
+            salonId: input.salonId,
+            userId: input.userId,
+            productId: item.productId,
+            stockMovementId,
+            plan: {
+              ok: true,
+              code: item.batch.code,
+              manufacturedOn: null,
+              expiresOn: item.batch.expiresOn,
+              quantity: item.batch.quantity,
+              notes: null,
+            },
+          })
+        }
+      }
 
       for (const update of plan.costUpdates) {
         await tx

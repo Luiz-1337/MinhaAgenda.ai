@@ -61,6 +61,8 @@ export const createPurchaseSchema = z.object({
         productId: z.string().uuid({ message: "Escolha o produto" }),
         quantity,
         unitCost: money,
+        batchCode: z.string().max(60, "Código do lote muito longo").nullish(),
+        expiresOn: calendarDate.nullish(),
       })
     )
     .min(1, "Adicione pelo menos um produto")

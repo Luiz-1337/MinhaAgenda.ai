@@ -81,6 +81,7 @@ function revalidateInventory(salonId: string) {
   revalidatePath(`/${salonId}/inventory/purchases`)
   revalidatePath(`/${salonId}/inventory/suppliers`)
   revalidatePath(`/${salonId}/inventory/catalog`)
+  revalidatePath(`/${salonId}/inventory/batches`)
 }
 
 function revalidateFinance(salonId: string) {

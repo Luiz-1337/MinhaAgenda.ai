@@ -154,6 +154,7 @@ describe("planPurchase — o que a compra grava", () => {
         totalAmount: "200.00",
         previousCost: "18.50",
         movesStock: true,
+        batch: null,
       },
       {
         position: 1,
@@ -165,6 +166,7 @@ describe("planPurchase — o que a compra grava", () => {
         previousCost: "3.00",
         // Sem controle de estoque: entra na compra, não no estoque.
         movesStock: false,
+        batch: null,
       },
       {
         position: 2,
@@ -175,6 +177,7 @@ describe("planPurchase — o que a compra grava", () => {
         totalAmount: "12.00",
         previousCost: null,
         movesStock: true,
+        batch: null,
       },
     ])
   })

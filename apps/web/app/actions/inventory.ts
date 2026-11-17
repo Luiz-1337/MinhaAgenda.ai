@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache"
 import {
+  EXPIRY_WARNING_DAYS,
+  brazilToday,
+  createBatchService,
   createStockMovementService,
+  deleteBatchService,
+  listBatchesService,
   listInventoryService,
   listProductCatalogService,
   listStockMovementsService,
@@ -12,6 +17,7 @@ import {
   stockStatus,
   stockValueCents,
   toMilli,
+  updateBatchService,
   type PermissionKey,
 } from "@repo/db"
 import { getSessionUserId } from "@/lib/supabase/auth"
@@ -20,15 +26,19 @@ import { salonHasModule } from "@/lib/services/salon-modules.service"
 import { formatZodError } from "@/lib/services/validation.service"
 import {
   createStockMovementSchema,
+  deleteBatchSchema,
   inventoryFiltersSchema,
+  saveBatchSchema,
   saveProductStockSettingsSchema,
 } from "@/lib/schemas/inventory.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
+  BatchesDTO,
   CreateStockMovementInput,
   InventoryDTO,
   InventoryFilters,
   InventoryProductDTO,
+  SaveBatchInput,
   SaveProductStockSettingsInput,
 } from "@/lib/types/inventory"
 
@@ -66,6 +76,8 @@ function revalidateInventory(salonId: string) {
   revalidatePath(`/${salonId}/inventory`)
   // A contagem de produtos por marca e por categoria.
   revalidatePath(`/${salonId}/inventory/catalog`)
+  // O que resta em cada lote sai do saldo.
+  revalidatePath(`/${salonId}/inventory/batches`)
 }
 
 /** Os produtos com saldo, situação e sugestão de compra, e a movimentação recente. */
@@ -80,10 +92,11 @@ export async function getInventory(
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   try {
-    const [rows, permissions, catalog] = await Promise.all([
+    const [rows, permissions, catalog, batches] = await Promise.all([
       listInventoryService(salonId),
       getSalonPermissions(salonId, auth.userId),
       listProductCatalogService(salonId),
+      listBatchesService(salonId),
     ])
 
     // Produto pedido que não é do salão é ignorado, não um erro: a movimentação
@@ -124,6 +137,7 @@ export async function getInventory(
       productId,
       brands: catalog.brands.map((brand) => ({ id: brand.id, name: brand.name })),
       categories: catalog.categories.map((category) => ({ id: category.id, name: category.name })),
+      batchAlerts: { expired: batches.expired, expiring: batches.expiring },
       can: {
         move: permissions.has("inventory.move"),
         manage: permissions.has("inventory.manage"),
@@ -145,9 +159,15 @@ export async function createStockMovement(
   const parsed = createStockMovementSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
-  const { salonId, productId, ...draft } = parsed.data
+  const { salonId, productId, batchCode, manufacturedOn, expiresOn, ...draft } = parsed.data
 
-  const result = await createStockMovementService({ salonId, userId: auth.userId, productId, draft })
+  const result = await createStockMovementService({
+    salonId,
+    userId: auth.userId,
+    productId,
+    draft,
+    batch: { code: batchCode, manufacturedOn, expiresOn },
+  })
   if (!result.success) return { error: result.error }
 
   revalidateInventory(salonId)
@@ -173,5 +193,79 @@ export async function saveProductStockSettings(input: SaveProductStockSettingsIn
   if (!result.success) return { error: result.error }
 
   revalidateInventory(salonId)
+  return { success: true }
+}
+
+// ============================================================================
+// Lotes e validades (fatia 4c)
+// ============================================================================
+
+/** Os lotes do salão, com o que resta em cada um e a situação. */
+export async function getBatches(salonId: string): Promise<BatchesDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "inventory.access")
+  if ("error" in auth) return auth
+
+  try {
+    const [overview, products, permissions] = await Promise.all([
+      listBatchesService(salonId),
+      listInventoryService(salonId),
+      getSalonPermissions(salonId, auth.userId),
+    ])
+
+    return {
+      batches: overview.rows,
+      expired: overview.expired,
+      expiring: overview.expiring,
+      warningDays: EXPIRY_WARNING_DAYS,
+      products: products
+        .filter((product) => product.trackStock && product.isActive)
+        .map((product) => ({ id: product.id, name: product.name })),
+      today: brazilToday(new Date()),
+      can: { move: permissions.has("inventory.move") },
+    }
+  } catch (error) {
+    console.error("Erro ao carregar os lotes:", error)
+    return { error: "Não foi possível carregar os lotes" }
+  }
+}
+
+/**
+ * Registra um lote solto (sem `batchId`) ou corrige um lote. Não mexe no saldo: a
+ * entrada com lote é feita no estoque ou na compra.
+ */
+export async function saveBatch(input: SaveBatchInput): Promise<ActionResult> {
+  const auth = await authorizeSalon(input?.salonId, "inventory.move")
+  if ("error" in auth) return auth
+
+  const parsed = saveBatchSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const { salonId, batchId, productId, ...draft } = parsed.data
+
+  if (batchId) {
+    const result = await updateBatchService({ salonId, batchId, draft })
+    if (!result.success) return { error: result.error }
+  } else {
+    if (!productId) return { error: "Escolha o produto" }
+    const result = await createBatchService({ salonId, userId: auth.userId, productId, draft })
+    if (!result.success) return { error: result.error }
+  }
+
+  revalidateInventory(salonId)
+  return { success: true }
+}
+
+/** Exclui o registro de um lote. O saldo do produto não muda. */
+export async function deleteBatch(input: { salonId: string; batchId: string }): Promise<ActionResult> {
+  const auth = await authorizeSalon(input?.salonId, "inventory.move")
+  if ("error" in auth) return auth
+
+  const parsed = deleteBatchSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const result = await deleteBatchService(parsed.data)
+  if (!result.success) return { error: result.error }
+
+  revalidateInventory(parsed.data.salonId)
   return { success: true }
 }

@@ -11,7 +11,17 @@ import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 import type { CreatePurchaseInput, PurchaseFormDTO } from "@/lib/types/purchase"
 import { iconButtonClass, inputClass, labelClass, parseQuantity } from "../../inventory-ui"
 
-type ItemDraft = { key: number; productId: string; quantity: string; unitCost: string }
+type ItemDraft = {
+  key: number
+  productId: string
+  quantity: string
+  unitCost: string
+  /** Lote e validade: só aparecem em produto com controle de estoque. */
+  batchCode: string
+  expiresOn: string
+}
+
+const NEW_ITEM = { productId: "", quantity: "1", unitCost: "", batchCode: "", expiresOn: "" }
 
 /** none = só estoque · open = fica a pagar · paid = já saiu de uma conta */
 type FinanceMode = "none" | "open" | "paid"
@@ -54,7 +64,7 @@ export function PurchaseForm({ salonId, data }: { salonId: string; data: Purchas
   const [discount, setDiscount] = useState("")
 
   const [nextKey, setNextKey] = useState(1)
-  const [items, setItems] = useState<ItemDraft[]>([{ key: 0, productId: "", quantity: "1", unitCost: "" }])
+  const [items, setItems] = useState<ItemDraft[]>([{ key: 0, ...NEW_ITEM }])
 
   const [financeMode, setFinanceMode] = useState<FinanceMode>(data.finance ? "open" : "none")
   const [firstDueDate, setFirstDueDate] = useState(data.today)
@@ -78,11 +88,17 @@ export function PurchaseForm({ salonId, data }: { salonId: string; data: Purchas
 
   function chooseProduct(key: number, productId: string) {
     // Escolher o produto traz o último custo pago: na maioria das compras ele se repete.
-    updateItem(key, { productId, unitCost: costToInput(productById.get(productId)?.costPrice ?? null) })
+    // O lote era do produto anterior: trocar de produto limpa.
+    updateItem(key, {
+      productId,
+      unitCost: costToInput(productById.get(productId)?.costPrice ?? null),
+      batchCode: "",
+      expiresOn: "",
+    })
   }
 
   function addItem() {
-    setItems((current) => [...current, { key: nextKey, productId: "", quantity: "1", unitCost: "" }])
+    setItems((current) => [...current, { key: nextKey, ...NEW_ITEM }])
     setNextKey((key) => key + 1)
   }
 
@@ -113,7 +129,15 @@ export function PurchaseForm({ salonId, data }: { salonId: string; data: Purchas
         toast.error(`Item ${line}: informe o custo unitário`)
         return
       }
-      payloadItems.push({ productId: item.productId, quantity, unitCost })
+      // Produto sem controle não tem lote (os campos nem aparecem).
+      const tracked = productById.get(item.productId)?.trackStock ?? false
+      payloadItems.push({
+        productId: item.productId,
+        quantity,
+        unitCost,
+        batchCode: tracked ? item.batchCode.trim() || null : null,
+        expiresOn: tracked ? item.expiresOn || null : null,
+      })
     }
 
     if (freightValue === "invalid") {
@@ -324,7 +348,38 @@ export function PurchaseForm({ salonId, data }: { salonId: string; data: Purchas
                       className={inputClass}
                     />
                   </div>
-                  <div className="flex items-center justify-between gap-2 col-span-2 md:col-span-3">
+                  {product?.trackStock && (
+                    <>
+                      <div className="flex flex-col gap-1 md:col-span-3 md:col-start-1 md:row-start-2">
+                        <label htmlFor={`item-batch-${item.key}`} className={labelClass}>
+                          Lote (opcional)
+                        </label>
+                        <input
+                          id={`item-batch-${item.key}`}
+                          type="text"
+                          maxLength={60}
+                          value={item.batchCode}
+                          disabled={isPending}
+                          onChange={(event) => updateItem(item.key, { batchCode: event.target.value })}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 md:col-span-2 md:row-start-2">
+                        <label htmlFor={`item-expires-${item.key}`} className={labelClass}>
+                          Validade (opcional)
+                        </label>
+                        <input
+                          id={`item-expires-${item.key}`}
+                          type="date"
+                          value={item.expiresOn}
+                          disabled={isPending}
+                          onChange={(event) => updateItem(item.key, { expiresOn: event.target.value })}
+                          className={inputClass}
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center justify-between gap-2 col-span-2 md:col-span-3 md:col-start-10 md:row-start-1">
                     <div className="text-right flex-1">
                       <p className={labelClass}>Total</p>
                       <p className="font-mono tabular-nums font-semibold text-foreground">

@@ -10,6 +10,7 @@
  * controlados, atualiza o custo de compra de cada produto (último preço pago) e,
  * se quem lança pedir, gera as parcelas a pagar no financeiro.
  */
+import { hasBatchData, planBatch } from './batches'
 import { addMonthsToDate, brazilToday, isCalendarDate, paidAtFromDate, type PlannedTransaction } from './finance'
 import { milliToNumeric, toMilli } from './inventory'
 import { centsToNumeric, toCents } from './sales'
@@ -137,6 +138,8 @@ export type PlannedPurchaseItem = {
   previousCost: string | null
   /** Produto controlado: o item dá entrada no estoque. */
   movesStock: boolean
+  /** Lote que veio com o item (fatia 4c). NULL = sem lote. */
+  batch: { code: string | null; expiresOn: string | null; quantity: string } | null
 }
 
 export type PurchasePlan =
@@ -178,6 +181,8 @@ function optionalMoneyCents(value: unknown): number | null {
  *   - A data da compra não pode ser futura: a entrada no estoque acontece agora.
  *   - Produto sem controle de estoque entra na compra (e tem o custo atualizado),
  *     mas não gera entrada — o salão escolhe o que acompanha.
+ *   - Lote e validade são opcionais, por item, e só em produto controlado: o lote
+ *     nasce da entrada no estoque.
  *   - Fornecedor é opcional; se informado, tem que existir e estar ativo.
  */
 export function planPurchase(draft: PurchaseDraft, refs: PurchaseRefs, now: Date): PurchasePlan {
@@ -207,7 +212,13 @@ export function planPurchase(draft: PurchaseDraft, refs: PurchaseRefs, now: Date
 
   for (const [index, raw] of draft.items.entries()) {
     const line = index + 1
-    const item = (raw ?? {}) as { productId?: unknown; quantity?: unknown; unitCost?: unknown }
+    const item = (raw ?? {}) as {
+      productId?: unknown
+      quantity?: unknown
+      unitCost?: unknown
+      batchCode?: unknown
+      expiresOn?: unknown
+    }
 
     const product = typeof item.productId === 'string' ? refs.products.get(item.productId) : undefined
     if (!product) return { ok: false, error: `Item ${line}: escolha o produto` }
@@ -225,6 +236,16 @@ export function planPurchase(draft: PurchaseDraft, refs: PurchaseRefs, now: Date
     const totalCents = Math.round((quantityMilli * costCents) / 1000)
     itemsCents += totalCents
 
+    let batch: PlannedPurchaseItem['batch'] = null
+    if (hasBatchData({ code: item.batchCode, expiresOn: item.expiresOn })) {
+      if (!product.trackStock) {
+        return { ok: false, error: `Item ${line}: lote só em produto com controle de estoque` }
+      }
+      const batchPlan = planBatch({ code: item.batchCode, expiresOn: item.expiresOn, quantity: item.quantity }, now)
+      if (!batchPlan.ok) return { ok: false, error: `Item ${line}: ${batchPlan.error}` }
+      batch = { code: batchPlan.code, expiresOn: batchPlan.expiresOn, quantity: batchPlan.quantity }
+    }
+
     const productId = item.productId as string
     const unitCost = centsToNumeric(costCents)
     if (costCents > 0) lastCost.set(productId, unitCost)
@@ -238,6 +259,7 @@ export function planPurchase(draft: PurchaseDraft, refs: PurchaseRefs, now: Date
       totalAmount: centsToNumeric(totalCents),
       previousCost: product.costPrice === null ? null : centsToNumeric(toCents(product.costPrice) ?? 0),
       movesStock: product.trackStock,
+      batch,
     })
   }
 
