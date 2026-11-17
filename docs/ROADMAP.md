@@ -39,8 +39,8 @@ Fase 5 (pacotes e assinaturas): detalhada em §9. Fatia 5a (pacotes predefinidos
 venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
 `claude/fase-4-estoque`) e publicada, com a migration 051 aplicada e registrada
 em 17/nov/2026 e testada em uso — ver §9.7. Fatia 5b (usar o pacote na comanda)
-feita na mesma branch — **em commit local, migration 052 NÃO aplicada, sem
-publicar e sem teste em uso** — ver §9.8.
+na mesma branch: migration 052 aplicada em 17/nov/2026, publicada e testada em
+uso — ver §9.8.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1997,7 +1997,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
-| 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita em código — **migration 052 não aplicada, sem publicar e sem teste em uso** (§9.8) |
+| 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita, migration 052 aplicada, publicada e testada em uso (§9.8) |
 | 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Pendente |
 | 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
 
@@ -2213,22 +2213,61 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 
 ### 9.8 Fatia 5b — estado (17/nov/2026)
 
-- Na branch `claude/fase-5-pacotes`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1044, db 296).
-- **Migration 052: NÃO aplicada.** Tem que entrar **antes** de o código ser
-  publicado: acrescenta colunas em `sale_items` e `customer_package_items`, e o
-  INSERT do Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda
-  falharia.
-- Antes de aplicar: cópia de segurança de `sale_items` e `customer_package_items`
-  no schema `backups`.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar e publicar:
-  modelo com 3 cortes + 1 Teste Shampoo; vender e faturar; comanda nova do mesmo
-  cliente com "+ Do pacote" (corte com profissional, shampoo); faturar sem
-  pagamento → saldo 2 de 3 e 0 de 1, "Usado em #N", comissão sobre o valor da
-  sessão, baixa do shampoo no estoque; tentar usar além do saldo; tentar reabrir
-  a comanda da venda (barrado); reabrir a do uso (saldo volta); cartão Pacotes na
-  ficha do cliente.
+- Na branch `claude/fase-5-pacotes`, publicada. Typecheck (db, web e mcp-server),
+  lint dos arquivos alterados e testes passando (web 1044, db 296).
+- **Migration 052 aplicada em produção em 17/nov/2026** (registrada como
+  `package_usage`), antes de o código ser publicado. Conferido por leitura: as
+  duas colunas, os dois CHECKs, a FK e o índice parcial existem; `sale_items`
+  seguiu com as 19 linhas. O advisor de segurança só mostra os avisos de sempre
+  (cópias em `backups` com RLS e sem policy, `vector` em `public`, senha vazada).
+- Cópias de segurança antes da 052: `backups.sale_items_pre_052_20261117` (19
+  linhas) e `backups.customer_package_items_pre_052_20261117` (vazia), com RLS
+  ligado e sem acesso para `anon`/`authenticated`.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco:
+  - Modelo "TESTE 5b pacote" (3 × Corte de Cabelo Masculino, 1 × Teste Shampoo,
+    R$ 432,00, 30 dias). Vendido na comanda #16 e faturado em PIX → no banco, a
+    linha do corte vale R$ 408,00 e a do shampoo R$ 24,00 (rateio pelo preço de
+    tabela, 510 e 30; a soma é o preço).
+  - Comanda nova da mesma cliente: aparece "+ Do pacote" com "TESTE 5b pacote ·
+    Corte de Cabelo Masculino (saldo 3)" e "· Teste Shampoo (saldo 1)". Cada item
+    entra com "do pacote TESTE 5b pacote", item, valor e desconto travados,
+    "Pacote" no total e "sobram 2" / "sobram 0"; a linha que zerou sai da lista e a
+    do corte passa a "(saldo 2)". Total da comanda R$ 0,00.
+  - Quantidade 5 no corte → "passa do saldo" na tela; salvar é recusado: 'Pacote
+    "TESTE 5b pacote": Corte de Cabelo Masculino tem saldo de 3, e a comanda usa 5'.
+  - Quantidade 1, profissional Marcos → faturar mostra "Esta comanda não tem valor
+    a receber. Ela será finalizada sem pagamento"; faturada como #17. No banco: os
+    dois itens com total 0 e a linha do pacote; **comissão com base R$ 136,00**
+    (408 ÷ 3) para quem executou; **saída de 1 Teste Shampoo no estoque**; nenhuma
+    comissão na #16.
+  - "Pacotes vendidos": "2 de 3 · Corte de Cabelo Masculino", "0 de 1 · Teste
+    Shampoo", "Usado em #17", Disponível. Ficha da cliente: cartão Pacotes com
+    "17/11/2026 · Comanda #16 · R$ 432,00 · vale até 17/12/2026", "saldo 2 de 3",
+    "saldo 0 de 1", "Usado em #17" e Disponível.
+  - Reabrir a #16 (a da venda) → barrado: "Um pacote vendido nesta comanda já está
+    em uso (comanda #17). Tire o item do pacote de lá antes de reabrir esta". Também
+    barrado com a #17 só aberta.
+  - Reabrir a #17 → o aviso inclui "O que esta comanda usou dos pacotes do cliente
+    volta para o saldo"; a lista volta a "3 de 3" e "1 de 1", sem "Usado em"; no
+    banco, a comissão e a saída de estoque somem.
+  - Excluir a #17 (aberta) solta a ligação: a #16 reabre ("Comanda reaberta") e o
+    pacote deixa de existir.
+- **Limite do teste:** o salão de teste não tem regra de comissão, então o
+  percentual saiu 0% e o valor da comissão R$ 0,00 — o que se viu foi a BASE
+  (R$ 136,00). O percentual sobre a base é o cálculo da fase 3, coberto pelos
+  testes automáticos.
+- **Não testado em uso:** item do pacote vindo de agendamento; pacote vencido e
+  comanda com data anterior à compra; pacote de outro cliente (trocar o cliente da
+  comanda com item do pacote); duas comandas disputando a última sessão; auxiliar
+  no serviço do pacote; item do pacote junto com itens cobrados na mesma comanda;
+  consumo de produto pelo serviço do pacote; o filtro Utilizados; perfil sem
+  `packages.access` (o cartão da ficha some); o módulo desligado com comanda que
+  já tinha item do pacote.
+- Dados de teste limpos: a #17 excluída pela tela; a #16 reaberta e excluída pela
+  tela (as duas ficam como excluídas, como as anteriores); o item de pacote da #16
+  e o modelo apagados por SQL, pelo ID. Sem modelos, pacotes, pagamentos,
+  comissões nem movimentos de estoque.
 
 ## 10. Pendências do dono
 
@@ -2243,7 +2282,6 @@ Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117` e `backups.sale_items_pre_051_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117` e `backups.customer_package_items_pre_052_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão) | Ajustes na fase 5 antes do piloto |
-| Aplicar a migration 052 (ou autorizar a aplicação) e publicar a fatia 5b — ver §9.8 | Teste em uso da fatia 5b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
