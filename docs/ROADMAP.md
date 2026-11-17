@@ -35,7 +35,11 @@ saída pelo profissional) feita na mesma branch e publicada, com a migration 050
 aplicada e registrada em 17/nov/2026 e testada em uso — ver §8.11. Fatia 4f
 (relatórios de estoque) feita na mesma branch e publicada, sem migration, e
 testada em uso em 17/nov/2026 — ver §8.12.
-Fases 5 em diante: planejamento.
+Fase 5 (pacotes e assinaturas): detalhada em §9. Fatia 5a (pacotes predefinidos e
+venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
+`claude/fase-4-estoque`) — **em commit local, migration 051 NÃO aplicada, sem
+publicar e sem teste em uso** — ver §9.7.
+Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -1974,7 +1978,158 @@ UPDATE salons
   removido, os três pela tela; o acerto apagado por SQL, pelo ID. Sem movimentos,
   solicitações, vales, consumos, comissões nem lançamentos no financeiro.
 
-## 9. Pendências do dono
+## 9. Fase 5 — Pacotes e assinaturas (detalhe)
+
+Responde: o que o cliente comprou adiantado, quanto ainda tem e quando vence.
+Parte da comanda (fase 1) e do financeiro (fase 2). Itens da auditoria: P-06 a
+P-10, T-05, F-02 (assinaturas de clientes), a aba Pacotes da ficha do cliente, o
+relatório "Extrato de Pacotes" e a permissão Pacotes (Acessar, Criar, Editar,
+Excluir). A auditoria diz pouco da regra: "Pacote predefinido: modelo com itens e
+total (ex.: 5 sessões de laser)", "Pacote vendido: Cliente, Data, Validade, Pacote
+Predefinido, Vendedor, Descrição, itens; Salvar ou Faturar", "a lista mostra
+Disponibilidade (saldo de sessões)", e na ficha "Pacote, Qtde, Saldo,
+Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
+
+### 9.1 Fatias
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita em código — **migration 051 não aplicada, sem publicar e sem teste em uso** (§9.7) |
+| 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Pendente |
+| 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Pendente |
+| 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
+
+A página pública de planos com link copiável e a renovação automática de
+assinatura dependem de pagamento online (fase 8).
+
+### 9.2 Modelo de dados (migration 051)
+
+**`package_templates`** — o pacote predefinido: `name` (único no salão, sem
+diferença de maiúscula), `description`, `price` numeric(12,2), `validity_days`
+(1 a 3650; NULL = não vence), `is_active`.
+
+**`package_template_items`** — o que o modelo inclui: `kind` (`service` ou
+`product`), `service_id` ou `product_id` (exatamente um), `quantity` inteira (1 a
+999), `position`. O mesmo serviço (ou produto) uma vez por modelo.
+
+**`sale_items`** — `kind` aceita `package`, com `package_template_id` (sem ON
+DELETE). Item de pacote tem quantidade 1 (CHECK).
+
+**`customer_packages`** — o pacote do cliente: `customer_id`, `sale_id` e
+`sale_item_id` (único, CASCADE), `template_id`, `name` (cópia), `sold_on`,
+`expires_on`, `seller_id`, `price` (o total do item).
+
+**`customer_package_items`** — cópia dos itens do modelo no faturamento:
+`kind`, `service_id`/`product_id`, `description`, `quantity`.
+
+Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
+`anon`/`authenticated`.
+
+### 9.3 Regras de negócio
+
+1. **Vender pacote é um item da comanda** ("+ Pacote"). Pagamento, taxas,
+   financeiro, caixa e fiado são os da comanda — nada novo. A Belasis tem uma tela
+   "Novo pacote" com Salvar/Faturar própria; aqui a comanda faz esse papel.
+2. **O pacote do cliente nasce quando a comanda é faturada**, um por item de
+   pacote. Comanda pendente não dá pacote.
+3. **Um item de pacote é UM pacote** (quantidade 1). Para vender dois, dois itens.
+4. **O pacote do cliente COPIA o modelo no faturamento**: nome, itens, quantidades
+   e validade. Mudar ou desativar o modelo depois não muda o que foi vendido.
+5. **A data do pacote é o dia da comanda em Brasília**; a validade conta a partir
+   dela e vale até o último dia, inclusive. Sem validade, não vence.
+6. **O valor do pacote é o total do item da comanda**: o valor do modelo é
+   sugestão, pode ser alterado e levar desconto, como qualquer item.
+7. **Vendedor é opcional**: o profissional do item, como no produto.
+8. **Reabrir a comanda apaga os pacotes que ela vendeu**; faturar de novo cria
+   outros. (Na 5b: reabrir é barrado se uma sessão do pacote já foi usada.)
+9. **Venda de pacote não gera comissão nem baixa estoque.** A comissão e a baixa
+   acontecem no USO (5b), sobre o que foi feito.
+10. **Modelo que já entrou em comanda (mesmo pendente) não se apaga**:
+    desativa-se. Inativo some da comanda nova, mas continua na comanda que já o
+    tinha.
+11. **Situação do pacote vendido**: Disponível (tem saldo e está na validade),
+    Vencido (passou da validade com saldo) ou Utilizado (sem saldo).
+12. **Quantidade dos itens é inteira** — sessões e unidades.
+13. **Sem o módulo `packages`, a comanda não vende pacote** (o servidor recusa o
+    item). Mas uma comanda faturada com pacote cria o pacote mesmo que o módulo
+    tenha sido desligado depois: o cliente pagou.
+
+Perguntas para o dono:
+
+- Vender pacote pela comanda (regra 1) serve, ou a recepção precisa da tela
+  própria "Novo pacote" da Belasis?
+- O pacote vendido precisa ser editável (itens, validade) depois da venda, ou a
+  cópia do modelo basta?
+- A comissão do pacote deve ser no uso (regra 9, sobre o valor da sessão), na
+  venda (para o vendedor), ou nos dois?
+- O valor da sessão para a comissão no uso: preço do pacote ÷ sessões, ou o preço
+  de tabela do serviço?
+- Pacote vencido com saldo: o salão estende a validade, devolve dinheiro, ou só
+  perde?
+- O pacote deve poder ser usado em outro salão da mesma rede (multiunidade)?
+
+### 9.4 Permissões e módulo
+
+Módulo `packages` em `salons.settings.modules`. Recurso novo:
+
+| Recurso | Ações |
+|---|---|
+| `packages` | `access` (ver pacotes vendidos e predefinidos), `manage` (criar, alterar e excluir predefinidos) |
+
+Vender é pela comanda, com as permissões de comanda. A Belasis tem Acessar,
+Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
+
+### 9.5 Telas
+
+- **Pacotes** no menu (módulo ligado + `packages.access`), em
+  `/[salonId]/packages`: pacotes vendidos (data, comanda, cliente, pacote,
+  disponibilidade por item, validade, vendedor, valor, situação), com os filtros
+  Todos, Disponíveis, Vencidos e Utilizados, e os três totais.
+- **Pacotes predefinidos** (`/[salonId]/packages/templates`): lista (pacote, o que
+  inclui, valor, validade, vendidos), "Novo pacote", editar e excluir.
+- **Comanda**: botão "+ Pacote" (com o módulo ligado), quantidade travada em 1; o
+  aviso de reabrir diz que os pacotes da comanda deixam de existir.
+
+### 9.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Migration | `supabase/migrations/051_packages.sql` |
+| Tabelas | `packages/db/src/schema.ts` (`packageTemplates`, `packageTemplateItems`, `customerPackages`, `customerPackageItems`, `saleItems.packageTemplateId`) |
+| Regra pura | `packages/db/src/domain/packages.ts` (`planPackageTemplate`, `packageTemplateDeleteBlocker`, `packageExpiry`, `planCustomerPackages`, `customerPackageStatus`); o item de pacote em `planSaleItems` (`domain/sales.ts`) |
+| I/O | `packages/db/src/services/packages.service.ts`; a comanda chama `recordSalePackages` no faturamento e `revertSalePackages` na reabertura (`sales.service.ts`) |
+| Actions | `apps/web/app/actions/packages.ts`; a venda em `apps/web/app/actions/sales.ts` |
+| Telas | `apps/web/app/[salonId]/packages/`; o item na comanda em `sales/[saleId]/sale-editor.tsx` |
+| Testes | `apps/web/__tests__/lib/services/packages-domain.test.ts` |
+
+### 9.7 Fatia 5a — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes` (sai de `claude/fase-4-estoque`), **em commit
+  local, sem publicar**. Typecheck (db e web), lint dos arquivos alterados e
+  testes passando.
+- **Migration 051: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
+  publicado: acrescenta a coluna `package_template_id` em `sale_items`, e o INSERT
+  do Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda falharia.
+- Antes de aplicar: cópia de segurança de `sale_items` no schema `backups`.
+- Para usar num salão: ligar o módulo `packages` (além de `sales`).
+- **Sem teste em uso.** Roteiro, depois de aplicar a 051, publicar e ligar o
+  módulo no salão de teste:
+  1. Pacotes predefinidos: criar "Teste 3 Cortes" com 3 sessões de Corte de
+     Cabelo Masculino e 1 Teste Shampoo, R$ 400,00, validade 30 dias → a lista
+     mostra os itens, R$ 400,00, "30 dias", 0 vendidos. Nome repetido é recusado.
+  2. Comanda nova: "+ Pacote" → escolher o pacote preenche R$ 400,00; quantidade
+     travada em 1; vendedor opcional; desconto de R$ 20,00 → total R$ 380,00.
+     Salvar (pendente) → Pacotes vendidos continua vazio.
+  3. Faturar → Pacotes vendidos mostra o pacote: data de hoje, comanda, cliente,
+     "3 de 3 · Corte…" e "1 de 1 · Teste Shampoo", validade hoje + 30, vendedor,
+     R$ 380,00, Disponível. O estoque do Teste Shampoo não muda; nenhuma comissão.
+  4. Excluir o modelo → recusado (já entrou em comanda); desativar → some do
+     "+ Pacote" de uma comanda nova.
+  5. Reabrir a comanda → o aviso fala dos pacotes; o pacote some da lista.
+     Faturar de novo → volta.
+  Depois, limpar os dados de teste.
+
+## 10. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -1988,4 +2143,6 @@ UPDATE salons
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117` e `backups.products_pre_050_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Aplicar a migration 051 (ou autorizar a aplicação) e publicar a fatia 5a — ver §9.7 | Teste em uso da fatia 5a |
+| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão, pacote vencido, multiunidade) | Fatia 5b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

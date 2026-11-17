@@ -46,8 +46,8 @@ import type {
 
 type ItemRow = {
   key: string
-  kind: "service" | "product"
-  /** id do serviço ou do produto, conforme `kind`. Vazio = ainda não escolhido. */
+  kind: "service" | "product" | "package"
+  /** id do serviço, do produto ou do pacote, conforme `kind`. Vazio = ainda não escolhido. */
   refId: string
   professionalId: string
   /** Quem auxiliou no serviço. Vazio = sem auxiliar. */
@@ -130,7 +130,7 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
   return sale.items.map((item) => ({
     key: nextKey(),
     kind: item.kind,
-    refId: (item.kind === "service" ? item.serviceId : item.productId) ?? "",
+    refId: (item.kind === "service" ? item.serviceId : item.kind === "package" ? item.packageTemplateId : item.productId) ?? "",
     professionalId: item.professionalId ?? "",
     assistantId: item.assistantId ?? "",
     // Sem separador de milhar: "1.000" no campo seria relido como um.
@@ -215,6 +215,17 @@ export function SaleEditor({
     return [...options.products, ...extra]
   }, [options.products, sale])
 
+  // Pacote desativado depois de entrar na comanda continua aparecendo nela.
+  const packageOptions = useMemo(() => {
+    const known = new Set(options.packageTemplates.map((p) => p.id))
+    const extra = (sale?.items ?? [])
+      .filter((i) => i.kind === "package" && i.packageTemplateId && !known.has(i.packageTemplateId))
+      .map((i) => ({ id: i.packageTemplateId as string, name: i.description, price: null }))
+    return [...options.packageTemplates, ...extra]
+  }, [options.packageTemplates, sale])
+
+  const hasPackageItem = rows.some((row) => row.kind === "package")
+
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
     // Profissional ou auxiliar que saiu do salão continua aparecendo na comanda dele.
@@ -252,7 +263,7 @@ export function SaleEditor({
     setDirty(true)
   }
 
-  function addRow(kind: "service" | "product") {
+  function addRow(kind: "service" | "product" | "package") {
     setRows((current) => [
       ...current,
       {
@@ -280,7 +291,9 @@ export function SaleEditor({
     const suggested =
       row.kind === "service"
         ? serviceOptions.find((s) => s.id === refId)?.suggestedPrice ?? null
-        : productOptions.find((p) => p.id === refId)?.price ?? null
+        : row.kind === "package"
+          ? packageOptions.find((p) => p.id === refId)?.price ?? null
+          : productOptions.find((p) => p.id === refId)?.price ?? null
 
     updateRow(row.key, { refId, unitPrice: suggested === null ? "" : moneyToInput(suggested) })
   }
@@ -294,7 +307,9 @@ export function SaleEditor({
 
     for (const [index, row] of rows.entries()) {
       const label = `Item ${index + 1}`
-      if (!row.refId) return `${label}: escolha o ${row.kind === "service" ? "serviço" : "produto"}`
+      if (!row.refId) {
+        return `${label}: escolha o ${row.kind === "service" ? "serviço" : row.kind === "package" ? "pacote" : "produto"}`
+      }
       if (row.kind === "service" && !row.professionalId) return `${label}: informe o profissional`
       if (row.assistantId && row.assistantId === row.professionalId) {
         return `${label}: o auxiliar não pode ser o próprio profissional`
@@ -313,6 +328,7 @@ export function SaleEditor({
         kind: row.kind,
         serviceId: row.kind === "service" ? row.refId : null,
         productId: row.kind === "product" ? row.refId : null,
+        packageTemplateId: row.kind === "package" ? row.refId : null,
         professionalId: row.professionalId || null,
         assistantId: row.kind === "service" ? row.assistantId || null : null,
         quantity,
@@ -642,6 +658,15 @@ export function SaleEditor({
                   <Plus size={14} />
                   Produto
                 </button>
+                {options.packagesEnabled && (
+                  <button
+                    onClick={() => addRow("package")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Plus size={14} />
+                    Pacote
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -654,8 +679,9 @@ export function SaleEditor({
             <div className="bg-card border border-border rounded-md divide-y divide-border">
               {rows.map((row, index) => {
                 const cents = rowCents(row)
-                const itemOptions = row.kind === "service" ? serviceOptions : productOptions
-                const itemLabel = row.kind === "service" ? "Serviço" : "Produto"
+                const itemOptions =
+                  row.kind === "service" ? serviceOptions : row.kind === "package" ? packageOptions : productOptions
+                const itemLabel = row.kind === "service" ? "Serviço" : row.kind === "package" ? "Pacote" : "Produto"
 
                 return (
                   <div key={row.key} className="p-3 grid gap-3 md:grid-cols-12 md:items-end">
@@ -720,7 +746,9 @@ export function SaleEditor({
                         type="text"
                         inputMode="decimal"
                         value={row.quantity}
-                        disabled={!editable}
+                        // Um item de pacote é um pacote: a quantidade é sempre 1.
+                        disabled={!editable || row.kind === "package"}
+                        title={row.kind === "package" ? "Um item para cada pacote" : undefined}
                         onChange={(event) => updateRow(row.key, { quantity: event.target.value })}
                         className={inputClass}
                       />
@@ -1104,6 +1132,9 @@ export function SaleEditor({
             : "") +
           (options.inventoryEnabled
             ? " Os produtos com estoque controlado voltam para o estoque e saem de novo quando ela for faturada."
+            : "") +
+          (hasPackageItem
+            ? " Os pacotes vendidos nesta comanda deixam de existir e são criados de novo quando ela for faturada."
             : "") +
           " Depois de editar, é preciso faturar de novo."
         }

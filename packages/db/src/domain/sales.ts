@@ -48,9 +48,11 @@ const MAX_QUANTITY = 9999
 const MAX_UNIT_PRICE_CENTS = 100_000_000 // R$ 1.000.000,00
 
 export type SaleItemDraft = {
-  kind: 'service' | 'product'
+  /** 'package' = venda de pacote predefinido (fase 5, fatia 5a). */
+  kind: 'service' | 'product' | 'package'
   serviceId?: string | null
   productId?: string | null
+  packageTemplateId?: string | null
   professionalId?: string | null
   /** Quem auxiliou no serviço (fase 3, fatia 3b). Só em item de serviço. */
   assistantId?: string | null
@@ -65,15 +67,21 @@ export type SaleItemDraft = {
 export type SaleCatalog = {
   services: ReadonlyMap<string, { name: string }>
   products: ReadonlyMap<string, { name: string }>
+  /**
+   * Pacotes predefinidos ATIVOS do salão que os itens citam. Vazio quando o módulo
+   * de pacotes está desligado — aí item de pacote é "não encontrado".
+   */
+  packageTemplates: ReadonlyMap<string, { name: string }>
   professionalIds: ReadonlySet<string>
   appointments: ReadonlyMap<string, { customerId: string; status: string }>
 }
 
 export type PlannedSaleItem = {
   position: number
-  kind: 'service' | 'product'
+  kind: 'service' | 'product' | 'package'
   serviceId: string | null
   productId: string | null
+  packageTemplateId: string | null
   description: string
   professionalId: string | null
   assistantId: string | null
@@ -122,6 +130,7 @@ export function planSaleItems(
     let description: string
     let serviceId: string | null = null
     let productId: string | null = null
+    let packageTemplateId: string | null = null
 
     if (draft.kind === 'service') {
       const service = draft.serviceId ? catalog.services.get(draft.serviceId) : undefined
@@ -133,6 +142,11 @@ export function planSaleItems(
       if (!product || !draft.productId) return { ok: false, error: `${label}: produto não encontrado` }
       productId = draft.productId
       description = product.name
+    } else if (draft.kind === 'package') {
+      const template = draft.packageTemplateId ? catalog.packageTemplates.get(draft.packageTemplateId) : undefined
+      if (!template || !draft.packageTemplateId) return { ok: false, error: `${label}: pacote não encontrado` }
+      packageTemplateId = draft.packageTemplateId
+      description = template.name
     } else {
       return { ok: false, error: `${label}: tipo inválido` }
     }
@@ -165,6 +179,10 @@ export function planSaleItems(
     }
     const quantityMilli = toMilli(draft.quantity)
     if (quantityMilli <= 0) return { ok: false, error: `${label}: quantidade inválida` }
+    // Um item de pacote é UM pacote: para vender dois, dois itens.
+    if (draft.kind === 'package' && quantityMilli !== 1000) {
+      return { ok: false, error: `${label}: pacote vai com quantidade 1. Para vender mais de um, use um item para cada` }
+    }
 
     const unitCents = draft.unitPrice === null ? null : toCents(draft.unitPrice)
     if (draft.unitPrice !== null && (unitCents === null || unitCents < 0 || unitCents > MAX_UNIT_PRICE_CENTS)) {
@@ -210,6 +228,7 @@ export function planSaleItems(
       kind: draft.kind,
       serviceId,
       productId,
+      packageTemplateId,
       description,
       professionalId,
       assistantId,

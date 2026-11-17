@@ -29,6 +29,7 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   cash: "Caixa",
   commissions: "Comissões",
   inventory: "Estoque",
+  packages: "Pacotes",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
@@ -63,4 +64,5 @@ export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, strin
   cash: "Sem “Ver de todos”, a pessoa vê só o histórico dos caixas que abriu.",
   commissions: "Sem “Ver de todos”, a pessoa vê só o próprio extrato.",
   inventory: "“Gerenciar” liga o controle do produto, define mínimo e custo e cuida de fornecedores, marcas e categorias.",
+  packages: "“Gerenciar” cria e altera os pacotes predefinidos. Vender pacote é pela comanda.",
 }

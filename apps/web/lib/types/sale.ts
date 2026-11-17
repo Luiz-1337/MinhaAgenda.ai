@@ -63,9 +63,11 @@ export interface SaleListFilters {
 
 export interface SaleItemDTO {
   id: string
-  kind: "service" | "product"
+  /** "package" = venda de pacote predefinido (fase 5). */
+  kind: "service" | "product" | "package"
   serviceId: string | null
   productId: string | null
+  packageTemplateId: string | null
   description: string
   professionalId: string | null
   professionalName: string | null
@@ -116,12 +118,16 @@ export interface SaleDetailDTO {
 export interface SaleFormOptions {
   services: { id: string; name: string; suggestedPrice: number | null }[]
   products: { id: string; name: string; price: number | null }[]
+  /** Pacotes predefinidos ativos — vazio com o módulo `packages` desligado (fase 5). */
+  packageTemplates: { id: string; name: string; price: number | null }[]
   professionals: { id: string; name: string }[]
   paymentMethods: PaymentMethodDTO[]
   /** O salão tem o módulo `commissions`: a comanda mostra o auxiliar do serviço. */
   commissionsEnabled: boolean
   /** O salão tem o módulo `inventory`: reabrir a comanda devolve o estoque baixado. */
   inventoryEnabled: boolean
+  /** O salão tem o módulo `packages`: a comanda vende pacote (fase 5). */
+  packagesEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean
@@ -188,9 +194,10 @@ export interface SaleCustomerOption {
 }
 
 export interface SaleItemInput {
-  kind: "service" | "product"
+  kind: "service" | "product" | "package"
   serviceId?: string | null
   productId?: string | null
+  packageTemplateId?: string | null
   professionalId?: string | null
   /** Só em serviço; nunca o mesmo que `professionalId`. */
   assistantId?: string | null

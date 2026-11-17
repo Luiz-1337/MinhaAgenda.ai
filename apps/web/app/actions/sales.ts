@@ -6,6 +6,7 @@ import {
   customers,
   appointments,
   paymentMethods,
+  packageTemplates,
   products,
   professionals,
   saleItems,
@@ -244,6 +245,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       permissions,
       commissionsEnabled,
       inventoryEnabled,
+      packagesEnabled,
     ] = await Promise.all([
       db
         .select({
@@ -285,18 +287,30 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       salonHasModule(salonId, "commissions"),
       // Com o estoque ligado, a tela avisa que reabrir devolve o que foi baixado (fase 4).
       salonHasModule(salonId, "inventory"),
+      // Com pacotes ligados, a comanda vende pacote predefinido (fase 5).
+      salonHasModule(salonId, "packages"),
     ])
+
+    const packageRows = packagesEnabled
+      ? await db
+          .select({ id: packageTemplates.id, name: packageTemplates.name, price: packageTemplates.price })
+          .from(packageTemplates)
+          .where(and(eq(packageTemplates.salonId, salonId), eq(packageTemplates.isActive, true)))
+          .orderBy(asc(packageTemplates.name))
+      : []
 
     return {
       // Faixa e "sob avaliação" abrem sem valor: quem está no balcão informa.
       services: serviceRows.map((s) => ({ id: s.id, name: s.name, suggestedPrice: suggestedPriceFromService(s) })),
       products: productRows.map((p) => ({ id: p.id, name: p.name, price: toAmount(p.price) })),
+      packageTemplates: packageRows.map((p) => ({ id: p.id, name: p.name, price: toAmount(p.price) })),
       professionals: professionalRows,
       // A conta de destino não interessa à tela da comanda (e a coluna só existe
       // depois da migration 038) — por isso não é lida aqui.
       paymentMethods: methodRows.map((method) => ({ ...method, accountId: null })),
       commissionsEnabled,
       inventoryEnabled,
+      packagesEnabled,
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),
@@ -517,6 +531,7 @@ export async function saveSale(input: SaveSaleInput): Promise<ActionResult<{ sal
     notes: data.notes?.trim() || null,
     items: data.items,
     userId: auth.userId,
+    packagesEnabled: await salonHasModule(data.salonId, "packages"),
   }
 
   if (data.saleId) {

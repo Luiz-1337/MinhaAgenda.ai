@@ -30,6 +30,7 @@ import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
 import { saleHasPaidCommissions, syncSaleCommissions } from "./commissions.service"
 import { recordSaleStock, revertSaleStock } from "./inventory.service"
+import { loadSalePackageTemplates, recordSalePackages, revertSalePackages } from "./packages.service"
 import { isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 
@@ -99,15 +100,18 @@ function unique(values: (string | null | undefined)[]): string[] {
 async function loadCatalog(
   executor: Executor,
   salonId: string,
-  drafts: readonly SaleItemDraft[]
+  drafts: readonly SaleItemDraft[],
+  /** Módulo `packages` ligado: só então item de pacote é aceito (fase 5). */
+  packagesEnabled = false
 ): Promise<SaleCatalog> {
   const serviceIds = unique(drafts.map((d) => d.serviceId))
   const productIds = unique(drafts.map((d) => d.productId))
   // Quem executou e quem auxiliou: os dois têm de ser profissionais deste salão.
   const professionalIds = unique(drafts.flatMap((d) => [d.professionalId, d.assistantId]))
   const appointmentIds = unique(drafts.map((d) => d.appointmentId))
+  const packageTemplateIds = packagesEnabled ? unique(drafts.map((d) => d.packageTemplateId)) : []
 
-  const [serviceRows, productRows, professionalRows, appointmentRows] = await Promise.all([
+  const [serviceRows, productRows, professionalRows, appointmentRows, packageTemplates] = await Promise.all([
     serviceIds.length
       ? executor
           .select({ id: services.id, name: services.name })
@@ -139,11 +143,13 @@ async function loadCatalog(
           .from(appointments)
           .where(and(eq(appointments.salonId, salonId), inArray(appointments.id, appointmentIds)))
       : [],
+    loadSalePackageTemplates(executor, salonId, packageTemplateIds),
   ])
 
   return {
     services: new Map(serviceRows.map((r) => [r.id, { name: r.name }])),
     products: new Map(productRows.map((r) => [r.id, { name: r.name }])),
+    packageTemplates,
     professionalIds: new Set(professionalRows.map((r) => r.id)),
     appointments: new Map(appointmentRows.map((r) => [r.id, { customerId: r.customerId, status: r.status }])),
   }
@@ -168,6 +174,7 @@ async function lockSale(tx: Tx, salonId: string, saleId: string) {
       customerId: sales.customerId,
       number: sales.number,
       amountDue: sales.amountDue,
+      saleDate: sales.saleDate,
     })
     .from(sales)
     .where(and(eq(sales.id, saleId), eq(sales.salonId, salonId)))
@@ -207,6 +214,8 @@ export type SaveSaleInput = {
   notes: string | null
   items: SaleItemDraft[]
   userId: string
+  /** Módulo `packages` ligado: aceita item de pacote (fase 5). Quem decide é a action. */
+  packagesEnabled?: boolean
 }
 
 /** Cria uma comanda aberta (Pendente). */
@@ -217,7 +226,7 @@ export async function createSaleService(
     const result = await db.transaction(async (tx) => {
       await assertCustomerInSalon(tx, input.salonId, input.customerId)
 
-      const catalog = await loadCatalog(tx, input.salonId, input.items)
+      const catalog = await loadCatalog(tx, input.salonId, input.items, input.packagesEnabled)
       const plan = planSaleItems(input.customerId, input.items, catalog)
       if (!plan.ok) fail(plan.error)
 
@@ -270,7 +279,7 @@ export async function updateSaleService(
 
       await assertCustomerInSalon(tx, input.salonId, input.customerId)
 
-      const catalog = await loadCatalog(tx, input.salonId, input.items)
+      const catalog = await loadCatalog(tx, input.salonId, input.items, input.packagesEnabled)
       const plan = planSaleItems(input.customerId, input.items, catalog)
       if (!plan.ok) fail(plan.error)
 
@@ -513,6 +522,15 @@ export async function invoiceSaleService(input: {
       if (input.recordStock) {
         await recordSaleStock(tx, { salonId: input.salonId, saleId: sale.id, userId: input.userId })
       }
+
+      // Item de pacote vira o pacote do cliente — com o módulo ligado ou não: o
+      // cliente pagou por ele (fase 5).
+      await recordSalePackages(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+        saleDate: sale.saleDate,
+      })
     })
 
     return { success: true, data: undefined }
@@ -677,6 +695,9 @@ export async function reopenSaleService(input: {
 
       // O que a comanda baixou volta para o estoque — com o módulo ligado ou não.
       await revertSaleStock(tx, { salonId: input.salonId, saleId: sale.id })
+
+      // Os pacotes que a comanda vendeu deixam de existir (fase 5).
+      await revertSalePackages(tx, { salonId: input.salonId, saleId: sale.id })
     })
 
     return { success: true, data: undefined }
@@ -803,9 +824,10 @@ export type SaleDetail = {
   customer: { id: string; name: string; phone: string }
   items: {
     id: string
-    kind: "service" | "product"
+    kind: "service" | "product" | "package"
     serviceId: string | null
     productId: string | null
+    packageTemplateId: string | null
     description: string
     professionalId: string | null
     professionalName: string | null
@@ -864,6 +886,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         kind: saleItems.kind,
         serviceId: saleItems.serviceId,
         productId: saleItems.productId,
+        packageTemplateId: saleItems.packageTemplateId,
         description: saleItems.description,
         professionalId: saleItems.professionalId,
         professionalName: professionals.name,
