@@ -32,7 +32,9 @@ e testada em uso — ver §8.9. Fatia 4d (produtos consumidos por serviço e
 fracionamento) feita na mesma branch e publicada, com a migration 048 aplicada e
 registrada em 17/nov/2026 e testada em uso — ver §8.10. Fatia 4e (solicitações de
 saída pelo profissional) feita na mesma branch e publicada, com a migration 050
-aplicada e registrada em 17/nov/2026 e testada em uso — ver §8.11.
+aplicada e registrada em 17/nov/2026 e testada em uso — ver §8.11. Fatia 4f
+(relatórios de estoque) feita em código na mesma branch, sem migration — **em
+commit local, sem publicar e sem teste em uso** — ver §8.12.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1283,7 +1285,8 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | 4c | Lotes e validades: registro de lote (código, fabricação, validade, quantidade), lote na entrada e no item da compra, o que resta por lote, aviso de vencidos e vencendo | Feita — migration 047 aplicada, testada em uso em 17/nov/2026 (§8.9) |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"). A fatia 3e (custo adicional e consumo abatendo a comissão) fica destravada, mas é outra entrega | Feita — migration 048 aplicada, testada em uso em 17/nov/2026 (§8.10) |
 | 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Feita, publicada na branch, migration 050 aplicada e testada em uso (§8.11) |
-| 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
+| 4f | Relatórios de estoque (movimentação por período, produtos consumidos) | Feita em código, sem migration — **sem publicar e sem teste em uso** (§8.12) |
+| — | Importação de XML de NF-e de compra | Fora da fase 4: depende do provedor fiscal (fase 10) |
 
 O cadastro de produto que já existe (nome, descrição, preço, ativo) continua como
 está e continua valendo para todo salão. O estoque é um módulo à parte, ligado
@@ -1500,8 +1503,32 @@ decidido aqui, **a confirmar com o dono**:
 49. **Nenhum dinheiro entra no financeiro**: a retirada é acerto entre o salão e o
     profissional, quitado no pagamento de comissões.
 
+Relatórios (fatia 4f). A auditoria lista os relatórios de estoque sem dizer a
+conta de cada um; o que segue foi decidido aqui:
+
+50. **O período é em dias de Brasília**, do primeiro dia do mês corrente até hoje
+    quando não se escolhe, e de no máximo um ano. Datas invertidas são trocadas.
+51. **Movimentação por produto**: saldo inicial (tudo o que aconteceu até a véspera
+    do período), entradas (entrada manual + compra), e as saídas separadas por
+    motivo — vendas, consumo, retiradas e saídas manuais —, acertos com sinal e
+    saldo final. O saldo final tem que fechar: inicial + entradas − saídas ±
+    acertos.
+52. **Entra no relatório o produto que teve movimento no período ou que começou o
+    período com saldo.** Produto parado e zerado não aparece.
+53. **Produtos consumidos**: o que os atendimentos gastaram de cada produto, com os
+    serviços que consumiram e quantos itens de comanda. No produto fracionado,
+    mostra também na medida dele (ml, g). O produto que mais custou vem primeiro.
+54. **Todo valor é quantidade × custo de compra de HOJE.** O movimento de venda, de
+    consumo e de retirada não guarda o custo da hora; a tela diz que é estimativa.
+55. **Comanda reaberta some do relatório**: a baixa dela é apagada na reabertura
+    (regra da fatia 4a), então o relatório mostra só o que está faturado agora.
+56. **Quem vê**: `inventory.access`, como as outras telas de leitura do estoque.
+
 Perguntas para o dono:
 
+- Os valores dos relatórios devem usar o custo da data do movimento (regra 54)?
+  Isso pede gravar o custo em cada baixa — hoje só a entrada e a compra guardam.
+- Os relatórios precisam de exportação (planilha) já, ou fica para a fase 9?
 - Vender sem saldo deve ser barrado, só avisar na comanda, ou seguir como está
   (regra 4)?
 - O custo do produto deve ser o último preço pago (regra 6) ou o custo médio?
@@ -1616,6 +1643,12 @@ UPDATE salons
   profissional". A tela avisa quando há solicitação pendente.
 - **Comissões**: o débito aparece em "Vales e bonificações" como "Retirada de
   produto", sem botão de excluir.
+- **Relatórios** (`/[salonId]/inventory/reports`): período em "De" e "Até" (fica
+  na URL); três números (produtos com movimento ou saldo, valor das entradas,
+  valor das saídas); "Movimentação por produto" (saldo inicial, entradas, vendas,
+  consumo, retiradas, saídas, acertos, saldo final, custo das saídas) e "Produtos
+  consumidos" (produto, serviços, consumido na medida, em unidades, custo
+  estimado).
 
 ### 8.6 Onde o código mora
 
@@ -1648,6 +1681,12 @@ UPDATE salons
 | Solicitações — actions | `getStockRequests`, `createStockRequest`, `decideStockRequest` e `deleteStockRequest` em `apps/web/app/actions/inventory.ts` (o `authorizeSalon` de lá aceita uma lista: basta uma permissão) |
 | Solicitações — tela | `apps/web/app/[salonId]/inventory/requests/` |
 | Solicitações — testes | `apps/web/__tests__/lib/services/stock-requests-domain.test.ts` |
+| Relatórios — regra pura | `packages/db/src/domain/stock-reports.ts` (`planReportPeriod`, `buildMovementReport`, `buildConsumptionReport`, `unitsToMeasureMilli`) |
+| Relatórios — I/O | `packages/db/src/services/stock-reports.service.ts` (só leitura; soma por produto e tipo no banco) |
+| Relatórios — action | `getStockReports` em `apps/web/app/actions/inventory.ts` |
+| Relatórios — tela | `apps/web/app/[salonId]/inventory/reports/` |
+| Relatórios — testes | `apps/web/__tests__/lib/services/stock-reports-domain.test.ts` |
+| Quantidade na tela | `apps/web/lib/utils/quantity.utils.ts` (`formatQuantity`, `quantityToInput`, `parseQuantity`), com teste em `__tests__/lib/utils/quantity.test.ts` |
 
 ### 8.7 Fatia 4a — estado (16/nov/2026)
 
@@ -1898,6 +1937,30 @@ UPDATE salons
   Teste Shampoo disponível para solicitação, com preço para profissional R$ 15,00
   e "1000 ml por unidade".
 
+### 8.12 Fatia 4f — estado (17/nov/2026)
+
+- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
+  (db e web), lint dos arquivos alterados e testes passando.
+- **Sem migration**: os relatórios só leem `stock_movements`, `products`,
+  `sale_items` e `services`.
+- A importação de XML de NF-e de compra saiu da fatia: depende do provedor fiscal
+  (fase 10).
+- **Sem teste em uso.** A consulta ao banco não tem teste automatizado (os testes
+  são da regra pura). Roteiro, depois de publicar, no salão de teste:
+  1. Relatórios sem movimento → "Nenhum produto com movimento ou saldo no
+     período" e "Nenhum produto consumido".
+  2. Acerto do Teste Shampoo para 5; consumo do Corte com 30 ml de Teste Shampoo;
+     comanda com 2 Cortes e 1 Teste Shampoo vendido, faturada; solicitação de 1
+     aprovada.
+  3. Relatórios do mês: Teste Shampoo com saldo inicial 0, acertos + 5, vendas 1,
+     consumo 0,06, retiradas 1, saldo final 2,94 (o mesmo de Produtos e saldo) e
+     custo das saídas R$ 41,20; "Produtos consumidos" com Corte, 1 item de
+     comanda, 60 ml, 0,06 un, R$ 1,20.
+  4. Período que termina na véspera → nada; período que começa amanhã não se
+     aplica (o saldo inicial viria com 2,94 e nenhum movimento).
+  5. Reabrir a comanda → venda e consumo somem do relatório.
+  Depois, limpar os dados de teste.
+
 ## 9. Pendências do dono
 
 | Pendência | Trava |
@@ -1911,6 +1974,7 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
+| Autorizar a publicação da fatia 4f — ver §8.12 | Teste em uso da fatia 4f |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117` e `backups.products_pre_050_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

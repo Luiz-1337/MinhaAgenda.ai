@@ -7,6 +7,8 @@
  */
 import type {
   BatchRow,
+  ConsumptionReport,
+  MovementReport,
   ConsumptionProductOption,
   InventoryProductRow,
   ManualStockMovementKind,
@@ -167,6 +169,24 @@ export interface StockRequestsDTO {
   commissionsEnabled: boolean
   /** Cortesias de tela — a trava é no servidor. */
   can: { access: boolean; move: boolean; request: boolean }
+}
+
+// ---------------------------------------------------------------------------
+// Relatórios (fatia 4f)
+// ---------------------------------------------------------------------------
+
+export interface StockReportFilters {
+  /** "YYYY-MM-DD". Sem datas, o mês corrente até hoje. */
+  from?: string
+  to?: string
+}
+
+/** Quantidades em milésimos inteiros e valores em centavos, já somados no servidor. */
+export interface StockReportsDTO {
+  from: string
+  to: string
+  movements: MovementReport
+  consumption: ConsumptionReport
 }
 
 export interface CreateStockRequestInput {

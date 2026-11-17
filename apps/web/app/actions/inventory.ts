@@ -12,12 +12,14 @@ import {
   listStockRequestOptionsService,
   listStockRequestsService,
   deleteBatchService,
+  getStockReportsService,
   listBatchesService,
   listInventoryService,
   listProductCatalogService,
   listServiceConsumptionService,
   listStockMovementsService,
   milliToNumeric,
+  planReportPeriod,
   purchaseSuggestionMilli,
   saveProductStockSettingsService,
   saveServiceConsumptionService,
@@ -41,6 +43,7 @@ import {
   saveBatchSchema,
   saveProductStockSettingsSchema,
   saveServiceConsumptionSchema,
+  stockReportFiltersSchema,
 } from "@/lib/schemas/inventory.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
@@ -55,6 +58,8 @@ import type {
   SaveProductStockSettingsInput,
   SaveServiceConsumptionInput,
   ServiceConsumptionDTO,
+  StockReportFilters,
+  StockReportsDTO,
 } from "@/lib/types/inventory"
 
 /**
@@ -175,6 +180,32 @@ export async function getInventory(
   } catch (error) {
     console.error("Erro ao carregar o estoque:", error)
     return { error: "Não foi possível carregar o estoque" }
+  }
+}
+
+/**
+ * Relatórios do período (fatia 4f): movimentação por produto e produtos consumidos
+ * pelos atendimentos. Só leitura.
+ */
+export async function getStockReports(
+  salonId: string,
+  filters: StockReportFilters = {}
+): Promise<StockReportsDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "inventory.access")
+  if ("error" in auth) return auth
+
+  const parsed = stockReportFiltersSchema.safeParse(filters)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const period = planReportPeriod(parsed.data, new Date())
+  if (!period.ok) return { error: period.error }
+
+  try {
+    const reports = await getStockReportsService({ salonId, from: period.from, to: period.to })
+    return { from: period.from, to: period.to, ...reports }
+  } catch (error) {
+    console.error("Erro ao carregar os relatórios de estoque:", error)
+    return { error: "Não foi possível carregar os relatórios de estoque" }
   }
 }
 

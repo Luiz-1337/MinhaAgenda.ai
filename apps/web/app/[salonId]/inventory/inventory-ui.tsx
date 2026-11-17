@@ -66,6 +66,7 @@ const NAV_ITEMS = [
   { path: "/batches", label: "Lotes e validades" },
   { path: "/consumption", label: "Consumo por serviço" },
   { path: "/requests", label: "Solicitações" },
+  { path: "/reports", label: "Relatórios" },
   { path: "/suppliers", label: "Fornecedores" },
   { path: "/catalog", label: "Marcas e categorias" },
 ] as const

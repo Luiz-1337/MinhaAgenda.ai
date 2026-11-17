@@ -16,6 +16,11 @@ export const inventoryFiltersSchema = z.object({
   productId: z.string().uuid().optional(),
 })
 
+export const stockReportFiltersSchema = z.object({
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+})
+
 export const createStockMovementSchema = z.object({
   salonId: z.string().uuid(),
   productId: z.string().uuid({ message: "Escolha o produto" }),
