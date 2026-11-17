@@ -18,9 +18,10 @@ mesma branch e publicada, com a migration 043 aplicada em 16/nov/2026 e testada 
 uso — ver §7.9. Fatia 3d (pagamento em lote, recibo e saída no financeiro) feita na
 mesma branch e publicada, com a migration 044 aplicada em 16/nov/2026 e testada em
 uso — ver §7.10. As migrations 040 a 044 estão registradas em `schema_migrations`.
-Fatia 3e (custo do atendimento abatendo a comissão) feita em código na branch
-`claude/fase-4-estoque`, porque depende do consumo por serviço (fatia 4d) — **a
-migration 049 ainda não foi aplicada e o código não foi publicado** — ver §7.11.
+Fatia 3e (custo do atendimento abatendo a comissão) feita na branch
+`claude/fase-4-estoque`, porque depende do consumo por serviço (fatia 4d), e
+publicada, com a migration 049 aplicada e registrada em 17/nov/2026 e testada em
+uso — ver §7.11. Com ela a fase 3 está completa.
 Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
 (publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026 e
 testada em uso — ver §8.7. Fatia 4b (fornecedores, marcas, categorias e compras)
@@ -734,7 +735,7 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
 | 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita — migration 043 aplicada e testada em uso (§7.9) |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Feita — migration 044 aplicada e testada em uso em 16/nov/2026 (§7.10) |
-| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Feita em código — **migration 049 não aplicada, sem publicar e sem teste em uso** (§7.11) |
+| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Feita — migration 049 aplicada, testada em uso em 17/nov/2026 (§7.11) |
 
 ### 7.2 Modelo de dados (migrations 041 a 044 e 049)
 
@@ -1223,31 +1224,47 @@ saindo do caixa aberto, "pagar salário" (ficha do profissional na Belasis).
 
 ### 7.11 Fatia 3e — estado (17/nov/2026)
 
-- Na branch `claude/fase-4-estoque` (depende da fatia 4d), **em commit local, sem
-  publicar**. Typecheck (db, web e mcp-server), lint dos arquivos alterados e
-  testes passando.
-- **Migration 049: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
-  publicado: acrescenta uma coluna em `services`, que todo salão usa (e que o
-  agente de IA lê). O código novo seleciona e insere `additional_cost`; sem a
-  coluna, listar e cadastrar serviço falhariam em qualquer salão.
-- Antes de aplicar: cópia de segurança de `services`, `commission_settings` e
-  `commission_entries` no schema `backups`.
+- Na branch `claude/fase-4-estoque` (depende da fatia 4d), publicada, sem PR.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes passando;
+  o build do preview da Vercel passou.
+- **Migration 049: aplicada em produção em 17/nov/2026** (pelo assistente, com a
+  autorização do dono dada na hora), conferida por leitura (as três colunas e os
+  três CHECKs no lugar; os 157 serviços batem com a cópia e nenhum ganhou custo;
+  a regra do salão de teste ficou com `cost_mode` nulo) e registrada em
+  `schema_migrations` (nome `commission_costs`).
+- Cópias de segurança antes da 049: `backups.services_pre_049_20261117` (157
+  linhas) e `backups.commission_settings_pre_049_20261117` (1 linha).
+  `commission_entries` estava vazia. **Apagar só com o OK do dono.**
+- Em outro ambiente, **aplicar a 049 antes de publicar o código**: ela acrescenta
+  uma coluna em `services`, que o código novo seleciona e insere.
 - Os números conferidos na auditoria continuam valendo para serviço sem custo
   (R$ 97,08 e R$ 231,24): há teste para os dois.
-- **Sem teste em uso.** Roteiro, depois de aplicar a 049 e publicar, no salão de
-  teste (Teste Shampoo com 1000 ml por unidade e custo R$ 20,00; profissional com
-  50% de comissão):
-  1. Consumo por serviço, Corte de Cabelo Masculino: custo adicional R$ 2,00 e 30
-     ml de Teste Shampoo → custo por atendimento R$ 2,60.
-  2. Comanda com 1 Corte (R$ 170,00) em dinheiro, faturada → no extrato: comissão
-     R$ 85,00, coluna "Custo" R$ 1,30 (50% de R$ 2,60), a receber R$ 83,70.
-  3. Configurar comissões: "Custo do atendimento" = "Sai inteiro da comissão" e
-     Recalcular período → custo R$ 2,60, a receber R$ 82,40.
-  4. "O salão arca com tudo" e Recalcular → a coluna "Custo" some, a receber
-     R$ 85,00.
-  5. Exceção do profissional ("Meio a meio") vale sobre a regra do salão.
-  6. Voltar a regra ao padrão, tirar o custo e o consumo do serviço.
-  Depois, limpar os dados de teste.
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste (Teste
+  Shampoo com 1000 ml por unidade e custo R$ 20,00; regra de 50% para o Corte de
+  Cabelo Masculino, criada para o teste). A captura de tela do navegador falhou; as
+  conferências foram pelo texto da página:
+  - Consumo por serviço, Corte de Cabelo Masculino: custo adicional R$ 2,00 e 30 ml
+    de Teste Shampoo → "Custo adicional R$ 2,00" e "Custo por atendimento R$ 2,60".
+  - Comanda #13 com 1 Corte (R$ 170,00) em dinheiro, faturada, com a regra no
+    padrão → extrato: comissão R$ 85,00, coluna "Custo" R$ 1,30, a receber
+    R$ 83,70 ("Comissões menos taxas, R$ 1,30 de custo dos atendimentos").
+  - "Sai inteiro da comissão" + Recalcular período → custo R$ 2,60, a receber
+    R$ 82,40.
+  - "O salão arca com tudo" + Recalcular → a coluna "Custo" some, a receber
+    R$ 85,00.
+  - Exceção do profissional em "Meio a meio", com o salão arcando com tudo, +
+    Recalcular → custo R$ 1,30, a receber R$ 83,70.
+- **Não testado em uso:** custo com taxa de cartão e com auxiliar na mesma comanda
+  (coberto só por teste da regra); custo maior que a comissão; comissão em valor
+  fixo; quantidade maior que 1; produto consumido sem controle de estoque entrando
+  no custo; comissão já paga ficando de fora do recálculo com custo; a tabela "por
+  profissional" do extrato com a coluna "Custo" (só aparece com mais de um
+  profissional no período); perfil sem `commissions.configure`.
+- Dados de teste limpos: comanda #13 reaberta e excluída pela tela (comissões,
+  baixa de consumo e lançamento no financeiro saíram com ela); por SQL, pelos IDs,
+  a exceção do profissional, a regra de 50%, o consumo e o custo adicional do
+  serviço, e a regra de custo do salão de volta a nulo. O salão de teste ficou como
+  estava antes do teste.
 
 ## 8. Fase 4 — Produtos e estoque (detalhe)
 
@@ -1770,9 +1787,8 @@ UPDATE salons
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
-| Aplicar a migration 049 (ou autorizar a aplicação) e publicar a fatia 3e — ver §7.11 | Teste em uso da fatia 3e |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116` e `backups.products_pre_048_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117` e `backups.commission_settings_pre_049_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
