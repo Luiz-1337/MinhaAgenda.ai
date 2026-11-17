@@ -26,8 +26,8 @@ feita na mesma branch e publicada, com a migration 046 aplicada e registrada em
 16/nov/2026 e testada em uso — ver §8.8. Fatia 4c (lotes e validades) feita na
 mesma branch e publicada, com a migration 047 aplicada e registrada em 17/nov/2026
 e testada em uso — ver §8.9. Fatia 4d (produtos consumidos por serviço e
-fracionamento) feita em código na mesma branch — **a migration 048 ainda não foi
-aplicada e o código não foi publicado** — ver §8.10.
+fracionamento) feita na mesma branch e publicada, com a migration 048 aplicada e
+registrada em 17/nov/2026 e testada em uso — ver §8.10.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1183,7 +1183,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita — migration 045 aplicada, testada em uso em 16/nov/2026 (§8.7) |
 | 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita — migration 046 aplicada, testada em uso em 16/nov/2026 (§8.8) |
 | 4c | Lotes e validades: registro de lote (código, fabricação, validade, quantidade), lote na entrada e no item da compra, o que resta por lote, aviso de vencidos e vencendo | Feita — migration 047 aplicada, testada em uso em 17/nov/2026 (§8.9) |
-| 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"). A fatia 3e (custo adicional e consumo abatendo a comissão) fica destravada, mas é outra entrega | Feita em código — **migration 048 não aplicada, sem publicar e sem teste em uso** (§8.10) |
+| 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"). A fatia 3e (custo adicional e consumo abatendo a comissão) fica destravada, mas é outra entrega | Feita — migration 048 aplicada, testada em uso em 17/nov/2026 (§8.10) |
 | 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
 | 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
 
@@ -1637,32 +1637,49 @@ UPDATE salons
 
 ### 8.10 Fatia 4d — estado (17/nov/2026)
 
-- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
-  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
-- **Migration 048: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
-  publicado: acrescenta colunas em `products`, e o INSERT do Drizzle lista todas
-  as colunas — sem elas, cadastrar produto falharia em qualquer salão. Ela também
-  recria um índice único de `stock_movements` (tabela vazia hoje).
-- Antes de aplicar: cópia de segurança de `products` no schema `backups`.
+- Na branch `claude/fase-4-estoque`, publicada, sem PR. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando; o build do preview da
+  Vercel passou.
+- **Migration 048: aplicada em produção em 17/nov/2026** (pelo assistente, com a
+  autorização do dono dada na hora), conferida por leitura (`service_products` com
+  RLS, `deny_all` e sem acesso para `anon`/`authenticated`; os CHECKs de
+  `stock_movements` e de `products` e os dois índices únicos no lugar; os 73
+  produtos intactos, nenhum fracionado) e registrada em `schema_migrations` (nome
+  `service_consumption`).
+- Cópia de segurança antes da 048: `backups.products_pre_048_20261117` (73 linhas).
+  **Apagar só com o OK do dono.**
+- Em outro ambiente, **aplicar a 048 antes de publicar o código**: ela acrescenta
+  colunas em `products`, e o INSERT do Drizzle lista todas as colunas.
 - **Fatia 3e não foi feita.** O que ela precisa já existe (o consumo de cada
   serviço e o custo estimado dele), mas abater a comissão mexe no cálculo do
   faturamento e depende de uma decisão do dono (última pergunta da §8.3).
-- **Sem teste em uso.** Roteiro, depois de aplicar a 048 e publicar, no salão de
-  teste (Teste Shampoo com saldo zero e custo R$ 20,00):
-  1. Configurar o Teste Shampoo com "uma unidade equivale a 1000 ml" → a lista
-     mostra "1000 ml por unidade".
-  2. Consumo por serviço: no Corte de Cabelo Masculino, 30 ml de Teste Shampoo e 1
-     Teste Pente → a linha do Pente avisa "sem controle de estoque, não baixa";
-     custo estimado R$ 0,60 (o Pente não tem custo). Produto repetido é recusado.
-  3. Acerto do Teste Shampoo para 2 → comanda com 2 Cortes de Cabelo, faturada →
-     movimento "Consumo − 0,06" com o link da comanda; saldo 1,94. O Pente não
-     gera movimento.
-  4. Reabrir a comanda → o consumo some e o saldo volta a 2.
-  5. Comanda com 1 Corte e 1 Teste Shampoo vendido → dois movimentos: "Venda − 1"
-     e "Consumo − 0,03"; saldo 0,97.
-  6. Tirar o consumo do serviço (lista vazia) → nova comanda com o Corte não baixa
-     nada.
-  Depois, limpar os dados de teste.
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste (Teste
+  Shampoo com saldo zero e custo R$ 20,00). A captura de tela do navegador falhou
+  nesta sessão; as conferências foram pelo texto da página e, onde indicado, por
+  leitura do banco:
+  - Configurar o Teste Shampoo com "uma unidade equivale a 1000 ml" → a lista
+    mostra "1.000 ml por unidade".
+  - Consumo por serviço, Corte de Cabelo Masculino: o mesmo produto duas vezes é
+    recusado ("Produto 2: já está na lista"); o rótulo da quantidade mostra "ml".
+    Salvo com 30 ml de Teste Shampoo e 1 Teste Pente → a tela mostra "30 ml de
+    Teste Shampoo", "1 un de Teste Pente · sem controle de estoque, não baixa" e
+    custo estimado R$ 0,60.
+  - Acerto para 2; comanda #12 com 2 Cortes, faturada → movimento "Consumo − 0,06"
+    com "Comanda #12", saldo 1,94. O Teste Pente não gerou movimento.
+  - Reabrir a comanda → o consumo some (conferido no banco: só o acerto ficou).
+  - A mesma comanda com mais 1 Teste Shampoo vendido, faturada → "Venda − 1" e
+    "Consumo − 0,06", saldo 0,94.
+  - Consumo do serviço removido (lista vazia) → comanda reaberta e faturada de novo
+    baixa só a venda (conferido no banco: acerto + 2 e venda − 1).
+- **Não testado em uso:** perfil com `inventory.access` sem `manage`; produto não
+  fracionado com controle ligado consumido em unidades; dois serviços com consumo
+  na mesma comanda; consumo que arredonda para zero; mudar o fracionamento de um
+  produto que já tem consumo; faturar com o módulo desligado; lotes diminuindo com
+  o consumo (o caminho é o do saldo).
+- Dados de teste limpos: comanda #12 excluída pela tela, consumo do serviço
+  removido pela tela, o acerto apagado por SQL, pelo ID. Sem movimentos, consumos,
+  compras nem lançamentos no financeiro. **Ficou, como apoio para a fatia 3e:** o
+  Teste Shampoo com "1000 ml por unidade".
 
 ## 9. Pendências do dono
 
@@ -1677,7 +1694,6 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Aplicar a migration 048 (ou autorizar a aplicação) e publicar a fatia 4d — ver §8.10 | Teste em uso da fatia 4d |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116` e `backups.products_pre_046_20261116` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116` e `backups.products_pre_048_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
