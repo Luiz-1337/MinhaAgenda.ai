@@ -30,7 +30,9 @@ feita na mesma branch e publicada, com a migration 046 aplicada e registrada em
 mesma branch e publicada, com a migration 047 aplicada e registrada em 17/nov/2026
 e testada em uso — ver §8.9. Fatia 4d (produtos consumidos por serviço e
 fracionamento) feita na mesma branch e publicada, com a migration 048 aplicada e
-registrada em 17/nov/2026 e testada em uso — ver §8.10.
+registrada em 17/nov/2026 e testada em uso — ver §8.10. Fatia 4e (solicitações de
+saída pelo profissional) feita em código na mesma branch — **a migration 050 ainda
+não foi aplicada e o código não foi publicado** — ver §8.11.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -977,8 +979,8 @@ Perguntas para o dono:
   nome da empresa. Vale a pena configurar?
 - A lista "Pagas" mostra a conta de saída na coluna "Pagamento". A Belasis mostra a
   forma de pagamento. Falta a forma (dinheiro, PIX) no pagamento de comissão?
-- "Solicitações de saída" (retirada de produto pelo profissional, com "preço para
-  profissional") também abatem o líquido na Belasis. Ficam para a fase 4 (estoque).
+- (Feito na fatia 4e: a retirada de produto pelo profissional entra no extrato como
+  vale e abate o líquido — ver §8.11.)
 
 ### 7.4 Permissões e módulo
 
@@ -1280,14 +1282,14 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita — migration 046 aplicada, testada em uso em 16/nov/2026 (§8.8) |
 | 4c | Lotes e validades: registro de lote (código, fabricação, validade, quantidade), lote na entrada e no item da compra, o que resta por lote, aviso de vencidos e vencendo | Feita — migration 047 aplicada, testada em uso em 17/nov/2026 (§8.9) |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"). A fatia 3e (custo adicional e consumo abatendo a comissão) fica destravada, mas é outra entrega | Feita — migration 048 aplicada, testada em uso em 17/nov/2026 (§8.10) |
-| 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
+| 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Feita em código — **migration 050 não aplicada, sem publicar e sem teste em uso** (§8.11) |
 | 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
 
 O cadastro de produto que já existe (nome, descrição, preço, ativo) continua como
 está e continua valendo para todo salão. O estoque é um módulo à parte, ligado
 salão a salão.
 
-### 8.2 Modelo de dados (migrations 045 a 048)
+### 8.2 Modelo de dados (migrations 045 a 048 e 050)
 
 **045 (`045_inventory.sql`, fatia 4a):**
 
@@ -1335,6 +1337,19 @@ salão a salão.
 - `stock_movements` ganha `kind = 'consumption'`: negativo, apontando para a
   comanda e para o ITEM DE SERVIÇO (FK `CASCADE`). O índice único de item passa a
   valer só para `sale`; o consumo tem o seu (`sale_item_id` + `product_id`).
+
+**050 (`050_stock_requests.sql`, fatia 4e):**
+
+- `products` ganha `requestable` (disponível para solicitação) e
+  `professional_price` (preço para profissional; nulo = sem custo para ele).
+- `stock_requests` — a solicitação: produto, profissional, cópia do nome e do
+  preço da hora (`description`, `unit_price`), quantidade, total, `status`
+  (`pending`, `approved`, `rejected`), quem pediu, quem decidiu e quando.
+- `stock_movements` ganha `kind = 'request'` e `stock_request_id` (FK `CASCADE`,
+  uma saída por solicitação).
+- `commission_adjustments` ganha `stock_request_id` (FK `CASCADE`, único): o
+  débito da retirada é um vale que aponta para a solicitação. O CHECK garante que
+  só `advance` aponta.
 
 ### 8.3 Regras de negócio
 
@@ -1454,6 +1469,37 @@ consumidos" do serviço e os campos "Registro de saída em unidade de consumo" e
 39. **Mudar o consumo de um serviço não mexe em comanda já faturada**: a baixa foi
     feita com o que valia na hora.
 
+Solicitações de saída (fatia 4e). A auditoria traz a tela (Produto, Qtde,
+Profissional, Status, Origem), os campos do produto ("Disponível para solicitação",
+"Preço para profissional") e o fluxo 4: o profissional solicita, e "a saída aparece
+no extrato de comissões como débito pelo preço para profissional". O resto foi
+decidido aqui, **a confirmar com o dono**:
+
+40. **Só produto ativo e marcado como "disponível para solicitação" pode ser
+    pedido.** O preço para profissional é opcional: sem preço (ou zero), a retirada
+    sai de graça e não gera débito.
+41. **A solicitação nasce pendente** e guarda o nome e o preço da hora. Mudar o
+    preço para profissional depois não muda o que já foi pedido.
+42. **Quem só solicita (`inventory.request`) pede para si mesmo** — para os vínculos
+    de profissional do próprio usuário — e vê só as próprias solicitações. Quem
+    movimenta o estoque (`inventory.move`) pede para qualquer profissional, vê
+    todas e decide.
+43. **Aprovar tira o produto do estoque** (movimento "Retirada", se o produto tem
+    controle) **e debita o valor no extrato de comissões**, na mesma operação. O
+    débito é um **vale** que aponta para a solicitação: aparece em "Vales e
+    bonificações" como "Retirada de produto" e abate o líquido como qualquer vale.
+44. **O débito só existe com o módulo de comissões ligado e com valor maior que
+    zero.** Sem comissões, a aprovação só mexe no estoque.
+45. **Aprovar não confere saldo**, como a venda: o saldo pode ficar negativo.
+46. **O débito entra no extrato no dia da aprovação**, não no dia do pedido.
+47. **O débito de retirada não se exclui pelo extrato**: quem o desfaz é a exclusão
+    da solicitação, que também devolve o produto ao estoque.
+48. **Solicitação aprovada cujo débito já entrou num pagamento de comissão não se
+    exclui**: estorna-se o pagamento antes. Pendente e recusada se excluem sempre;
+    quem só solicita exclui as próprias pendentes.
+49. **Nenhum dinheiro entra no financeiro**: a retirada é acerto entre o salão e o
+    profissional, quitado no pagamento de comissões.
+
 Perguntas para o dono:
 
 - Vender sem saldo deve ser barrado, só avisar na comanda, ou seguir como está
@@ -1477,8 +1523,13 @@ Perguntas para o dono:
   precisa informar na comanda quanto gastou naquele atendimento?
 - A saída manual também deve aceitar a unidade de consumo ("Registro de saída em
   unidade de consumo" da Belasis), ou só o consumo por serviço?
-- Na fatia 3e, o que abate a comissão: o custo estimado do consumo (regra 38), um
-  "custo adicional" fixo por serviço, ou os dois?
+- (Respondida em 17/nov/2026: na fatia 3e, os dois abatem a comissão — o consumo e
+  o custo adicional. Ver §7.11.)
+- A solicitação precisa de aprovação (regra 43), ou o profissional retira direto e
+  o débito nasce na hora? E quem aprova pode ser o próprio profissional?
+- A coluna "Origem" da tela da Belasis não foi reproduzida: o que ela mostra lá?
+- Retirada sem preço para profissional sai de graça (regra 40). Deve cair no preço
+  de venda ou no custo de compra, em vez de zero?
 
 ### 8.4 Permissões e módulo
 
@@ -1498,6 +1549,12 @@ Editar e Excluir; aqui ficaram dentro de Estoque (decisão a confirmar). Gerar c
 a pagar a partir da compra exige também `finance.create`. Registrar, corrigir e
 excluir lote é `inventory.move` (é operação de estoque, como a entrada). Definir o
 fracionamento do produto e o consumo de cada serviço é `inventory.manage`.
+
+Solicitações (fatia 4e): `inventory.request` é pedir produto para uso próprio — só
+para si, vendo só as próprias. Aprovar, recusar, pedir para outro profissional e
+excluir qualquer solicitação é `inventory.move`. Marcar o produto como disponível e
+definir o preço para profissional é `inventory.manage`. Quem tem só
+`inventory.request` vê "Estoque" no menu e cai direto na tela de solicitações.
 
 Para ligar no salão de teste:
 
@@ -1550,6 +1607,15 @@ UPDATE salons
 - **Produtos e saldo > Configurar**: "Uma unidade equivale a" (quantidade e
   medida). A lista mostra "1000 ml por unidade" e a movimentação mostra "Consumo"
   com o link da comanda.
+- **Solicitações** (`/[salonId]/inventory/requests`): lista com data, produto,
+  quantidade, profissional, valor e situação, com os filtros "Pendentes" e
+  "Todas"; "Nova solicitação" (produto, profissional, quantidade, observação, com
+  o total pelo preço para profissional); aprovar, recusar e excluir, cada um com a
+  confirmação dizendo o que vai acontecer no estoque e nas comissões.
+- **Produtos e saldo > Configurar**: "Disponível para solicitação" e "Preço para
+  profissional". A tela avisa quando há solicitação pendente.
+- **Comissões**: o débito aparece em "Vales e bonificações" como "Retirada de
+  produto", sem botão de excluir.
 
 ### 8.6 Onde o código mora
 
@@ -1577,6 +1643,11 @@ UPDATE salons
 | Consumo — actions | `getServiceConsumption` e `saveServiceConsumption` em `apps/web/app/actions/inventory.ts` |
 | Consumo — tela | `apps/web/app/[salonId]/inventory/consumption/` |
 | Consumo — testes | `apps/web/__tests__/lib/services/consumption-domain.test.ts` |
+| Solicitações — regra pura | `packages/db/src/domain/stock-requests.ts` (`planProductRequestSettings`, `planStockRequest`, `planStockRequestApproval`, `requestDebitNotes`, `stockRequestRejectBlocker`, `stockRequestDeleteBlocker`) |
+| Solicitações — I/O | `packages/db/src/services/stock-requests.service.ts`; o bloqueio de excluir o débito pelo extrato está em `deleteCommissionAdjustmentService` |
+| Solicitações — actions | `getStockRequests`, `createStockRequest`, `decideStockRequest` e `deleteStockRequest` em `apps/web/app/actions/inventory.ts` (o `authorizeSalon` de lá aceita uma lista: basta uma permissão) |
+| Solicitações — tela | `apps/web/app/[salonId]/inventory/requests/` |
+| Solicitações — testes | `apps/web/__tests__/lib/services/stock-requests-domain.test.ts` |
 
 ### 8.7 Fatia 4a — estado (16/nov/2026)
 
@@ -1776,6 +1847,30 @@ UPDATE salons
   compras nem lançamentos no financeiro. **Ficou, como apoio para a fatia 3e:** o
   Teste Shampoo com "1000 ml por unidade".
 
+### 8.11 Fatia 4e — estado (17/nov/2026)
+
+- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
+  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
+- **Migration 050: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
+  publicado: acrescenta colunas em `products`, `stock_movements` e
+  `commission_adjustments`, e o INSERT do Drizzle lista todas as colunas.
+- Antes de aplicar: cópia de segurança de `products` no schema `backups`
+  (`stock_movements` e `commission_adjustments` estão vazias).
+- **Sem teste em uso.** Roteiro, depois de aplicar a 050 e publicar, no salão de
+  teste (regra de 50% para o Corte criada só para o teste):
+  1. Configurar o Teste Shampoo: "Disponível para solicitação" e preço para
+     profissional R$ 15,00 → a lista mostra "disponível para solicitação".
+  2. Acerto do Teste Shampoo para 5. Nova solicitação: 2 Teste Shampoo para um
+     profissional → pendente, valor R$ 30,00; o estoque avisa "1 aguardando
+     decisão" e o saldo continua 5.
+  3. Aprovar → saldo 3, movimento "Retirada − 2"; em Comissões, "Vales e
+     bonificações" mostra "Retirada de produto" de R$ 30,00, sem botão de excluir, e
+     o líquido do profissional cai R$ 30,00.
+  4. Excluir a solicitação aprovada → saldo volta a 5 e o débito some do extrato.
+  5. Nova solicitação, recusada → nada muda no estoque nem no extrato.
+  6. Produto não marcado como disponível não aparece na nova solicitação.
+  Depois, limpar os dados de teste.
+
 ## 9. Pendências do dono
 
 | Pendência | Trava |
@@ -1789,6 +1884,7 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
+| Aplicar a migration 050 (ou autorizar a aplicação) e publicar a fatia 4e — ver §8.11 | Teste em uso da fatia 4e |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117` e `backups.commission_settings_pre_049_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
