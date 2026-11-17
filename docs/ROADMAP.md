@@ -22,8 +22,8 @@ Da fase 3 falta só a fatia 3e, que depende do estoque (fase 4).
 Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
 (publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026 e
 testada em uso — ver §8.7. Fatia 4b (fornecedores, marcas, categorias e compras)
-feita em código na mesma branch — **a migration 046 ainda não foi aplicada e o
-código não foi publicado** — ver §8.8.
+feita na mesma branch e publicada, com a migration 046 aplicada e registrada em
+16/nov/2026 e testada em uso — ver §8.8.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1177,7 +1177,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita — migration 045 aplicada, testada em uso em 16/nov/2026 (§8.7) |
-| 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita em código — **migration 046 não aplicada, sem publicar e sem teste em uso** (§8.8) |
+| 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita — migration 046 aplicada, testada em uso em 16/nov/2026 (§8.8) |
 | 4c | Lotes e validades | Pendente |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"); com isso, a fatia 3e (custo adicional e consumo abatendo a comissão) | Pendente |
 | 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
@@ -1422,38 +1422,60 @@ UPDATE salons
 
 ### 8.8 Fatia 4b — estado (16/nov/2026)
 
-- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
-  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
-- **Migration 046: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
-  publicado: acrescenta colunas em `products`, `stock_movements` e
-  `financial_transactions`, e o INSERT do Drizzle lista todas as colunas. Com o
-  código novo e sem a 046, cadastrar produto, faturar comanda (com financeiro ou
-  estoque ligado) e lançar no financeiro falhariam em qualquer salão. Por isso o
-  código não foi publicado: o preview usa o banco de produção.
-- Antes de aplicar: cópia de segurança das tabelas tocadas que têm dados
-  (`products`, `stock_movements`, `financial_transactions`) no schema `backups`,
-  como manda o `docs/DATABASE.md`.
-- **Sem teste em uso.** Roteiro, depois de aplicar a 046 e publicar, no salão de
-  teste:
-  1. Marcas e categorias: criar uma marca e uma categoria; nome repetido é
-     recusado; em Produtos e saldo > Configurar, pôr as duas no Teste Shampoo → a
-     lista mostra "marca · categoria" e a contagem vira 1.
-  2. Fornecedores: cadastrar um com CNPJ; nome repetido é recusado; editar;
-     desativar → some da nova compra; reativar.
-  3. Compra a pagar: 10 Teste Shampoo a R$ 22,00 + 3 Teste Pente a R$ 4,00, frete
-     R$ 10,00, desconto R$ 2,00 → total R$ 240,00; "Fica a pagar" em 3 parcelas →
-     saldo do Shampoo sobe 10 com movimento "Compra", custo vira R$ 22,00, o Pente
-     não gera movimento mas o custo vira R$ 4,00; no Financeiro, 3 despesas de
-     R$ 80,00 "A pagar", sem editar nem excluir.
-  4. Dar baixa em uma parcela no Financeiro → a compra mostra "Paga 1 de 3" e
-     excluir a compra é recusado; estornar a baixa → excluir funciona: o saldo
-     volta, as parcelas somem e o custo do Shampoo volta a R$ 20,00.
-  5. Compra "Já foi paga" numa conta → despesa paga na data da compra; a compra
-     mostra "Paga".
-  6. Compra "Não lançar no financeiro" → "Fora do financeiro".
-  7. Fornecedor com compra não tem excluir; excluir produto com compra dá a
-     mensagem "Desative em vez de excluir".
-  Depois, limpar os dados de teste.
+- Na branch `claude/fase-4-estoque`, publicada, sem PR. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando; o build do preview da
+  Vercel passou.
+- **Migration 046: aplicada em produção em 16/nov/2026** (pelo assistente, com a
+  autorização do dono dada na hora), conferida por leitura (as cinco tabelas novas
+  com RLS, `deny_all` e sem acesso para `anon`/`authenticated`; as colunas novas e
+  os CHECKs de `stock_movements` e `financial_transactions` no lugar; os 73
+  produtos intactos, nenhum com marca ou categoria) e registrada em
+  `schema_migrations` (nome `purchases`).
+- Cópia de segurança antes da 046: `backups.products_pre_046_20261116` (73 linhas).
+  `stock_movements` e `financial_transactions` estavam vazias. **Apagar só com o
+  OK do dono.**
+- Em outro ambiente, **aplicar a 046 antes de publicar o código**: ela acrescenta
+  colunas em `products`, `stock_movements` e `financial_transactions`, e o INSERT
+  do Drizzle lista todas as colunas.
+- **Testada em uso em 16/nov/2026**, no preview da branch, no salão de teste:
+  - Marcas e categorias: "Teste Marca" e "Teste Categoria" criadas; o mesmo nome em
+    minúsculas é recusado ("Já existe uma marca com este nome"); em Produtos e
+    saldo > Configurar, as duas no Teste Shampoo → a lista mostra "SH-01 · Teste
+    Marca · Teste Categoria".
+  - Fornecedores: "Teste Distribuidora" com CNPJ (mostrado com a pontuação) e
+    telefone; nome repetido recusado; edição (e-mail); desativado → some da nova
+    compra; reativado → volta.
+  - Compra a pagar: 10 Teste Shampoo a R$ 22,00 + 3 Teste Pente a R$ 4,00, frete
+    R$ 10,00, desconto R$ 2,00 → total R$ 240,00, "A pagar em 3×". O Shampoo foi a
+    saldo 10 com movimento "Compra + 10" e custo R$ 22,00; o Pente (sem controle)
+    não gerou movimento e ficou com custo R$ 4,00. No Financeiro, três despesas
+    "Compra NF 1234 — Teste Distribuidora (1/3)…(3/3)" de R$ 80,00, vencendo em
+    16/11, 16/12 e 16/01, "A pagar", só com o botão de dar baixa.
+  - Baixa da parcela 1/3 no Financeiro → a compra mostra "Paga 1 de 3" e excluir
+    é recusado; estorno da baixa → excluir funciona: saldo volta a zero, o
+    movimento e as parcelas somem, o custo do Shampoo volta a R$ 20,00 e o do Pente
+    volta a vazio.
+  - Compra "Já foi paga": sem conta, não lança; com a conta, vira despesa "Pago" de
+    R$ 42,00 na data da compra, o saldo da conta cai R$ 42,00 e a compra mostra
+    "Paga".
+  - Compra sem fornecedor, de produto sem controle, "Não lançar no financeiro" →
+    "Sem fornecedor", "Fora do financeiro".
+  - Fornecedor com compra não tem o botão de excluir. Remover o Teste Shampoo em
+    Produtos → "Este produto tem vendas ou compras lançadas. Desative em vez de
+    excluir."
+- Ajustes que saíram do teste (ainda **não vistos na tela**): com parcela paga, o
+  botão de excluir a compra avisa na hora, em vez de abrir uma confirmação que
+  seria recusada; a nova compra diz "Nenhum fornecedor ativo" (dizia "cadastrado"
+  mesmo havendo um inativo).
+- **Não testado em uso:** perfil sem `inventory.purchase` ou sem `finance.create`
+  (a compra sem a opção do financeiro); salão sem o módulo `finance`; filtro de
+  período da lista; mais de 100 compras; quantidade fracionada; o mesmo produto em
+  dois itens; item a custo zero; vencimento no dia 31; excluir marca ou categoria
+  em uso; excluir fornecedor sem compra; CPF e CNPJ alfanumérico.
+- Dados de teste limpos: as três compras excluídas pela tela (sem compras,
+  movimentos nem lançamentos no financeiro). **Ficaram, como apoio para as próximas
+  fatias:** o fornecedor "Teste Distribuidora", a marca "Teste Marca" e a categoria
+  "Teste Categoria", além dos dois produtos de teste.
 
 ## 9. Pendências do dono
 
@@ -1468,7 +1490,6 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Aplicar a migration 046 (ou autorizar a aplicação) e publicar a fatia 4b — ver §8.8 | Teste em uso da fatia 4b |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores) | Ajustes na fase 4 antes do piloto |
-| Dizer quando a cópia `backups.products_pre_045_20261116` pode ser apagada | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116` e `backups.products_pre_046_20261116` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
