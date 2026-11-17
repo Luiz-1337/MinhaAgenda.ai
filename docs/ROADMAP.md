@@ -18,7 +18,9 @@ mesma branch e publicada, com a migration 043 aplicada em 16/nov/2026 e testada 
 uso — ver §7.9. Fatia 3d (pagamento em lote, recibo e saída no financeiro) feita na
 mesma branch e publicada, com a migration 044 aplicada em 16/nov/2026 e testada em
 uso — ver §7.10. As migrations 040 a 044 estão registradas em `schema_migrations`.
-Da fase 3 falta só a fatia 3e, que depende do estoque (fase 4).
+Fatia 3e (custo do atendimento abatendo a comissão) feita em código na branch
+`claude/fase-4-estoque`, porque depende do consumo por serviço (fatia 4d) — **a
+migration 049 ainda não foi aplicada e o código não foi publicado** — ver §7.11.
 Fase 4 (produtos e estoque): fatia 4a feita na branch `claude/fase-4-estoque`
 (publicada, sem PR), com a migration 045 aplicada e registrada em 16/nov/2026 e
 testada em uso — ver §8.7. Fatia 4b (fornecedores, marcas, categorias e compras)
@@ -732,9 +734,9 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
 | 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita — migration 043 aplicada e testada em uso (§7.9) |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Feita — migration 044 aplicada e testada em uso em 16/nov/2026 (§7.10) |
-| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — destravada pela fatia 4d (o consumo por serviço e o custo estimado dele já existem; ver §8.10) |
+| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Feita em código — **migration 049 não aplicada, sem publicar e sem teste em uso** (§7.11) |
 
-### 7.2 Modelo de dados (migrations 041 a 044)
+### 7.2 Modelo de dados (migrations 041 a 044 e 049)
 
 A 041 (`041_commissions.sql`) cria três tabelas novas e não altera nenhuma
 existente. A 042 (`042_commission_assistants.sql`, fatia 3b) cria uma quarta e
@@ -778,6 +780,13 @@ altera nenhuma existente. A 044 (`044_commission_payments.sql`, fatia 3d) cria
 - `financial_transactions` (044) — tipo novo `commission` e as colunas
   `commission_payment_id` e `commission_adjustment_id` (exatamente uma preenchida
   nesse tipo; `ON DELETE CASCADE`). É sempre saída, paga e com conta (CHECK).
+- `services.additional_cost` (049) — custo fixo do serviço por atendimento.
+- `commission_settings.cost_mode` (049) — quem arca com o custo do atendimento, com
+  os mesmos quatro valores de taxa e desconto; NULL = segue o salão ou o padrão.
+- `commission_entries.cost_amount` (049) — a parte do custo que saiu da comissão
+  daquela linha. O que há a receber passa a ser comissão − taxa − auxiliar − custo.
+  O banco confere que o custo não passa do que sobrou e só existe na linha do
+  profissional.
 
 O percentual geral do profissional continua onde sempre esteve:
 `professionals.commission_rate`, editado no cadastro em Equipe.
@@ -910,8 +919,44 @@ dono** — as regras 30 a 39 substituem a 27 e a 28:
     O valor que a tela mostrou é conferido no servidor — se outro lançamento entrou
     nesse meio-tempo, o pagamento é recusado.
 
+Custo do atendimento (fatia 3e). A auditoria traz o campo "Custo adicional" e a aba
+"Produtos consumidos" do serviço, sem dizer como entram na comissão. O dono decidiu
+em 17/nov/2026 que **os dois abatem a comissão**; o resto foi decidido aqui, **a
+confirmar com o dono**:
+
+40. **Custo de um atendimento = custo adicional do serviço + custo estimado dos
+    produtos que ele consome** (fatia 4d: fração da unidade × custo de compra). É o
+    mesmo número que a tela "Consumo por serviço" mostra.
+41. **"Quem arca com o custo" é uma regra do salão, com exceção por profissional**,
+    no mesmo molde de taxa e desconto:
+    - sai do valor do serviço antes da comissão (o profissional perde a mesma
+      fração que a comissão representa: 50% de comissão → 50% do custo);
+    - o salão arca com tudo (a comissão não muda);
+    - sai inteiro da comissão;
+    - meio a meio.
+42. **O padrão é "sai do valor do serviço antes da comissão".** Só tem efeito em
+    serviço com custo cadastrado: sem custo, a comissão é a de antes.
+43. **O custo vem por último** — depois da taxa e do auxiliar — e **nunca deixa a
+    comissão negativa**: abate, no máximo, o que sobrou.
+44. **O auxiliar não é abatido**: o custo sai só da linha de quem executou.
+45. **Custo só existe em serviço.** Produto vendido não tem "custo do atendimento".
+46. **O custo conta mesmo quando o produto não tem controle de estoque** (não baixa
+    saldo, mas custa) e mesmo com o módulo de estoque desligado, se houver consumo
+    cadastrado. Produto sem custo de compra cadastrado não soma.
+47. **O extrato é fotografia**: a comissão guarda o custo que valia quando a comanda
+    foi faturada. Mudar o custo do serviço ou do produto depois não mexe no que já
+    está no extrato; "Recalcular período" refaz as comissões em aberto com o custo
+    de agora, e comissão paga não muda (regra 35).
+
 Perguntas para o dono:
 
+- O padrão "o custo sai do valor do serviço antes da comissão" (regra 42) é o que a
+  Belasis faz? Se lá o custo sai inteiro da comissão, o padrão muda.
+- O custo adicional do serviço é editado em Estoque > Consumo por serviço. Salão
+  que usa comissões sem o estoque fica sem tela para ele: deve ir também para o
+  cadastro do serviço ou para Comissões > Configurar?
+- Produto vendido deve ter "custo adicional" abatendo a comissão da venda, como o
+  serviço (regra 45)? A Belasis tem o campo no produto.
 - O percentual geral do profissional deve vencer o padrão do item? Hoje o item vence.
 - Na regra "disponibilidade" com pagamento dividido, liberar a comissão aos poucos
   (proporcional a cada recebimento) em vez de tudo no último dia?
@@ -975,6 +1020,11 @@ funcionam, só não geram despesa.
   recalcular período.
 - **Comanda**: com o módulo ligado, o item de serviço ganha o campo "Auxiliar
   (opcional)", e o aviso de reabrir diz que as comissões são apagadas.
+- **Custo do atendimento (fatia 3e)**: em Configurar comissões, a regra "Custo do
+  atendimento" (no salão e na exceção do profissional). No extrato, a coluna
+  "Custo" aparece quando algum atendimento do período teve custo abatido, e o
+  resumo de "A receber" diz quanto foi. O custo adicional de cada serviço é
+  editado em Estoque > Consumo por serviço, que mostra o custo por atendimento.
 
 ### 7.6 Onde o código mora
 
@@ -986,6 +1036,7 @@ funcionam, só não geram despesa.
 | Actions | `apps/web/app/actions/commissions.ts` |
 | Telas | `apps/web/app/[salonId]/commissions/` |
 | Testes | `apps/web/__tests__/lib/services/commissions-domain.test.ts` e, para o auxiliar no item, `sales-domain.test.ts` |
+| Custo do atendimento (3e) | `costShare` em `domain/commissions.ts`; `serviceCostCents`, `itemCostCents` e `planAdditionalCost` em `domain/consumption.ts`; `loadServiceCosts` em `services/consumption.service.ts`, chamado por `syncSaleCommissions`; testes em `commission-costs-domain.test.ts` |
 
 ### 7.7 Estado da implementação (16/nov/2026)
 
@@ -1169,6 +1220,34 @@ comissão paga.
 Fica para depois (não é da auditoria ou depende de decisão do dono): texto do
 recibo configurável, forma de pagamento no pagamento de comissão, vale em dinheiro
 saindo do caixa aberto, "pagar salário" (ficha do profissional na Belasis).
+
+### 7.11 Fatia 3e — estado (17/nov/2026)
+
+- Na branch `claude/fase-4-estoque` (depende da fatia 4d), **em commit local, sem
+  publicar**. Typecheck (db, web e mcp-server), lint dos arquivos alterados e
+  testes passando.
+- **Migration 049: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
+  publicado: acrescenta uma coluna em `services`, que todo salão usa (e que o
+  agente de IA lê). O código novo seleciona e insere `additional_cost`; sem a
+  coluna, listar e cadastrar serviço falhariam em qualquer salão.
+- Antes de aplicar: cópia de segurança de `services`, `commission_settings` e
+  `commission_entries` no schema `backups`.
+- Os números conferidos na auditoria continuam valendo para serviço sem custo
+  (R$ 97,08 e R$ 231,24): há teste para os dois.
+- **Sem teste em uso.** Roteiro, depois de aplicar a 049 e publicar, no salão de
+  teste (Teste Shampoo com 1000 ml por unidade e custo R$ 20,00; profissional com
+  50% de comissão):
+  1. Consumo por serviço, Corte de Cabelo Masculino: custo adicional R$ 2,00 e 30
+     ml de Teste Shampoo → custo por atendimento R$ 2,60.
+  2. Comanda com 1 Corte (R$ 170,00) em dinheiro, faturada → no extrato: comissão
+     R$ 85,00, coluna "Custo" R$ 1,30 (50% de R$ 2,60), a receber R$ 83,70.
+  3. Configurar comissões: "Custo do atendimento" = "Sai inteiro da comissão" e
+     Recalcular período → custo R$ 2,60, a receber R$ 82,40.
+  4. "O salão arca com tudo" e Recalcular → a coluna "Custo" some, a receber
+     R$ 85,00.
+  5. Exceção do profissional ("Meio a meio") vale sobre a regra do salão.
+  6. Voltar a regra ao padrão, tirar o custo e o consumo do serviço.
+  Depois, limpar os dados de teste.
 
 ## 8. Fase 4 — Produtos e estoque (detalhe)
 
@@ -1650,9 +1729,8 @@ UPDATE salons
   **Apagar só com o OK do dono.**
 - Em outro ambiente, **aplicar a 048 antes de publicar o código**: ela acrescenta
   colunas em `products`, e o INSERT do Drizzle lista todas as colunas.
-- **Fatia 3e não foi feita.** O que ela precisa já existe (o consumo de cada
-  serviço e o custo estimado dele), mas abater a comissão mexe no cálculo do
-  faturamento e depende de uma decisão do dono (última pergunta da §8.3).
+- A fatia 3e veio em seguida, com a decisão do dono (consumo e custo fixo abatem
+  a comissão) — ver §7.11.
 - **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste (Teste
   Shampoo com saldo zero e custo R$ 20,00). A captura de tela do navegador falhou
   nesta sessão; as conferências foram pelo texto da página e, onde indicado, por
@@ -1692,7 +1770,8 @@ UPDATE salons
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
-| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
+| Aplicar a migration 049 (ou autorizar a aplicação) e publicar a fatia 3e — ver §7.11 | Teste em uso da fatia 3e |
+| Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116` e `backups.products_pre_048_20261117` podem ser apagadas | Limpeza do schema `backups` |
