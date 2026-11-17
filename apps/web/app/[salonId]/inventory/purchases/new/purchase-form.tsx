@@ -208,7 +208,7 @@ export function PurchaseForm({ salonId, data }: { salonId: string; data: Purchas
           </select>
           {data.suppliers.length === 0 && (
             <p className="text-[11px] text-muted-foreground">
-              Nenhum fornecedor cadastrado. Cadastre em{" "}
+              Nenhum fornecedor ativo. Cadastre ou reative em{" "}
               <Link href={`/${salonId}/inventory/suppliers`} className="font-semibold text-accent hover:underline">
                 Fornecedores
               </Link>

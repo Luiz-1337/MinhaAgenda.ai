@@ -59,6 +59,16 @@ export function PurchasesClient({ salonId, data }: { salonId: string; data: Purc
     startTransition(() => router.push(suffix ? `${pathname}?${suffix}` : pathname))
   }
 
+  function askDelete(purchase: PurchaseDTO) {
+    // Com parcela paga o servidor recusa (domain: purchaseDeleteBlocker). Dizer
+    // antes poupa uma confirmação que prometeria o que não vai acontecer.
+    if (purchase.paidInstallments > 0) {
+      toast.error("Esta compra tem parcela paga. Estorne a baixa no Financeiro antes de excluir")
+      return
+    }
+    setToDelete(purchase)
+  }
+
   function confirmDelete() {
     const purchase = toDelete
     if (!purchase) return
@@ -196,7 +206,7 @@ export function PurchasesClient({ salonId, data }: { salonId: string; data: Purc
                           {data.can.purchase && (
                             <button
                               type="button"
-                              onClick={() => setToDelete(purchase)}
+                              onClick={() => askDelete(purchase)}
                               disabled={isPending}
                               aria-label={`Excluir a compra de ${formatCalendarDate(purchase.purchasedOn)}`}
                               title="Excluir"
