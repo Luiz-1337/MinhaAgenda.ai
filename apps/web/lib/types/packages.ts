@@ -4,7 +4,7 @@
  * Atravessam a fronteira servidor → cliente: dinheiro como string de coluna
  * numeric, datas de calendário como "YYYY-MM-DD".
  */
-import type { CustomerPackageRow, PackageTemplateRow } from "@repo/db"
+import type { CustomerPackageRow, PackageStatement, PackageTemplateRow, SubscriptionSalesReport } from "@repo/db"
 
 export type PackageTemplateDTO = PackageTemplateRow
 
@@ -40,4 +40,20 @@ export interface CustomerPackagesDTO {
   totals: { active: number; expired: number; used: number }
   /** O salão vende pacote pela comanda (tem o módulo de comandas e a permissão de criar). */
   canSell: boolean
+}
+
+export interface PackageReportFilters {
+  /** "YYYY-MM-DD". Sem datas, o mês corrente até hoje. */
+  from?: string
+  to?: string
+}
+
+/** Relatórios do período (fatia 5d). Valores em centavos, já somados no servidor. */
+export interface PackageReportsDTO {
+  from: string
+  to: string
+  statement: PackageStatement
+  subscriptions: SubscriptionSalesReport
+  /** Alguma lista bateu no teto de linhas: os totais são parciais. */
+  truncated: boolean
 }

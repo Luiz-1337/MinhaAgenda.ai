@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { path: "/templates", label: "Pacotes predefinidos" },
   { path: "/subscriptions", label: "Assinaturas" },
   { path: "/subscription-plans", label: "Planos de assinatura" },
+  { path: "/reports", label: "Relatórios" },
 ] as const
 
 export function PackagesNav({ salonId }: { salonId: string }) {

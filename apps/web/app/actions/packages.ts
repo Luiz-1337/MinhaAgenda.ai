@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache"
 import {
   deletePackageTemplateService,
+  getPackageReportsService,
   listCustomerPackagesService,
   listPackageCatalogService,
   listPackageTemplatesService,
+  planReportPeriod,
   savePackageTemplateService,
   type PermissionKey,
 } from "@repo/db"
@@ -13,9 +15,19 @@ import { getSessionUserId } from "@/lib/supabase/auth"
 import { can, getSalonPermissions } from "@/lib/services/permissions.service"
 import { salonHasModule } from "@/lib/services/salon-modules.service"
 import { formatZodError } from "@/lib/services/validation.service"
-import { deletePackageTemplateSchema, savePackageTemplateSchema } from "@/lib/schemas/packages.schema"
+import {
+  deletePackageTemplateSchema,
+  packageReportFiltersSchema,
+  savePackageTemplateSchema,
+} from "@/lib/schemas/packages.schema"
 import type { ActionResult } from "@/lib/types/common"
-import type { CustomerPackagesDTO, PackageTemplatesDTO, SavePackageTemplateInput } from "@/lib/types/packages"
+import type {
+  CustomerPackagesDTO,
+  PackageReportFilters,
+  PackageReportsDTO,
+  PackageTemplatesDTO,
+  SavePackageTemplateInput,
+} from "@/lib/types/packages"
 
 /**
  * Pacotes (docs/ROADMAP.md, fase 5, fatias 5a e 5b).
@@ -137,5 +149,31 @@ export async function getCustomerPackages(
   } catch (error) {
     console.error("Erro ao carregar os pacotes vendidos:", error)
     return { error: "Não foi possível carregar os pacotes vendidos" }
+  }
+}
+
+/**
+ * Relatórios do período (fatia 5d): o extrato de pacotes (vendas e usos) e as
+ * vendas por assinatura. Só leitura.
+ */
+export async function getPackageReports(
+  salonId: string,
+  filters: PackageReportFilters = {}
+): Promise<PackageReportsDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "packages.access")
+  if ("error" in auth) return auth
+
+  const parsed = packageReportFiltersSchema.safeParse(filters)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const period = planReportPeriod(parsed.data, new Date())
+  if (!period.ok) return { error: period.error }
+
+  try {
+    const reports = await getPackageReportsService({ salonId, from: period.from, to: period.to })
+    return { from: period.from, to: period.to, ...reports }
+  } catch (error) {
+    console.error("Erro ao carregar os relatórios de pacotes:", error)
+    return { error: "Não foi possível carregar os relatórios de pacotes" }
   }
 }

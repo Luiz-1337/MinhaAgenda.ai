@@ -73,6 +73,35 @@ describe("summarizeToolResult / getServices", () => {
     expect(summary).not.toContain("R$0")
   })
 
+  it("saldo de pacotes: guarda o que resta de cada item e a validade", () => {
+    const summary = summarizeToolResult("getMyPackageBalance", {
+      total: 2,
+      packages: [
+        {
+          pacote: "3 cortes",
+          compradoEm: "17/11/2026",
+          validoAte: "17/12/2026",
+          itens: [
+            { item: "Corte", tipo: "serviço", saldo: 2, de: 3 },
+            { item: "Shampoo", tipo: "produto", saldo: 1, de: 1 },
+          ],
+        },
+        { pacote: "Hidratação", compradoEm: "01/10/2026", validoAte: "não vence", itens: [{ item: "Hidratação", tipo: "serviço", saldo: 5, de: 5 }] },
+      ],
+      message: "2 pacote(s) com saldo.",
+    })
+
+    expect(summary).toBe(
+      "3 cortes(Corte 2/3, Shampoo 1/1; vale até 17/12/2026) | Hidratação(Hidratação 5/5; não vence)"
+    )
+  })
+
+  it("saldo de pacotes vazio não vira JSON cortado", () => {
+    expect(summarizeToolResult("getMyPackageBalance", { total: 0, packages: [], message: "..." })).toBe(
+      "nenhum pacote com saldo"
+    )
+  })
+
   it("cai para o preço cru quando não há formatado", () => {
     const summary = summarizeToolResult(
       "getServices",

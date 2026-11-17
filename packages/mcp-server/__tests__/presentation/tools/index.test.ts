@@ -29,6 +29,7 @@ describe("presentation/tools/index", () => {
       "saveCustomerPreference",
       "qualifyLead",
       "setChatKanbanColumn",
+      "getMyPackageBalance",
     ])
   })
 

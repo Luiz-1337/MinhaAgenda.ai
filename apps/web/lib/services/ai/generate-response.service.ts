@@ -48,6 +48,8 @@ import { StageTimer } from "../../infra/stage-timer";
 import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, customerTrinksProfile, professionals, salons, eq, and, sql, domainServices } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
+// Caminho direto (módulo puro): os testes que simulam "@repo/db" não precisam conhecê-lo.
+import { parseSalonModules } from "@repo/db/src/domain/permissions";
 import type { ProcessedMedia } from "./media-processor.service";
 import { formatAdReferralText } from "../messaging/cloud/content";
 import type { AdReferral } from "../messaging/cloud/content";
@@ -68,6 +70,23 @@ async function isAiKanbanEnabled(salonId: string): Promise<boolean> {
       columns: { aiKanbanClassificationEnabled: true },
     });
     return !!row?.aiKanbanClassificationEnabled;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Salão tem o módulo `packages` ligado? (gate da tool getMyPackageBalance — fase 5,
+ * fatia 5d). Consulta direta, sem o cache de request do salon-modules.service:
+ * este código roda no worker da fila.
+ */
+async function isPackagesModuleEnabled(salonId: string): Promise<boolean> {
+  try {
+    const row = await db.query.salons.findFirst({
+      where: eq(salons.id, salonId),
+      columns: { settings: true },
+    });
+    return parseSalonModules(row?.settings).includes("packages");
   } catch {
     return false;
   }
@@ -288,7 +307,7 @@ export async function generateAIResponse(
       officialAgenda: await loadOfficialAgendaContext(salonId, customerId, upcoming, contextLogger),
     }));
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, { upcomingAppointments, officialAgenda }] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, packagesEnabled, { upcomingAppointments, officialAgenda }] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
@@ -298,6 +317,7 @@ export async function generateAIResponse(
       embeddingPromise.catch(() => null),
       fetchTrinksProfile(salonId, customerId, clientPhone, contextLogger),
       isAiKanbanEnabled(salonId),
+      isPackagesModuleEnabled(salonId),
       agendaAwarePromise,
     ]);
     timer.mark("context_loaded");
@@ -306,6 +326,11 @@ export async function generateAIResponse(
     // (O erro de uma tool de bastidor sequestraria a resposta ao cliente — ver handleToolErrors.)
     if (!kanbanEnabled) {
       delete (mcpTools as Record<string, unknown>).setChatKanbanColumn;
+    }
+
+    // Saldo de pacote só existe para a IA no salão com o módulo de pacotes ligado.
+    if (!packagesEnabled) {
+      delete (mcpTools as Record<string, unknown>).getMyPackageBalance;
     }
 
     if (!agentInfo) {
@@ -1048,6 +1073,25 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
       const cancelledId = data.appointmentId || data.id;
       const base = data.message || "OK";
       return cancelledId ? `cancelado: ${base} (id:${cancelledId})` : `cancelado: ${base}`;
+    }
+
+    // Saldo de pacotes: o que resta de cada item e até quando vale. Sem isso o
+    // fallback corta o JSON no meio e a IA perde o saldo nos turnos seguintes.
+    if (toolName === "getMyPackageBalance" && Array.isArray(data.packages)) {
+      if (data.packages.length === 0) return "nenhum pacote com saldo";
+      type BalanceItem = { item?: unknown; saldo?: unknown; de?: unknown };
+      type BalancePackage = { pacote?: unknown; validoAte?: unknown; itens?: unknown };
+      return (data.packages as BalancePackage[])
+        .slice(0, 5)
+        .map((p) => {
+          const items = (Array.isArray(p.itens) ? (p.itens as BalanceItem[]) : [])
+            .slice(0, 6)
+            .map((i) => `${i.item} ${i.saldo}/${i.de}`)
+            .join(", ");
+          const validity = p.validoAte === "não vence" ? "não vence" : `vale até ${p.validoAte}`;
+          return `${p.pacote}(${items}; ${validity})`;
+        })
+        .join(" | ");
     }
 
     // Salon info

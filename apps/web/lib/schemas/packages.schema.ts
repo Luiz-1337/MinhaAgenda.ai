@@ -25,6 +25,14 @@ export const savePackageTemplateSchema = z.object({
     .max(30, "O pacote aceita no máximo 30 itens"),
 })
 
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida")
+
+/** Período dos relatórios de pacotes e assinaturas ("YYYY-MM-DD"). */
+export const packageReportFiltersSchema = z.object({
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+})
+
 export const deletePackageTemplateSchema = z.object({
   salonId: z.string().uuid(),
   templateId: z.string().uuid(),

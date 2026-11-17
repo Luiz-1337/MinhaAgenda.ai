@@ -41,7 +41,10 @@ venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
 em 17/nov/2026 e testada em uso — ver §9.7. Fatia 5b (usar o pacote na comanda)
 na mesma branch: migration 052 aplicada em 17/nov/2026, publicada e testada em
 uso — ver §9.8. Fatia 5c (assinaturas de cliente) na mesma branch: migration 053
-aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9.
+aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9. Fatia 5d
+(relatórios e saldo de pacote para o agente do WhatsApp) feita na mesma branch —
+**em commit local, sem publicar e sem teste em uso; não tem migration** — ver
+§9.10.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2000,7 +2003,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 | 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
 | 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita, migration 052 aplicada, publicada e testada em uso (§9.8) |
 | 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Feita, migration 053 aplicada, publicada e testada em uso (§9.9) |
-| 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Pendente |
+| 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Feita em código — **sem publicar e sem teste em uso**; não tem migration (§9.10) |
 
 A página pública de planos com link copiável e a renovação automática de
 assinatura dependem de pagamento online (fase 8).
@@ -2151,6 +2154,31 @@ Fatia 5c — assinaturas de cliente:
 31. **A renovação é manual.** Não há cobrança automática nem aviso de vencimento
     (dependem de pagamento online, fase 8).
 
+Fatia 5d — relatórios e o agente do WhatsApp:
+
+32. **Extrato de pacotes**, por período: as VENDAS (no dia da comanda, pelo que o
+    cliente pagou) e os USOS (itens "do pacote" de comandas FATURADAS, no dia da
+    comanda, pelo valor da sessão — regra 15) numa lista só, do mais recente para
+    o mais antigo. Totais: pacotes vendidos e valor, sessões e unidades usadas e
+    valor. Comanda reaberta sai do extrato.
+33. **Vendas por assinatura**, por período: as cobranças faturadas (os períodos
+    pagos), no dia da comanda — o total por plano (cobranças, assinantes
+    distintos e valor, o que mais rendeu primeiro) e a lista. Agrupa pelo plano,
+    mesmo que a assinatura guarde o nome antigo dele.
+34. **O período** é o dos relatórios de estoque: sem datas, o mês corrente até
+    hoje (Brasília); no máximo um ano. Cada lista mostra até 1.000 linhas; acima
+    disso a tela avisa que os totais são parciais.
+35. **O agente do WhatsApp consulta o saldo de pacote** (tool
+    `getMyPackageBalance`): os pacotes com saldo e na validade do cliente DA
+    CONVERSA, com o que resta de cada item e até quando vale. Só leitura: não
+    vende pacote, não informa preço e não baixa saldo — o uso é da recepção, na
+    comanda. Salão e cliente vêm do contexto do WhatsApp, nunca do modelo, e a
+    resposta não leva ids internos. Cliente sem cadastro recebe "não tem pacote",
+    não um erro.
+36. **A tool só existe para a IA no salão com o módulo `packages` ligado.** Nos
+    outros ela é removida antes de a conversa começar, como a do Kanban. O prompt
+    do agente não mudou: a descrição da tool diz quando usar.
+
 Perguntas para o dono:
 
 - Vender pacote pela comanda (regra 1) serve, ou a recepção precisa da tela
@@ -2181,6 +2209,12 @@ Perguntas para o dono:
 - (5c) Assinaturas precisam de permissão própria, separada da de pacotes?
 - (5c) O salão quer avisar o cliente pelo WhatsApp quando a assinatura está para
   vencer?
+- (5d) O agente do WhatsApp deve também dizer a situação e o vencimento da
+  assinatura do cliente? Hoje só informa pacote.
+- (5d) Ao agendar um serviço que o cliente tem no pacote, o agente deve avisar
+  que a sessão sai do pacote? Hoje ele só responde quando perguntam.
+- (5d) O extrato de pacotes precisa mostrar o que falta entregar (o valor das
+  sessões ainda não usadas)? E os relatórios precisam de exportação?
 
 ### 9.4 Permissões e módulo
 
@@ -2227,6 +2261,11 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
   vigor, com o vencimento de cada uma; o item entra com o valor da assinatura,
   sem troca de item e com quantidade travada em 1. O aviso de reabrir diz que a
   renovação é desfeita.
+- **Relatórios (5d)** (`/[salonId]/packages/reports`, `packages.access`): o
+  período na URL, quatro totais (pacotes vendidos, pacotes usados, assinaturas e
+  assinantes que pagaram), o extrato de pacotes (data e comanda, Venda ou Uso,
+  cliente, pacote, item e profissional, quantidade, valor) e as vendas por
+  assinatura (por plano, e a lista de cobranças com o período pago).
 
 ### 9.6 Onde o código mora
 
@@ -2241,6 +2280,8 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
 | Testes | `apps/web/__tests__/lib/services/packages-domain.test.ts`; uso (5b) em `package-usage-domain.test.ts` |
 | Uso (5b) | Migration `052_package_usage.sql`; regra `splitPackagePrice`, `planPackageUsage`, `packageUseValue` (`domain/packages.ts`), o item em `planSaleItems`, a base em `planSaleCommissions` (`packageValue`); I/O `loadPackageLines`, `salePackagesInUse`, `listCustomerPackageBalancesService` (`packages.service.ts`), chamados por `sales.service.ts` e `commissions.service.ts`; action `getSalePackageBalances` (`actions/sales.ts`); cartão `components/contacts/customer-packages-card.tsx` |
 | Assinaturas (5c) | Migration `053_subscriptions.sql`; tabelas `subscriptionPlans`, `customerSubscriptions`, `customerSubscriptionPeriods` e `saleItems.customerSubscriptionId`; regra em `domain/subscriptions.ts` (`planSubscriptionPlan`, `planCustomerSubscription`, `nextSubscriptionPeriod`, `planSubscriptionPeriods`, `customerSubscriptionStatus`, `subscriptionReopenBlocker`) e o item em `planSaleItems`; I/O em `services/subscriptions.service.ts` — a comanda chama `recordSaleSubscriptions` no faturamento e `saleSubscriptionsRenewedLater` + `revertSaleSubscriptions` na reabertura; actions em `actions/subscriptions.ts` e `getSaleSubscriptionOptions` em `actions/sales.ts`; telas em `app/[salonId]/packages/subscriptions/` e `subscription-plans/`; testes em `subscriptions-domain.test.ts` |
+| Relatórios (5d) | Regra em `domain/package-reports.ts` (`buildPackageStatement`, `buildSubscriptionSalesReport`); I/O em `services/package-reports.service.ts`; action `getPackageReports` (`actions/packages.ts`); tela em `app/[salonId]/packages/reports/`; testes em `package-reports-domain.test.ts` |
+| Agente do WhatsApp (5d) | Tool `getMyPackageBalance` em `packages/mcp-server/src/presentation/tools/package.tools.ts` (lê `listCustomerPackageBalancesService`); o gate do módulo e o resumo da tool em `apps/web/lib/services/ai/generate-response.service.ts` (`isPackagesModuleEnabled`, `summarizeToolResult`); testes em `packages/mcp-server/__tests__/presentation/tools/package.tools.test.ts` e `apps/web/__tests__/ai/tool-summary.test.ts` |
 
 ### 9.7 Fatia 5a — estado (17/nov/2026)
 
@@ -2413,6 +2454,25 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
   plano excluídos. Sem planos, assinaturas, períodos, pagamentos, lançamentos,
   comissões nem movimentos.
 
+### 9.10 Fatia 5d — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1098, db 296, mcp-server 400).
+- **Não tem migration**: só leitura do que as fatias 5a a 5c gravam.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de publicar:
+  - Relatórios: vender e faturar um pacote, usar uma sessão em outra comanda e
+    cobrar uma assinatura; conferir os quatro totais, a ordem do extrato (uso e
+    venda), o valor do uso (o da sessão) e a tabela por plano; reabrir a comanda
+    do uso e ver a linha sair; trocar o período.
+  - Agente: no chat de teste do salão (ou por WhatsApp de teste), com um pacote
+    com saldo no cliente, perguntar "quantas sessões eu ainda tenho?" e conferir
+    saldo e validade; perguntar sem ter pacote; e confirmar que, num salão SEM o
+    módulo, a tool não é oferecida.
+- **Limite conhecido:** se a consulta ao banco falhar, a tool devolve erro e o
+  cliente recebe a mensagem genérica de dificuldade técnica (a mesma das outras
+  tools de leitura), não um saldo inventado.
+
 ## 10. Pendências do dono
 
 | Pendência | Trava |
@@ -2427,5 +2487,6 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117` e `backups.sale_items_pre_053_20261117` podem ser apagadas | Limpeza do schema `backups` |
-| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento) | Ajustes na fase 5 antes do piloto |
+| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
+| Autorizar a publicação da fatia 5d (sem migration) — ver §9.10 | Teste em uso da fatia 5d |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
