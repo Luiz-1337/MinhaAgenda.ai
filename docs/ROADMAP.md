@@ -25,7 +25,9 @@ testada em uso — ver §8.7. Fatia 4b (fornecedores, marcas, categorias e compr
 feita na mesma branch e publicada, com a migration 046 aplicada e registrada em
 16/nov/2026 e testada em uso — ver §8.8. Fatia 4c (lotes e validades) feita na
 mesma branch e publicada, com a migration 047 aplicada e registrada em 17/nov/2026
-e testada em uso — ver §8.9.
+e testada em uso — ver §8.9. Fatia 4d (produtos consumidos por serviço e
+fracionamento) feita em código na mesma branch — **a migration 048 ainda não foi
+aplicada e o código não foi publicado** — ver §8.10.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -730,7 +732,7 @@ K-05 (seções 7 a 10 da ficha do profissional), RN-COM e RN-COM-CFG.
 | 3b | Auxiliar no item da comanda e comissão como auxiliar (descontada do salão ou do profissional) | Feita — migration 042 aplicada e testada em uso em 16/nov/2026 (§7.8) |
 | 3c | Vales e bonificações do profissional, com o líquido no extrato | Feita — migration 043 aplicada e testada em uso (§7.9) |
 | 3d | Pagamento de comissão em lote, com recibo e despesa no financeiro; saída do vale no financeiro | Feita — migration 044 aplicada e testada em uso em 16/nov/2026 (§7.10) |
-| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — depende da fase 4 (estoque) |
+| 3e | Custo adicional do serviço e produtos consumidos abatendo a comissão | Pendente — destravada pela fatia 4d (o consumo por serviço e o custo estimado dele já existem; ver §8.10) |
 
 ### 7.2 Modelo de dados (migrations 041 a 044)
 
@@ -1181,7 +1183,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | 4a | Controle de estoque por produto (ligar, mínimo, custo, códigos), movimentações (entrada, saída, acerto), baixa pela comanda, sugestão de compra e valor em estoque | Feita — migration 045 aplicada, testada em uso em 16/nov/2026 (§8.7) |
 | 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita — migration 046 aplicada, testada em uso em 16/nov/2026 (§8.8) |
 | 4c | Lotes e validades: registro de lote (código, fabricação, validade, quantidade), lote na entrada e no item da compra, o que resta por lote, aviso de vencidos e vencendo | Feita — migration 047 aplicada, testada em uso em 17/nov/2026 (§8.9) |
-| 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"); com isso, a fatia 3e (custo adicional e consumo abatendo a comissão) | Pendente |
+| 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"). A fatia 3e (custo adicional e consumo abatendo a comissão) fica destravada, mas é outra entrega | Feita em código — **migration 048 não aplicada, sem publicar e sem teste em uso** (§8.10) |
 | 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Pendente |
 | 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
 
@@ -1189,7 +1191,7 @@ O cadastro de produto que já existe (nome, descrição, preço, ativo) continua
 está e continua valendo para todo salão. O estoque é um módulo à parte, ligado
 salão a salão.
 
-### 8.2 Modelo de dados (migrations 045 a 047)
+### 8.2 Modelo de dados (migrations 045 a 048)
 
 **045 (`045_inventory.sql`, fatia 4a):**
 
@@ -1226,6 +1228,17 @@ salão a salão.
   `CASCADE`). CHECK: código ou validade, e fabricação ≤ validade.
 - **O que resta em cada lote não é gravado**: é calculado a partir do saldo do
   produto. Nenhuma tabela existente muda.
+
+**048 (`048_service_consumption.sql`, fatia 4d):**
+
+- `products` ganha `content_amount` e `content_unit` (`ml`, `g`, `un`): "uma
+  unidade equivale a". Os dois andam juntos (CHECK); nulos = não fracionado.
+- `service_products` — o que um serviço consome por atendimento: serviço, produto
+  e `quantity` (na unidade de consumo do produto, ou em unidades). Um produto por
+  serviço uma vez só.
+- `stock_movements` ganha `kind = 'consumption'`: negativo, apontando para a
+  comanda e para o ITEM DE SERVIÇO (FK `CASCADE`). O índice único de item passa a
+  valer só para `sale`; o consumo tem o seu (`sale_item_id` + `product_id`).
 
 ### 8.3 Regras de negócio
 
@@ -1321,6 +1334,30 @@ o dono**:
     estoque, lança-se uma saída. Excluir a compra apaga a entrada e o lote que veio
     com ela.
 
+Consumo por serviço e fracionamento (fatia 4d). A auditoria traz a aba "Produtos
+consumidos" do serviço e os campos "Registro de saída em unidade de consumo" e
+"Uma unidade equivale a" do produto, sem as regras; o que segue foi decidido aqui,
+**a confirmar com o dono**:
+
+32. **O estoque continua em unidades** (frascos, potes). O fracionamento só diz
+    quanto cabe em uma unidade — 1000 ml, 300 g, 12 un.
+33. **O consumo do serviço é informado na unidade de consumo do produto** (ml, g)
+    e convertido para fração de unidade na baixa: 30 ml de um frasco de 1000 ml
+    baixam 0,030. Produto não fracionado: o consumo é em unidades.
+34. **Faturar a comanda baixa o que os serviços dela consomem**, uma baixa por item
+    de serviço × produto, multiplicada pela quantidade do item. Reabrir devolve.
+    Vale só com o módulo `inventory` ligado, como a baixa da venda.
+35. **Só produto com controle de estoque baixa.** O produto sem controle pode ficar
+    na lista do serviço (a tela avisa), mas não gera movimento (regra 1).
+36. **Consumo menor que um milésimo de unidade não vira movimento** (0,2 ml de um
+    frasco de 1000 ml). A baixa é arredondada para o milésimo de unidade.
+37. **O consumo é o do cadastro, sempre**: a comanda não deixa informar quanto foi
+    gasto de fato naquele atendimento. Diferença aparece no acerto de inventário.
+38. **Custo estimado por atendimento** = fração da unidade × custo de compra do
+    produto, somado por serviço. É só informativo nesta fatia; é a base da 3e.
+39. **Mudar o consumo de um serviço não mexe em comanda já faturada**: a baixa foi
+    feita com o que valia na hora.
+
 Perguntas para o dono:
 
 - Vender sem saldo deve ser barrado, só avisar na comanda, ou seguir como está
@@ -1340,6 +1377,12 @@ Perguntas para o dono:
   regra 25), ou a comanda deve escolher de qual lote o produto saiu?
 - O aviso de validade em 30 dias (regra 30) serve, ou cada salão precisa escolher o
   prazo? Produto vencido deve ser barrado na venda?
+- O consumo do serviço pode ser sempre o do cadastro (regra 37), ou o profissional
+  precisa informar na comanda quanto gastou naquele atendimento?
+- A saída manual também deve aceitar a unidade de consumo ("Registro de saída em
+  unidade de consumo" da Belasis), ou só o consumo por serviço?
+- Na fatia 3e, o que abate a comissão: o custo estimado do consumo (regra 38), um
+  "custo adicional" fixo por serviço, ou os dois?
 
 ### 8.4 Permissões e módulo
 
@@ -1357,7 +1400,8 @@ Ver compras, fornecedores, marcas e categorias é `inventory.access`. A Belasis 
 "Compras" e "Fornecedores" como recursos separados, cada um com Acessar, Criar,
 Editar e Excluir; aqui ficaram dentro de Estoque (decisão a confirmar). Gerar conta
 a pagar a partir da compra exige também `finance.create`. Registrar, corrigir e
-excluir lote é `inventory.move` (é operação de estoque, como a entrada).
+excluir lote é `inventory.move` (é operação de estoque, como a entrada). Definir o
+fracionamento do produto e o consumo de cada serviço é `inventory.manage`.
 
 Para ligar no salão de teste:
 
@@ -1404,6 +1448,12 @@ UPDATE salons
   produto na prateleira; em Movimentar > Entrada, os campos opcionais Lote,
   Fabricação e Validade.
 - **Nova compra**: no item de produto controlado, Lote e Validade opcionais.
+- **Consumo por serviço** (`/[salonId]/inventory/consumption`): cada serviço com o
+  que consome por atendimento e o custo estimado; editar abre a lista de produtos
+  e quantidades do serviço (a medida aparece no rótulo: ml, g ou un).
+- **Produtos e saldo > Configurar**: "Uma unidade equivale a" (quantidade e
+  medida). A lista mostra "1000 ml por unidade" e a movimentação mostra "Consumo"
+  com o link da comanda.
 
 ### 8.6 Onde o código mora
 
@@ -1426,6 +1476,11 @@ UPDATE salons
 | Lotes — actions | `getBatches`, `saveBatch` e `deleteBatch` em `apps/web/app/actions/inventory.ts` |
 | Lotes — tela | `apps/web/app/[salonId]/inventory/batches/` |
 | Lotes — testes | `apps/web/__tests__/lib/services/batches-domain.test.ts` |
+| Consumo — regra pura | `packages/db/src/domain/consumption.ts` (`planProductContent`, `planServiceConsumption`, `consumptionUnitsMilli`, `consumptionCostCents`, `planSaleConsumptionMovements`) |
+| Consumo — I/O | `packages/db/src/services/consumption.service.ts`; a baixa está em `recordSaleStock` (`inventory.service.ts`) |
+| Consumo — actions | `getServiceConsumption` e `saveServiceConsumption` em `apps/web/app/actions/inventory.ts` |
+| Consumo — tela | `apps/web/app/[salonId]/inventory/consumption/` |
+| Consumo — testes | `apps/web/__tests__/lib/services/consumption-domain.test.ts` |
 
 ### 8.7 Fatia 4a — estado (16/nov/2026)
 
@@ -1580,6 +1635,35 @@ UPDATE salons
   apagados por SQL, pelos IDs — o lote L1 foi junto com a entrada dele (FK
   `CASCADE`). Sem compras, movimentos, lotes nem lançamentos no financeiro.
 
+### 8.10 Fatia 4d — estado (17/nov/2026)
+
+- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
+  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
+- **Migration 048: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
+  publicado: acrescenta colunas em `products`, e o INSERT do Drizzle lista todas
+  as colunas — sem elas, cadastrar produto falharia em qualquer salão. Ela também
+  recria um índice único de `stock_movements` (tabela vazia hoje).
+- Antes de aplicar: cópia de segurança de `products` no schema `backups`.
+- **Fatia 3e não foi feita.** O que ela precisa já existe (o consumo de cada
+  serviço e o custo estimado dele), mas abater a comissão mexe no cálculo do
+  faturamento e depende de uma decisão do dono (última pergunta da §8.3).
+- **Sem teste em uso.** Roteiro, depois de aplicar a 048 e publicar, no salão de
+  teste (Teste Shampoo com saldo zero e custo R$ 20,00):
+  1. Configurar o Teste Shampoo com "uma unidade equivale a 1000 ml" → a lista
+     mostra "1000 ml por unidade".
+  2. Consumo por serviço: no Corte de Cabelo Masculino, 30 ml de Teste Shampoo e 1
+     Teste Pente → a linha do Pente avisa "sem controle de estoque, não baixa";
+     custo estimado R$ 0,60 (o Pente não tem custo). Produto repetido é recusado.
+  3. Acerto do Teste Shampoo para 2 → comanda com 2 Cortes de Cabelo, faturada →
+     movimento "Consumo − 0,06" com o link da comanda; saldo 1,94. O Pente não
+     gera movimento.
+  4. Reabrir a comanda → o consumo some e o saldo volta a 2.
+  5. Comanda com 1 Corte e 1 Teste Shampoo vendido → dois movimentos: "Venda − 1"
+     e "Consumo − 0,03"; saldo 0,97.
+  6. Tirar o consumo do serviço (lista vazia) → nova comanda com o Corte não baixa
+     nada.
+  Depois, limpar os dados de teste.
+
 ## 9. Pendências do dono
 
 | Pendência | Trava |
@@ -1593,6 +1677,7 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade) | Ajustes na fase 4 antes do piloto |
+| Aplicar a migration 048 (ou autorizar a aplicação) e publicar a fatia 4d — ver §8.10 | Teste em uso da fatia 4d |
+| Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116` e `backups.products_pre_046_20261116` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
