@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, gte, inArray, lte, ne, or, sql } from "drizzle-orm"
+import { alias } from "drizzle-orm/pg-core"
 
 import {
   db,
@@ -27,8 +28,13 @@ import {
 import type { ActionResult } from "./appointments"
 import { recordSaleTransactions } from "./finance.service"
 import { recordSaleCashMovements } from "./cash.service"
+import { saleHasPaidCommissions, syncSaleCommissions } from "./commissions.service"
+import { recordSaleStock, revertSaleStock } from "./inventory.service"
 import { isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
+
+/** `professionals` uma segunda vez, para o nome de quem auxiliou no item. */
+const assistants = alias(professionals, "assistants")
 
 /**
  * Comandas (docs/ROADMAP.md, fase 1).
@@ -97,7 +103,8 @@ async function loadCatalog(
 ): Promise<SaleCatalog> {
   const serviceIds = unique(drafts.map((d) => d.serviceId))
   const productIds = unique(drafts.map((d) => d.productId))
-  const professionalIds = unique(drafts.map((d) => d.professionalId))
+  // Quem executou e quem auxiliou: os dois têm de ser profissionais deste salão.
+  const professionalIds = unique(drafts.flatMap((d) => [d.professionalId, d.assistantId]))
   const appointmentIds = unique(drafts.map((d) => d.appointmentId))
 
   const [serviceRows, productRows, professionalRows, appointmentRows] = await Promise.all([
@@ -386,6 +393,18 @@ export async function invoiceSaleService(input: {
   allowDebt?: boolean
   /** Quando a cliente combinou de pagar o que ficou em aberto ("YYYY-MM-DD"). */
   debtDueDate?: string | null
+  /**
+   * Calcula e grava as comissões dos itens (fase 3). Quem decide é a action: só
+   * com o módulo `commissions` ligado no salão. Desligado, nenhuma tabela de
+   * comissão é tocada.
+   */
+  recordCommissions?: boolean
+  /**
+   * Baixa o estoque dos produtos controlados da comanda (fase 4). Quem decide é a
+   * action: só com o módulo `inventory` ligado no salão. Desligado, nenhuma tabela
+   * de estoque é tocada.
+   */
+  recordStock?: boolean
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -485,6 +504,15 @@ export async function invoiceSaleService(input: {
           })
           .where(and(eq(appointments.id, outcome.appointmentId), eq(appointments.salonId, input.salonId)))
       }
+
+      // Por último: a comissão é calculada sobre a comanda já no estado final.
+      if (input.recordCommissions) {
+        await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
+      }
+
+      if (input.recordStock) {
+        await recordSaleStock(tx, { salonId: input.salonId, saleId: sale.id, userId: input.userId })
+      }
     })
 
     return { success: true, data: undefined }
@@ -507,6 +535,8 @@ export async function receiveSaleDebtPaymentService(input: {
   payments: InvoicePaymentDraft[]
   userId: string
   recordFinance?: boolean
+  /** Recalcula as comissões da comanda: a taxa e a data de disponibilidade mudam. */
+  recordCommissions?: boolean
 }): Promise<ActionResult<{ remaining: string }>> {
   try {
     const remaining = await db.transaction(async (tx) => {
@@ -557,6 +587,10 @@ export async function receiveSaleDebtPaymentService(input: {
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
 
+      if (input.recordCommissions) {
+        await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
+      }
+
       return remainingAmount
     })
 
@@ -576,12 +610,20 @@ export async function receiveSaleDebtPaymentService(input: {
 export async function reopenSaleService(input: {
   salonId: string
   saleId: string
+  /** Apaga as comissões da comanda (fase 3). Só com o módulo `commissions` ligado. */
+  recordCommissions?: boolean
 }): Promise<ActionResult<void>> {
   try {
     await db.transaction(async (tx) => {
       const sale = await lockSale(tx, input.salonId, input.saleId)
       if (!sale) fail("Comanda não encontrada")
       if (sale.status !== "invoiced") fail("Só uma comanda faturada pode ser reaberta")
+
+      // Comissão paga trava a reabertura, com o módulo ligado ou não: reabrir
+      // deixaria o profissional com um recibo de um item que não existe mais.
+      if (await saleHasPaidCommissions(tx, { salonId: input.salonId, saleId: sale.id })) {
+        fail("A comissão desta comanda já foi paga. Estorne o pagamento em Comissões antes de reabrir")
+      }
 
       const now = new Date()
 
@@ -627,6 +669,14 @@ export async function reopenSaleService(input: {
             )
           )
       }
+
+      // Comanda aberta não tem comissão: o sync só apaga.
+      if (input.recordCommissions) {
+        await syncSaleCommissions(tx, { salonId: input.salonId, saleId: sale.id })
+      }
+
+      // O que a comanda baixou volta para o estoque — com o módulo ligado ou não.
+      await revertSaleStock(tx, { salonId: input.salonId, saleId: sale.id })
     })
 
     return { success: true, data: undefined }
@@ -759,6 +809,8 @@ export type SaleDetail = {
     description: string
     professionalId: string | null
     professionalName: string | null
+    assistantId: string | null
+    assistantName: string | null
     quantity: string
     unitPrice: string | null
     discountAmount: string
@@ -815,6 +867,8 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         description: saleItems.description,
         professionalId: saleItems.professionalId,
         professionalName: professionals.name,
+        assistantId: saleItems.assistantId,
+        assistantName: assistants.name,
         quantity: saleItems.quantity,
         unitPrice: saleItems.unitPrice,
         discountAmount: saleItems.discountAmount,
@@ -823,6 +877,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
       })
       .from(saleItems)
       .leftJoin(professionals, eq(professionals.id, saleItems.professionalId))
+      .leftJoin(assistants, eq(assistants.id, saleItems.assistantId))
       .where(and(eq(saleItems.saleId, saleId), eq(saleItems.salonId, salonId)))
       .orderBy(saleItems.position),
     db
@@ -911,7 +966,8 @@ export type ListSalesFilters = {
   onlyWithDebt?: boolean
   /**
    * Quem não tem `sales.view_all` vê só as próprias: as que criou e as que têm
-   * item de um vínculo de profissional dele neste salão.
+   * item de um vínculo de profissional dele neste salão — como quem executou ou
+   * como auxiliar.
    */
   visibleTo?: { userId: string; professionalIds: string[] }
   limit: number
@@ -948,7 +1004,14 @@ export async function listSalesService(
                 .select({ saleId: saleItems.saleId })
                 .from(saleItems)
                 .where(
-                  and(eq(saleItems.salonId, filters.salonId), inArray(saleItems.professionalId, professionalIds))
+                  and(
+                    eq(saleItems.salonId, filters.salonId),
+                    // Quem auxiliou também vê a comanda: a comissão dele sai dela.
+                    or(
+                      inArray(saleItems.professionalId, professionalIds),
+                      inArray(saleItems.assistantId, professionalIds)
+                    )
+                  )
                 )
             )
           )!

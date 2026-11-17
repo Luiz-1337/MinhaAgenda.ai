@@ -37,6 +37,18 @@ export const PERMISSION_CATALOG = {
   // Caixa (fase 2). `operate` = abrir, suprimento, sangria e fechar. Sem
   // `view_all` a pessoa vê só o histórico dos caixas que ela abriu.
   cash: ['access', 'operate', 'view_all'],
+  // Comissões (fase 3). Sem `view_all` a pessoa vê só o próprio extrato.
+  // `configure` = regras do salão, comissão por item e recalcular período.
+  // `adjust` = lançar e excluir vales e bonificações.
+  // `pay` = pagar comissões e estornar pagamentos.
+  commissions: ['access', 'view_all', 'configure', 'adjust', 'pay'],
+  // Estoque (fase 4). `move` = lançar entrada, saída e acerto de inventário.
+  // `manage` = ligar o controle do produto, estoque mínimo, custo e códigos, e os
+  // cadastros de apoio (fornecedores, marcas e categorias).
+  // `purchase` = lançar e excluir compras.
+  // `request` = pedir produto do estoque para uso próprio. Aprovar, recusar e
+  // pedir para outro profissional é `move`.
+  inventory: ['access', 'move', 'manage', 'purchase', 'request'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -141,7 +153,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

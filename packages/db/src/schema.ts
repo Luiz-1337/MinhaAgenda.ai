@@ -191,12 +191,18 @@ export const services = pgTable(
     allowedWeekdays: jsonb('allowed_weekdays'),
     allowedStartTimes: jsonb('allowed_start_times'),
     durationMax: integer('duration_max'),
+    // Custo fixo do serviço por atendimento (migration 049): o que não vale a pena
+    // controlar no estoque. Entra no custo que pode abater a comissão.
+    additionalCost: numeric('additional_cost', { precision: 12, scale: 2 }).default('0').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
     index('services_salon_idx').on(table.salonId)
   ]
 )
+
+/** Unidade de consumo de um produto fracionado. */
+export type ProductContentUnit = 'ml' | 'g' | 'un'
 
 export const products = pgTable(
   'products',
@@ -207,10 +213,33 @@ export const products = pgTable(
     description: text('description'),
     price: numeric('price', { precision: 10, scale: 2 }).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
+    // Controle de estoque (migration 045). O SALDO não está aqui: é a soma de
+    // stock_movements.quantity. Regra em domain/inventory.ts.
+    trackStock: boolean('track_stock').default(false).notNull(),
+    // Abaixo disto o produto entra na sugestão de compra.
+    minStock: numeric('min_stock', { precision: 12, scale: 3 }).default('0').notNull(),
+    // Custo de compra. A entrada com custo informado atualiza este valor.
+    costPrice: numeric('cost_price', { precision: 12, scale: 2 }),
+    sku: text('sku'),
+    barcode: text('barcode'),
+    // Marca e categoria (migration 046). SET NULL: apagar a marca não apaga o produto.
+    brandId: uuid('brand_id').references(() => productBrands.id, { onDelete: 'set null' }),
+    categoryId: uuid('category_id').references(() => productCategories.id, { onDelete: 'set null' }),
+    // Fracionamento (migration 048): "uma unidade equivale a" 1000 ml, 300 g…
+    // Os dois andam juntos (CHECK no banco). NULL = produto não fracionado. O
+    // estoque continua em UNIDADES; isto só converte o consumo do serviço.
+    contentAmount: numeric('content_amount', { precision: 12, scale: 3 }),
+    contentUnit: text('content_unit').$type<ProductContentUnit>(),
+    // Solicitação de saída pelo profissional (migration 050): o produto pode ser
+    // pedido, e por quanto. Preço NULL ou zero = sai de graça para ele.
+    requestable: boolean('requestable').default(false).notNull(),
+    professionalPrice: numeric('professional_price', { precision: 12, scale: 2 }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
-    index('products_salon_idx').on(table.salonId)
+    index('products_salon_idx').on(table.salonId),
+    index('products_brand_idx').on(table.brandId).where(sql`brand_id IS NOT NULL`),
+    index('products_category_idx').on(table.categoryId).where(sql`category_id IS NOT NULL`)
   ]
 )
 
@@ -1027,6 +1056,9 @@ export const saleItems = pgTable(
     // Cópia do nome no momento da venda: renomear o serviço não muda o histórico.
     description: text('description').notNull(),
     professionalId: uuid('professional_id').references(() => professionals.id),
+    // Quem auxiliou no serviço (migration 042). Só em item de serviço, e nunca o
+    // mesmo profissional que executou (CHECK no banco).
+    assistantId: uuid('assistant_id').references(() => professionals.id),
     quantity: numeric('quantity', { precision: 10, scale: 3 }).default('1').notNull(),
     // NULL enquanto aberta = preço ainda não informado (faixa / sob avaliação).
     unitPrice: numeric('unit_price', { precision: 12, scale: 2 }),
@@ -1040,6 +1072,7 @@ export const saleItems = pgTable(
     index('sale_items_sale_idx').on(table.saleId, table.position),
     index('sale_items_salon_idx').on(table.salonId),
     index('sale_items_professional_idx').on(table.professionalId).where(sql`professional_id IS NOT NULL`),
+    index('sale_items_assistant_idx').on(table.assistantId).where(sql`assistant_id IS NOT NULL`),
     uniqueIndex('sale_items_appointment_unique').on(table.appointmentId).where(sql`appointment_id IS NOT NULL`)
   ]
 )
@@ -1073,7 +1106,7 @@ export const salePayments = pgTable(
 // passa por domain/finance.ts, em centavos inteiros.
 
 export type FinancialDirection = 'in' | 'out'
-export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer'
+export type FinancialTransactionKind = 'sale' | 'manual' | 'transfer' | 'commission' | 'purchase'
 export type FinancialTransactionStatus = 'open' | 'paid'
 
 export const financialTransactions = pgTable(
@@ -1083,7 +1116,9 @@ export const financialTransactions = pgTable(
     salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
     direction: text('direction').$type<FinancialDirection>().notNull(),
     // sale = gerada pelo faturamento de uma comanda · manual = lançada na tela ·
-    // transfer = uma das duas pernas de uma transferência entre contas
+    // transfer = uma das duas pernas de uma transferência entre contas ·
+    // commission = saída gerada por um pagamento de comissão ou por um vale ·
+    // purchase = parcela a pagar gerada por uma compra de produtos
     kind: text('kind').$type<FinancialTransactionKind>().notNull(),
     // open = a receber / a pagar · paid = baixada (paid_at preenchido — CHECK no banco)
     status: text('status').$type<FinancialTransactionStatus>().default('open').notNull(),
@@ -1109,18 +1144,36 @@ export const financialTransactions = pgTable(
     salePaymentId: uuid('sale_payment_id').references(() => salePayments.id, { onDelete: 'cascade' }),
     // As duas pernas de uma transferência compartilham este id.
     transferGroup: uuid('transfer_group'),
+    // Saída de comissão (migration 044): exatamente um dos dois quando kind é
+    // 'commission' (CHECK no banco). CASCADE de propósito: estornar o pagamento ou
+    // excluir o vale apaga a despesa que ele gerou.
+    commissionPaymentId: uuid('commission_payment_id').references(() => commissionPayments.id, { onDelete: 'cascade' }),
+    commissionAdjustmentId: uuid('commission_adjustment_id').references(() => commissionAdjustments.id, {
+      onDelete: 'cascade'
+    }),
+    // Parcela de compra (migration 046): preenchido só quando kind é 'purchase'
+    // (CHECK no banco). CASCADE de propósito: excluir a compra apaga as parcelas —
+    // por isso o serviço barra a exclusão quando alguma já foi paga.
+    purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }),
     notes: text('notes'),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
+    index('financial_transactions_purchase_idx').on(table.purchaseId).where(sql`purchase_id IS NOT NULL`),
     index('financial_transactions_salon_due_idx').on(table.salonId, table.dueDate),
     index('financial_transactions_salon_status_due_idx').on(table.salonId, table.status, table.dueDate),
     index('financial_transactions_account_paid_idx').on(table.accountId).where(sql`status = 'paid' AND account_id IS NOT NULL`),
     index('financial_transactions_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
     uniqueIndex('financial_transactions_sale_payment_unique').on(table.salePaymentId).where(sql`sale_payment_id IS NOT NULL`),
-    index('financial_transactions_transfer_idx').on(table.transferGroup).where(sql`transfer_group IS NOT NULL`)
+    index('financial_transactions_transfer_idx').on(table.transferGroup).where(sql`transfer_group IS NOT NULL`),
+    uniqueIndex('financial_transactions_commission_payment_unique')
+      .on(table.commissionPaymentId)
+      .where(sql`commission_payment_id IS NOT NULL`),
+    uniqueIndex('financial_transactions_commission_adjustment_unique')
+      .on(table.commissionAdjustmentId)
+      .where(sql`commission_adjustment_id IS NOT NULL`)
   ]
 )
 
@@ -1182,6 +1235,481 @@ export const cashMovements = pgTable(
     index('cash_movements_session_idx').on(table.cashSessionId, table.createdAt),
     index('cash_movements_salon_idx').on(table.salonId),
     uniqueIndex('cash_movements_sale_payment_unique').on(table.salePaymentId).where(sql`sale_payment_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Comissões (migration 041)
+// ============================================================================
+// Quanto de cada item vendido é do profissional. Regras em commission_settings e
+// commission_rules; o extrato calculado em commission_entries. Regra pura em
+// domain/commissions.ts.
+
+/** 'competence' = disponível no dia da comanda; 'availability' = quando o salão recebe. */
+export type CommissionDateBasis = 'competence' | 'availability'
+/** Quem arca (com a taxa ou com o desconto): na proporção da comissão, o salão, o profissional ou meio a meio. */
+export type CommissionShareMode = 'proportional' | 'salon' | 'professional' | 'split'
+export type CommissionRateKind = 'percent' | 'fixed'
+export type CommissionRole = 'professional' | 'assistant'
+/** Sobre o que incide o percentual do auxiliar: o valor do serviço ou a comissão do profissional. */
+export type CommissionAssistantBase = 'gross' | 'commission'
+/** De quem sai a comissão do auxiliar. */
+export type CommissionAssistantDeduct = 'salon' | 'professional'
+/** 'advance' = vale (abate o que há a receber); 'bonus' = bonificação (soma). */
+export type CommissionAdjustmentKind = 'advance' | 'bonus'
+
+export const commissionSettings = pgTable(
+  'commission_settings',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = regra do salão. Preenchido = exceção daquele profissional.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    // NULL em qualquer das três = segue o salão (ou o padrão do sistema).
+    dateBasis: text('date_basis').$type<CommissionDateBasis>(),
+    feeMode: text('fee_mode').$type<CommissionShareMode>(),
+    discountMode: text('discount_mode').$type<CommissionShareMode>(),
+    // Quem arca com o custo do atendimento (migration 049).
+    costMode: text('cost_mode').$type<CommissionShareMode>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_settings_salon_unique').on(table.salonId).where(sql`professional_id IS NULL`),
+    uniqueIndex('commission_settings_professional_unique')
+      .on(table.professionalId)
+      .where(sql`professional_id IS NOT NULL`),
+    index('commission_settings_salon_idx').on(table.salonId)
+  ]
+)
+
+export const commissionRules = pgTable(
+  'commission_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = padrão do salão para o item. Preenchido = exceção do profissional.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    // Exatamente um dos dois (CHECK no banco).
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<CommissionRateKind>().notNull(),
+    // 'percent': 0 a 100. 'fixed': reais por unidade.
+    value: numeric('value', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_rules_salon_service_unique')
+      .on(table.salonId, table.serviceId)
+      .where(sql`professional_id IS NULL AND service_id IS NOT NULL`),
+    uniqueIndex('commission_rules_salon_product_unique')
+      .on(table.salonId, table.productId)
+      .where(sql`professional_id IS NULL AND product_id IS NOT NULL`),
+    uniqueIndex('commission_rules_professional_service_unique')
+      .on(table.professionalId, table.serviceId)
+      .where(sql`professional_id IS NOT NULL AND service_id IS NOT NULL`),
+    uniqueIndex('commission_rules_professional_product_unique')
+      .on(table.professionalId, table.productId)
+      .where(sql`professional_id IS NOT NULL AND product_id IS NOT NULL`),
+    index('commission_rules_salon_idx').on(table.salonId)
+  ]
+)
+
+// Quanto o auxiliar ganha por serviço (migration 042). Tabela própria: as consultas
+// da comissão do profissional não precisam saber que ela existe.
+export const commissionAssistantRules = pgTable(
+  'commission_assistant_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = padrão do salão para o serviço. Preenchido = o que aquele profissional
+    // ganha quando é o auxiliar.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<CommissionRateKind>().notNull(),
+    // 'percent': 0 a 100. 'fixed': reais por unidade.
+    value: numeric('value', { precision: 12, scale: 2 }).notNull(),
+    base: text('base').$type<CommissionAssistantBase>().default('gross').notNull(),
+    deductFrom: text('deduct_from').$type<CommissionAssistantDeduct>().default('professional').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_assistant_rules_salon_unique')
+      .on(table.salonId, table.serviceId)
+      .where(sql`professional_id IS NULL`),
+    uniqueIndex('commission_assistant_rules_professional_unique')
+      .on(table.professionalId, table.serviceId)
+      .where(sql`professional_id IS NOT NULL`),
+    index('commission_assistant_rules_salon_idx').on(table.salonId)
+  ]
+)
+
+// Pagamento de comissão (migration 044): um por profissional; os feitos juntos
+// compartilham `batchId`. Quita tudo o que estava em aberto até `cutoffDate`.
+export const commissionPayments = pgTable(
+  'commission_payments',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    batchId: uuid('batch_id').notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    cutoffDate: date('cutoff_date').notNull(),
+    // Fotografia do que foi quitado: o recibo não muda se algo for recalculado.
+    entriesAmount: numeric('entries_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    advancesAmount: numeric('advances_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    bonusesAmount: numeric('bonuses_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // entriesAmount − advancesAmount + bonusesAmount (CHECK no banco). Pode ser zero.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    paidOn: date('paid_on').notNull(),
+    // NULL = pago sem registrar no financeiro.
+    accountId: uuid('account_id').references(() => financialAccounts.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('commission_payments_salon_paid_idx').on(table.salonId, table.paidOn.desc()),
+    index('commission_payments_professional_idx').on(table.professionalId, table.paidOn.desc()),
+    index('commission_payments_batch_idx').on(table.batchId)
+  ]
+)
+
+export const commissionEntries = pgTable(
+  'commission_entries',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }).notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    role: text('role').$type<CommissionRole>().default('professional').notNull(),
+    // Sobre quanto a comissão foi calculada.
+    baseAmount: numeric('base_amount', { precision: 12, scale: 2 }).notNull(),
+    // A regra usada, copiada: mudar a regra depois não muda o histórico.
+    rateKind: text('rate_kind').$type<CommissionRateKind>().notNull(),
+    rateValue: numeric('rate_value', { precision: 12, scale: 2 }).notNull(),
+    // Comissão antes da taxa da forma de pagamento.
+    grossAmount: numeric('gross_amount', { precision: 12, scale: 2 }).notNull(),
+    // Parcela da taxa que coube ao profissional.
+    feeAmount: numeric('fee_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Quanto desta comissão foi para o auxiliar (migration 042). Só na linha do
+    // profissional; a do auxiliar é o que ele recebe.
+    assistantDeduction: numeric('assistant_deduction', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Parte do custo do atendimento que saiu desta comissão (migration 049). Só na
+    // linha do profissional.
+    costAmount: numeric('cost_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // O que há a receber: grossAmount − feeAmount − assistantDeduction − costAmount.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    competenceDate: date('competence_date').notNull(),
+    // NULL = aguardando o cliente pagar (regra "disponibilidade" com valor em aberto).
+    releaseDate: date('release_date'),
+    // O pagamento que quitou esta comissão (migration 044). NULL = em aberto.
+    // Comissão paga não é recalculada nem apagada.
+    paymentId: uuid('payment_id').references(() => commissionPayments.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_entries_item_unique').on(table.saleItemId, table.professionalId, table.role),
+    index('commission_entries_statement_idx').on(table.salonId, table.professionalId, table.releaseDate),
+    index('commission_entries_sale_idx').on(table.saleId),
+    index('commission_entries_payment_idx').on(table.paymentId).where(sql`payment_id IS NOT NULL`),
+    index('commission_entries_open_idx')
+      .on(table.salonId, table.professionalId, table.releaseDate)
+      .where(sql`payment_id IS NULL`)
+  ]
+)
+
+// Vales e bonificações (migration 043): o que entra no extrato por fora dos itens.
+// Líquido = comissões a receber − vales + bonificações.
+export const commissionAdjustments = pgTable(
+  'commission_adjustments',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    kind: text('kind').$type<CommissionAdjustmentKind>().notNull(),
+    // Sempre positivo: o sinal vem de `kind`.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    // Dia em que entra no extrato (calendário de Brasília).
+    referenceDate: date('reference_date').notNull(),
+    notes: text('notes'),
+    // O pagamento em que este lançamento entrou (migration 044). NULL = em aberto.
+    paymentId: uuid('payment_id').references(() => commissionPayments.id, { onDelete: 'set null' }),
+    // Débito de uma retirada de produto (migration 050): o vale aponta para a
+    // solicitação que o gerou. CASCADE: excluir a solicitação apaga o débito. Só
+    // 'advance' pode apontar (CHECK no banco).
+    stockRequestId: uuid('stock_request_id').references(() => stockRequests.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('commission_adjustments_request_unique')
+      .on(table.stockRequestId)
+      .where(sql`stock_request_id IS NOT NULL`),
+    index('commission_adjustments_statement_idx').on(table.salonId, table.professionalId, table.referenceDate),
+    index('commission_adjustments_payment_idx').on(table.paymentId).where(sql`payment_id IS NOT NULL`),
+    index('commission_adjustments_open_idx')
+      .on(table.salonId, table.professionalId, table.referenceDate)
+      .where(sql`payment_id IS NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Estoque (migration 045)
+// ============================================================================
+// Tudo o que entra e sai de um produto controlado. O saldo é a SOMA de
+// `quantity` — nunca é gravado. Regra em domain/inventory.ts.
+
+/**
+ * in = entrada · out = saída · adjustment = acerto de inventário · sale = baixa por
+ * comanda (produto vendido) · purchase = entrada por compra · consumption = baixa
+ * de insumo por serviço faturado · request = saída por solicitação aprovada
+ */
+export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale' | 'purchase' | 'consumption' | 'request'
+
+export const stockMovements = pgTable(
+  'stock_movements',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<StockMovementKind>().notNull(),
+    // Com sinal: positivo entra, negativo sai (CHECK no banco).
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unitCost: numeric('unit_cost', { precision: 12, scale: 2 }),
+    notes: text('notes'),
+    // Só em 'sale' e 'consumption' (CHECK no banco). CASCADE de propósito: reabrir
+    // a comanda apaga a baixa que ela fez.
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }),
+    // Só em 'purchase' (migration 046, CHECK no banco). CASCADE de propósito:
+    // excluir a compra apaga a entrada que ela deu.
+    purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }),
+    purchaseItemId: uuid('purchase_item_id').references(() => purchaseItems.id, { onDelete: 'cascade' }),
+    // Só em 'request' (migration 050, CHECK no banco). CASCADE de propósito: excluir
+    // a solicitação devolve o produto ao estoque.
+    stockRequestId: uuid('stock_request_id').references(() => stockRequests.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('stock_movements_product_idx').on(table.productId, table.createdAt.desc()),
+    index('stock_movements_salon_idx').on(table.salonId, table.createdAt.desc()),
+    index('stock_movements_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
+    // Um item de produto vendido baixa uma vez; um item de serviço consome cada
+    // produto uma vez (migration 048).
+    uniqueIndex('stock_movements_sale_item_unique').on(table.saleItemId).where(sql`kind = 'sale'`),
+    uniqueIndex('stock_movements_consumption_unique')
+      .on(table.saleItemId, table.productId)
+      .where(sql`kind = 'consumption'`),
+    index('stock_movements_purchase_idx').on(table.purchaseId).where(sql`purchase_id IS NOT NULL`),
+    uniqueIndex('stock_movements_purchase_item_unique')
+      .on(table.purchaseItemId)
+      .where(sql`purchase_item_id IS NOT NULL`),
+    uniqueIndex('stock_movements_request_unique')
+      .on(table.stockRequestId)
+      .where(sql`stock_request_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Solicitações de saída de estoque (migration 050)
+// ============================================================================
+// O profissional pede um produto para uso próprio; o salão aprova; o produto sai
+// do estoque e o valor é debitado no extrato de comissões. Regra em
+// domain/stock-requests.ts.
+
+/** pending = aguardando decisão · approved = aprovada (saiu e debitou) · rejected = recusada */
+export type StockRequestStatus = 'pending' | 'approved' | 'rejected'
+
+export const stockRequests = pgTable(
+  'stock_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // Sem ON DELETE, como sale_items: produto com solicitação não se apaga.
+    productId: uuid('product_id').references(() => products.id).notNull(),
+    // Quem vai levar o produto, e de quem sai o débito.
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    // Cópia do nome e do preço para profissional na hora do pedido.
+    description: text('description').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).default('0').notNull(),
+    totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    status: text('status').$type<StockRequestStatus>().default('pending').notNull(),
+    notes: text('notes'),
+    requestedBy: uuid('requested_by').references(() => profiles.id, { onDelete: 'set null' }),
+    decidedBy: uuid('decided_by').references(() => profiles.id, { onDelete: 'set null' }),
+    // NULL enquanto pendente (CHECK no banco).
+    decidedAt: timestamp('decided_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('stock_requests_salon_idx').on(table.salonId, table.createdAt.desc()),
+    index('stock_requests_pending_idx').on(table.salonId, table.createdAt.desc()).where(sql`status = 'pending'`),
+    index('stock_requests_professional_idx').on(table.professionalId, table.createdAt.desc()),
+    index('stock_requests_product_idx').on(table.productId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Produtos consumidos por serviço (migration 048)
+// ============================================================================
+// O que um atendimento gasta de cada produto. Faturar a comanda baixa o estoque
+// (stock_movements.kind = 'consumption'). Regra em domain/consumption.ts.
+
+export const serviceProducts = pgTable(
+  'service_products',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }).notNull(),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+    // Na unidade de consumo do produto (ml, g), ou em unidades se não é fracionado.
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('service_products_service_product_unique').on(table.serviceId, table.productId),
+    index('service_products_salon_idx').on(table.salonId),
+    index('service_products_product_idx').on(table.productId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Lotes e validades (migration 047)
+// ============================================================================
+// Um lote guarda o que ENTROU com ele. O que resta de cada lote não é gravado: é
+// calculado a partir do saldo do produto, supondo que sai primeiro o que vence
+// primeiro. Regra em domain/batches.ts.
+
+export const productBatches = pgTable(
+  'product_batches',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+    // NULL = o salão registrou só a validade (CHECK: código ou validade).
+    code: text('code'),
+    // Dias de calendário ("YYYY-MM-DD").
+    manufacturedOn: date('manufactured_on'),
+    expiresOn: date('expires_on'),
+    // O que entrou com este lote.
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    notes: text('notes'),
+    // A entrada (manual ou de compra) que trouxe o lote. NULL = registrado solto.
+    // CASCADE de propósito: excluir a compra apaga a entrada, e o lote vai junto.
+    stockMovementId: uuid('stock_movement_id').references(() => stockMovements.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('product_batches_salon_expiry_idx').on(table.salonId, table.expiresOn),
+    index('product_batches_product_idx').on(table.productId, table.expiresOn),
+    uniqueIndex('product_batches_movement_unique')
+      .on(table.stockMovementId)
+      .where(sql`stock_movement_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Compras, fornecedores, marcas e categorias (migration 046)
+// ============================================================================
+// A compra é um documento: fornecedor, data, nota e itens. Ela dá entrada no
+// estoque (stock_movements.kind = 'purchase'), atualiza o custo do produto e, com o
+// financeiro ligado, gera as parcelas a pagar. Regra em domain/purchases.ts.
+
+export const suppliers = pgTable(
+  'suppliers',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // CPF (11 dígitos) ou CNPJ (14 caracteres), sem pontuação.
+    document: text('document'),
+    phone: text('phone'),
+    email: text('email'),
+    notes: text('notes'),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('suppliers_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const productBrands = pgTable(
+  'product_brands',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('product_brands_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const productCategories = pgTable(
+  'product_categories',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('product_categories_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const purchases = pgTable(
+  'purchases',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // SET NULL só como rede: o serviço barra excluir fornecedor que tem compra.
+    supplierId: uuid('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+    // Dia de calendário em Brasília ("YYYY-MM-DD").
+    purchasedOn: date('purchased_on').notNull(),
+    invoiceNumber: text('invoice_number'),
+    notes: text('notes'),
+    itemsAmount: numeric('items_amount', { precision: 12, scale: 2 }).notNull(),
+    // Frete e outros custos da nota que não são produto.
+    freightAmount: numeric('freight_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    discountAmount: numeric('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // itens + frete − desconto (CHECK no banco). É o que se paga ao fornecedor.
+    totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).notNull(),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('purchases_salon_date_idx').on(table.salonId, table.purchasedOn.desc(), table.createdAt.desc()),
+    index('purchases_supplier_idx').on(table.supplierId).where(sql`supplier_id IS NOT NULL`)
+  ]
+)
+
+export const purchaseItems = pgTable(
+  'purchase_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }).notNull(),
+    position: integer('position').default(0).notNull(),
+    // Sem ON DELETE, como sale_items: produto com compra não se apaga.
+    productId: uuid('product_id').references(() => products.id).notNull(),
+    // Cópia do nome na hora da compra: renomear o produto não muda o histórico.
+    description: text('description').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unitCost: numeric('unit_cost', { precision: 12, scale: 2 }).notNull(),
+    totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).notNull(),
+    // O custo que o produto tinha antes desta compra: excluir a compra o devolve.
+    previousCost: numeric('previous_cost', { precision: 12, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('purchase_items_purchase_idx').on(table.purchaseId, table.position),
+    index('purchase_items_product_idx').on(table.productId),
+    index('purchase_items_salon_idx').on(table.salonId)
   ]
 )
 

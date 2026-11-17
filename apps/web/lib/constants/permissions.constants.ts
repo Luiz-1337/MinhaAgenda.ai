@@ -27,6 +27,8 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   payment_methods: "Formas de pagamento",
   finance: "Financeiro",
   cash: "Caixa",
+  commissions: "Comissões",
+  inventory: "Estoque",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
@@ -45,6 +47,12 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   settle: "Dar baixa e estornar",
   settings: "Contas e categorias",
   operate: "Abrir, movimentar e fechar",
+  configure: "Configurar regras",
+  adjust: "Lançar vales e bonificações",
+  pay: "Pagar comissões e estornar pagamentos",
+  move: "Lançar entradas, saídas e acertos",
+  purchase: "Lançar e excluir compras",
+  request: "Solicitar produto para uso próprio",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */
@@ -53,4 +61,6 @@ export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, strin
   access_profiles: "Quem gerencia perfis define o que os outros podem.",
   sales: "Sem “Ver de todos”, a pessoa vê só as comandas com item dela.",
   cash: "Sem “Ver de todos”, a pessoa vê só o histórico dos caixas que abriu.",
+  commissions: "Sem “Ver de todos”, a pessoa vê só o próprio extrato.",
+  inventory: "“Gerenciar” liga o controle do produto, define mínimo e custo e cuida de fornecedores, marcas e categorias.",
 }

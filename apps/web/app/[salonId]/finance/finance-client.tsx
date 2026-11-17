@@ -577,7 +577,10 @@ export function FinanceClient({
                 .filter(Boolean)
                 .join(" · ")
               const canSettle = options.can.settle && row.status === "open"
-              const canUnsettle = options.can.settle && row.status === "paid" && row.kind !== "transfer"
+              // Saída de comissão se desfaz em Comissões (estorno do pagamento ou
+              // exclusão do vale), nunca por aqui.
+              const canUnsettle =
+                options.can.settle && row.status === "paid" && row.kind !== "transfer" && row.kind !== "commission"
               const canDelete =
                 options.can.delete && (row.kind === "transfer" || (row.kind === "manual" && row.status === "open"))
               const canEdit = options.can.create && row.kind === "manual" && row.status === "open"
