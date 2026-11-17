@@ -17,6 +17,7 @@ import {
   inputClass,
   labelClass,
   parseQuantity,
+  quantityToInput,
 } from "../inventory-ui"
 
 type LineDraft = { key: number; productId: string; quantity: string }
@@ -48,7 +49,7 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
       service.lines.map((line, index) => ({
         key: index,
         productId: line.productId,
-        quantity: formatQuantity(line.quantity),
+        quantity: quantityToInput(line.quantity),
       }))
     )
     setNextKey(service.lines.length)

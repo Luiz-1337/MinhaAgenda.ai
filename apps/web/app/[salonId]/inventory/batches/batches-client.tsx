@@ -19,6 +19,7 @@ import {
   inputClass,
   labelClass,
   parseQuantity,
+  quantityToInput,
 } from "../inventory-ui"
 
 const STATUS_CLASS: Record<BatchStatus, string> = {
@@ -102,7 +103,7 @@ export function BatchesClient({ salonId, data }: { salonId: string; data: Batche
       code: batch.code ?? "",
       manufacturedOn: batch.manufacturedOn ?? "",
       expiresOn: batch.expiresOn ?? "",
-      quantity: formatQuantity(batch.quantity),
+      quantity: quantityToInput(batch.quantity),
       notes: batch.notes ?? "",
     })
     setEditing(batch)

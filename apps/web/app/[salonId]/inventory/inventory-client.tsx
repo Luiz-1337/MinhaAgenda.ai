@@ -24,6 +24,7 @@ import {
   inputClass,
   labelClass,
   parseQuantity,
+  quantityToInput,
 } from "./inventory-ui"
 
 const MANUAL_KINDS: ManualStockMovementKind[] = ["in", "out", "adjustment"]
@@ -107,13 +108,13 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
   function openSettings(product: InventoryProductDTO) {
     setConfiguring(product)
     setTrackStock(product.trackStock)
-    setMinStock(Number(product.minStock) > 0 ? formatQuantity(product.minStock) : "")
+    setMinStock(Number(product.minStock) > 0 ? quantityToInput(product.minStock) : "")
     setCostPrice(product.costPrice ? Number(product.costPrice).toFixed(2).replace(".", ",") : "")
     setSku(product.sku ?? "")
     setBarcode(product.barcode ?? "")
     setBrandId(product.brandId ?? "")
     setCategoryId(product.categoryId ?? "")
-    setContentAmount(product.contentAmount ? formatQuantity(product.contentAmount) : "")
+    setContentAmount(product.contentAmount ? quantityToInput(product.contentAmount) : "")
     setContentUnit(product.contentUnit ?? "ml")
     setRequestable(product.requestable)
     setProfessionalPrice(product.professionalPrice ? Number(product.professionalPrice).toFixed(2).replace(".", ",") : "")

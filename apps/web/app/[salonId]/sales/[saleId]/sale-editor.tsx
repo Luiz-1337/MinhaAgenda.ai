@@ -30,6 +30,7 @@ import {
 } from "@/app/actions/sales"
 import { SALE_STATUS_BADGE, SALE_STATUS_LABELS } from "@/lib/constants/sales.constants"
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
+import { parseQuantity as parseTypedQuantity, quantityToInput } from "@/lib/utils/quantity.utils"
 import { centsToNumeric, toCents } from "@repo/db/src/domain/sales"
 import type {
   SaleCustomerOption,
@@ -81,10 +82,13 @@ function moneyToInput(value: string | number | null): string {
   return Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-/** Quantidade aceita vírgula ou ponto como decimal ("1,5" / "1.5"). */
+/**
+ * Quantidade do item: maior que zero. A leitura (vírgula decimal, ponto de milhar)
+ * é a mesma do estoque — lib/utils/quantity.utils.ts.
+ */
 function parseQuantity(input: string): number | null {
-  const n = Number(input.trim().replace(",", "."))
-  return Number.isFinite(n) && n > 0 ? n : null
+  const n = parseTypedQuantity(input)
+  return n !== null && n > 0 ? n : null
 }
 
 /** ISO → valor de <input type="datetime-local">, no fuso do navegador. */
@@ -129,7 +133,8 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
     refId: (item.kind === "service" ? item.serviceId : item.productId) ?? "",
     professionalId: item.professionalId ?? "",
     assistantId: item.assistantId ?? "",
-    quantity: Number(item.quantity).toLocaleString("pt-BR", { maximumFractionDigits: 3 }),
+    // Sem separador de milhar: "1.000" no campo seria relido como um.
+    quantity: quantityToInput(item.quantity),
     unitPrice: moneyToInput(item.unitPrice),
     discount: Number(item.discountAmount) > 0 ? moneyToInput(item.discountAmount) : "",
     appointmentId: item.appointmentId,

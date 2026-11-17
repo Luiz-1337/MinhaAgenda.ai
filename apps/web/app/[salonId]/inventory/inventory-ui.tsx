@@ -17,23 +17,9 @@ export const labelClass = "text-xs font-semibold text-muted-foreground"
 export const iconButtonClass =
   "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
 
-/** "12.500" → "12,5". Quantidade de coluna numeric(12,3), sem zeros à direita. */
-export function formatQuantity(value: string): string {
-  return Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 3 })
-}
-
-/**
- * Quantidade digitada → número. A vírgula é sempre o decimal ("0,250"); sem
- * vírgula, o ponto é o decimal ("1.5"). Diferente do dinheiro, aqui três casas são
- * comuns (gramas, mililitros) — por isso não reaproveita `parseBRL`.
- */
-export function parseQuantity(input: string): number | null {
-  const cleaned = input.replace(/\s/g, "")
-  if (!cleaned || !/^[\d.,]+$/.test(cleaned)) return null
-  const normalized = cleaned.includes(",") ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned
-  const value = Number(normalized)
-  return Number.isFinite(value) ? value : null
-}
+// Formatar e ler quantidade mora em lib/utils/quantity.utils.ts (com teste); as telas
+// do estoque continuam importando daqui.
+export { formatQuantity, parseQuantity, quantityToInput } from "@/lib/utils/quantity.utils"
 
 /** "2026-11-16" → "16/11/2026". Dia de calendário, sem fuso. */
 export function formatCalendarDate(date: string): string {
