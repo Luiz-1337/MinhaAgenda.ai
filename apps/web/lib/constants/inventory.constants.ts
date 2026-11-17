@@ -12,6 +12,7 @@ export const STOCK_MOVEMENT_KIND_LABELS: Record<StockMovementKind, string> = {
   adjustment: "Acerto",
   sale: "Venda",
   purchase: "Compra",
+  consumption: "Consumo",
 }
 
 export const STOCK_STATUS_LABELS: Record<StockStatus, string> = {

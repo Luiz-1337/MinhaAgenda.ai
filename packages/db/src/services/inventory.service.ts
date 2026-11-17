@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
 
 import {
   db,
+  serviceProducts,
   productBrands,
   productCategories,
   products,
@@ -10,7 +11,7 @@ import {
   sales,
   stockMovements,
 } from "../index"
-import type { StockMovementKind } from "../schema"
+import type { ProductContentUnit, StockMovementKind } from "../schema"
 import {
   milliToNumeric,
   planProductStockSettings,
@@ -19,6 +20,7 @@ import {
   toMilli,
 } from "../domain/inventory"
 import { hasBatchData, planBatch } from "../domain/batches"
+import { planProductContent, planSaleConsumptionMovements } from "../domain/consumption"
 import type { ActionResult } from "./appointments"
 import { insertMovementBatch } from "./batches.service"
 
@@ -80,6 +82,9 @@ export type InventoryProductRow = {
   brandName: string | null
   categoryId: string | null
   categoryName: string | null
+  /** Fracionamento: quanto cabe em uma unidade e em que medida. NULL = não fracionado. */
+  contentAmount: string | null
+  contentUnit: ProductContentUnit | null
   /** Saldo: a soma dos movimentos (numeric como string, pode ser negativo). */
   quantity: string
 }
@@ -111,6 +116,8 @@ export async function listInventoryService(salonId: string): Promise<InventoryPr
       brandName: productBrands.name,
       categoryId: products.categoryId,
       categoryName: productCategories.name,
+      contentAmount: products.contentAmount,
+      contentUnit: products.contentUnit,
       quantity: sql<string>`coalesce(${balances.total}, 0)::numeric(12,3)::text`,
     })
     .from(products)
@@ -272,17 +279,21 @@ export async function createStockMovementService(input: {
 /**
  * Grava o controle de estoque de um produto: controlar ou não, mínimo, custo e
  * códigos. Com `classification`, grava também a marca e a categoria (fatia 4b) —
- * as duas têm que ser do salão.
+ * as duas têm que ser do salão. Com `content`, grava o fracionamento (fatia 4d).
  */
 export async function saveProductStockSettingsService(input: {
   salonId: string
   productId: string
   settings: { trackStock: unknown; minStock?: unknown; costPrice?: unknown; sku?: unknown; barcode?: unknown }
   classification?: { brandId: string | null; categoryId: string | null }
+  content?: { contentAmount?: unknown; contentUnit?: unknown }
 }): Promise<ActionResult<void>> {
   try {
     const plan = planProductStockSettings(input.settings)
     if (!plan.ok) fail(plan.error)
+
+    const contentPlan = input.content ? planProductContent(input.content) : null
+    if (contentPlan && !contentPlan.ok) fail(contentPlan.error)
 
     if (input.classification?.brandId) {
       const [brand] = await db
@@ -315,6 +326,9 @@ export async function saveProductStockSettingsService(input: {
         ...(input.classification
           ? { brandId: input.classification.brandId, categoryId: input.classification.categoryId }
           : {}),
+        ...(contentPlan?.ok
+          ? { contentAmount: contentPlan.contentAmount, contentUnit: contentPlan.contentUnit }
+          : {}),
       })
       .where(and(eq(products.id, input.productId), eq(products.salonId, input.salonId)))
       .returning({ id: products.id })
@@ -335,6 +349,10 @@ export async function saveProductStockSettingsService(input: {
  * Baixa o estoque dos produtos controlados de uma comanda que acabou de ser
  * faturada. Roda DENTRO da transação do faturamento.
  *
+ * Duas baixas: o produto VENDIDO (um movimento 'sale' por item de produto) e o
+ * insumo CONSUMIDO pelos serviços (um movimento 'consumption' por item de serviço
+ * × produto que o serviço gasta — fatia 4d).
+ *
  * Quem decide chamar é a action (módulo `inventory` ligado no salão). Não trava o
  * produto nem confere saldo: a baixa é uma linha a mais na soma, e vender sem saldo
  * não é barrado — o produto já saiu da prateleira.
@@ -344,26 +362,75 @@ export async function recordSaleStock(
   input: { salonId: string; saleId: string; userId: string }
 ): Promise<void> {
   const items = await tx
-    .select({ id: saleItems.id, productId: saleItems.productId, quantity: saleItems.quantity })
+    .select({
+      id: saleItems.id,
+      productId: saleItems.productId,
+      serviceId: saleItems.serviceId,
+      quantity: saleItems.quantity,
+    })
     .from(saleItems)
     .where(and(eq(saleItems.saleId, input.saleId), eq(saleItems.salonId, input.salonId)))
 
-  const productIds = Array.from(new Set(items.map((item) => item.productId).filter((id): id is string => !!id)))
+  // O que os serviços desta comanda consomem.
+  const serviceIds = Array.from(new Set(items.map((item) => item.serviceId).filter((id): id is string => !!id)))
+  const recipeRows =
+    serviceIds.length === 0
+      ? []
+      : await tx
+          .select({
+            serviceId: serviceProducts.serviceId,
+            productId: serviceProducts.productId,
+            quantity: serviceProducts.quantity,
+          })
+          .from(serviceProducts)
+          .where(and(eq(serviceProducts.salonId, input.salonId), inArray(serviceProducts.serviceId, serviceIds)))
+
+  const recipes = new Map<string, { productId: string; quantity: string }[]>()
+  for (const row of recipeRows) {
+    const lines = recipes.get(row.serviceId) ?? []
+    lines.push({ productId: row.productId, quantity: row.quantity })
+    recipes.set(row.serviceId, lines)
+  }
+
+  const productIds = Array.from(
+    new Set([
+      ...items.map((item) => item.productId).filter((id): id is string => !!id),
+      ...recipeRows.map((row) => row.productId),
+    ])
+  )
   if (productIds.length === 0) return
 
-  const tracked = await tx
-    .select({ id: products.id })
+  const productRows = await tx
+    .select({ id: products.id, trackStock: products.trackStock, contentAmount: products.contentAmount })
     .from(products)
-    .where(and(eq(products.salonId, input.salonId), eq(products.trackStock, true), inArray(products.id, productIds)))
+    .where(and(eq(products.salonId, input.salonId), inArray(products.id, productIds)))
 
-  const movements = planSaleStockMovements(items, new Set(tracked.map((product) => product.id)))
-  if (movements.length === 0) return
+  const sold = planSaleStockMovements(
+    items,
+    new Set(productRows.filter((product) => product.trackStock).map((product) => product.id))
+  )
+  const consumed = planSaleConsumptionMovements(
+    items,
+    recipes,
+    new Map(
+      productRows.map((product) => [
+        product.id,
+        { trackStock: product.trackStock, contentAmount: product.contentAmount },
+      ])
+    )
+  )
+
+  const rows = [
+    ...sold.map((movement) => ({ ...movement, kind: "sale" as const })),
+    ...consumed.map((movement) => ({ ...movement, kind: "consumption" as const })),
+  ]
+  if (rows.length === 0) return
 
   await tx.insert(stockMovements).values(
-    movements.map((movement) => ({
+    rows.map((movement) => ({
       salonId: input.salonId,
       productId: movement.productId,
-      kind: "sale" as const,
+      kind: movement.kind,
       quantity: movement.quantity,
       saleId: input.saleId,
       saleItemId: movement.saleItemId,

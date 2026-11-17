@@ -13,7 +13,7 @@ import {
   STOCK_STATUS_LABELS,
 } from "@/lib/constants/inventory.constants"
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
-import type { ManualStockMovementKind, StockStatus } from "@repo/db"
+import type { ManualStockMovementKind, ProductContentUnitValue, StockStatus } from "@repo/db"
 import type { InventoryDTO, InventoryProductDTO } from "@/lib/types/inventory"
 import {
   InventoryNav,
@@ -78,6 +78,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
   const [barcode, setBarcode] = useState("")
   const [brandId, setBrandId] = useState("")
   const [categoryId, setCategoryId] = useState("")
+  const [contentAmount, setContentAmount] = useState("")
+  const [contentUnit, setContentUnit] = useState<ProductContentUnitValue>("ml")
 
   const visible = useMemo(() => {
     if (view === "to_buy") {
@@ -109,6 +111,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
     setBarcode(product.barcode ?? "")
     setBrandId(product.brandId ?? "")
     setCategoryId(product.categoryId ?? "")
+    setContentAmount(product.contentAmount ? formatQuantity(product.contentAmount) : "")
+    setContentUnit(product.contentUnit ?? "ml")
   }
 
   function submitMovement() {
@@ -172,6 +176,15 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
       }
     }
 
+    let content: number | null = null
+    if (contentAmount.trim()) {
+      content = parseQuantity(contentAmount)
+      if (content === null || content <= 0) {
+        toast.error("Informe quanto cabe em uma unidade")
+        return
+      }
+    }
+
     startTransition(async () => {
       const result = await saveProductStockSettings({
         salonId,
@@ -183,6 +196,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
         barcode: barcode.trim() || null,
         brandId: brandId || null,
         categoryId: categoryId || null,
+        contentAmount: content,
+        contentUnit: content === null ? null : contentUnit,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -299,9 +314,21 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                   <tr key={product.id} className={product.isActive ? undefined : "opacity-60"}>
                     <td className="p-3 font-semibold text-foreground">
                       {product.name}
-                      {(product.sku || product.brandName || product.categoryName || !product.isActive) && (
+                      {(product.sku ||
+                        product.brandName ||
+                        product.categoryName ||
+                        product.contentAmount ||
+                        !product.isActive) && (
                         <span className="block text-[11px] font-normal text-muted-foreground">
-                          {[product.sku, product.brandName, product.categoryName, product.isActive ? null : "inativo"]
+                          {[
+                            product.sku,
+                            product.brandName,
+                            product.categoryName,
+                            product.contentAmount && product.contentUnit
+                              ? `${formatQuantity(product.contentAmount)} ${product.contentUnit} por unidade`
+                              : null,
+                            product.isActive ? null : "inativo",
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </span>
@@ -712,6 +739,38 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="flex flex-col gap-1 col-span-2">
+                <label htmlFor="settings-content" className={labelClass}>
+                  Uma unidade equivale a (opcional)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    id="settings-content"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ex.: 1000"
+                    value={contentAmount}
+                    disabled={isPending}
+                    onChange={(event) => setContentAmount(event.target.value)}
+                    className={inputClass}
+                  />
+                  <select
+                    aria-label="Unidade de consumo"
+                    value={contentUnit}
+                    disabled={isPending}
+                    onChange={(event) => setContentUnit(event.target.value as ProductContentUnitValue)}
+                    className={inputClass}
+                  >
+                    <option value="ml">ml</option>
+                    <option value="g">g</option>
+                    <option value="un">un</option>
+                  </select>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Para produto gasto aos poucos no atendimento: o consumo do serviço é informado nesta medida e baixa a
+                  fração da unidade. O estoque continua contado em unidades.
+                </p>
               </div>
             </div>
           </div>

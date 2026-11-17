@@ -54,4 +54,19 @@ export const saveProductStockSettingsSchema = z.object({
   barcode: z.string().max(60, "Código de barras muito longo").nullish(),
   brandId: z.string().uuid().nullish(),
   categoryId: z.string().uuid().nullish(),
+  contentAmount: z.number().finite().positive("Quantidade inválida").max(1_000_000, "Quantidade inválida").nullish(),
+  contentUnit: z.enum(["ml", "g", "un"]).nullish(),
+})
+
+export const saveServiceConsumptionSchema = z.object({
+  salonId: z.string().uuid(),
+  serviceId: z.string().uuid(),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().uuid({ message: "Escolha o produto" }),
+        quantity: z.number().finite().positive("Quantidade inválida").max(1_000_000, "Quantidade inválida"),
+      })
+    )
+    .max(30, "Um serviço aceita no máximo 30 produtos"),
 })

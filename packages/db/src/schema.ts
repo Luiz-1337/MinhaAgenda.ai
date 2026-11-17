@@ -198,6 +198,9 @@ export const services = pgTable(
   ]
 )
 
+/** Unidade de consumo de um produto fracionado. */
+export type ProductContentUnit = 'ml' | 'g' | 'un'
+
 export const products = pgTable(
   'products',
   {
@@ -219,6 +222,11 @@ export const products = pgTable(
     // Marca e categoria (migration 046). SET NULL: apagar a marca não apaga o produto.
     brandId: uuid('brand_id').references(() => productBrands.id, { onDelete: 'set null' }),
     categoryId: uuid('category_id').references(() => productCategories.id, { onDelete: 'set null' }),
+    // Fracionamento (migration 048): "uma unidade equivale a" 1000 ml, 300 g…
+    // Os dois andam juntos (CHECK no banco). NULL = produto não fracionado. O
+    // estoque continua em UNIDADES; isto só converte o consumo do serviço.
+    contentAmount: numeric('content_amount', { precision: 12, scale: 3 }),
+    contentUnit: text('content_unit').$type<ProductContentUnit>(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -1437,9 +1445,10 @@ export const commissionAdjustments = pgTable(
 
 /**
  * in = entrada · out = saída · adjustment = acerto de inventário · sale = baixa por
- * comanda · purchase = entrada por compra
+ * comanda (produto vendido) · purchase = entrada por compra · consumption = baixa
+ * de insumo por serviço faturado
  */
-export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale' | 'purchase'
+export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale' | 'purchase' | 'consumption'
 
 export const stockMovements = pgTable(
   'stock_movements',
@@ -1452,8 +1461,8 @@ export const stockMovements = pgTable(
     quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
     unitCost: numeric('unit_cost', { precision: 12, scale: 2 }),
     notes: text('notes'),
-    // Só em 'sale' (CHECK no banco). CASCADE de propósito: reabrir a comanda apaga
-    // a baixa que ela fez.
+    // Só em 'sale' e 'consumption' (CHECK no banco). CASCADE de propósito: reabrir
+    // a comanda apaga a baixa que ela fez.
     saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
     saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }),
     // Só em 'purchase' (migration 046, CHECK no banco). CASCADE de propósito:
@@ -1467,11 +1476,40 @@ export const stockMovements = pgTable(
     index('stock_movements_product_idx').on(table.productId, table.createdAt.desc()),
     index('stock_movements_salon_idx').on(table.salonId, table.createdAt.desc()),
     index('stock_movements_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
-    uniqueIndex('stock_movements_sale_item_unique').on(table.saleItemId).where(sql`sale_item_id IS NOT NULL`),
+    // Um item de produto vendido baixa uma vez; um item de serviço consome cada
+    // produto uma vez (migration 048).
+    uniqueIndex('stock_movements_sale_item_unique').on(table.saleItemId).where(sql`kind = 'sale'`),
+    uniqueIndex('stock_movements_consumption_unique')
+      .on(table.saleItemId, table.productId)
+      .where(sql`kind = 'consumption'`),
     index('stock_movements_purchase_idx').on(table.purchaseId).where(sql`purchase_id IS NOT NULL`),
     uniqueIndex('stock_movements_purchase_item_unique')
       .on(table.purchaseItemId)
       .where(sql`purchase_item_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Produtos consumidos por serviço (migration 048)
+// ============================================================================
+// O que um atendimento gasta de cada produto. Faturar a comanda baixa o estoque
+// (stock_movements.kind = 'consumption'). Regra em domain/consumption.ts.
+
+export const serviceProducts = pgTable(
+  'service_products',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }).notNull(),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+    // Na unidade de consumo do produto (ml, g), ou em unidades se não é fracionado.
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('service_products_service_product_unique').on(table.serviceId, table.productId),
+    index('service_products_salon_idx').on(table.salonId),
+    index('service_products_product_idx').on(table.productId)
   ]
 )
 

@@ -10,10 +10,12 @@ import {
   listBatchesService,
   listInventoryService,
   listProductCatalogService,
+  listServiceConsumptionService,
   listStockMovementsService,
   milliToNumeric,
   purchaseSuggestionMilli,
   saveProductStockSettingsService,
+  saveServiceConsumptionService,
   stockStatus,
   stockValueCents,
   toMilli,
@@ -30,6 +32,7 @@ import {
   inventoryFiltersSchema,
   saveBatchSchema,
   saveProductStockSettingsSchema,
+  saveServiceConsumptionSchema,
 } from "@/lib/schemas/inventory.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
@@ -40,6 +43,8 @@ import type {
   InventoryProductDTO,
   SaveBatchInput,
   SaveProductStockSettingsInput,
+  SaveServiceConsumptionInput,
+  ServiceConsumptionDTO,
 } from "@/lib/types/inventory"
 
 /**
@@ -78,6 +83,8 @@ function revalidateInventory(salonId: string) {
   revalidatePath(`/${salonId}/inventory/catalog`)
   // O que resta em cada lote sai do saldo.
   revalidatePath(`/${salonId}/inventory/batches`)
+  // O custo estimado do consumo sai do custo e do fracionamento do produto.
+  revalidatePath(`/${salonId}/inventory/consumption`)
 }
 
 /** Os produtos com saldo, situação e sugestão de compra, e a movimentação recente. */
@@ -182,13 +189,14 @@ export async function saveProductStockSettings(input: SaveProductStockSettingsIn
   const parsed = saveProductStockSettingsSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
-  const { salonId, productId, brandId, categoryId, ...settings } = parsed.data
+  const { salonId, productId, brandId, categoryId, contentAmount, contentUnit, ...settings } = parsed.data
 
   const result = await saveProductStockSettingsService({
     salonId,
     productId,
     settings,
     classification: { brandId: brandId ?? null, categoryId: categoryId ?? null },
+    content: { contentAmount: contentAmount ?? null, contentUnit: contentUnit ?? null },
   })
   if (!result.success) return { error: result.error }
 
@@ -264,6 +272,43 @@ export async function deleteBatch(input: { salonId: string; batchId: string }): 
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   const result = await deleteBatchService(parsed.data)
+  if (!result.success) return { error: result.error }
+
+  revalidateInventory(parsed.data.salonId)
+  return { success: true }
+}
+
+// ============================================================================
+// Produtos consumidos por serviço (fatia 4d)
+// ============================================================================
+
+/** Os serviços do salão com o que cada um consome por atendimento. */
+export async function getServiceConsumption(salonId: string): Promise<ServiceConsumptionDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "inventory.access")
+  if ("error" in auth) return auth
+
+  try {
+    const [consumption, permissions] = await Promise.all([
+      listServiceConsumptionService(salonId),
+      getSalonPermissions(salonId, auth.userId),
+    ])
+
+    return { ...consumption, can: { manage: permissions.has("inventory.manage") } }
+  } catch (error) {
+    console.error("Erro ao carregar o consumo por serviço:", error)
+    return { error: "Não foi possível carregar o consumo por serviço" }
+  }
+}
+
+/** Grava o que um serviço consome por atendimento (a lista substitui a anterior). */
+export async function saveServiceConsumption(input: SaveServiceConsumptionInput): Promise<ActionResult> {
+  const auth = await authorizeSalon(input?.salonId, "inventory.manage")
+  if ("error" in auth) return auth
+
+  const parsed = saveServiceConsumptionSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const result = await saveServiceConsumptionService(parsed.data)
   if (!result.success) return { error: result.error }
 
   revalidateInventory(parsed.data.salonId)

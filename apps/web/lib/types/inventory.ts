@@ -7,8 +7,11 @@
  */
 import type {
   BatchRow,
+  ConsumptionProductOption,
   InventoryProductRow,
   ManualStockMovementKind,
+  ProductContentUnitValue,
+  ServiceConsumptionRow,
   StockMovementRow,
   StockStatus,
 } from "@repo/db"
@@ -76,6 +79,9 @@ export interface SaveProductStockSettingsInput {
   barcode?: string | null
   brandId?: string | null
   categoryId?: string | null
+  /** Fracionamento (fatia 4d): quanto cabe em uma unidade. NULL = não fracionado. */
+  contentAmount?: number | null
+  contentUnit?: ProductContentUnitValue | null
 }
 
 // ---------------------------------------------------------------------------
@@ -111,4 +117,25 @@ export interface SaveBatchInput {
   /** O que entrou com o lote. */
   quantity: number
   notes?: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Produtos consumidos por serviço (fatia 4d)
+// ---------------------------------------------------------------------------
+
+export type ServiceConsumptionServiceDTO = ServiceConsumptionRow
+
+export interface ServiceConsumptionDTO {
+  services: ServiceConsumptionServiceDTO[]
+  /** Produtos ativos que podem entrar no consumo de um serviço. */
+  products: ConsumptionProductOption[]
+  /** Cortesia de tela — a trava é no servidor. */
+  can: { manage: boolean }
+}
+
+export interface SaveServiceConsumptionInput {
+  salonId: string
+  serviceId: string
+  /** A lista inteira do serviço: substitui a anterior. Vazia = sem consumo. */
+  items: { productId: string; quantity: number }[]
 }
