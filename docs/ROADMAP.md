@@ -31,8 +31,8 @@ mesma branch e publicada, com a migration 047 aplicada e registrada em 17/nov/20
 e testada em uso — ver §8.9. Fatia 4d (produtos consumidos por serviço e
 fracionamento) feita na mesma branch e publicada, com a migration 048 aplicada e
 registrada em 17/nov/2026 e testada em uso — ver §8.10. Fatia 4e (solicitações de
-saída pelo profissional) feita em código na mesma branch — **a migration 050 ainda
-não foi aplicada e o código não foi publicado** — ver §8.11.
+saída pelo profissional) feita na mesma branch e publicada, com a migration 050
+aplicada e registrada em 17/nov/2026 e testada em uso — ver §8.11.
 Fases 5 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -1282,7 +1282,7 @@ T-02 a T-04, T-06, T-07, T-09, T-10, K-08, R-10 e os fluxos 3 e 4.
 | 4b | Fornecedores, marcas e categorias de produto; compra com itens, que dá entrada no estoque, atualiza o custo e gera a despesa no financeiro | Feita — migration 046 aplicada, testada em uso em 16/nov/2026 (§8.8) |
 | 4c | Lotes e validades: registro de lote (código, fabricação, validade, quantidade), lote na entrada e no item da compra, o que resta por lote, aviso de vencidos e vencendo | Feita — migration 047 aplicada, testada em uso em 17/nov/2026 (§8.9) |
 | 4d | Produtos consumidos por serviço (baixa de insumo por atendimento) e fracionamento ("uma unidade equivale a"). A fatia 3e (custo adicional e consumo abatendo a comissão) fica destravada, mas é outra entrega | Feita — migration 048 aplicada, testada em uso em 17/nov/2026 (§8.10) |
-| 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Feita em código — **migration 050 não aplicada, sem publicar e sem teste em uso** (§8.11) |
+| 4e | Solicitações de saída pelo profissional, com "preço para profissional", debitadas no extrato de comissões | Feita, publicada na branch, migration 050 aplicada e testada em uso (§8.11) |
 | 4f | Relatórios de estoque (movimentação por período, produtos consumidos) e importação de XML de NF-e de compra (depende do provedor fiscal — fase 10) | Pendente |
 
 O cadastro de produto que já existe (nome, descrição, preço, ativo) continua como
@@ -1849,27 +1849,54 @@ UPDATE salons
 
 ### 8.11 Fatia 4e — estado (17/nov/2026)
 
-- Na branch `claude/fase-4-estoque`, **em commit local, sem publicar**. Typecheck
-  (db, web e mcp-server), lint dos arquivos alterados e testes passando.
-- **Migration 050: NÃO aplicada.** Ela tem que entrar **antes** de o código ser
-  publicado: acrescenta colunas em `products`, `stock_movements` e
-  `commission_adjustments`, e o INSERT do Drizzle lista todas as colunas.
-- Antes de aplicar: cópia de segurança de `products` no schema `backups`
-  (`stock_movements` e `commission_adjustments` estão vazias).
-- **Sem teste em uso.** Roteiro, depois de aplicar a 050 e publicar, no salão de
-  teste (regra de 50% para o Corte criada só para o teste):
-  1. Configurar o Teste Shampoo: "Disponível para solicitação" e preço para
-     profissional R$ 15,00 → a lista mostra "disponível para solicitação".
-  2. Acerto do Teste Shampoo para 5. Nova solicitação: 2 Teste Shampoo para um
-     profissional → pendente, valor R$ 30,00; o estoque avisa "1 aguardando
-     decisão" e o saldo continua 5.
-  3. Aprovar → saldo 3, movimento "Retirada − 2"; em Comissões, "Vales e
-     bonificações" mostra "Retirada de produto" de R$ 30,00, sem botão de excluir, e
-     o líquido do profissional cai R$ 30,00.
-  4. Excluir a solicitação aprovada → saldo volta a 5 e o débito some do extrato.
-  5. Nova solicitação, recusada → nada muda no estoque nem no extrato.
-  6. Produto não marcado como disponível não aparece na nova solicitação.
-  Depois, limpar os dados de teste.
+- Na branch `claude/fase-4-estoque`, **publicada**. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando.
+- **Migration 050: aplicada em produção em 17/nov/2026** (pelo assistente, com a
+  autorização do dono dada na hora), conferida por leitura e registrada em
+  `schema_migrations` (nome `stock_requests`).
+- Cópia de segurança antes da 050: `backups.products_pre_050_20261117` (73 linhas;
+  `stock_movements` e `commission_adjustments` estavam vazias). **Apagar só com o
+  OK do dono.**
+- Em outro ambiente, **aplicar a 050 antes de publicar o código**: ela acrescenta
+  colunas em `products`, `stock_movements` e `commission_adjustments`, e o INSERT
+  do Drizzle lista todas as colunas.
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste. A
+  captura de tela do navegador falhou nesta sessão; as conferências foram pelo
+  texto da página e, onde indicado, por leitura do banco:
+  - Configurar o Teste Shampoo com "Disponível para solicitação" e preço para
+    profissional R$ 15,00 → a lista mostra "disponível para solicitação".
+  - Acerto para 5. Nova solicitação de 2 Teste Shampoo para um profissional →
+    pendente, R$ 30,00, "Pendentes (1)"; o estoque avisa "1 aguardando decisão".
+  - Na nova solicitação, a lista de produtos traz só o Teste Shampoo (o Teste
+    Pente, não marcado, não aparece).
+  - Aprovar: a confirmação avisa "O produto sai do estoque e R$ 30,00 são
+    debitados". Depois: saldo 3, movimento "Retirada − 2" com "Ver solicitações";
+    em Comissões, "Vales e bonificações" mostra "Retirada de produto: 2 × Teste
+    Shampoo − R$ 30,00", vales − R$ 30,00 e líquido − R$ 30,00 (sem comissões no
+    período: o roteiro previa uma regra de 50%, que não foi criada).
+  - Excluir a solicitação aprovada: a confirmação avisa que o produto volta e o
+    débito sai. Conferido no banco: nenhuma solicitação, nenhum vale, só o acerto
+    de + 5 nas movimentações.
+  - Nova solicitação de 1 para outro profissional, recusada → fica "Recusada" em
+    "Todas", sem movimento nem vale. Excluída pela tela.
+- **Achado no teste, vindo da fatia 4d, e corrigido:** salvar "Configurar" de um
+  produto com "1.000 ml por unidade" gravava 1 ml — o campo abria com o texto de
+  exibição, com separador de milhar, e a leitura tratava o ponto como decimal. O
+  mesmo valia para estoque mínimo, lotes e consumo por serviço a partir de mil.
+  Correção em `apps/web/lib/utils/quantity.utils.ts` (`quantityToInput` sem
+  separador de milhar no campo; `parseQuantity` lê "1.000" como mil), com teste
+  em `__tests__/lib/utils/quantity.test.ts`. Conferido na tela: digitar "1.000" →
+  a lista mostra "1.000 ml por unidade", e continua assim depois de abrir e salvar
+  de novo sem mexer.
+- **Não testado em uso:** perfil só com `inventory.request` (menu, redirecionamento
+  e o que ele enxerga); solicitação acima do saldo; aprovar sem saldo; recusar ou
+  excluir quando o vale já entrou num pagamento de comissão; o botão de excluir
+  ausente no vale de retirada (o texto da página não mostra botões; a regra está
+  coberta por teste de domínio); produto com lotes; produto fracionado.
+- Dados de teste limpos: solicitações excluídas pela tela, o acerto apagado por
+  SQL, pelo ID. Sem solicitações, vales nem movimentos. **Ficou, como apoio:** o
+  Teste Shampoo disponível para solicitação, com preço para profissional R$ 15,00
+  e "1000 ml por unidade".
 
 ## 9. Pendências do dono
 
@@ -1884,7 +1911,6 @@ UPDATE salons
 | Revisar e mergear os PRs #14 (fase 0), #15 (fase 1) e #16 (fase 2), nessa ordem (cada branch contém a anterior) | Publicação das fases 0 a 2 |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Abrir o PR da fase 3 (`claude/fase-3-comissoes`, que contém a fase 2) depois dos PRs #14 a #16 | Publicação da fase 3 |
-| Aplicar a migration 050 (ou autorizar a aplicação) e publicar a fatia 4e — ver §8.11 | Teste em uso da fatia 4e |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117` e `backups.commission_settings_pre_049_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117` e `backups.products_pre_050_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
