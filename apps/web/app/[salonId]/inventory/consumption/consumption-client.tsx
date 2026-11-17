@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { FlaskConical, Pencil, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { saveServiceConsumption } from "@/app/actions/inventory"
-import { formatBRL } from "@/lib/utils/money.utils"
+import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 import type { ServiceConsumptionDTO, ServiceConsumptionServiceDTO } from "@/lib/types/inventory"
 import {
   InventoryNav,
@@ -39,6 +39,7 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
   const [editing, setEditing] = useState<ServiceConsumptionServiceDTO | null>(null)
   const [lines, setLines] = useState<LineDraft[]>([])
   const [nextKey, setNextKey] = useState(0)
+  const [additionalCost, setAdditionalCost] = useState("")
 
   const productById = useMemo(() => new Map(data.products.map((product) => [product.id, product])), [data.products])
 
@@ -51,6 +52,7 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
       }))
     )
     setNextKey(service.lines.length)
+    setAdditionalCost(Number(service.additionalCost) > 0 ? Number(service.additionalCost).toFixed(2).replace(".", ",") : "")
     setEditing(service)
   }
 
@@ -89,13 +91,27 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
       items.push({ productId: line.productId, quantity })
     }
 
+    let cost: number | null = null
+    if (additionalCost.trim()) {
+      cost = parseBRL(additionalCost)
+      if (cost === null || cost < 0) {
+        toast.error("Custo adicional inválido")
+        return
+      }
+    }
+
     startTransition(async () => {
-      const result = await saveServiceConsumption({ salonId, serviceId: service.serviceId, items })
+      const result = await saveServiceConsumption({
+        salonId,
+        serviceId: service.serviceId,
+        items,
+        additionalCost: cost,
+      })
       if ("error" in result) {
         toast.error(result.error)
         return
       }
-      toast.success(items.length === 0 ? "Consumo removido" : "Consumo salvo")
+      toast.success("Custo do serviço salvo")
       setEditing(null)
       router.refresh()
     })
@@ -108,7 +124,8 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
         <div>
           <h2 className="text-2xl font-bold text-foreground tracking-tight">Consumo por serviço</h2>
           <p className="text-xs text-muted-foreground">
-            O que cada atendimento gasta de produto. Faturar a comanda baixa o estoque sozinho; reabrir devolve.
+            O que cada atendimento gasta de produto e quanto ele custa. Faturar a comanda baixa o estoque sozinho;
+            reabrir devolve.
           </p>
         </div>
       </div>
@@ -131,7 +148,8 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
                 <tr className="text-xs text-muted-foreground">
                   <th scope="col" className="p-3 text-left font-semibold">Serviço</th>
                   <th scope="col" className="p-3 text-left font-semibold">Consome por atendimento</th>
-                  <th scope="col" className="p-3 text-right font-semibold">Custo estimado</th>
+                  <th scope="col" className="p-3 text-right font-semibold">Custo adicional</th>
+                  <th scope="col" className="p-3 text-right font-semibold">Custo por atendimento</th>
                   <th scope="col" className="p-3 w-12"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>
@@ -164,6 +182,9 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
                       )}
                     </td>
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">
+                      {Number(service.additionalCost) > 0 ? formatBRL(service.additionalCost) : "—"}
+                    </td>
+                    <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">
                       {service.costCents > 0 ? formatBRL(service.costCents / 100) : "—"}
                     </td>
                     <td className="p-2">
@@ -187,14 +208,35 @@ export function ConsumptionClient({ salonId, data }: { salonId: string; data: Se
           </div>
         )}
         <p className="p-3 border-t border-border text-xs text-muted-foreground">
-          O custo estimado usa o custo de compra do produto e, no produto fracionado, quanto cabe em uma unidade. Os
-          dois são definidos em Produtos e saldo &gt; Configurar.
+          O custo por atendimento é o custo adicional mais o dos produtos consumidos (custo de compra do produto e, no
+          fracionado, quanto cabe em uma unidade — os dois em Produtos e saldo &gt; Configurar). Com as comissões
+          ligadas, este custo abate a comissão conforme a regra &quot;Custo do atendimento&quot; em Comissões &gt;
+          Configurar.
         </p>
       </section>
 
       {editing && (
         <Modal title={`Consumo — ${editing.serviceName}`} onClose={() => setEditing(null)} disabled={isPending}>
           <div className="p-4 flex flex-col gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="consumption-additional-cost" className={labelClass}>
+                Custo adicional por atendimento (opcional)
+              </label>
+              <input
+                id="consumption-additional-cost"
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={additionalCost}
+                disabled={isPending}
+                onChange={(event) => setAdditionalCost(event.target.value)}
+                className={inputClass}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                O que o atendimento custa e não vale controlar no estoque: luva, papel, toalha descartável.
+              </p>
+            </div>
+            <p className={labelClass}>Produtos consumidos</p>
             {lines.length === 0 && (
               <p className="text-sm text-muted-foreground">Este serviço não consome produto.</p>
             )}

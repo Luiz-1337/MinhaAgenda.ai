@@ -202,6 +202,7 @@ export async function getCommissionStatement(
             grossAmount: centsToNumeric(row.grossCents),
             feeAmount: centsToNumeric(row.feeCents),
             assistantDeduction: centsToNumeric(row.assistantCents),
+            costAmount: centsToNumeric(row.costCents),
             amount: centsToNumeric(row.amountCents),
           }))
         ),

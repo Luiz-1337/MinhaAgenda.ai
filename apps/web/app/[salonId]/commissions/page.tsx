@@ -67,6 +67,8 @@ export default async function CommissionsPage({
   const { totals } = statement
   // A coluna "Auxiliar" só aparece quando alguma comissão do período foi dividida.
   const showAssistant = totals.assistantCents > 0
+  // A coluna "Custo" só aparece quando algum atendimento do período teve custo abatido.
+  const showCost = totals.costCents > 0
   const assistantItems = statement.byProfessional.reduce((sum, row) => sum + row.assistantCount, 0)
   // Vales, bonificações e líquido só aparecem quando há lançamento no período.
   const showAdjustments = statement.advanceCents > 0 || statement.bonusCents > 0
@@ -127,9 +129,13 @@ export default async function CommissionsPage({
           label="A receber"
           value={money(totals.amountCents)}
           hint={
-            showAssistant
-              ? `Comissões menos taxas e ${money(totals.assistantCents)} repassados a auxiliar`
-              : "Comissões menos taxas"
+            [
+              "Comissões menos taxas",
+              showAssistant ? `${money(totals.assistantCents)} repassados a auxiliar` : null,
+              showCost ? `${money(totals.costCents)} de custo dos atendimentos` : null,
+            ]
+              .filter(Boolean)
+              .join(", ")
           }
         />
       </div>
@@ -173,6 +179,7 @@ export default async function CommissionsPage({
                   <th scope="col" className="p-3 text-right font-semibold">Comissões</th>
                   <th scope="col" className="p-3 text-right font-semibold">Taxas</th>
                   {showAssistant && <th scope="col" className="p-3 text-right font-semibold">Auxiliar</th>}
+                  {showCost && <th scope="col" className="p-3 text-right font-semibold">Custo</th>}
                   <th scope="col" className="p-3 text-right font-semibold">A receber</th>
                   {showAdjustments && (
                     <>
@@ -196,6 +203,9 @@ export default async function CommissionsPage({
                     <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.feeCents)}</td>
                     {showAssistant && (
                       <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.assistantCents)}</td>
+                    )}
+                    {showCost && (
+                      <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">{money(row.costCents)}</td>
                     )}
                     <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground">{money(row.amountCents)}</td>
                     {showAdjustments && (
@@ -251,6 +261,7 @@ export default async function CommissionsPage({
                   <th scope="col" className="p-3 text-right font-semibold">Comissão</th>
                   <th scope="col" className="p-3 text-right font-semibold">Taxa</th>
                   {showAssistant && <th scope="col" className="p-3 text-right font-semibold">Auxiliar</th>}
+                  {showCost && <th scope="col" className="p-3 text-right font-semibold">Custo</th>}
                   <th scope="col" className="p-3 text-right font-semibold">A receber</th>
                 </tr>
               </thead>
@@ -288,6 +299,11 @@ export default async function CommissionsPage({
                     {showAssistant && (
                       <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">
                         {Number(entry.assistantDeduction) > 0 ? formatBRL(entry.assistantDeduction) : "—"}
+                      </td>
+                    )}
+                    {showCost && (
+                      <td className="p-3 text-right font-mono tabular-nums text-muted-foreground">
+                        {Number(entry.costAmount) > 0 ? formatBRL(entry.costAmount) : "—"}
                       </td>
                     )}
                     <td className="p-3 text-right font-mono tabular-nums font-semibold text-foreground whitespace-nowrap">

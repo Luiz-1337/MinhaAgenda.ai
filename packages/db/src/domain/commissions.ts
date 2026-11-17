@@ -40,16 +40,23 @@ export type CommissionSettings = {
   feeMode: CommissionShareMode
   /** Quem arca com o desconto dado na venda. */
   discountMode: CommissionShareMode
+  /** Quem arca com o custo do atendimento (custo adicional + produtos consumidos). */
+  costMode: CommissionShareMode
 }
 
 /**
  * Padrão do sistema, igual ao que a auditoria encontrou configurado no salão:
  * competência, taxa proporcional à comissão, desconto por conta do salão.
+ *
+ * O custo (fatia 3e) é proporcional por padrão: sai do valor do serviço antes de a
+ * comissão ser calculada. Só tem efeito em serviço com custo cadastrado — sem
+ * custo, nada muda.
  */
 export const DEFAULT_COMMISSION_SETTINGS: CommissionSettings = {
   dateBasis: 'competence',
   feeMode: 'proportional',
   discountMode: 'salon',
+  costMode: 'proportional',
 }
 
 /** Linha crua de `commission_settings`. NULL em um campo = não define aquele campo. */
@@ -57,6 +64,8 @@ export type CommissionSettingsRow = {
   dateBasis: unknown
   feeMode: unknown
   discountMode: unknown
+  /** Ausente em linha lida antes da migration 049: cai para o próximo nível. */
+  costMode?: unknown
 }
 
 export function isCommissionDateBasis(value: unknown): value is CommissionDateBasis {
@@ -88,6 +97,7 @@ export function resolveCommissionSettings(
     dateBasis: pick(isCommissionDateBasis, 'dateBasis', DEFAULT_COMMISSION_SETTINGS.dateBasis),
     feeMode: pick(isCommissionShareMode, 'feeMode', DEFAULT_COMMISSION_SETTINGS.feeMode),
     discountMode: pick(isCommissionShareMode, 'discountMode', DEFAULT_COMMISSION_SETTINGS.discountMode),
+    costMode: pick(isCommissionShareMode, 'costMode', DEFAULT_COMMISSION_SETTINGS.costMode),
   }
 }
 
@@ -279,6 +289,12 @@ export type CommissionSaleItem = {
   quantity: string | number
   discountAmount: string | number
   total: string | number
+  /**
+   * Custo do atendimento DESTE item, já multiplicado pela quantidade: custo
+   * adicional do serviço + custo estimado dos produtos consumidos (fatia 3e). Só
+   * em serviço; ausente = sem custo.
+   */
+  costAmount?: string | number | null
 }
 
 export type CommissionRuleRow = {
@@ -318,6 +334,8 @@ export type PlannedCommissionEntry = {
   feeAmount: string
   /** Quanto da comissão do profissional foi para o auxiliar. Zero na linha do auxiliar. */
   assistantDeduction: string
+  /** Parte do custo do atendimento que saiu da comissão. Zero na linha do auxiliar. */
+  costAmount: string
   amount: string
   competenceDate: string
   releaseDate: string | null
@@ -412,6 +430,58 @@ function feeShare(input: {
 }
 
 /**
+ * Parcela do custo do atendimento que cabe ao profissional, em centavos.
+ *
+ *   - 'salon': o salão arca com o custo; a comissão não muda.
+ *   - 'proportional': o custo sai do valor do serviço ANTES da comissão — o
+ *     profissional perde a mesma fração que a comissão representa do item (40% de
+ *     comissão → 40% do custo).
+ *   - 'professional': o custo sai inteiro da comissão.
+ *   - 'split': metade do custo sai da comissão.
+ *
+ * O custo nunca deixa a comissão negativa: abate, no máximo, o que sobrou depois da
+ * taxa e do auxiliar.
+ */
+function costShare(input: {
+  rate: CommissionRate
+  costMode: CommissionShareMode
+  /** Custo do atendimento do item, em centavos. */
+  itemCost: number
+  totalCents: number
+  commissionCents: number
+  /** O que resta da comissão depois da taxa e do auxiliar. */
+  availableCents: number
+}): number {
+  const { rate, costMode, itemCost, totalCents, commissionCents } = input
+  if (itemCost <= 0) return 0
+
+  let share: number
+  switch (costMode) {
+    case 'salon':
+      share = 0
+      break
+    case 'professional':
+      share = itemCost
+      break
+    case 'split':
+      share = itemCost / 2
+      break
+    case 'proportional': {
+      const fraction =
+        rate.kind === 'percent'
+          ? rate.basisPoints / 10_000
+          : totalCents > 0
+            ? Math.min(1, commissionCents / totalCents)
+            : 0
+      share = itemCost * fraction
+      break
+    }
+  }
+
+  return Math.max(0, Math.min(Math.round(share), input.availableCents))
+}
+
+/**
  * Calcula a comissão de cada item de uma comanda FATURADA.
  *
  * Uma linha por item que tem profissional — inclusive quando a comissão dá zero
@@ -437,6 +507,11 @@ function feeShare(input: {
  *   - O auxiliar recebe o valor da regra mesmo que a comissão do profissional não
  *     cubra: o profissional vai a zero e a diferença fica por conta do salão.
  *   - A data segue a regra de QUEM RECEBE (o auxiliar pode ter exceção própria).
+ *
+ * Custo (fatia 3e): o serviço com custo (custo adicional + produtos consumidos)
+ * abate a comissão de quem executou, conforme a regra "quem arca com o custo". Vem
+ * por último — depois da taxa e do auxiliar — e nunca deixa a comissão negativa. O
+ * auxiliar não é abatido.
  */
 export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissionEntry[] {
   const saleTotalCents = toCents(input.sale.total) ?? 0
@@ -542,11 +617,22 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
         grossAmount: centsToNumeric(assistantCents),
         feeAmount: centsToNumeric(0),
         assistantDeduction: centsToNumeric(0),
+        costAmount: centsToNumeric(0),
         amount: centsToNumeric(assistantCents),
         competenceDate,
         releaseDate: releaseDateFor(resolveCommissionSettings(input.salonSettings, assistant.settings)),
       }
     }
+
+    const costCents = costShare({
+      rate,
+      costMode: settings.costMode,
+      // Custo só existe em serviço: produto vendido não tem "custo do atendimento".
+      itemCost: item.serviceId ? Math.max(0, toCents(item.costAmount ?? 0) ?? 0) : 0,
+      totalCents,
+      commissionCents,
+      availableCents: commissionCents - feeCents - deductionCents,
+    })
 
     entries.push({
       saleItemId: item.id,
@@ -557,7 +643,8 @@ export function planSaleCommissions(input: CommissionSaleInput): PlannedCommissi
       grossAmount: centsToNumeric(commissionCents),
       feeAmount: centsToNumeric(feeCents),
       assistantDeduction: centsToNumeric(deductionCents),
-      amount: centsToNumeric(commissionCents - feeCents - deductionCents),
+      costAmount: centsToNumeric(costCents),
+      amount: centsToNumeric(commissionCents - feeCents - deductionCents - costCents),
       competenceDate,
       releaseDate: releaseDateFor(settings),
     })
@@ -785,7 +872,9 @@ export type CommissionTotals = {
   feeCents: number
   /** Quanto das comissões foi para auxiliares ("desconto de auxiliar"). */
   assistantCents: number
-  /** O que há a receber: comissões − taxas − desconto de auxiliar. */
+  /** Quanto das comissões foi abatido pelo custo dos atendimentos. */
+  costCents: number
+  /** O que há a receber: comissões − taxas − desconto de auxiliar − custo. */
   amountCents: number
   count: number
 }
@@ -796,6 +885,7 @@ export function commissionTotals(
     grossAmount: string | number
     feeAmount: string | number
     assistantDeduction?: string | number
+    costAmount?: string | number
     amount: string | number
   }[]
 ): CommissionTotals {
@@ -804,6 +894,7 @@ export function commissionTotals(
     grossCents: 0,
     feeCents: 0,
     assistantCents: 0,
+    costCents: 0,
     amountCents: 0,
     count: 0,
   }
@@ -813,6 +904,7 @@ export function commissionTotals(
     totals.grossCents += toCents(row.grossAmount) ?? 0
     totals.feeCents += toCents(row.feeAmount) ?? 0
     totals.assistantCents += toCents(row.assistantDeduction ?? 0) ?? 0
+    totals.costCents += toCents(row.costAmount ?? 0) ?? 0
     totals.amountCents += toCents(row.amount) ?? 0
     totals.count += 1
   }

@@ -16,6 +16,7 @@ import {
 import {
   COMMISSION_ASSISTANT_BASE_LABELS,
   COMMISSION_ASSISTANT_DEDUCT_LABELS,
+  COMMISSION_COST_MODE_LABELS,
   COMMISSION_DATE_BASIS_LABELS,
   COMMISSION_DISCOUNT_MODE_LABELS,
   COMMISSION_FEE_MODE_LABELS,
@@ -41,6 +42,7 @@ import type {
 const DATE_BASES = Object.keys(COMMISSION_DATE_BASIS_LABELS) as CommissionDateBasis[]
 const FEE_MODES = Object.keys(COMMISSION_FEE_MODE_LABELS) as CommissionShareMode[]
 const DISCOUNT_MODES = Object.keys(COMMISSION_DISCOUNT_MODE_LABELS) as CommissionShareMode[]
+const COST_MODES = Object.keys(COMMISSION_COST_MODE_LABELS) as CommissionShareMode[]
 const RATE_KINDS = Object.keys(COMMISSION_RATE_KIND_LABELS) as CommissionRateKind[]
 const ASSISTANT_BASES = Object.keys(COMMISSION_ASSISTANT_BASE_LABELS) as CommissionAssistantBase[]
 const ASSISTANT_DEDUCTS = Object.keys(COMMISSION_ASSISTANT_DEDUCT_LABELS) as CommissionAssistantDeduct[]
@@ -56,7 +58,7 @@ type RuleDraft = { kind: CommissionRateKind; value: string }
 type AssistantDraft = RuleDraft & { base: CommissionAssistantBase; deductFrom: CommissionAssistantDeduct }
 type Item = { key: string; id: string; name: string; type: "service" | "product" }
 
-const NO_OVERRIDE: SettingsValues = { dateBasis: null, feeMode: null, discountMode: null }
+const NO_OVERRIDE: SettingsValues = { dateBasis: null, feeMode: null, discountMode: null, costMode: null }
 /** Como a linha de auxiliar abre: 10% do valor do serviço, saindo do profissional, é o caso comum. */
 const NEW_ASSISTANT_DRAFT: AssistantDraft = { kind: "percent", value: "", base: "gross", deductFrom: "professional" }
 
@@ -102,6 +104,7 @@ export function CommissionSettingsClient({
     dateBasis: config.salonSettings.dateBasis ?? DEFAULT_COMMISSION_SETTINGS.dateBasis,
     feeMode: config.salonSettings.feeMode ?? DEFAULT_COMMISSION_SETTINGS.feeMode,
     discountMode: config.salonSettings.discountMode ?? DEFAULT_COMMISSION_SETTINGS.discountMode,
+    costMode: config.salonSettings.costMode ?? DEFAULT_COMMISSION_SETTINGS.costMode,
   })
 
   // "" = padrão do salão; senão, o id do profissional.
@@ -294,7 +297,7 @@ export function CommissionSettingsClient({
       {/* Regras gerais do salão */}
       <section className="bg-card border border-border rounded-md">
         <h3 className={sectionTitleClass}>Regras do salão</h3>
-        <div className="p-4 grid gap-4 md:grid-cols-3">
+        <div className="p-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="salon-date-basis" className={labelClass}>
               Quando fica disponível
@@ -357,6 +360,27 @@ export function CommissionSettingsClient({
               ))}
             </select>
             <p className="text-xs text-muted-foreground">{COMMISSION_SETTINGS_HINTS.discountMode}</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="salon-cost-mode" className={labelClass}>
+              Custo do atendimento
+            </label>
+            <select
+              id="salon-cost-mode"
+              value={salonSettings.costMode}
+              disabled={isPending}
+              onChange={(event) =>
+                setSalonSettings((current) => ({ ...current, costMode: event.target.value as CommissionShareMode }))
+              }
+              className={inputClass}
+            >
+              {COST_MODES.map((value) => (
+                <option key={value} value={value}>
+                  {COMMISSION_COST_MODE_LABELS[value]}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">{COMMISSION_SETTINGS_HINTS.costMode}</p>
           </div>
         </div>
         <div className="p-4 pt-0 flex justify-end">
@@ -459,6 +483,25 @@ export function CommissionSettingsClient({
                     {DISCOUNT_MODES.map((value) => (
                       <option key={value} value={value}>
                         {COMMISSION_DISCOUNT_MODE_LABELS[value]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="override-cost-mode" className="text-xs font-semibold text-muted-foreground">
+                    Custo do atendimento
+                  </label>
+                  <select
+                    id="override-cost-mode"
+                    value={override.costMode ?? ""}
+                    disabled={isPending}
+                    onChange={(event) => setOverride({ costMode: (event.target.value || null) as CommissionShareMode | null })}
+                    className={inputClass}
+                  >
+                    <option value="">Seguir o salão</option>
+                    {COST_MODES.map((value) => (
+                      <option key={value} value={value}>
+                        {COMMISSION_COST_MODE_LABELS[value]}
                       </option>
                     ))}
                   </select>

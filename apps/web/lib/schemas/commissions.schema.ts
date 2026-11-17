@@ -21,6 +21,7 @@ export const saveCommissionSettingsSchema = z.object({
   dateBasis: z.enum(["competence", "availability"]).nullable(),
   feeMode: shareMode.nullable(),
   discountMode: shareMode.nullable(),
+  costMode: shareMode.nullable(),
 })
 
 export const saveCommissionRulesSchema = z.object({

@@ -308,9 +308,12 @@ export async function saveServiceConsumption(input: SaveServiceConsumptionInput)
   const parsed = saveServiceConsumptionSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
-  const result = await saveServiceConsumptionService(parsed.data)
+  const { additionalCost, ...consumption } = parsed.data
+  const result = await saveServiceConsumptionService({ ...consumption, additionalCost: additionalCost ?? null })
   if (!result.success) return { error: result.error }
 
   revalidateInventory(parsed.data.salonId)
+  // O custo do atendimento entra na comissão das próximas comandas.
+  revalidatePath(`/${parsed.data.salonId}/commissions`)
   return { success: true }
 }

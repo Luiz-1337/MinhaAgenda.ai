@@ -55,6 +55,7 @@ describe("regras gerais: salão e exceção por profissional", () => {
       dateBasis: "competence",
       feeMode: "proportional",
       discountMode: "salon",
+      costMode: "proportional",
     })
   })
 
@@ -63,7 +64,12 @@ describe("regras gerais: salão e exceção por profissional", () => {
       { dateBasis: "availability", feeMode: "salon", discountMode: null },
       { dateBasis: null, feeMode: "professional", discountMode: null }
     )
-    expect(settings).toEqual({ dateBasis: "availability", feeMode: "professional", discountMode: "salon" })
+    expect(settings).toEqual({
+      dateBasis: "availability",
+      feeMode: "professional",
+      discountMode: "salon",
+      costMode: "proportional",
+    })
   })
 
   it("valor desconhecido no banco cai para o próximo nível em vez de quebrar", () => {
@@ -71,7 +77,12 @@ describe("regras gerais: salão e exceção por profissional", () => {
       { dateBasis: "availability", feeMode: "lixo", discountMode: 42 },
       { dateBasis: "outro lixo", feeMode: null, discountMode: null }
     )
-    expect(settings).toEqual({ dateBasis: "availability", feeMode: "proportional", discountMode: "salon" })
+    expect(settings).toEqual({
+      dateBasis: "availability",
+      feeMode: "proportional",
+      discountMode: "salon",
+      costMode: "proportional",
+    })
   })
 })
 
@@ -377,7 +388,15 @@ describe("totais do extrato", () => {
         { baseAmount: "200.00", grossAmount: "100.00", feeAmount: "2.92", amount: "97.08" },
         { baseAmount: "0.10", grossAmount: "0.20", feeAmount: "0.00", amount: "0.20" },
       ])
-    ).toEqual({ baseCents: 20010, grossCents: 10020, feeCents: 292, assistantCents: 0, amountCents: 9728, count: 2 })
+    ).toEqual({
+      baseCents: 20010,
+      grossCents: 10020,
+      feeCents: 292,
+      assistantCents: 0,
+      costCents: 0,
+      amountCents: 9728,
+      count: 2,
+    })
   })
 
   it("o desconto de auxiliar entra na conta: comissões − taxas − auxiliar = a receber", () => {
@@ -395,6 +414,7 @@ describe("totais do extrato", () => {
       grossCents: 0,
       feeCents: 0,
       assistantCents: 0,
+      costCents: 0,
       amountCents: 0,
       count: 0,
     })

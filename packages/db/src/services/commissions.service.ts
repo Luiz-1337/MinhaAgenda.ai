@@ -46,8 +46,10 @@ import {
   unpaidPlannedEntries,
 } from "../domain/commissions"
 import { isCalendarDate, paidAtFromDate } from "../domain/finance"
-import { toCents } from "../domain/sales"
+import { itemCostCents } from "../domain/consumption"
+import { centsToNumeric, toCents } from "../domain/sales"
 import type { ActionResult } from "./appointments"
+import { loadServiceCosts } from "./consumption.service"
 
 /**
  * Comissões (docs/ROADMAP.md, fase 3, fatias 3a a 3d).
@@ -145,6 +147,10 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
   const professionalIds = unique(items.flatMap((item) => [item.professionalId, item.assistantId]))
   if (professionalIds.length === 0) return
 
+  // Custo do atendimento de cada serviço da comanda (fatia 3e): custo adicional +
+  // produtos consumidos, com o que vale AGORA — como as regras de comissão.
+  const serviceCosts = await loadServiceCosts(tx, input.salonId, unique(items.map((item) => item.serviceId)))
+
   const assistantIds = unique(items.map((item) => item.assistantId))
 
   const [payments, professionalRows, settingsRows, ruleRows, assistantRuleRows] = await Promise.all([
@@ -162,6 +168,7 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
         dateBasis: commissionSettings.dateBasis,
         feeMode: commissionSettings.feeMode,
         discountMode: commissionSettings.discountMode,
+        costMode: commissionSettings.costMode,
       })
       .from(commissionSettings)
       .where(
@@ -217,7 +224,12 @@ export async function syncSaleCommissions(tx: Tx, input: { salonId: string; sale
 
   const planned = planSaleCommissions({
     sale,
-    items,
+    items: items.map((item) => ({
+      ...item,
+      costAmount: item.serviceId
+        ? centsToNumeric(itemCostCents(serviceCosts.get(item.serviceId) ?? 0, item.quantity))
+        : null,
+    })),
     payments,
     salonSettings: settingsRows.find((row) => !row.professionalId) ?? null,
     professionals: new Map(
@@ -327,6 +339,7 @@ export type CommissionSettingsValues = {
   dateBasis: CommissionDateBasis | null
   feeMode: CommissionShareMode | null
   discountMode: CommissionShareMode | null
+  costMode: CommissionShareMode | null
 }
 
 export type CommissionRuleValues = {
@@ -365,11 +378,17 @@ export type CommissionConfig = {
   assistantRules: CommissionAssistantRuleValues[]
 }
 
-function toSettingsValues(row: { dateBasis: unknown; feeMode: unknown; discountMode: unknown }): CommissionSettingsValues {
+function toSettingsValues(row: {
+  dateBasis: unknown
+  feeMode: unknown
+  discountMode: unknown
+  costMode: unknown
+}): CommissionSettingsValues {
   return {
     dateBasis: isCommissionDateBasis(row.dateBasis) ? row.dateBasis : null,
     feeMode: isCommissionShareMode(row.feeMode) ? row.feeMode : null,
     discountMode: isCommissionShareMode(row.discountMode) ? row.discountMode : null,
+    costMode: isCommissionShareMode(row.costMode) ? row.costMode : null,
   }
 }
 
@@ -382,6 +401,7 @@ export async function getCommissionConfigService(salonId: string): Promise<Commi
         dateBasis: commissionSettings.dateBasis,
         feeMode: commissionSettings.feeMode,
         discountMode: commissionSettings.discountMode,
+        costMode: commissionSettings.costMode,
       })
       .from(commissionSettings)
       .where(eq(commissionSettings.salonId, salonId)),
@@ -434,7 +454,9 @@ export async function getCommissionConfigService(salonId: string): Promise<Commi
   )
 
   return {
-    salonSettings: salonRow ? toSettingsValues(salonRow) : { dateBasis: null, feeMode: null, discountMode: null },
+    salonSettings: salonRow
+      ? toSettingsValues(salonRow)
+      : { dateBasis: null, feeMode: null, discountMode: null, costMode: null },
     professionals: professionalRows
       // Inativo só aparece se ainda tiver exceção gravada, para poder ser limpa.
       .filter((professional) => professional.isActive || settingsByProfessional.has(professional.id))
@@ -470,7 +492,7 @@ async function assertProfessionalInSalon(tx: Tx, salonId: string, professionalId
 
 /**
  * Grava as regras gerais do salão (`professionalId` NULL) ou a exceção de um
- * profissional. Exceção com os três campos vazios é o mesmo que não ter exceção: a
+ * profissional. Exceção com todos os campos vazios é o mesmo que não ter exceção: a
  * linha é apagada.
  */
 export async function saveCommissionSettingsService(input: {
@@ -485,6 +507,7 @@ export async function saveCommissionSettingsService(input: {
     if (settings.discountMode !== null && !isCommissionShareMode(settings.discountMode)) {
       fail("Regra de descontos inválida")
     }
+    if (settings.costMode !== null && !isCommissionShareMode(settings.costMode)) fail("Regra de custos inválida")
 
     await db.transaction(async (tx) => {
       if (input.professionalId) await assertProfessionalInSalon(tx, input.salonId, input.professionalId)
@@ -498,7 +521,11 @@ export async function saveCommissionSettingsService(input: {
 
       const [existing] = await tx.select({ id: commissionSettings.id }).from(commissionSettings).where(scope).for("update")
 
-      const empty = settings.dateBasis === null && settings.feeMode === null && settings.discountMode === null
+      const empty =
+        settings.dateBasis === null &&
+        settings.feeMode === null &&
+        settings.discountMode === null &&
+        settings.costMode === null
 
       if (input.professionalId && empty) {
         if (existing) await tx.delete(commissionSettings).where(scope)
@@ -708,6 +735,8 @@ export type CommissionEntryRow = {
   feeAmount: string
   /** Quanto desta comissão foi para o auxiliar. */
   assistantDeduction: string
+  /** Parte do custo do atendimento que saiu desta comissão. */
+  costAmount: string
   amount: string
   /** Dia do pagamento que quitou esta comissão. NULL = em aberto. */
   paidOn: string | null
@@ -723,7 +752,9 @@ export type CommissionProfessionalTotals = {
   feeCents: number
   /** Quanto das comissões dele foi para auxiliares. */
   assistantCents: number
-  /** Comissões a receber: depois da taxa e do auxiliar, antes de vales e bonificações. */
+  /** Quanto das comissões dele foi abatido pelo custo dos atendimentos. */
+  costCents: number
+  /** Comissões a receber: depois da taxa, do auxiliar e do custo, antes de vales e bonificações. */
   amountCents: number
   /** Itens que ele executou. */
   count: number
@@ -825,6 +856,7 @@ export async function listCommissionEntriesService(input: {
         grossAmount: commissionEntries.grossAmount,
         feeAmount: commissionEntries.feeAmount,
         assistantDeduction: commissionEntries.assistantDeduction,
+        costAmount: commissionEntries.costAmount,
         amount: commissionEntries.amount,
         paidOn: commissionPayments.paidOn,
       })
@@ -853,6 +885,7 @@ export async function listCommissionEntriesService(input: {
         gross: sql<string>`coalesce(sum(${commissionEntries.grossAmount}), 0)`,
         fee: sql<string>`coalesce(sum(${commissionEntries.feeAmount}), 0)`,
         assistant: sql<string>`coalesce(sum(${commissionEntries.assistantDeduction}), 0)`,
+        cost: sql<string>`coalesce(sum(${commissionEntries.costAmount}), 0)`,
         amount: sql<string>`coalesce(sum(${commissionEntries.amount}), 0)`,
         count: sql<number>`(count(*) filter (where ${commissionEntries.role} = 'professional'))::int`,
         assistantCount: sql<number>`(count(*) filter (where ${commissionEntries.role} = 'assistant'))::int`,
@@ -917,6 +950,7 @@ export async function listCommissionEntriesService(input: {
       grossCents: toCents(row.gross) ?? 0,
       feeCents: toCents(row.fee) ?? 0,
       assistantCents: toCents(row.assistant) ?? 0,
+      costCents: toCents(row.cost) ?? 0,
       amountCents,
       count: row.count,
       assistantCount: row.assistantCount,
@@ -934,6 +968,7 @@ export async function listCommissionEntriesService(input: {
       grossCents: 0,
       feeCents: 0,
       assistantCents: 0,
+      costCents: 0,
       amountCents: 0,
       count: 0,
       assistantCount: 0,

@@ -2,8 +2,14 @@ import { and, asc, eq, inArray } from "drizzle-orm"
 
 import { db, products, serviceProducts, services } from "../index"
 import type { ProductContentUnit } from "../schema"
-import { consumptionCostCents, planServiceConsumption } from "../domain/consumption"
+import {
+  consumptionCostCents,
+  planAdditionalCost,
+  planServiceConsumption,
+  serviceCostCents,
+} from "../domain/consumption"
 import { toMilli } from "../domain/inventory"
+import { toCents } from "../domain/sales"
 import type { ActionResult } from "./appointments"
 
 /**
@@ -18,6 +24,9 @@ import type { ActionResult } from "./appointments"
  * A baixa em si acontece no faturamento da comanda (recordSaleStock, em
  * inventory.service.ts).
  */
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type Executor = typeof db | Tx
 
 class ConsumptionRuleError extends Error {}
 
@@ -49,7 +58,9 @@ export type ServiceConsumptionRow = {
   serviceName: string
   isActive: boolean
   lines: ServiceConsumptionLine[]
-  /** Custo estimado do que um atendimento consome, em centavos. */
+  /** Custo fixo do serviço por atendimento (numeric como string). */
+  additionalCost: string
+  /** Custo de um atendimento, em centavos: custo adicional + produtos consumidos. */
   costCents: number
 }
 
@@ -68,7 +79,12 @@ export async function listServiceConsumptionService(
 ): Promise<{ services: ServiceConsumptionRow[]; products: ConsumptionProductOption[] }> {
   const [serviceRows, productRows, lineRows] = await Promise.all([
     db
-      .select({ id: services.id, name: services.name, isActive: services.isActive })
+      .select({
+        id: services.id,
+        name: services.name,
+        isActive: services.isActive,
+        additionalCost: services.additionalCost,
+      })
       .from(services)
       .where(and(eq(services.salonId, salonId), eq(services.isSystem, false)))
       .orderBy(asc(services.name)),
@@ -127,7 +143,8 @@ export async function listServiceConsumptionService(
         serviceName: service.name,
         isActive: service.isActive,
         lines,
-        costCents: lines.reduce((sum, line) => sum + line.costCents, 0),
+        additionalCost: service.additionalCost,
+        costCents: lines.reduce((sum, line) => sum + line.costCents, toCents(service.additionalCost) ?? 0),
       }
     }),
     // Produto inativo não entra em consumo novo; o que já está cadastrado continua.
@@ -138,15 +155,69 @@ export async function listServiceConsumptionService(
 }
 
 /**
- * Grava o que um serviço consome por atendimento. A lista substitui a anterior
- * inteira; lista vazia tira o consumo do serviço.
+ * Quanto custa um atendimento de cada serviço, em centavos (custo adicional +
+ * produtos consumidos). É o número que a comissão usa (fatia 3e). Serviço sem custo
+ * nenhum não entra no mapa.
+ */
+export async function loadServiceCosts(
+  executor: Executor,
+  salonId: string,
+  serviceIds: readonly string[]
+): Promise<Map<string, number>> {
+  const costs = new Map<string, number>()
+  if (serviceIds.length === 0) return costs
+
+  const ids = Array.from(new Set(serviceIds))
+  const [serviceRows, lineRows] = await Promise.all([
+    executor
+      .select({ id: services.id, additionalCost: services.additionalCost })
+      .from(services)
+      .where(and(eq(services.salonId, salonId), inArray(services.id, ids))),
+    executor
+      .select({
+        serviceId: serviceProducts.serviceId,
+        quantity: serviceProducts.quantity,
+        contentAmount: products.contentAmount,
+        costPrice: products.costPrice,
+      })
+      .from(serviceProducts)
+      .innerJoin(products, eq(products.id, serviceProducts.productId))
+      .where(and(eq(serviceProducts.salonId, salonId), inArray(serviceProducts.serviceId, ids))),
+  ])
+
+  for (const service of serviceRows) {
+    const cents = serviceCostCents({
+      additionalCost: service.additionalCost,
+      lines: lineRows
+        .filter((line) => line.serviceId === service.id)
+        .map((line) => ({
+          perServiceMilli: toMilli(line.quantity) ?? 0,
+          contentMilli: line.contentAmount === null ? null : toMilli(line.contentAmount),
+          costPrice: line.costPrice,
+        })),
+    })
+    if (cents > 0) costs.set(service.id, cents)
+  }
+
+  return costs
+}
+
+/**
+ * Grava o que um serviço consome por atendimento e, com `additionalCost`, o custo
+ * fixo dele. A lista substitui a anterior inteira; lista vazia tira o consumo do
+ * serviço.
  */
 export async function saveServiceConsumptionService(input: {
   salonId: string
   serviceId: string
   items: unknown
+  /** Ausente = não mexe no custo adicional. */
+  additionalCost?: unknown
 }): Promise<ActionResult<{ count: number }>> {
   try {
+    const costPlan = input.additionalCost === undefined ? null : planAdditionalCost(input.additionalCost)
+    if (costPlan && !costPlan.ok) return { success: false, error: costPlan.error }
+
     const count = await db.transaction(async (tx) => {
       const [service] = await tx
         .select({ id: services.id })
@@ -179,6 +250,13 @@ export async function saveServiceConsumptionService(input: {
       await tx
         .delete(serviceProducts)
         .where(and(eq(serviceProducts.serviceId, service.id), eq(serviceProducts.salonId, input.salonId)))
+
+      if (costPlan?.ok) {
+        await tx
+          .update(services)
+          .set({ additionalCost: costPlan.additionalCost })
+          .where(and(eq(services.id, service.id), eq(services.salonId, input.salonId)))
+      }
 
       if (plan.items.length > 0) {
         await tx.insert(serviceProducts).values(

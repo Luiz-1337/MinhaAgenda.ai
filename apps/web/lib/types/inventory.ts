@@ -138,4 +138,6 @@ export interface SaveServiceConsumptionInput {
   serviceId: string
   /** A lista inteira do serviço: substitui a anterior. Vazia = sem consumo. */
   items: { productId: string; quantity: number }[]
+  /** Custo fixo do serviço por atendimento (fatia 3e). NULL = zero. */
+  additionalCost?: number | null
 }

@@ -69,4 +69,5 @@ export const saveServiceConsumptionSchema = z.object({
       })
     )
     .max(30, "Um serviço aceita no máximo 30 produtos"),
+  additionalCost: money.nullish(),
 })

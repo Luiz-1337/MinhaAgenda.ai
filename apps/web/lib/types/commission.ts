@@ -143,6 +143,7 @@ export interface SaveCommissionSettingsInput {
   dateBasis: CommissionDateBasis | null
   feeMode: CommissionShareMode | null
   discountMode: CommissionShareMode | null
+  costMode: CommissionShareMode | null
 }
 
 export interface CommissionRuleInput {

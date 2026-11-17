@@ -12,7 +12,7 @@
  * Tudo em milésimos inteiros, como o resto do estoque.
  */
 import { milliToNumeric, toMilli } from './inventory'
-import { toCents } from './sales'
+import { centsToNumeric, toCents } from './sales'
 
 const MAX_QUANTITY_MILLI = 1_000_000_000 // 1.000.000
 
@@ -132,6 +132,47 @@ export function consumptionCostCents(input: {
   if (input.contentMilli === null) return Math.round((input.perServiceMilli * costCents) / 1000)
   if (input.contentMilli <= 0) return 0
   return Math.round((input.perServiceMilli * costCents) / input.contentMilli)
+}
+
+// ============================================================================
+// Custo do atendimento (fatia 3e)
+// ============================================================================
+
+const MAX_ADDITIONAL_COST_CENTS = 100_000_000 // R$ 1.000.000,00
+
+export type AdditionalCostPlan = { ok: true; additionalCost: string } | { ok: false; error: string }
+
+/** Valida o custo adicional de um serviço. Vazio = zero. */
+export function planAdditionalCost(value: unknown): AdditionalCostPlan {
+  if (value === null || value === undefined || value === '') return { ok: true, additionalCost: '0.00' }
+  const cents = typeof value === 'number' ? toCents(value) : null
+  if (cents === null || cents < 0 || cents > MAX_ADDITIONAL_COST_CENTS) {
+    return { ok: false, error: 'Custo adicional inválido' }
+  }
+  return { ok: true, additionalCost: centsToNumeric(cents) }
+}
+
+/**
+ * Quanto custa UM atendimento de um serviço, em centavos: o custo adicional
+ * cadastrado no serviço + o custo estimado de cada produto que ele consome.
+ *
+ * É este número que a tela de consumo mostra e que a comissão usa (fatia 3e). O
+ * produto sem controle de estoque também conta: o custo existe mesmo que o salão
+ * não acompanhe o saldo.
+ */
+export function serviceCostCents(input: {
+  additionalCost: string | number | null
+  lines: readonly { perServiceMilli: number; contentMilli: number | null; costPrice: string | number | null }[]
+}): number {
+  const additional = Math.max(0, toCents(input.additionalCost) ?? 0)
+  return input.lines.reduce((sum, line) => sum + consumptionCostCents(line), additional)
+}
+
+/** Custo de um ITEM de comanda: o custo de um atendimento × a quantidade do item. */
+export function itemCostCents(perServiceCents: number, quantity: string | number): number {
+  const timesMilli = toMilli(quantity)
+  if (timesMilli === null || timesMilli <= 0 || perServiceCents <= 0) return 0
+  return Math.round((perServiceCents * timesMilli) / 1000)
 }
 
 // ============================================================================

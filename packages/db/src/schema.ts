@@ -191,6 +191,9 @@ export const services = pgTable(
     allowedWeekdays: jsonb('allowed_weekdays'),
     allowedStartTimes: jsonb('allowed_start_times'),
     durationMax: integer('duration_max'),
+    // Custo fixo do serviço por atendimento (migration 049): o que não vale a pena
+    // controlar no estoque. Entra no custo que pode abater a comissão.
+    additionalCost: numeric('additional_cost', { precision: 12, scale: 2 }).default('0').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -1262,6 +1265,8 @@ export const commissionSettings = pgTable(
     dateBasis: text('date_basis').$type<CommissionDateBasis>(),
     feeMode: text('fee_mode').$type<CommissionShareMode>(),
     discountMode: text('discount_mode').$type<CommissionShareMode>(),
+    // Quem arca com o custo do atendimento (migration 049).
+    costMode: text('cost_mode').$type<CommissionShareMode>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
@@ -1388,7 +1393,10 @@ export const commissionEntries = pgTable(
     // Quanto desta comissão foi para o auxiliar (migration 042). Só na linha do
     // profissional; a do auxiliar é o que ele recebe.
     assistantDeduction: numeric('assistant_deduction', { precision: 12, scale: 2 }).default('0').notNull(),
-    // O que há a receber: grossAmount − feeAmount − assistantDeduction.
+    // Parte do custo do atendimento que saiu desta comissão (migration 049). Só na
+    // linha do profissional.
+    costAmount: numeric('cost_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // O que há a receber: grossAmount − feeAmount − assistantDeduction − costAmount.
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
     competenceDate: date('competence_date').notNull(),
     // NULL = aguardando o cliente pagar (regra "disponibilidade" com valor em aberto).
