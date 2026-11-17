@@ -13,6 +13,7 @@ import type {
   ProductContentUnitValue,
   ServiceConsumptionRow,
   StockMovementRow,
+  StockRequestRow,
   StockStatus,
 } from "@repo/db"
 
@@ -50,6 +51,8 @@ export interface InventoryDTO {
   categories: { id: string; name: string }[]
   /** Lotes com produto na prateleira vencidos e vencendo (fatia 4c). */
   batchAlerts: { expired: number; expiring: number }
+  /** Solicitações de saída aguardando decisão (fatia 4e). */
+  pendingRequests: number
   /** Cortesias de tela — a trava é no servidor. */
   can: { move: boolean; manage: boolean }
 }
@@ -82,6 +85,9 @@ export interface SaveProductStockSettingsInput {
   /** Fracionamento (fatia 4d): quanto cabe em uma unidade. NULL = não fracionado. */
   contentAmount?: number | null
   contentUnit?: ProductContentUnitValue | null
+  /** Solicitação pelo profissional (fatia 4e). */
+  requestable?: boolean
+  professionalPrice?: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -140,4 +146,33 @@ export interface SaveServiceConsumptionInput {
   items: { productId: string; quantity: number }[]
   /** Custo fixo do serviço por atendimento (fatia 3e). NULL = zero. */
   additionalCost?: number | null
+}
+
+// ---------------------------------------------------------------------------
+// Solicitações de saída (fatia 4e)
+// ---------------------------------------------------------------------------
+
+export type StockRequestDTO = StockRequestRow
+
+export interface StockRequestsDTO {
+  requests: StockRequestDTO[]
+  truncated: boolean
+  /** Quantas estão aguardando decisão (entre as que a pessoa pode ver). */
+  pending: number
+  /** Produtos ativos marcados como disponíveis para solicitação. */
+  products: { id: string; name: string; professionalPrice: string | null }[]
+  /** Para quem a pessoa pode pedir: todos, ou só os vínculos de profissional dela. */
+  professionals: { id: string; name: string }[]
+  /** Com as comissões ligadas, a aprovação debita o valor no extrato. */
+  commissionsEnabled: boolean
+  /** Cortesias de tela — a trava é no servidor. */
+  can: { access: boolean; move: boolean; request: boolean }
+}
+
+export interface CreateStockRequestInput {
+  salonId: string
+  productId: string
+  professionalId: string
+  quantity: number
+  notes?: string | null
 }

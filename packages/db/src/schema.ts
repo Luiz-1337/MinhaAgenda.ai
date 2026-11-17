@@ -230,6 +230,10 @@ export const products = pgTable(
     // estoque continua em UNIDADES; isto só converte o consumo do serviço.
     contentAmount: numeric('content_amount', { precision: 12, scale: 3 }),
     contentUnit: text('content_unit').$type<ProductContentUnit>(),
+    // Solicitação de saída pelo profissional (migration 050): o produto pode ser
+    // pedido, e por quanto. Preço NULL ou zero = sai de graça para ele.
+    requestable: boolean('requestable').default(false).notNull(),
+    professionalPrice: numeric('professional_price', { precision: 12, scale: 2 }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -1433,10 +1437,17 @@ export const commissionAdjustments = pgTable(
     notes: text('notes'),
     // O pagamento em que este lançamento entrou (migration 044). NULL = em aberto.
     paymentId: uuid('payment_id').references(() => commissionPayments.id, { onDelete: 'set null' }),
+    // Débito de uma retirada de produto (migration 050): o vale aponta para a
+    // solicitação que o gerou. CASCADE: excluir a solicitação apaga o débito. Só
+    // 'advance' pode apontar (CHECK no banco).
+    stockRequestId: uuid('stock_request_id').references(() => stockRequests.id, { onDelete: 'cascade' }),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
+    uniqueIndex('commission_adjustments_request_unique')
+      .on(table.stockRequestId)
+      .where(sql`stock_request_id IS NOT NULL`),
     index('commission_adjustments_statement_idx').on(table.salonId, table.professionalId, table.referenceDate),
     index('commission_adjustments_payment_idx').on(table.paymentId).where(sql`payment_id IS NOT NULL`),
     index('commission_adjustments_open_idx')
@@ -1454,9 +1465,9 @@ export const commissionAdjustments = pgTable(
 /**
  * in = entrada · out = saída · adjustment = acerto de inventário · sale = baixa por
  * comanda (produto vendido) · purchase = entrada por compra · consumption = baixa
- * de insumo por serviço faturado
+ * de insumo por serviço faturado · request = saída por solicitação aprovada
  */
-export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale' | 'purchase' | 'consumption'
+export type StockMovementKind = 'in' | 'out' | 'adjustment' | 'sale' | 'purchase' | 'consumption' | 'request'
 
 export const stockMovements = pgTable(
   'stock_movements',
@@ -1477,6 +1488,9 @@ export const stockMovements = pgTable(
     // excluir a compra apaga a entrada que ela deu.
     purchaseId: uuid('purchase_id').references(() => purchases.id, { onDelete: 'cascade' }),
     purchaseItemId: uuid('purchase_item_id').references(() => purchaseItems.id, { onDelete: 'cascade' }),
+    // Só em 'request' (migration 050, CHECK no banco). CASCADE de propósito: excluir
+    // a solicitação devolve o produto ao estoque.
+    stockRequestId: uuid('stock_request_id').references(() => stockRequests.id, { onDelete: 'cascade' }),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
@@ -1493,7 +1507,50 @@ export const stockMovements = pgTable(
     index('stock_movements_purchase_idx').on(table.purchaseId).where(sql`purchase_id IS NOT NULL`),
     uniqueIndex('stock_movements_purchase_item_unique')
       .on(table.purchaseItemId)
-      .where(sql`purchase_item_id IS NOT NULL`)
+      .where(sql`purchase_item_id IS NOT NULL`),
+    uniqueIndex('stock_movements_request_unique')
+      .on(table.stockRequestId)
+      .where(sql`stock_request_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Solicitações de saída de estoque (migration 050)
+// ============================================================================
+// O profissional pede um produto para uso próprio; o salão aprova; o produto sai
+// do estoque e o valor é debitado no extrato de comissões. Regra em
+// domain/stock-requests.ts.
+
+/** pending = aguardando decisão · approved = aprovada (saiu e debitou) · rejected = recusada */
+export type StockRequestStatus = 'pending' | 'approved' | 'rejected'
+
+export const stockRequests = pgTable(
+  'stock_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // Sem ON DELETE, como sale_items: produto com solicitação não se apaga.
+    productId: uuid('product_id').references(() => products.id).notNull(),
+    // Quem vai levar o produto, e de quem sai o débito.
+    professionalId: uuid('professional_id').references(() => professionals.id).notNull(),
+    // Cópia do nome e do preço para profissional na hora do pedido.
+    description: text('description').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).default('0').notNull(),
+    totalAmount: numeric('total_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    status: text('status').$type<StockRequestStatus>().default('pending').notNull(),
+    notes: text('notes'),
+    requestedBy: uuid('requested_by').references(() => profiles.id, { onDelete: 'set null' }),
+    decidedBy: uuid('decided_by').references(() => profiles.id, { onDelete: 'set null' }),
+    // NULL enquanto pendente (CHECK no banco).
+    decidedAt: timestamp('decided_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('stock_requests_salon_idx').on(table.salonId, table.createdAt.desc()),
+    index('stock_requests_pending_idx').on(table.salonId, table.createdAt.desc()).where(sql`status = 'pending'`),
+    index('stock_requests_professional_idx').on(table.professionalId, table.createdAt.desc()),
+    index('stock_requests_product_idx').on(table.productId)
   ]
 )
 

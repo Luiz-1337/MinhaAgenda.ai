@@ -80,6 +80,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
   const [categoryId, setCategoryId] = useState("")
   const [contentAmount, setContentAmount] = useState("")
   const [contentUnit, setContentUnit] = useState<ProductContentUnitValue>("ml")
+  const [requestable, setRequestable] = useState(false)
+  const [professionalPrice, setProfessionalPrice] = useState("")
 
   const visible = useMemo(() => {
     if (view === "to_buy") {
@@ -113,6 +115,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
     setCategoryId(product.categoryId ?? "")
     setContentAmount(product.contentAmount ? formatQuantity(product.contentAmount) : "")
     setContentUnit(product.contentUnit ?? "ml")
+    setRequestable(product.requestable)
+    setProfessionalPrice(product.professionalPrice ? Number(product.professionalPrice).toFixed(2).replace(".", ",") : "")
   }
 
   function submitMovement() {
@@ -185,6 +189,15 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
       }
     }
 
+    let requestPrice: number | null = null
+    if (professionalPrice.trim()) {
+      requestPrice = parseBRL(professionalPrice)
+      if (requestPrice === null || requestPrice < 0) {
+        toast.error("Preço para profissional inválido")
+        return
+      }
+    }
+
     startTransition(async () => {
       const result = await saveProductStockSettings({
         salonId,
@@ -198,6 +211,8 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
         categoryId: categoryId || null,
         contentAmount: content,
         contentUnit: content === null ? null : contentUnit,
+        requestable,
+        professionalPrice: requestPrice,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -249,6 +264,15 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
             .filter(Boolean)
             .join(" e ")}{" "}
           com produto na prateleira. Ver lotes.
+        </Link>
+      )}
+
+      {data.pendingRequests > 0 && (
+        <Link
+          href={`/${salonId}/inventory/requests`}
+          className="flex-shrink-0 rounded-md border border-border bg-muted px-4 py-3 text-sm text-foreground hover:opacity-90 transition-opacity"
+        >
+          <strong>Solicitações:</strong> {data.pendingRequests} aguardando decisão. Ver solicitações.
         </Link>
       )}
 
@@ -318,6 +342,7 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                         product.brandName ||
                         product.categoryName ||
                         product.contentAmount ||
+                        product.requestable ||
                         !product.isActive) && (
                         <span className="block text-[11px] font-normal text-muted-foreground">
                           {[
@@ -327,6 +352,7 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                             product.contentAmount && product.contentUnit
                               ? `${formatQuantity(product.contentAmount)} ${product.contentUnit} por unidade`
                               : null,
+                            product.requestable ? "disponível para solicitação" : null,
                             product.isActive ? null : "inativo",
                           ]
                             .filter(Boolean)
@@ -457,6 +483,13 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                             className="font-mono font-semibold text-accent hover:underline"
                           >
                             Comanda #{movement.saleNumber}
+                          </Link>
+                        ) : movement.stockRequestId ? (
+                          <Link
+                            href={`/${salonId}/inventory/requests`}
+                            className="font-semibold text-accent hover:underline"
+                          >
+                            Ver solicitações
                           </Link>
                         ) : movement.purchaseId ? (
                           <Link
@@ -770,6 +803,39 @@ export function InventoryClient({ salonId, data }: { salonId: string; data: Inve
                 <p className="text-[11px] text-muted-foreground">
                   Para produto gasto aos poucos no atendimento: o consumo do serviço é informado nesta medida e baixa a
                   fração da unidade. O estoque continua contado em unidades.
+                </p>
+              </div>
+              <label className="flex items-start gap-3 text-sm text-foreground col-span-2 sm:col-span-1">
+                <input
+                  type="checkbox"
+                  checked={requestable}
+                  disabled={isPending}
+                  onChange={(event) => setRequestable(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-foreground"
+                />
+                <span>
+                  <span className="font-semibold">Disponível para solicitação</span>
+                  <span className="block text-xs text-muted-foreground">
+                    O profissional pode pedir este produto para uso próprio.
+                  </span>
+                </span>
+              </label>
+              <div className="flex flex-col gap-1 col-span-2 sm:col-span-1">
+                <label htmlFor="settings-professional-price" className={labelClass}>
+                  Preço para profissional
+                </label>
+                <input
+                  id="settings-professional-price"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={professionalPrice}
+                  disabled={isPending}
+                  onChange={(event) => setProfessionalPrice(event.target.value)}
+                  className={inputClass}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  O que é debitado nas comissões de quem retira. Vazio = sem custo para ele.
                 </p>
               </div>
             </div>

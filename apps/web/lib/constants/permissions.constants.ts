@@ -52,6 +52,7 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   pay: "Pagar comissões e estornar pagamentos",
   move: "Lançar entradas, saídas e acertos",
   purchase: "Lançar e excluir compras",
+  request: "Solicitar produto para uso próprio",
 }
 
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */

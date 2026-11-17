@@ -42,7 +42,11 @@ const MODULE_ITEMS: Record<string, (salon: SalonListItem) => boolean> = {
   finance: (salon) => salon.modules.includes("finance") && salon.permissions.includes("finance.access"),
   commissions: (salon) =>
     salon.modules.includes("commissions") && salon.permissions.includes("commissions.access"),
-  inventory: (salon) => salon.modules.includes("inventory") && salon.permissions.includes("inventory.access"),
+  // Quem só solicita produto (sem acessar o estoque) também entra: a página de
+  // estoque manda essa pessoa direto para as solicitações.
+  inventory: (salon) =>
+    salon.modules.includes("inventory") &&
+    (salon.permissions.includes("inventory.access") || salon.permissions.includes("inventory.request")),
 }
 
 // Helper para verificar permissões de visualização

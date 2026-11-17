@@ -56,6 +56,27 @@ export const saveProductStockSettingsSchema = z.object({
   categoryId: z.string().uuid().nullish(),
   contentAmount: z.number().finite().positive("Quantidade inválida").max(1_000_000, "Quantidade inválida").nullish(),
   contentUnit: z.enum(["ml", "g", "un"]).nullish(),
+  requestable: z.boolean().optional(),
+  professionalPrice: money.nullish(),
+})
+
+export const createStockRequestSchema = z.object({
+  salonId: z.string().uuid(),
+  productId: z.string().uuid({ message: "Escolha o produto" }),
+  professionalId: z.string().uuid({ message: "Escolha o profissional" }),
+  quantity: z.number().finite().positive("Quantidade inválida").max(1_000_000, "Quantidade inválida"),
+  notes: z.string().max(500, "Observação muito longa").nullish(),
+})
+
+export const decideStockRequestSchema = z.object({
+  salonId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  approve: z.boolean(),
+})
+
+export const deleteStockRequestSchema = z.object({
+  salonId: z.string().uuid(),
+  requestId: z.string().uuid(),
 })
 
 export const saveServiceConsumptionSchema = z.object({

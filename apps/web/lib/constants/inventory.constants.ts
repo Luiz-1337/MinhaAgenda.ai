@@ -4,7 +4,13 @@
  * Os valores possíveis são de `@repo/db`; aqui fica só o português. Os `Record`
  * são tipados pelos tipos de lá: um valor novo sem rótulo não compila.
  */
-import type { BatchStatus, PurchasePaymentStatus, StockMovementKind, StockStatus } from "@repo/db"
+import type {
+  BatchStatus,
+  PurchasePaymentStatus,
+  StockMovementKind,
+  StockRequestStatus,
+  StockStatus,
+} from "@repo/db"
 
 export const STOCK_MOVEMENT_KIND_LABELS: Record<StockMovementKind, string> = {
   in: "Entrada",
@@ -13,6 +19,7 @@ export const STOCK_MOVEMENT_KIND_LABELS: Record<StockMovementKind, string> = {
   sale: "Venda",
   purchase: "Compra",
   consumption: "Consumo",
+  request: "Retirada",
 }
 
 export const STOCK_STATUS_LABELS: Record<StockStatus, string> = {
@@ -45,4 +52,11 @@ export const BATCH_STATUS_LABELS: Record<BatchStatus, string> = {
   expiring: "Vencendo",
   ok: "Em dia",
   no_expiry: "Sem validade",
+}
+
+/** Situação da solicitação de saída (fatia 4e). */
+export const STOCK_REQUEST_STATUS_LABELS: Record<StockRequestStatus, string> = {
+  pending: "Pendente",
+  approved: "Aprovada",
+  rejected: "Recusada",
 }

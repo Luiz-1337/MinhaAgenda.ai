@@ -282,7 +282,9 @@ export function CommissionAdjustments({
                   </td>
                   <td className="p-3 text-foreground">{adjustment.professionalName}</td>
                   <td className="p-3 text-muted-foreground">
-                    {COMMISSION_ADJUSTMENT_KIND_LABELS[adjustment.kind]}
+                    {adjustment.stockRequestId
+                      ? "Retirada de produto"
+                      : COMMISSION_ADJUSTMENT_KIND_LABELS[adjustment.kind]}
                     {adjustment.accountName && (
                       <span className="block text-[11px]">saiu de {adjustment.accountName}</span>
                     )}
@@ -299,8 +301,9 @@ export function CommissionAdjustments({
                   </td>
                   {canAdjust && (
                     <td className="p-2 text-right">
-                      {/* O que já entrou num pagamento só sai estornando o pagamento. */}
-                      {!adjustment.paidOn && (
+                      {/* O que já entrou num pagamento só sai estornando o pagamento; o
+                          débito de retirada só sai excluindo a solicitação no estoque. */}
+                      {!adjustment.paidOn && !adjustment.stockRequestId && (
                         <button
                           type="button"
                           onClick={() => setToDelete(adjustment)}

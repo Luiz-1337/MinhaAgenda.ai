@@ -780,6 +780,11 @@ export type CommissionAdjustmentRow = {
   paidOn: string | null
   /** Conta de onde o dinheiro do vale saiu. NULL = sem lançamento no financeiro. */
   accountName: string | null
+  /**
+   * A solicitação de estoque que gerou este vale (fatia 4e). Preenchido = débito de
+   * retirada de produto: não se exclui pelo extrato, e sim pela solicitação.
+   */
+  stockRequestId: string | null
 }
 
 export type CommissionStatement = {
@@ -915,6 +920,7 @@ export async function listCommissionEntriesService(input: {
         notes: commissionAdjustments.notes,
         paidOn: commissionPayments.paidOn,
         accountName: financialAccounts.name,
+        stockRequestId: commissionAdjustments.stockRequestId,
       })
       .from(commissionAdjustments)
       .innerJoin(professionals, eq(professionals.id, commissionAdjustments.professionalId))
@@ -1124,7 +1130,11 @@ export async function deleteCommissionAdjustmentService(input: {
 
     await db.transaction(async (tx) => {
       const [adjustment] = await tx
-        .select({ id: commissionAdjustments.id, paymentId: commissionAdjustments.paymentId })
+        .select({
+          id: commissionAdjustments.id,
+          paymentId: commissionAdjustments.paymentId,
+          stockRequestId: commissionAdjustments.stockRequestId,
+        })
         .from(commissionAdjustments)
         .where(
           and(
@@ -1138,6 +1148,11 @@ export async function deleteCommissionAdjustmentService(input: {
       if (!adjustment) fail("Lançamento não encontrado")
       if (adjustment.paymentId) {
         fail("Este lançamento já entrou num pagamento. Estorne o pagamento antes de excluir")
+      }
+      // O débito de uma retirada é consequência da solicitação: apagá-lo por aqui
+      // deixaria o produto fora do estoque sem ninguém pagar por ele.
+      if (adjustment.stockRequestId) {
+        fail("Este débito veio de uma retirada de produto. Exclua a solicitação em Estoque > Solicitações")
       }
 
       await tx

@@ -21,6 +21,7 @@ import {
 } from "../domain/inventory"
 import { hasBatchData, planBatch } from "../domain/batches"
 import { planProductContent, planSaleConsumptionMovements } from "../domain/consumption"
+import { planProductRequestSettings } from "../domain/stock-requests"
 import type { ActionResult } from "./appointments"
 import { insertMovementBatch } from "./batches.service"
 
@@ -85,6 +86,9 @@ export type InventoryProductRow = {
   /** Fracionamento: quanto cabe em uma unidade e em que medida. NULL = não fracionado. */
   contentAmount: string | null
   contentUnit: ProductContentUnit | null
+  /** O profissional pode solicitar este produto, e por quanto (fatia 4e). */
+  requestable: boolean
+  professionalPrice: string | null
   /** Saldo: a soma dos movimentos (numeric como string, pode ser negativo). */
   quantity: string
 }
@@ -118,6 +122,8 @@ export async function listInventoryService(salonId: string): Promise<InventoryPr
       categoryName: productCategories.name,
       contentAmount: products.contentAmount,
       contentUnit: products.contentUnit,
+      requestable: products.requestable,
+      professionalPrice: products.professionalPrice,
       quantity: sql<string>`coalesce(${balances.total}, 0)::numeric(12,3)::text`,
     })
     .from(products)
@@ -143,6 +149,8 @@ export type StockMovementRow = {
   saleNumber: number | null
   /** Só em compra: a compra que deu a entrada. */
   purchaseId: string | null
+  /** Só em retirada: a solicitação aprovada que tirou o produto. */
+  stockRequestId: string | null
   /** Quem lançou. */
   userName: string | null
 }
@@ -169,6 +177,7 @@ export async function listStockMovementsService(input: {
       saleId: stockMovements.saleId,
       saleNumber: sales.number,
       purchaseId: stockMovements.purchaseId,
+      stockRequestId: stockMovements.stockRequestId,
       // Cadastro antigo pode ter só nome e sobrenome, sem o nome completo.
       userName: sql<
         string | null
@@ -287,10 +296,15 @@ export async function saveProductStockSettingsService(input: {
   settings: { trackStock: unknown; minStock?: unknown; costPrice?: unknown; sku?: unknown; barcode?: unknown }
   classification?: { brandId: string | null; categoryId: string | null }
   content?: { contentAmount?: unknown; contentUnit?: unknown }
+  /** Disponível para solicitação e preço para profissional (fatia 4e). */
+  request?: { requestable: unknown; professionalPrice?: unknown }
 }): Promise<ActionResult<void>> {
   try {
     const plan = planProductStockSettings(input.settings)
     if (!plan.ok) fail(plan.error)
+
+    const requestPlan = input.request ? planProductRequestSettings(input.request) : null
+    if (requestPlan && !requestPlan.ok) fail(requestPlan.error)
 
     const contentPlan = input.content ? planProductContent(input.content) : null
     if (contentPlan && !contentPlan.ok) fail(contentPlan.error)
@@ -328,6 +342,9 @@ export async function saveProductStockSettingsService(input: {
           : {}),
         ...(contentPlan?.ok
           ? { contentAmount: contentPlan.contentAmount, contentUnit: contentPlan.contentUnit }
+          : {}),
+        ...(requestPlan?.ok
+          ? { requestable: requestPlan.requestable, professionalPrice: requestPlan.professionalPrice }
           : {}),
       })
       .where(and(eq(products.id, input.productId), eq(products.salonId, input.salonId)))

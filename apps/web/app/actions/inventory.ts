@@ -6,6 +6,11 @@ import {
   brazilToday,
   createBatchService,
   createStockMovementService,
+  createStockRequestService,
+  decideStockRequestService,
+  deleteStockRequestService,
+  listStockRequestOptionsService,
+  listStockRequestsService,
   deleteBatchService,
   listBatchesService,
   listInventoryService,
@@ -28,7 +33,10 @@ import { salonHasModule } from "@/lib/services/salon-modules.service"
 import { formatZodError } from "@/lib/services/validation.service"
 import {
   createStockMovementSchema,
+  createStockRequestSchema,
+  decideStockRequestSchema,
   deleteBatchSchema,
+  deleteStockRequestSchema,
   inventoryFiltersSchema,
   saveBatchSchema,
   saveProductStockSettingsSchema,
@@ -38,6 +46,8 @@ import type { ActionResult } from "@/lib/types/common"
 import type {
   BatchesDTO,
   CreateStockMovementInput,
+  CreateStockRequestInput,
+  StockRequestsDTO,
   InventoryDTO,
   InventoryFilters,
   InventoryProductDTO,
@@ -61,9 +71,13 @@ import type {
 /** Movimentações mostradas na tela. */
 const MOVEMENT_ROWS = 100
 
+/**
+ * `permission` pode ser uma lista: basta UMA. É o caso das solicitações, que servem
+ * tanto a quem só pede (`inventory.request`) quanto a quem movimenta o estoque.
+ */
 async function authorizeSalon(
   salonId: string,
-  permission: PermissionKey
+  permission: PermissionKey | readonly PermissionKey[]
 ): Promise<{ userId: string } | { error: string }> {
   if (!salonId) return { error: "salonId é obrigatório" }
   const userId = await getSessionUserId()
@@ -71,7 +85,10 @@ async function authorizeSalon(
   if (!(await salonHasModule(salonId, "inventory"))) {
     return { error: "O estoque não está disponível neste salão" }
   }
-  if (!(await can(salonId, userId, permission))) {
+
+  const wanted = typeof permission === "string" ? [permission] : permission
+  const granted = await Promise.all(wanted.map((key) => can(salonId, userId, key)))
+  if (!granted.some(Boolean)) {
     return { error: "Você não tem permissão para esta ação" }
   }
   return { userId }
@@ -85,6 +102,8 @@ function revalidateInventory(salonId: string) {
   revalidatePath(`/${salonId}/inventory/batches`)
   // O custo estimado do consumo sai do custo e do fracionamento do produto.
   revalidatePath(`/${salonId}/inventory/consumption`)
+  // Os produtos disponíveis para solicitação e o preço para profissional.
+  revalidatePath(`/${salonId}/inventory/requests`)
 }
 
 /** Os produtos com saldo, situação e sugestão de compra, e a movimentação recente. */
@@ -99,11 +118,13 @@ export async function getInventory(
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   try {
-    const [rows, permissions, catalog, batches] = await Promise.all([
+    const [rows, permissions, catalog, batches, requests] = await Promise.all([
       listInventoryService(salonId),
       getSalonPermissions(salonId, auth.userId),
       listProductCatalogService(salonId),
       listBatchesService(salonId),
+      // Só a contagem das pendentes interessa aqui.
+      listStockRequestsService({ salonId, limit: 1 }),
     ])
 
     // Produto pedido que não é do salão é ignorado, não um erro: a movimentação
@@ -145,6 +166,7 @@ export async function getInventory(
       brands: catalog.brands.map((brand) => ({ id: brand.id, name: brand.name })),
       categories: catalog.categories.map((category) => ({ id: category.id, name: category.name })),
       batchAlerts: { expired: batches.expired, expiring: batches.expiring },
+      pendingRequests: requests.pending,
       can: {
         move: permissions.has("inventory.move"),
         manage: permissions.has("inventory.manage"),
@@ -189,7 +211,17 @@ export async function saveProductStockSettings(input: SaveProductStockSettingsIn
   const parsed = saveProductStockSettingsSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
-  const { salonId, productId, brandId, categoryId, contentAmount, contentUnit, ...settings } = parsed.data
+  const {
+    salonId,
+    productId,
+    brandId,
+    categoryId,
+    contentAmount,
+    contentUnit,
+    requestable,
+    professionalPrice,
+    ...settings
+  } = parsed.data
 
   const result = await saveProductStockSettingsService({
     salonId,
@@ -197,6 +229,8 @@ export async function saveProductStockSettings(input: SaveProductStockSettingsIn
     settings,
     classification: { brandId: brandId ?? null, categoryId: categoryId ?? null },
     content: { contentAmount: contentAmount ?? null, contentUnit: contentUnit ?? null },
+    // Ausente = a tela não mandou os campos: não mexe.
+    request: requestable === undefined ? undefined : { requestable, professionalPrice: professionalPrice ?? null },
   })
   if (!result.success) return { error: result.error }
 
@@ -315,5 +349,140 @@ export async function saveServiceConsumption(input: SaveServiceConsumptionInput)
   revalidateInventory(parsed.data.salonId)
   // O custo do atendimento entra na comissão das próximas comandas.
   revalidatePath(`/${parsed.data.salonId}/commissions`)
+  return { success: true }
+}
+
+// ============================================================================
+// Solicitações de saída (fatia 4e)
+// ============================================================================
+
+/** Solicitações mostradas na lista. */
+const REQUEST_ROWS = 100
+
+/** Quem pode ver ou pedir: quem acessa o estoque, quem movimenta e quem só solicita. */
+const REQUEST_VIEWERS = ["inventory.access", "inventory.move", "inventory.request"] as const
+
+/** O débito da retirada aparece no extrato de comissões. */
+function revalidateRequests(salonId: string) {
+  revalidateInventory(salonId)
+  revalidatePath(`/${salonId}/commissions`)
+  revalidatePath(`/${salonId}/commissions/payments`)
+}
+
+/**
+ * As solicitações de saída. Quem movimenta o estoque vê todas; quem só solicita vê
+ * as dos próprios vínculos de profissional — e só pode pedir para eles.
+ */
+export async function getStockRequests(salonId: string): Promise<StockRequestsDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, REQUEST_VIEWERS)
+  if ("error" in auth) return auth
+
+  try {
+    const [permissions, options, commissionsEnabled] = await Promise.all([
+      getSalonPermissions(salonId, auth.userId),
+      listStockRequestOptionsService(salonId),
+      salonHasModule(salonId, "commissions"),
+    ])
+
+    const canMove = permissions.has("inventory.move")
+    const canSeeAll = canMove || permissions.has("inventory.access")
+    const own = options.professionals.filter((professional) => professional.userId === auth.userId)
+
+    const list = await listStockRequestsService({
+      salonId,
+      professionalIds: canSeeAll ? undefined : own.map((professional) => professional.id),
+      limit: REQUEST_ROWS,
+    })
+
+    return {
+      requests: list.rows,
+      truncated: list.truncated,
+      pending: list.pending,
+      products: options.products.map(({ id, name, professionalPrice }) => ({ id, name, professionalPrice })),
+      professionals: (canMove ? options.professionals : own).map(({ id, name }) => ({ id, name })),
+      commissionsEnabled,
+      can: {
+        access: permissions.has("inventory.access"),
+        move: canMove,
+        request: canMove || permissions.has("inventory.request"),
+      },
+    }
+  } catch (error) {
+    console.error("Erro ao carregar as solicitações:", error)
+    return { error: "Não foi possível carregar as solicitações" }
+  }
+}
+
+/** Registra uma solicitação, pendente. Quem não movimenta o estoque só pede para si. */
+export async function createStockRequest(input: CreateStockRequestInput): Promise<ActionResult<{ requestId: string }>> {
+  const auth = await authorizeSalon(input?.salonId, ["inventory.request", "inventory.move"])
+  if ("error" in auth) return auth
+
+  const parsed = createStockRequestSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const { salonId, ...draft } = parsed.data
+
+  let allowedProfessionalIds: string[] | null = null
+  if (!(await can(salonId, auth.userId, "inventory.move"))) {
+    const options = await listStockRequestOptionsService(salonId)
+    allowedProfessionalIds = options.professionals
+      .filter((professional) => professional.userId === auth.userId)
+      .map((professional) => professional.id)
+  }
+
+  const result = await createStockRequestService({ salonId, userId: auth.userId, draft, allowedProfessionalIds })
+  if (!result.success) return { error: result.error }
+
+  revalidateRequests(salonId)
+  return { success: true, data: result.data }
+}
+
+/** Aprova (o produto sai e o valor é debitado) ou recusa uma solicitação pendente. */
+export async function decideStockRequest(input: {
+  salonId: string
+  requestId: string
+  approve: boolean
+}): Promise<ActionResult<{ debited: boolean; moved: boolean }>> {
+  const auth = await authorizeSalon(input?.salonId, "inventory.move")
+  if ("error" in auth) return auth
+
+  const parsed = decideStockRequestSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const result = await decideStockRequestService({
+    ...parsed.data,
+    userId: auth.userId,
+    commissionsEnabled: await salonHasModule(parsed.data.salonId, "commissions"),
+  })
+  if (!result.success) return { error: result.error }
+
+  revalidateRequests(parsed.data.salonId)
+  return { success: true, data: result.data }
+}
+
+/**
+ * Exclui uma solicitação. Quem movimenta o estoque exclui qualquer uma (a aprovada
+ * devolve o produto e tira o débito); quem só solicita exclui as próprias pendentes.
+ */
+export async function deleteStockRequest(input: { salonId: string; requestId: string }): Promise<ActionResult> {
+  const auth = await authorizeSalon(input?.salonId, ["inventory.request", "inventory.move"])
+  if ("error" in auth) return auth
+
+  const parsed = deleteStockRequestSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  let ownPendingOf: string[] | undefined
+  if (!(await can(parsed.data.salonId, auth.userId, "inventory.move"))) {
+    const options = await listStockRequestOptionsService(parsed.data.salonId)
+    ownPendingOf = options.professionals
+      .filter((professional) => professional.userId === auth.userId)
+      .map((professional) => professional.id)
+  }
+
+  const result = await deleteStockRequestService({ ...parsed.data, ownPendingOf })
+  if (!result.success) return { error: result.error }
+
+  revalidateRequests(parsed.data.salonId)
   return { success: true }
 }

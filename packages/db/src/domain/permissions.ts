@@ -46,7 +46,9 @@ export const PERMISSION_CATALOG = {
   // `manage` = ligar o controle do produto, estoque mínimo, custo e códigos, e os
   // cadastros de apoio (fornecedores, marcas e categorias).
   // `purchase` = lançar e excluir compras.
-  inventory: ['access', 'move', 'manage', 'purchase'],
+  // `request` = pedir produto do estoque para uso próprio. Aprovar, recusar e
+  // pedir para outro profissional é `move`.
+  inventory: ['access', 'move', 'manage', 'purchase', 'request'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG

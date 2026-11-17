@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation"
 import { ShieldOff } from "lucide-react"
-import { getInventory } from "@/app/actions/inventory"
+import { getInventory, getStockRequests } from "@/app/actions/inventory"
 import { InventoryClient } from "./inventory-client"
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -24,6 +25,10 @@ export default async function InventoryPage({
   const data = await getInventory(salonId, { productId: first(query.product) || undefined })
 
   if ("error" in data) {
+    // Quem só solicita produto não vê o estoque, mas tem a tela de solicitações.
+    const requests = await getStockRequests(salonId)
+    if (!("error" in requests)) redirect(`/${salonId}/inventory/requests`)
+
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
         <ShieldOff size={32} className="text-muted-foreground" />
