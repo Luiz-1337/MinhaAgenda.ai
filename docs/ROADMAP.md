@@ -72,8 +72,8 @@ feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6):
 migration 059 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.7.
 Fatia 7b (etiquetas na agenda e remarcar pela tela) na mesma branch: migration
 060 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.8.
-Fatia 7c (recorrência de agendamento) feita na mesma branch — **em commit local,
-migration 061 NÃO aplicada, sem publicar e sem teste em uso** — ver §11.9.
+Fatia 7c (recorrência de agendamento) na mesma branch: migration 061 aplicada em
+18/nov/2026, publicada e testada em uso — ver §11.9.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3301,7 +3301,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 |---|---|---|
 | 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
-| 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita em código — **migration 061 não aplicada, sem publicar e sem teste em uso** (§11.9) |
+| 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
 | 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
@@ -3590,13 +3590,15 @@ Perguntas para o dono:
 
 ### 11.9 Fatia 7c — estado (18/nov/2026)
 
-- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
-  alterados) e testes passando (web 1304, db 296, mcp-server 409).
-- **Migration 061: NÃO aplicada.** Ela acrescenta `series_id` a `appointments`.
-  Como na 060, **publicar o código antes de aplicar quebra a criação de
-  agendamento em TODOS os salões**. A coluna não tem DEFAULT: nenhuma linha é
-  regravada. Cabe cópia de `appointments` em `backups` antes.
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel; não
+  está na `main`). Typecheck (db, web e mcp-server), lint (nenhum erro novo nos
+  arquivos alterados) e testes passando (web 1304, db 296, mcp-server 409).
+- **Migration 061: aplicada em produção em 18/nov/2026** (registrada como
+  `appointment_series`), ANTES de publicar o código. Cópia anterior em
+  `backups.appointments_pre_061_20261118` (183 linhas); depois de aplicar, os
+  agendamentos conferem com a cópia e nenhum tem série. Ela acrescenta
+  `series_id` a `appointments`: quem publicar este código em outro banco
+  precisa aplicar a 061 antes, ou a criação de agendamento quebra.
 - **Mexe no caminho de criar agendamento pela tela, para todos os salões:** o
   trecho que confere quem pode criar (dono ou profissional ativo, e a troca de
   profissional no plano SOLO) saiu de dentro do `createAppointment` para a
@@ -3614,14 +3616,32 @@ Perguntas para o dono:
     série só é amarrada no fim);
   - a grade não marca visualmente o agendamento de série; só o detalhe mostra;
   - a IA não conhece séries: vê e mexe em cada agendamento isolado.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 061 e
-  publicar: criar um agendamento avulso (continua funcionando); criar com
-  "Repetir" a cada 1 semana, 3 vezes → três cartões, no mesmo dia da semana e
-  hora, e o detalhe de cada um mostra "Recorrência"; ocupar antes uma das datas
-  com outro agendamento e criar a série → o aviso lista a data que não coube;
-  série cuja primeira data não cabe → nada é criado; remarcar um da série (os
-  outros não mudam); no segundo, cancelar com "também os próximos" → o primeiro
-  fica e os demais são cancelados; cancelar o que sobrou.
+- **Testada em uso em 18/nov/2026**, no preview, no salão de teste:
+  - agendamento avulso continua sendo criado depois da 061;
+  - série a cada 1 semana, 3 vezes → três agendamentos, no mesmo dia da semana e
+    hora, amarrados na mesma série, com quem criou gravado;
+  - série que esbarra num horário ocupado → aviso "2 agendamentos criados. Não
+    coube: 26/11/2026 (…)", que fica na tela; os dois que couberam viram série;
+  - série cuja primeira data não cabe → nada é criado, o formulário fica aberto
+    com o erro;
+  - detalhe mostra "Recorrência — faz parte de uma série, a cada semana"; o
+    avulso não mostra, nem oferece "cancelar os próximos";
+  - remarcar um da série muda só ele;
+  - cancelar o segundo com "também os próximos" → o primeiro fica, o segundo e o
+    terceiro são cancelados, a outra série não é tocada.
+- **O que o teste mostrou e não é desta fatia:**
+  - o salão de teste está no plano SOLO: o formulário deixa escolher outro
+    profissional, e o agendamento é gravado para o profissional do dono, sem
+    aviso (regra antiga; a série segue a mesma troca);
+  - o motivo de conflito que apareceu foi "conflito com Google Calendar", porque
+    o agendamento que ocupava o horário já tinha ido para o Google do salão;
+  - o formulário lembra o "Quantas vezes" da série anterior enquanto a tela não
+    é recarregada.
+- **Não testado em uso:** salão com agenda oficial (Belasis), série longa (tempo
+  de 12 datas), furar a regra de dia e horário do serviço numa série, usuário
+  que não é o dono, e a IA criando agendamento depois da 061.
+- **Ficou no salão de teste:** seis agendamentos cancelados com observação
+  "TESTE 7c…" e duas séries (histórico, como os da 7b).
 
 ## 12. Pendências do dono
 
@@ -3647,7 +3667,6 @@ Perguntas para o dono:
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
 | Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
-| Aplicar a migration 061 (ou autorizar a aplicação) e publicar a fatia 7c — ver §11.9 | Teste em uso da fatia 7c |
 | Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
