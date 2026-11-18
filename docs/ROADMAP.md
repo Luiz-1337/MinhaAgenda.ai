@@ -68,9 +68,8 @@ uso — **a tool do agente NÃO foi testada em uso** (só roda no worker) — ve
 fase 6 pelo PR #19, mesclado em 18/nov/2026 (commit `a3d74f4`) — ver §10.13. Os
 módulos continuam ligados só no salão de teste.
 Fase 7 (cliente e agenda): detalhada em §11. Fatia 7a (ficha do cliente completa)
-feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6) —
-**em commit local, migration 059 NÃO aplicada, sem publicar e sem teste em uso** —
-ver §11.7.
+feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6):
+migration 059 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.7.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3296,7 +3295,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 
 | Fatia | O que entra | Estado |
 |---|---|---|
-| 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita em código — **migration 059 não aplicada, sem publicar e sem teste em uso** (§11.7) |
+| 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — hoje só a IA remarca | Pendente |
 | 7c | Recorrência de agendamento (repetir toda semana, a cada N semanas, até uma data) | Pendente |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
@@ -3358,7 +3357,8 @@ Fatia 7a — ficha do cliente:
 2. **CPF**: só entra o que tem os dígitos verificadores certos; sequência
    repetida ("111.111.111-11") é recusada. **Um CPF por salão**: o segundo
    cadastro com o mesmo CPF é recusado com aviso.
-3. **Nascimento**: não pode ser no futuro nem antes de 1900. A ficha mostra a
+3. **Nascimento**: não pode ser no futuro nem antes de 1900 (o "futuro" é
+   conferido no código; o banco só barra antes de 1900). A ficha mostra a
    idade e avisa quando é o aniversário (quem nasceu em 29/fev comemora em 28/fev
    fora de ano bissexto).
 4. **Endereço**: CEP com 8 dígitos e UF da lista; o resto é texto. Não há busca
@@ -3400,30 +3400,51 @@ Perguntas para o dono:
 
 ### 11.7 Fatia 7a — estado (18/nov/2026)
 
-- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos novos e testes passando
-  (web 1278, db 296, mcp-server 409).
-- **Migration 059: NÃO aplicada.** Ela acrescenta colunas a `customers`, a tabela
-  mais usada do sistema — o WhatsApp cria cliente a toda hora. **Publicar o
-  código antes de aplicar quebra a criação de cliente em TODOS os salões**, porque
-  o Drizzle passa a listar as colunas novas. Acrescentar coluna sem DEFAULT não
-  regrava linhas; cabe cópia de `customers` em `backups` antes.
+- Na branch `claude/fase-7-cliente-agenda`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos novos e testes passando (web 1278, db 296,
+  mcp-server 409).
+- **Migration 059 aplicada em produção em 18/nov/2026** (registrada como
+  `customer_profile`). Cópia antes: `backups.customers_pre_059_20261118` (1.796
+  linhas). Conferido por leitura: as onze colunas, os 1.796 clientes e o índice
+  de CPF. Antes de aplicar, saiu do CHECK do banco o "nascimento não pode ser no
+  futuro": dependia da data do dia, e a regra já está no código.
+- **Endereço do preview:** o nome da branch é longo e a Vercel encurta o alias
+  com um código (`…-git-claude-fase-7-clie-57d368-…`); o endereço montado à mão
+  não existe.
 - **Sem módulo.** A ficha do cliente é do produto base: o cartão aparece em todos
   os salões assim que o código for publicado.
-- **Correção junto, em código antigo:** editar o contato na lista com o campo
-  "Observações / Preferências" vazio apagava o `preferences` INTEIRO, inclusive
-  o que a IA tinha aprendido (alergias, profissional preferido). Passou a sair só
-  a observação. Vale para todos os salões.
+- **Correção junto, em código antigo — e o que o teste mostrou:** o servidor
+  (`updateSalonCustomer`) apagava o `preferences` INTEIRO quando a observação
+  chegava vazia, inclusive o que a IA tinha aprendido. **Pela tela isso não
+  acontecia**: o diálogo de edição mandava "nada mudou" quando o campo ficava
+  vazio, então o defeito visível era outro — não dava para apagar uma observação
+  nem um e-mail. Ficou assim: o diálogo manda o campo vazio quando ele tinha
+  valor, e o servidor apaga só aquele dado. Vale para todos os salões.
 - **`actions/customer-profile.ts` entrou na guarda de autorização**;
   `actions/customers.ts` (antigo) continua fora dela, com o padrão anterior.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 059 e
-  publicar: abrir a ficha de um cliente (cartão vazio com aviso); editar e gravar
-  nascimento, CPF, gênero, endereço e "como conheceu"; CPF inválido e nascimento
-  no futuro são recusados; repetir o CPF em outro cliente (recusado); apagar tudo
-  e gravar (ficha vazia de novo); com um usuário sem `customers.edit`, o CPF
-  aparece mascarado e não há "Editar"; criar um cliente novo pela lista e por
-  uma mensagem de WhatsApp continua funcionando; editar um contato na lista com a
-  observação vazia e conferir que as preferências da IA ficaram.
+- **Testada em uso em 18/nov/2026**, no preview da branch, no salão de teste.
+  Passou:
+  - a ficha abre com o cartão vazio e o aviso;
+  - CPF com dígito verificador errado → "CPF inválido"; nascimento no futuro →
+    recusado;
+  - gravar nascimento, CPF, gênero, CEP, endereço, cidade, UF e "como conheceu" →
+    o cartão mostra a data com a idade (36 anos) e "Aniversário hoje", o CPF
+    formatado e o endereço numa linha, com os espaços dobrados enxugados;
+  - o mesmo CPF em outro cliente → "Já existe outro cliente com esse CPF neste
+    salão";
+  - apagar todos os campos e gravar → cartão vazio de novo;
+  - na lista, esvaziar a observação de um contato que tinha observação e mais
+    uma chave no `preferences` → sai só a observação, a outra chave fica, e os
+    dados cadastrais não são tocados.
+- **Não testado em uso:** o CPF mascarado e a falta do "Editar" para quem não tem
+  `customers.edit` (só há o usuário dono no salão de teste); criar cliente pela
+  lista e pelo WhatsApp depois da migration (nenhum cliente novo foi criado no
+  teste — a criação só foi exercitada pelo typecheck); apagar o e-mail pelo
+  diálogo; complemento e bairro; a ficha de um cliente de outro salão.
+- Dados de teste limpos: os dados cadastrais apagados pela própria ficha; a
+  chave de teste posta no `preferences` por SQL, e tirada por SQL, pelo ID da
+  cliente. Conferido por leitura: nenhum cliente com dado cadastral, e os
+  clientes do salão de teste idênticos à cópia de antes.
 
 ## 12. Pendências do dono
 
@@ -3447,7 +3468,6 @@ Perguntas para o dono:
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
-| Aplicar a migration 059 (ou autorizar a aplicação) e publicar a fatia 7a — ver §11.7 | Teste em uso da fatia 7a |
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
