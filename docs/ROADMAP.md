@@ -46,9 +46,9 @@ aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9. Fatia 5d
 publicada, sem migration: os relatórios foram testados em uso; **o saldo de
 pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
 Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
-`claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) — **em commit local,
-migration 054 NÃO aplicada, módulo `cashback` desligado em todos os salões, sem
-publicar e sem teste em uso** — ver §10.7.
+`claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) e publicada, com a
+migration 054 aplicada em 17/nov/2026 e o módulo `cashback` ligado só no salão de
+teste — **sem teste em uso** — ver §10.7.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2516,7 +2516,7 @@ executar nada; quase toda a regra foi decidida aqui.
 
 | Fatia | Entrega | Estado |
 |---|---|---|
-| 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita em código — **migration 054 não aplicada, sem publicar e sem teste em uso** (§10.7) |
+| 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada e publicada — **sem teste em uso** (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Pendente |
 | 6c | Avaliações pós-atendimento: formulário enviado ao cliente (personalizável), painel (média, total, distribuição por nota, por profissional) e lista filtrável; pedido de avaliação pelo agente do WhatsApp | Pendente |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto | Pendente |
@@ -2626,18 +2626,21 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 
 ### 10.7 Fatia 6a — estado (17/nov/2026)
 
-- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1142, db 296, mcp-server 400).
-- **Migration 054: NÃO aplicada.** Tem que entrar **antes** de o código ser
-  publicado: acrescenta a coluna `cashback_redeemed` em `sales`, e o INSERT do
-  Drizzle lista todas as colunas — sem ela, criar QUALQUER comanda falharia.
-- Antes de aplicar: cópia de segurança de `sales` no schema `backups` (as três
-  tabelas novas nascem vazias).
-- **O módulo `cashback` está desligado em todos os salões.** Para testar, é
-  preciso ligá-lo no salão de teste (`salons.settings.modules`).
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar, ligar o
-  módulo e publicar: ativar o cashback com 10% e mínimo de R$ 10,00; faturar uma
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1142, db 296,
+  mcp-server 400).
+- **Migration 054 aplicada em produção em 17/nov/2026** (registrada como
+  `cashback`), antes de o código ser publicado. Conferido por leitura: as três
+  tabelas com RLS, a coluna `sales.cashback_redeemed` (NOT NULL, default 0) e o
+  CHECK dela; `sales` seguiu com as 22 linhas. O advisor de segurança só mostra
+  os avisos de sempre.
+- Cópia de segurança antes da 054: `backups.sales_pre_054_20261117` (22 linhas),
+  com RLS ligado e sem acesso para `anon`/`authenticated`.
+- **O módulo `cashback` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
+- **Sem teste em uso.** O preview desta branch fica em outro endereço
+  (`…-git-claude-fase-6-fidelizacao-…`) e o login do app é por endereço: o dono
+  precisa entrar nele antes do teste. Roteiro, no salão de teste: ativar o cashback com 10% e mínimo de R$ 10,00; faturar uma
   comanda de serviço → "Cashback gerado" na comanda, saldo e extrato na ficha,
   cliente na aba Clientes; item com valor próprio e item inativo; comanda nova
   usando parte do saldo → "Pago com cashback", pagamento menor, ganho só sobre a
@@ -2659,9 +2662,9 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117` e `backups.sale_items_pre_053_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117` e `backups.sales_pre_054_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
-| Aplicar a migration 054 (ou autorizar a aplicação), ligar o módulo `cashback` no salão de teste e publicar a fatia 6a — ver §10.7 | Teste em uso da fatia 6a |
+| Entrar no preview da branch `claude/fase-6-fidelizacao` (endereço novo, pede login) — ver §10.7 | Teste em uso da fatia 6a |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro) | Ajustes na fase 6 antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
