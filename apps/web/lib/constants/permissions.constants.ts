@@ -30,6 +30,7 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   commissions: "Comissões",
   inventory: "Estoque",
   packages: "Pacotes",
+  cashback: "Cashback",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {

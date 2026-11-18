@@ -53,6 +53,10 @@ export const PERMISSION_CATALOG = {
   // `manage` = criar, alterar e excluir pacotes predefinidos. VENDER pacote é pela
   // comanda, com as permissões de comanda.
   packages: ['access', 'manage'],
+  // Cashback (fase 6). `access` = ver os saldos e o extrato dos clientes.
+  // `manage` = configurar o cashback do salão e dos itens e lançar ajustes à mão.
+  // USAR o cashback do cliente é no faturamento da comanda (`sales.invoice`).
+  cashback: ['access', 'manage'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -157,7 +161,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

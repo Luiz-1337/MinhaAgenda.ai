@@ -45,7 +45,11 @@ aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9. Fatia 5d
 (relatórios e saldo de pacote para o agente do WhatsApp) na mesma branch,
 publicada, sem migration: os relatórios foram testados em uso; **o saldo de
 pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
-Fases 6 em diante: planejamento.
+Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
+`claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) — **em commit local,
+migration 054 NÃO aplicada, módulo `cashback` desligado em todos os salões, sem
+publicar e sem teste em uso** — ver §10.7.
+Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -2500,7 +2504,149 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
   SQL, pelo ID. Sem modelos, pacotes, planos, assinaturas, períodos, pagamentos,
   lançamentos, comissões nem movimentos.
 
-## 10. Pendências do dono
+## 10. Fase 6 — Fidelização (detalhe)
+
+Responde: o que faz o cliente voltar. Parte da comanda (fase 1). Itens da
+auditoria: M-05 (Promoções), M-06 (Avaliações), M-07 (Cashback), T-08 (Metas), as
+abas Cashback, Cuidados e Retorno do serviço e do produto, a aba Cashback da ficha
+do cliente e o relatório "Histórico de cashback". A auditoria leu as telas sem
+executar nada; quase toda a regra foi decidida aqui.
+
+### 10.1 Fatias
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita em código — **migration 054 não aplicada, sem publicar e sem teste em uso** (§10.7) |
+| 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Pendente |
+| 6c | Avaliações pós-atendimento: formulário enviado ao cliente (personalizável), painel (média, total, distribuição por nota, por profissional) e lista filtrável; pedido de avaliação pelo agente do WhatsApp | Pendente |
+| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto | Pendente |
+| 6e | Metas por mês, com "Copiar metas" | Pendente |
+| 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
+
+O "Permitir resgate pelo agendamento online" do cashback depende do agendamento
+online público (fase 7).
+
+### 10.2 Modelo de dados (migration 054)
+
+- **`cashback_settings`** — uma linha por salão: `is_enabled`, `default_kind`
+  (`percent` ou `fixed`), `default_value`, `min_redeem`.
+- **`cashback_rules`** — o cashback de um serviço ou de um produto (exatamente
+  um): `kind`, `value` (0 = usa o padrão), `is_active`. Um por item.
+- **`cashback_entries`** — o extrato do cliente: `kind` (`earn`, `redeem`,
+  `adjustment`), `amount` com sinal (ganho > 0, resgate < 0, ajuste ≠ 0),
+  `sale_id` e `sale_item_id` (CASCADE), `reason`, `created_by`. Um resgate por
+  comanda (índice único parcial).
+- **`sales.cashback_redeemed`** — quanto da comanda foi pago com cashback. CHECK:
+  de 0 ao total, e só em comanda faturada.
+- **Não há coluna de saldo.** O saldo do cliente é a soma do extrato.
+
+Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
+`anon`/`authenticated`.
+
+### 10.3 Regras de negócio
+
+1. **Duas chaves**: o módulo `cashback` do salão (piloto) e, dentro dele, o
+   "Cashback ativo" das configurações. Sem as duas, a comanda não gera nem aceita
+   cashback.
+2. **Valor padrão do salão e valor por item.** O padrão é um percentual do item ou
+   um valor fixo por unidade. Cada serviço e produto pode ter o seu (0 = usa o
+   padrão) ou ficar inativo (não dá cashback, nem pelo padrão).
+3. **O ganho nasce quando a comanda é FATURADA**, um lançamento por item de
+   serviço ou produto: percentual sobre o total do item (já com o desconto), ou o
+   valor fixo × quantidade — nunca mais do que foi cobrado pelo item. Venda de
+   pacote, cobrança de assinatura e item "do pacote" (que vale zero) não rendem.
+4. **A parte da comanda paga com cashback não rende cashback**: a base de cada
+   item cai na mesma proporção (R$ 100 com R$ 20 de cashback rende sobre R$ 80).
+5. **Usar é no faturamento**, no campo "Usar cashback do cliente". Não é
+   pagamento: não tem forma, taxa nem prazo, e não entra no financeiro nem no
+   caixa — o salão recebe menos. Os pagamentos mais o cashback têm de fechar o
+   total. A comissão dos itens não muda.
+6. **Situação do saldo**: Disponível para resgate (alcança o mínimo), Abaixo do
+   mínimo, ou Sem saldo. Só usa quem está em "Disponível"; usa até o saldo e até
+   o total da comanda.
+7. **O saldo é a soma do extrato.** Quem gasta ou tira saldo (resgate, ajuste,
+   reabertura) trava antes o cliente — dois faturamentos ao mesmo tempo não
+   gastam o mesmo crédito.
+8. **Reabrir a comanda** apaga os ganhos dela e devolve o que ela usou. É barrado
+   quando o saldo do cliente ficaria negativo: o ganho já foi gasto em outra
+   comanda.
+9. **Ajuste manual** (crédito ou débito) na ficha do cliente, com motivo
+   obrigatório; não deixa o saldo negativo.
+10. **Desativar o cashback não apaga saldo**: para de gerar e de aceitar, e o
+    saldo fica guardado.
+11. **Fiado**: o ganho nasce no faturamento, mesmo com valor em aberto.
+12. **O cashback não vence.**
+
+Perguntas para o dono:
+
+- O cashback deve vencer (ex.: 90 dias)?
+- A base do ganho é o valor com desconto (regra 3) ou o preço cheio?
+- Comanda paga com cashback: a comissão continua sobre o valor do item (regra 5),
+  ou cai junto?
+- Venda de pacote e cobrança de assinatura devem render cashback?
+- No fiado, o ganho deve esperar o cliente pagar?
+- O cashback usado deve aparecer no financeiro como despesa de marketing? Hoje ele
+  só reduz o que a comanda recebe.
+
+### 10.4 Permissões e módulo
+
+Módulo `cashback` em `salons.settings.modules`. Recurso novo:
+
+| Recurso | Ações |
+|---|---|
+| `cashback` | `access` (ver saldos e extratos), `manage` (configurar o salão e os itens, lançar ajuste) |
+
+Usar o cashback do cliente é de quem fatura (`sales.invoice`).
+
+### 10.5 Telas
+
+- **Cashback** no menu (módulo ligado + `cashback.access`), em
+  `/[salonId]/cashback`: três totais e as abas Clientes (ganhou, usou, saldo,
+  situação), Serviços e produtos (o que cada item rende, com edição) e
+  Configurações (ativo, valor padrão, mínimo para resgate).
+- **Comanda**: no faturamento, "Usar cashback do cliente (saldo R$ X)" quando o
+  cliente tem saldo; com uma forma de pagamento só, o valor dela se ajusta. A
+  comanda faturada mostra "Pago com cashback" e "Cashback gerado para o cliente".
+  O aviso de reabrir diz o que acontece com o cashback.
+- **Ficha do cliente**: cartão Cashback (módulo ligado + `cashback.access`) com
+  saldo, situação, extrato (movimentação, motivo, data, comanda, valor) e "Ajustar
+  saldo" para quem tem `cashback.manage`.
+
+### 10.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Migration | `supabase/migrations/054_cashback.sql` |
+| Tabelas | `packages/db/src/schema.ts` (`cashbackSettings`, `cashbackRules`, `cashbackEntries`, `sales.cashbackRedeemed`) |
+| Regra pura | `packages/db/src/domain/cashback.ts` (`planCashbackSettings`, `planCashbackRule`, `effectiveCashbackRate`, `cashbackForItem`, `planSaleCashbackEarn`, `planCashbackRedeem`, `cashbackStatus`, `cashbackReopenBlocker`, `planCashbackAdjustment`); a parte coberta por cashback em `planInvoice` (`creditCents`, `domain/sales.ts`) |
+| I/O | `packages/db/src/services/cashback.service.ts`; a comanda chama `planSaleCashbackRedeem` e `recordSaleCashback` no faturamento e `revertSaleCashback` na reabertura (`sales.service.ts`) |
+| Actions | `apps/web/app/actions/cashback.ts`; `getSaleCashback` e o faturamento em `apps/web/app/actions/sales.ts` |
+| Telas | `apps/web/app/[salonId]/cashback/`; o faturamento em `sales/[saleId]/sale-editor.tsx`; `components/contacts/customer-cashback-card.tsx` |
+| Testes | `apps/web/__tests__/lib/services/cashback-domain.test.ts` |
+
+### 10.7 Fatia 6a — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1142, db 296, mcp-server 400).
+- **Migration 054: NÃO aplicada.** Tem que entrar **antes** de o código ser
+  publicado: acrescenta a coluna `cashback_redeemed` em `sales`, e o INSERT do
+  Drizzle lista todas as colunas — sem ela, criar QUALQUER comanda falharia.
+- Antes de aplicar: cópia de segurança de `sales` no schema `backups` (as três
+  tabelas novas nascem vazias).
+- **O módulo `cashback` está desligado em todos os salões.** Para testar, é
+  preciso ligá-lo no salão de teste (`salons.settings.modules`).
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar, ligar o
+  módulo e publicar: ativar o cashback com 10% e mínimo de R$ 10,00; faturar uma
+  comanda de serviço → "Cashback gerado" na comanda, saldo e extrato na ficha,
+  cliente na aba Clientes; item com valor próprio e item inativo; comanda nova
+  usando parte do saldo → "Pago com cashback", pagamento menor, ganho só sobre a
+  parte paga; tentar usar mais que o saldo; saldo abaixo do mínimo; reabrir a
+  primeira comanda com o ganho já gasto (barrado); reabrir a segunda (saldo
+  volta); ajuste manual de crédito e de débito além do saldo (barrado); conferir
+  que o financeiro e a comissão não mudam com o cashback usado.
+
+## 11. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -2516,4 +2662,6 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117` e `backups.sale_items_pre_053_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
+| Aplicar a migration 054 (ou autorizar a aplicação), ligar o módulo `cashback` no salão de teste e publicar a fatia 6a — ver §10.7 | Teste em uso da fatia 6a |
+| Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro) | Ajustes na fase 6 antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

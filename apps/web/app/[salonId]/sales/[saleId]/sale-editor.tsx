@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
+  getSaleCashback,
   getSalePackageBalances,
   getSaleSubscriptionOptions,
   invoiceSale,
@@ -44,6 +45,7 @@ import type {
   SalePackageBalanceDTO,
 } from "@/lib/types/sale"
 import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
+import type { SaleCashbackDTO } from "@/lib/types/cashback"
 
 // ============================================================================
 // Estado de edição
@@ -214,6 +216,8 @@ export function SaleEditor({
   // Fiado: deixar parte (ou tudo) em aberto de propósito. Exige marcar a caixa.
   const [acceptDebt, setAcceptDebt] = useState(false)
   const [debtDueDate, setDebtDueDate] = useState("")
+  // Cashback do cliente usado para pagar parte da comanda (fase 6).
+  const [cashbackUse, setCashbackUse] = useState("")
 
   const amountDueCents = sale ? (toCents(sale.amountDue) ?? 0) : 0
   const hasDebt = status === "invoiced" && amountDueCents > 0
@@ -309,6 +313,22 @@ export function SaleEditor({
       .map((i) => ({ id: i.customerSubscriptionId as string, name: i.description }))
     return [...subscriptions.map((s) => ({ id: s.id, name: `Assinatura: ${s.name}` })), ...extra]
   }, [subscriptions, sale])
+
+  // O saldo de cashback do cliente, para o campo "Usar cashback" do faturamento.
+  const cashbackQueryEnabled =
+    options.cashbackEnabled && options.can.invoice && status === "open" && customerId !== null
+  const cashbackQuery = useQuery({
+    queryKey: ["sale-cashback", salonId, customerId],
+    queryFn: async (): Promise<SaleCashbackDTO> => {
+      const result = await getSaleCashback(salonId, customerId as string)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: cashbackQueryEnabled,
+  })
+  const cashback = cashbackQueryEnabled ? (cashbackQuery.data ?? null) : null
+  const cashbackBalanceCents = cashback?.enabled ? (toCents(cashback.balance) ?? 0) : 0
+  const cashbackUsable = cashback?.enabled === true && cashback.status === "available"
 
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
@@ -484,6 +504,7 @@ export function SaleEditor({
     setDialogMode("invoice")
     setAcceptDebt(false)
     setDebtDueDate("")
+    setCashbackUse("")
     setPayments(
       totals.total > 0 ? [{ key: nextKey(), methodId: firstMethod, amount: moneyToInput(centsToNumeric(totals.total)) }] : []
     )
@@ -559,7 +580,24 @@ export function SaleEditor({
   const paidCents = payments.reduce((sum, p) => sum + (toCents(parseBRL(p.amount)) ?? 0), 0)
   // O alvo do diálogo: o total, ao faturar; o valor em aberto, ao receber depois.
   const targetCents = dialogMode === "receive" ? amountDueCents : totals.total
-  const remainingCents = targetCents - paidCents
+  // Só no faturamento, e só se o cliente pode resgatar.
+  const cashbackCents =
+    dialogMode === "invoice" && cashbackUsable ? Math.max(0, toCents(parseBRL(cashbackUse)) ?? 0) : 0
+  const remainingCents = targetCents - paidCents - cashbackCents
+
+  /**
+   * Mudar o cashback ajusta o pagamento quando há uma linha só — é o caso comum, e
+   * poupa a pessoa de refazer a conta. Com a comanda dividida em formas, ela ajusta.
+   */
+  function changeCashbackUse(value: string) {
+    setCashbackUse(value)
+    const use = Math.max(0, toCents(parseBRL(value)) ?? 0)
+    setPayments((current) => {
+      if (current.length !== 1) return current
+      const rest = totals.total - use
+      return rest > 0 ? [{ ...current[0], amount: moneyToInput(centsToNumeric(rest)) }] : []
+    })
+  }
   const leavingDebt = dialogMode === "invoice" && acceptDebt && options.can.invoiceDebt && remainingCents > 0
 
   const confirmBlocked =
@@ -599,6 +637,11 @@ export function SaleEditor({
       return
     }
 
+    if (cashbackCents > cashbackBalanceCents) {
+      toast.error(`O cliente só tem ${formatBRL(centsToNumeric(cashbackBalanceCents))} de cashback`)
+      return
+    }
+
     startTransition(async () => {
       const result = await invoiceSale({
         salonId,
@@ -606,6 +649,7 @@ export function SaleEditor({
         payments: list,
         acceptDebt: leavingDebt,
         debtDueDate: leavingDebt && debtDueDate ? debtDueDate : null,
+        redeemCashback: cashbackCents > 0 ? cashbackCents / 100 : undefined,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -1090,6 +1134,18 @@ export function SaleEditor({
               <span>Total</span>
               <span className="font-mono tabular-nums">{formatBRL(centsToNumeric(Math.max(0, totals.total)))}</span>
             </div>
+            {sale && Number(sale.cashbackRedeemed) > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Pago com cashback</span>
+                <span className="font-mono tabular-nums">− {formatBRL(sale.cashbackRedeemed)}</span>
+              </div>
+            )}
+            {sale && Number(sale.cashbackEarned) > 0 && (
+              <div className="flex justify-between text-emerald-700 dark:text-emerald-400 text-xs">
+                <span>Cashback gerado para o cliente</span>
+                <span className="font-mono tabular-nums">{formatBRL(sale.cashbackEarned)}</span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -1158,6 +1214,34 @@ export function SaleEditor({
               </p>
             ) : (
               <>
+                {/* Cashback: só aparece quando o cliente tem saldo que pode resgatar. */}
+                {dialogMode === "invoice" && cashback?.enabled && cashbackBalanceCents > 0 && (
+                  <div className="space-y-1 border-b border-border pb-4">
+                    <label htmlFor="invoice-cashback" className="text-[11px] font-semibold text-muted-foreground">
+                      Usar cashback do cliente (saldo {formatBRL(cashback.balance)})
+                    </label>
+                    {cashbackUsable ? (
+                      <input
+                        id="invoice-cashback"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        value={cashbackUse}
+                        disabled={isPending}
+                        onChange={(event) => changeCashbackUse(event.target.value)}
+                        className={inputClass}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Abaixo do mínimo para resgate ({formatBRL(cashback.minRedeem)}).
+                      </p>
+                    )}
+                    {cashbackCents > cashbackBalanceCents && (
+                      <p className="text-xs text-destructive">Passa do saldo de cashback do cliente.</p>
+                    )}
+                  </div>
+                )}
+
                 {payments.map((payment, index) => {
                   const method = options.paymentMethods.find((m) => m.id === payment.methodId)
                   const amountCents = toCents(parseBRL(payment.amount)) ?? 0
@@ -1210,7 +1294,9 @@ export function SaleEditor({
                       <div className="col-span-1 flex justify-end">
                         {/* A última linha só sai quando dá para faturar sem pagamento
                             nenhum (fiado inteiro). */}
-                        {(payments.length > 1 || (dialogMode === "invoice" && options.can.invoiceDebt)) && (
+                        {(payments.length > 1 ||
+                          cashbackCents > 0 ||
+                          (dialogMode === "invoice" && options.can.invoiceDebt)) && (
                           <button
                             onClick={() => setPayments((current) => current.filter((p) => p.key !== payment.key))}
                             disabled={isPending}
@@ -1360,6 +1446,9 @@ export function SaleEditor({
           (hasPackageUse ? " O que esta comanda usou dos pacotes do cliente volta para o saldo." : "") +
           (hasSubscriptionItem
             ? " A renovação de assinatura paga por esta comanda é desfeita e volta quando ela for faturada."
+            : "") +
+          (sale && (Number(sale.cashbackEarned) > 0 || Number(sale.cashbackRedeemed) > 0)
+            ? " O cashback que esta comanda gerou sai do saldo do cliente, e o que ela usou volta."
             : "") +
           " Depois de editar, é preciso faturar de novo."
         }

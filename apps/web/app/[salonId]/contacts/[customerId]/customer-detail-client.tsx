@@ -14,6 +14,7 @@ import { RefetchIndicator } from "@/components/ui/refetch-indicator"
 import { TagPill } from "@/components/contacts/tag-pill"
 import { CustomerSalesCard } from "@/components/contacts/customer-sales-card"
 import { CustomerPackagesCard } from "@/components/contacts/customer-packages-card"
+import { CustomerCashbackCard } from "@/components/contacts/customer-cashback-card"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -217,6 +218,9 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
 
         {/* Pacotes: só aparece no salão com o módulo de pacotes ligado (fase 5). */}
         <CustomerPackagesCard salonId={salonId} customerId={detail.id} />
+
+        {/* Cashback: saldo e extrato. Só com o módulo ligado e a permissão. */}
+        <CustomerCashbackCard salonId={salonId} customerId={detail.id} />
 
         {/* Notas */}
         <Card title="Notas de atendimento">

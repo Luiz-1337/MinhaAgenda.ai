@@ -19,7 +19,10 @@ import {
   inArray,
   or,
   brazilToday,
+  cashbackStatus,
   createSaleService,
+  getCashbackBalanceCents,
+  getCashbackSettingsService,
   getDebtTotalsService,
   getSaleService,
   invoiceSaleService,
@@ -47,6 +50,7 @@ import {
 } from "@/lib/schemas/sales.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
+import type { SaleCashbackDTO } from "@/lib/types/cashback"
 import type {
   CustomerSalesOverview,
   InvoiceSaleInput,
@@ -153,6 +157,8 @@ function toDetailDTO(sale: SaleDetail): SaleDetailDTO {
     total: sale.total,
     amountDue: sale.amountDue,
     debtDueDate: sale.debtDueDate,
+    cashbackRedeemed: sale.cashbackRedeemed,
+    cashbackEarned: sale.cashbackEarned,
     invoicedAt: sale.invoicedAt ? sale.invoicedAt.toISOString() : null,
     voidedAt: sale.voidedAt ? sale.voidedAt.toISOString() : null,
     voidReason: sale.voidReason,
@@ -177,6 +183,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/packages`)
   // E a situação das assinaturas (cobrança — fase 5, fatia 5c).
   revalidatePath(`/${salonId}/packages/subscriptions`)
+  // E o saldo de cashback dos clientes (ganho e resgate — fase 6).
+  revalidatePath(`/${salonId}/cashback`)
 }
 
 // ============================================================================
@@ -254,6 +262,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       commissionsEnabled,
       inventoryEnabled,
       packagesEnabled,
+      cashbackEnabled,
     ] = await Promise.all([
       db
         .select({
@@ -297,6 +306,8 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       salonHasModule(salonId, "inventory"),
       // Com pacotes ligados, a comanda vende pacote predefinido (fase 5).
       salonHasModule(salonId, "packages"),
+      // Com cashback ligado, o faturamento oferece usar o saldo do cliente (fase 6).
+      salonHasModule(salonId, "cashback"),
     ])
 
     const packageRows = packagesEnabled
@@ -319,6 +330,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       commissionsEnabled,
       inventoryEnabled,
       packagesEnabled,
+      cashbackEnabled,
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),
@@ -403,6 +415,46 @@ export async function getSaleSubscriptionOptions(
   } catch (error) {
     console.error("Erro ao carregar as assinaturas do cliente:", error)
     return { error: "Não foi possível carregar as assinaturas do cliente" }
+  }
+}
+
+/**
+ * O saldo de cashback do cliente da comanda — o campo "Usar cashback" do
+ * faturamento (fase 6). Desligado (`enabled: false`) com o módulo `cashback`
+ * desligado ou o cashback desativado nas configurações do salão.
+ *
+ * Só com permissão de faturar: quem fecha a comanda precisa ver o saldo, mesmo sem
+ * acesso à tela de Cashback.
+ */
+export async function getSaleCashback(
+  salonId: string,
+  customerId: string
+): Promise<SaleCashbackDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.invoice")
+  if ("error" in auth) return auth
+
+  if (!/^[0-9a-f-]{36}$/i.test(customerId ?? "")) return { error: "Cliente inválido" }
+
+  const off: SaleCashbackDTO = { enabled: false, balance: "0.00", minRedeem: "0.00", status: "empty" }
+
+  try {
+    if (!(await salonHasModule(salonId, "cashback"))) return off
+
+    const [settings, balanceCents] = await Promise.all([
+      getCashbackSettingsService(salonId),
+      getCashbackBalanceCents(db, { salonId, customerId }),
+    ])
+    if (!settings.isEnabled) return off
+
+    return {
+      enabled: true,
+      balance: (balanceCents / 100).toFixed(2),
+      minRedeem: settings.minRedeem,
+      status: cashbackStatus({ balanceCents, minRedeemCents: Math.round(Number(settings.minRedeem) * 100) }),
+    }
+  } catch (error) {
+    console.error("Erro ao carregar o cashback do cliente:", error)
+    return { error: "Não foi possível carregar o cashback do cliente" }
   }
 }
 
@@ -663,6 +715,9 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
     recordCommissions: await salonHasModule(parsed.data.salonId, "commissions"),
     // Com o estoque ligado, faturar baixa os produtos controlados (fase 4).
     recordStock: await salonHasModule(parsed.data.salonId, "inventory"),
+    // Com cashback ligado, faturar gera o cashback dos itens e aceita usar o saldo (fase 6).
+    recordCashback: await salonHasModule(parsed.data.salonId, "cashback"),
+    redeemCashback: parsed.data.redeemCashback ?? 0,
   })
   if (!result.success) return { error: result.error }
 

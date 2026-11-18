@@ -1030,6 +1030,9 @@ export const sales = pgTable(
     amountDue: numeric('amount_due', { precision: 12, scale: 2 }).default('0').notNull(),
     // Quando a cliente combinou de pagar ("YYYY-MM-DD"). Só com valor em aberto.
     debtDueDate: date('debt_due_date'),
+    // Quanto da comanda faturada foi pago com cashback do cliente (migration 054).
+    // Não é pagamento: não entra em sale_payments nem no financeiro.
+    cashbackRedeemed: numeric('cashback_redeemed', { precision: 12, scale: 2 }).default('0').notNull(),
     invoicedAt: timestamp('invoiced_at'),
     invoicedBy: uuid('invoiced_by').references(() => profiles.id, { onDelete: 'set null' }),
     voidedAt: timestamp('voided_at'),
@@ -1921,6 +1924,77 @@ export const customerSubscriptionPeriods = pgTable(
     index('customer_subscription_periods_subscription_idx').on(table.subscriptionId, table.periodEnd.desc()),
     index('customer_subscription_periods_sale_idx').on(table.saleId),
     index('customer_subscription_periods_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Cashback (migration 054)
+// ============================================================================
+// O cliente ganha crédito ao comprar e usa numa próxima comanda. O saldo é a soma
+// de cashback_entries (ganho > 0, resgate < 0, ajuste com sinal). Regra em
+// domain/cashback.ts.
+
+export type CashbackRateKindColumn = 'percent' | 'fixed'
+export type CashbackEntryKind = 'earn' | 'redeem' | 'adjustment'
+
+export const cashbackSettings = pgTable('cashback_settings', {
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).primaryKey().notNull(),
+  isEnabled: boolean('is_enabled').default(false).notNull(),
+  // Percentual do item ou valor fixo por unidade.
+  defaultKind: text('default_kind').$type<CashbackRateKindColumn>().default('percent').notNull(),
+  defaultValue: numeric('default_value', { precision: 12, scale: 2 }).default('0').notNull(),
+  // Saldo mínimo para o cliente poder resgatar.
+  minRedeem: numeric('min_redeem', { precision: 12, scale: 2 }).default('0').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
+export const cashbackRules = pgTable(
+  'cashback_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<CashbackRateKindColumn>().default('percent').notNull(),
+    // 0 = usa o padrão do salão.
+    value: numeric('value', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Inativa = o item não dá cashback.
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('cashback_rules_service_unique')
+      .on(table.salonId, table.serviceId)
+      .where(sql`service_id IS NOT NULL`),
+    uniqueIndex('cashback_rules_product_unique')
+      .on(table.salonId, table.productId)
+      .where(sql`product_id IS NOT NULL`)
+  ]
+)
+
+export const cashbackEntries = pgTable(
+  'cashback_entries',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    kind: text('kind').$type<CashbackEntryKind>().notNull(),
+    // Com sinal: ganho > 0, resgate < 0, ajuste ≠ 0 (CHECK no banco).
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    // O item que gerou o ganho. NULL no resgate e no ajuste.
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }),
+    // O motivo do ajuste manual.
+    reason: text('reason'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('cashback_entries_customer_idx').on(table.salonId, table.customerId, table.createdAt.desc()),
+    index('cashback_entries_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
+    uniqueIndex('cashback_entries_sale_redeem_unique').on(table.saleId).where(sql`kind = 'redeem'`)
   ]
 )
 

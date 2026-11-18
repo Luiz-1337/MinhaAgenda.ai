@@ -112,6 +112,10 @@ export interface SaleDetailDTO {
   amountDue: string
   /** Quando a cliente combinou de pagar ("YYYY-MM-DD"), se combinou. */
   debtDueDate: string | null
+  /** Quanto da comanda foi pago com cashback do cliente (fase 6). "0.00" = nada. */
+  cashbackRedeemed: string
+  /** Quanto a comanda gerou de cashback para o cliente. */
+  cashbackEarned: string
   invoicedAt: string | null
   voidedAt: string | null
   voidReason: string | null
@@ -134,6 +138,8 @@ export interface SaleFormOptions {
   inventoryEnabled: boolean
   /** O salão tem o módulo `packages`: a comanda vende pacote (fase 5). */
   packagesEnabled: boolean
+  /** O salão tem o módulo `cashback`: o faturamento oferece usar o saldo do cliente (fase 6). */
+  cashbackEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean
@@ -257,6 +263,8 @@ export interface InvoiceSaleInput {
   acceptDebt?: boolean
   /** Quando a cliente combinou de pagar ("YYYY-MM-DD"). Só com `acceptDebt`. */
   debtDueDate?: string | null
+  /** Quanto do total pagar com o cashback do cliente, em reais (fase 6). */
+  redeemCashback?: number
 }
 
 /** Recebimento (todo ou parte) do valor em aberto de uma comanda faturada. */

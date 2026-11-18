@@ -344,6 +344,12 @@ export type InvoiceInput = {
    * na tela). Sem isso, faltar um centavo é erro.
    */
   allowDebt?: boolean
+  /**
+   * Parte do total coberta por cashback do cliente, em centavos (fase 6). Não é
+   * pagamento: não tem forma, taxa nem prazo. Quem confere saldo e mínimo é
+   * planCashbackRedeem (domain/cashback.ts); aqui só entra na conta do que falta.
+   */
+  creditCents?: number
   now: Date
 }
 
@@ -360,8 +366,10 @@ export type InvoicePlan =
       ok: true
       totalCents: number
       paidCents: number
-      /** O que fica em aberto: total − pagamentos. Zero, a não ser com `allowDebt`. */
+      /** O que fica em aberto: total − pagamentos − cashback. Zero, a não ser com `allowDebt`. */
       dueCents: number
+      /** Quanto do total foi coberto por cashback. */
+      creditCents: number
       payments: PlannedPayment[]
       /** Agendamentos a fechar, com o valor cobrado (soma dos itens de cada um). */
       appointmentOutcomes: { appointmentId: string; priceCharged: string }[]
@@ -488,13 +496,30 @@ export function planInvoice(input: InvoiceInput): InvoicePlan {
 
   const { payments, paidCents } = planned
 
-  if (paidCents > totalCents) {
-    const diff = centsToNumeric(paidCents - totalCents).replace('.', ',')
-    return { ok: false, error: `Os pagamentos passam do total em R$ ${diff}` }
+  const creditCents = Math.round(input.creditCents ?? 0)
+  if (!Number.isFinite(creditCents) || creditCents < 0) {
+    return { ok: false, error: 'Valor de cashback inválido' }
+  }
+  if (creditCents > totalCents) {
+    return { ok: false, error: 'O cashback usado passa do total da comanda' }
   }
 
-  if (paidCents < totalCents && !input.allowDebt) {
-    const diff = centsToNumeric(totalCents - paidCents).replace('.', ',')
+  // O que os pagamentos têm de cobrir: o total menos o que o cashback cobriu.
+  const targetCents = totalCents - creditCents
+
+  if (paidCents > targetCents) {
+    const diff = centsToNumeric(paidCents - targetCents).replace('.', ',')
+    return {
+      ok: false,
+      error:
+        creditCents > 0
+          ? `Os pagamentos e o cashback passam do total em R$ ${diff}`
+          : `Os pagamentos passam do total em R$ ${diff}`,
+    }
+  }
+
+  if (paidCents < targetCents && !input.allowDebt) {
+    const diff = centsToNumeric(targetCents - paidCents).replace('.', ',')
     return { ok: false, error: `Faltam R$ ${diff} para fechar a comanda` }
   }
 
@@ -502,7 +527,8 @@ export function planInvoice(input: InvoiceInput): InvoicePlan {
     ok: true,
     totalCents,
     paidCents,
-    dueCents: totalCents - paidCents,
+    dueCents: targetCents - paidCents,
+    creditCents,
     payments,
     appointmentOutcomes: Array.from(chargedByAppointment, ([appointmentId, cents]) => ({
       appointmentId,

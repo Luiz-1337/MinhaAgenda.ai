@@ -48,6 +48,7 @@ export const invoiceSaleSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data de vencimento inválida")
     .nullish(),
+  redeemCashback: z.number().finite().min(0, "Valor de cashback inválido").max(1_000_000).optional(),
 })
 
 export const receiveSalePaymentSchema = z.object({
