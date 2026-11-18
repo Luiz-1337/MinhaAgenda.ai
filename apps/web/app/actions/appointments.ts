@@ -1,6 +1,19 @@
 "use server"
 
-import { db, domainServices as sharedServices, appointments, professionals, salons, profiles, and, eq, sql } from "@repo/db"
+import {
+  db,
+  domainServices as sharedServices,
+  appointments,
+  professionals,
+  salons,
+  profiles,
+  and,
+  eq,
+  sql,
+  cancelAppointmentSeriesService,
+  createAppointmentSeriesService,
+  type AppointmentSeriesResult,
+} from "@repo/db"
 import { createClient } from "@/lib/supabase/server"
 import { getSessionUserId } from "@/lib/supabase/auth"
 import { canReadCrm } from "@/lib/services/permissions.service"
@@ -165,18 +178,18 @@ export async function getAppointments(
 }
 
 /**
- * Cria um novo agendamento no sistema.
+ * Quem pode CRIAR agendamento neste salão, e para qual profissional.
+ *
+ * Dono do salão ou profissional ativo. No plano SOLO o agendamento é sempre do
+ * profissional do dono, venha o que vier do formulário.
+ *
+ * Extraído do `createAppointment` sem mudar a regra, porque a recorrência
+ * (fase 7) cria agendamentos pelo mesmo portão.
  */
-export async function createAppointment(input: {
-  salonId: string
+async function authorizeAppointmentCreation(
+  salonId: string,
   professionalId: string
-  clientId: string
-  serviceId: string
-  date: string | Date
-  notes?: string
-  /** Reserva manual pode furar a regra de dia/horário do serviço (após confirmação). */
-  allowServiceRuleOverride?: boolean
-}): Promise<ActionResult<{ appointmentId: string }>> {
+): Promise<{ userId: string; professionalId: string } | { error: string }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -188,7 +201,7 @@ export async function createAppointment(input: {
 
   // Verifica se o salão existe
   const salon = await db.query.salons.findFirst({
-    where: eq(salons.id, input.salonId),
+    where: eq(salons.id, salonId),
     columns: { id: true, ownerId: true },
   })
   if (!salon) {
@@ -202,7 +215,7 @@ export async function createAppointment(input: {
   if (!isOwner) {
     const pro = await db.query.professionals.findFirst({
       where: and(
-        eq(professionals.salonId, input.salonId),
+        eq(professionals.salonId, salonId),
         eq(professionals.userId, user.id),
         eq(professionals.isActive, true)
       ),
@@ -221,13 +234,13 @@ export async function createAppointment(input: {
     columns: { tier: true },
   })
 
-  let finalProfessionalId = input.professionalId
+  let finalProfessionalId = professionalId
 
   if (ownerProfile?.tier === 'SOLO') {
     // No plano SOLO, sempre usa o profissional do owner
     const userProfessional = await db.query.professionals.findFirst({
       where: and(
-        eq(professionals.salonId, input.salonId),
+        eq(professionals.salonId, salonId),
         eq(professionals.userId, salon.ownerId)
       ),
       columns: { id: true },
@@ -238,10 +251,71 @@ export async function createAppointment(input: {
     }
   }
 
+  return { userId: user.id, professionalId: finalProfessionalId }
+}
+
+/**
+ * Cria um agendamento que SE REPETE a cada N semanas (docs/ROADMAP.md, fase 7,
+ * fatia 7c): o primeiro e as repetições, cada um conferido como um agendamento
+ * avulso. A primeira data precisa caber; as outras que não couberem voltam na
+ * lista `failed`, com o motivo.
+ *
+ * `start` é "YYYY-MM-DDTHH:mm" em horário de Brasília.
+ */
+export async function createAppointmentSeries(input: {
+  salonId: string
+  professionalId: string
+  clientId: string
+  serviceId: string
+  start: string
+  intervalWeeks: number
+  occurrences: number
+  notes?: string
+  allowServiceRuleOverride?: boolean
+}): Promise<ActionResult<AppointmentSeriesResult>> {
+  const creator = await authorizeAppointmentCreation(input?.salonId, input?.professionalId)
+  if ("error" in creator) return creator
+
+  const result = await createAppointmentSeriesService({
+    salonId: input.salonId,
+    professionalId: creator.professionalId,
+    clientId: input.clientId,
+    serviceId: input.serviceId,
+    start: input.start,
+    intervalWeeks: input.intervalWeeks,
+    occurrences: input.occurrences,
+    notes: input.notes,
+    createdBy: creator.userId,
+    allowServiceRuleOverride: input.allowServiceRuleOverride === true,
+  })
+
+  if (!result.success) {
+    return result.code ? { error: result.error, code: result.code } : { error: result.error }
+  }
+
+  return { success: true, data: result.data }
+}
+
+/**
+ * Cria um novo agendamento no sistema.
+ */
+export async function createAppointment(input: {
+  salonId: string
+  professionalId: string
+  clientId: string
+  serviceId: string
+  date: string | Date
+  notes?: string
+  /** Reserva manual pode furar a regra de dia/horário do serviço (após confirmação). */
+  allowServiceRuleOverride?: boolean
+}): Promise<ActionResult<{ appointmentId: string }>> {
+  const creator = await authorizeAppointmentCreation(input.salonId, input.professionalId)
+  if ("error" in creator) return creator
+
   // Delega para o serviço centralizado (lógica de negócio)
   const result = await sharedServices.createAppointmentService({
     ...input,
-    professionalId: finalProfessionalId,
+    professionalId: creator.professionalId,
     allowServiceRuleOverride: input.allowServiceRuleOverride,
   })
 
@@ -501,6 +575,32 @@ export async function cancelAppointment(
   }
 
   return { success: true, data: undefined }
+}
+
+/**
+ * CANCELA este agendamento e os PRÓXIMOS da mesma série (fase 7, fatia 7c). Os
+ * anteriores, e os que já foram concluídos, ficam como estão.
+ */
+export async function cancelAppointmentSeries(
+  appointmentId: string,
+  salonId: string,
+  reason?: string
+): Promise<ActionResult<{ cancelled: number; failed: number }>> {
+  const auth = await authorizeAppointmentOutcome(appointmentId, salonId)
+  if ("error" in auth) return { error: auth.error }
+
+  const result = await cancelAppointmentSeriesService({
+    appointmentId,
+    salonId: auth.appointment.salonId,
+    reason: reason?.trim() || undefined,
+    cancelledBy: auth.userId,
+  })
+
+  if (!result.success) {
+    return { error: result.error }
+  }
+
+  return { success: true, data: result.data }
 }
 
 /**

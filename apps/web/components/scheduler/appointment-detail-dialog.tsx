@@ -5,12 +5,13 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   Calendar, Clock, User, Scissors, X, FileText, Loader2,
-  CheckCircle2, UserX, CalendarX, BadgeDollarSign, Receipt, CalendarClock, Tag,
+  CheckCircle2, UserX, CalendarX, BadgeDollarSign, Receipt, CalendarClock, Tag, Repeat,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
   cancelAppointment,
+  cancelAppointmentSeries,
   completeAppointment,
   markAppointmentNoShow,
   rescheduleAppointment,
@@ -46,6 +47,9 @@ export function AppointmentDetailDialog({
   const [isCourtesy, setIsCourtesy] = useState(false)
   const [reason, setReason] = useState("")
   const [isPending, startTransition] = useTransition()
+
+  // Série (fase 7): cancelar só este, ou este e os próximos.
+  const [cancelFollowing, setCancelFollowing] = useState(false)
 
   // Remarcar (fase 7): a nova data e hora, em horário de Brasília.
   const [newDate, setNewDate] = useState("")
@@ -240,6 +244,19 @@ export function AppointmentDetailDialog({
           {appointment.notes && (
             <DetailRow icon={<FileText size={15} />} label="Observações" value={appointment.notes} />
           )}
+          {appointment.seriesId && (
+            <DetailRow
+              icon={<Repeat size={15} />}
+              label="Recorrência"
+              value={
+                appointment.seriesIntervalWeeks
+                  ? `Faz parte de uma série, a cada ${
+                      appointment.seriesIntervalWeeks === 1 ? "semana" : `${appointment.seriesIntervalWeeks} semanas`
+                    }`
+                  : "Faz parte de uma série"
+              }
+            />
+          )}
           {/* Etiqueta: só aparece quando o salão tem etiquetas (ou o agendamento já tem uma). */}
           {(labels.length > 0 || appointment.labelName) && (
             <div className="flex items-start gap-3">
@@ -351,7 +368,7 @@ export function AppointmentDetailDialog({
               </div>
               <button
                 type="button"
-                onClick={() => { setReason(""); setPendingAction("cancel") }}
+                onClick={() => { setReason(""); setCancelFollowing(false); setPendingAction("cancel") }}
                 disabled={isPending}
                 className="flex items-center gap-2 px-4 py-2.5 text-destructive hover:bg-destructive/10 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -479,13 +496,29 @@ export function AppointmentDetailDialog({
                   className="mt-1 w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground disabled:opacity-50"
                 />
               </label>
+              {appointment.seriesId && (
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={cancelFollowing}
+                    onChange={(e) => setCancelFollowing(e.target.checked)}
+                    disabled={isPending}
+                    className="rounded border-border"
+                  />
+                  Cancelar também os próximos desta série
+                </label>
+              )}
               <ConfirmRow
                 isPending={isPending}
                 onBack={() => setPendingAction(null)}
                 onConfirm={() =>
-                  run("Agendamento cancelado", () =>
-                    cancelAppointment(appointment.id, salonId, reason)
-                  )
+                  cancelFollowing
+                    ? run("Série cancelada daqui em diante", () =>
+                        cancelAppointmentSeries(appointment.id, salonId, reason)
+                      )
+                    : run("Agendamento cancelado", () =>
+                        cancelAppointment(appointment.id, salonId, reason)
+                      )
                 }
                 confirmLabel="Sim, cancelar"
                 pendingLabel="Cancelando..."

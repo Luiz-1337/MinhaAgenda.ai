@@ -3,7 +3,8 @@
 import { useState, useTransition, useEffect } from "react"
 import { toast } from "sonner"
 import { X, Calendar, User, Briefcase, Zap, FileText, Clock, Plus, Phone, Mail, Loader2 } from "lucide-react"
-import { createAppointment } from "@/app/actions/appointments"
+import { createAppointment, createAppointmentSeries } from "@/app/actions/appointments"
+import { APPOINTMENT_SERIES_LIMITS, describeSeriesOutcome } from "@repo/db/src/domain/appointment-series"
 import { getSalonCustomerOptions, createSalonCustomer, type CustomerOption } from "@/app/actions/customers"
 import { getServices } from "@/app/actions/services"
 import type { ServiceRow } from "@/lib/types/service"
@@ -38,6 +39,11 @@ export function CreateAppointmentDialog({
   const [time, setTime] = useState("")
   const [notes, setNotes] = useState("")
   const [isPending, startTransition] = useTransition()
+
+  // Recorrência (fase 7): o mesmo atendimento a cada N semanas, por X vezes.
+  const [repeat, setRepeat] = useState(false)
+  const [intervalWeeks, setIntervalWeeks] = useState("1")
+  const [occurrences, setOccurrences] = useState("4")
   
   // Estados para dados carregados
   const [customers, setCustomers] = useState<CustomerOption[]>([])
@@ -130,6 +136,60 @@ export function CreateAppointmentDialog({
 
     // Envia no formato ISO sem timezone (o serviço trata como UTC-3)
     const isoDate = dateTimeString
+
+    if (repeat) {
+      startTransition(async () => {
+        const submit = (allowServiceRuleOverride: boolean) =>
+          createAppointmentSeries({
+            salonId,
+            professionalId,
+            clientId,
+            serviceId,
+            start: `${date}T${time}`,
+            intervalWeeks: Number(intervalWeeks),
+            occurrences: Number(occurrences),
+            notes: notes.trim() || undefined,
+            allowServiceRuleOverride,
+          })
+
+        let result = await submit(false)
+
+        // Mesma saída do avulso: a equipe pode furar a regra de dia/horário do
+        // serviço, depois de confirmar — e vale para a série inteira.
+        if ("error" in result && result.code === "service_rule_violation") {
+          const confirmOverride = window.confirm(
+            `${result.error}\n\nDeseja agendar a série mesmo assim neste horário?`
+          )
+          if (!confirmOverride) return
+          result = await submit(true)
+        }
+
+        if ("error" in result) {
+          toast.error(result.error)
+          return
+        }
+
+        const outcome = result.data ?? { seriesId: null, created: [], failed: [] }
+        const summary = describeSeriesOutcome(outcome)
+        // Datas que não couberam ficam na tela até alguém fechar: é o que o
+        // balcão precisa resolver à mão.
+        if (outcome.failed.length > 0) toast.warning(summary, { duration: Infinity, closeButton: true })
+        else toast.success(summary)
+
+        setClientId("")
+        setProfessionalId("")
+        setServiceId("")
+        setDate("")
+        setTime("")
+        setNotes("")
+        setRepeat(false)
+        onOpenChange(false)
+        if (onSuccess) {
+          onSuccess()
+        }
+      })
+      return
+    }
 
     startTransition(async () => {
       const submit = (allowServiceRuleOverride: boolean) =>
@@ -503,6 +563,81 @@ export function CreateAppointmentDialog({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Recorrência: cria este agendamento e as repetições de uma vez. */}
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={repeat}
+                  disabled={isPending}
+                  onChange={(e) => setRepeat(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Repetir este agendamento
+              </label>
+              {repeat && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="appointment-repeat-interval"
+                        className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+                      >
+                        A cada
+                      </label>
+                      <select
+                        id="appointment-repeat-interval"
+                        value={intervalWeeks}
+                        disabled={isPending}
+                        onChange={(e) => setIntervalWeeks(e.target.value)}
+                        className="w-full bg-background border border-border rounded-md px-3 py-3 text-sm text-foreground disabled:opacity-50"
+                      >
+                        {Array.from(
+                          { length: APPOINTMENT_SERIES_LIMITS.intervalWeeks.max },
+                          (_, index) => index + APPOINTMENT_SERIES_LIMITS.intervalWeeks.min
+                        ).map((weeks) => (
+                          <option key={weeks} value={weeks}>
+                            {weeks === 1 ? "1 semana" : `${weeks} semanas`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="appointment-repeat-count"
+                        className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+                      >
+                        Quantas vezes
+                      </label>
+                      <select
+                        id="appointment-repeat-count"
+                        value={occurrences}
+                        disabled={isPending}
+                        onChange={(e) => setOccurrences(e.target.value)}
+                        className="w-full bg-background border border-border rounded-md px-3 py-3 text-sm text-foreground disabled:opacity-50"
+                      >
+                        {Array.from(
+                          {
+                            length:
+                              APPOINTMENT_SERIES_LIMITS.occurrences.max - APPOINTMENT_SERIES_LIMITS.occurrences.min + 1,
+                          },
+                          (_, index) => index + APPOINTMENT_SERIES_LIMITS.occurrences.min
+                        ).map((times) => (
+                          <option key={times} value={times}>
+                            {times} vezes
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Contando este. Mesmo dia da semana e mesma hora. Cada data é conferida como um agendamento
+                    avulso; as que não couberem na agenda são avisadas no final.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Notas */}

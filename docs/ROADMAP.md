@@ -72,6 +72,8 @@ feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6):
 migration 059 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.7.
 Fatia 7b (etiquetas na agenda e remarcar pela tela) na mesma branch: migration
 060 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.8.
+Fatia 7c (recorrência de agendamento) feita na mesma branch — **em commit local,
+migration 061 NÃO aplicada, sem publicar e sem teste em uso** — ver §11.9.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3299,7 +3301,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 |---|---|---|
 | 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
-| 7c | Recorrência de agendamento (repetir toda semana, a cada N semanas, até uma data) | Pendente |
+| 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita em código — **migration 061 não aplicada, sem publicar e sem teste em uso** (§11.9) |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
 | 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
@@ -3358,6 +3360,14 @@ DEFAULT); tem que ser aplicada antes de publicar o código:
 - **`appointments.label_id`** — a etiqueta do agendamento, no máximo uma. Excluir
   a etiqueta deixa NULL (`ON DELETE SET NULL`).
 
+**Migration 061 (fatia 7c)** — MEXE em `appointments` (uma coluna nova, sem
+DEFAULT); tem que ser aplicada antes de publicar o código:
+
+- **`appointment_series`** — a série: `interval_weeks` (1 a 8), `occurrences`
+  (2 a 12, o que foi PEDIDO) e `created_by`. Não guarda regra para o futuro: só
+  amarra os agendamentos criados de uma vez.
+- **`appointments.series_id`** — a série do agendamento. NULL = avulso.
+
 ### 11.4 Regras decididas
 
 Fatia 7a — ficha do cliente:
@@ -3405,6 +3415,26 @@ Fatia 7b — etiquetas na agenda e remarcar:
 16. **Quem remarca** é quem já podia concluir ou cancelar aquele agendamento:
     dono, gerente, ou o profissional do próprio atendimento.
 
+Fatia 7c — recorrência:
+
+17. **Repetir é criar vários agendamentos de uma vez**: o mesmo cliente, serviço
+    e profissional, no mesmo dia da semana e na mesma hora, a cada 1 a 8 semanas,
+    de 2 a 12 vezes contando o primeiro. Não existe série "sem fim".
+18. **Cada data é conferida como um agendamento avulso** (expediente, regra do
+    serviço, conflito, agenda oficial, Google). **A primeira precisa caber**: se
+    ela falha, nada é criado. As seguintes que não couberem são puladas e
+    listadas num aviso que fica na tela, com o motivo de cada uma.
+19. **Furar a regra de dia e horário do serviço**, depois de confirmar, vale para
+    a série inteira. Conflito não se fura.
+20. **Cada agendamento da série é comum**: pode ser remarcado, etiquetado,
+    concluído ou cancelado sozinho. Remarcar um não move os outros.
+21. **Cancelar "este e os próximos"** cancela, daquela data em diante, os que
+    ainda estão pendentes ou confirmados. Os anteriores e os já concluídos ficam.
+    Não há "cancelar a série inteira" nem "remarcar a série".
+22. **Se só uma data coube**, o agendamento fica avulso: um sozinho não é série.
+23. **Quem cria a série** é quem já podia criar agendamento (dono ou profissional
+    ativo; no plano SOLO, sempre para o profissional do dono).
+
 Perguntas para o dono:
 
 - (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
@@ -3422,6 +3452,14 @@ Perguntas para o dono:
 - (7b) Remarcar deve também trocar o profissional e o serviço? Hoje só data e
   hora.
 - (7b) O cliente deve ser avisado pelo WhatsApp quando o salão remarca?
+- (7c) Os limites servem (até 8 semanas de intervalo, até 12 vezes)? Precisa de
+  repetição mensal por data ("todo dia 10") ou a cada N dias?
+- (7c) Quando uma data da série não cabe, pular e avisar (regra 18) é o certo, ou
+  o sistema deve procurar outro horário próximo?
+- (7c) A IA deve poder marcar e cancelar séries pelo WhatsApp? Hoje ela só vê
+  cada agendamento isolado.
+- (7c) O lembrete de 24 horas de cada agendamento da série basta, ou o cliente
+  recebe um resumo com todas as datas ao marcar?
 
 ### 11.5 Telas
 
@@ -3435,6 +3473,13 @@ Perguntas para o dono:
   colorido embaixo do nome do cliente.
 - **Detalhe do agendamento (7b)**: campo "Etiqueta" (aparece quando o salão tem
   etiquetas) e botão "Remarcar", que pede a nova data e a nova hora.
+- **Novo agendamento (7c)**: caixa "Repetir este agendamento", que abre "A cada
+  [1 a 8 semanas]" e "Quantas vezes [2 a 12]". Ao criar, o aviso diz quantos
+  entraram e, se alguma data não coube, lista as datas e fica na tela até ser
+  fechado.
+- **Detalhe do agendamento (7c)**: linha "Recorrência — faz parte de uma série, a
+  cada N semanas"; ao cancelar, a caixa "Cancelar também os próximos desta
+  série".
 
 ### 11.6 Onde está o código
 
@@ -3442,6 +3487,7 @@ Perguntas para o dono:
 |---|---|
 | Ficha do cliente (7a) | Migration `059_customer_profile.sql`; colunas em `customers` (`schema.ts`); regra em `domain/customer-profile.ts` (`planCustomerProfile`, `isValidCpf`, `maskCpf`, `customerAge`, `isBirthday`, `formatCustomerAddress`); I/O em `services/customer-profile.service.ts`; action em `actions/customer-profile.ts`; `getCustomerDetail` (`actions/customers.ts`) devolve `profile` e `canEditProfile`; cartão em `components/contacts/customer-profile-card.tsx`; testes em `customer-profile-domain.test.ts` |
 | Etiquetas e remarcar (7b) | Migration `060_appointment_labels.sql`; tabela `appointmentLabels` e `appointments.labelId`; regra em `domain/appointment-labels.ts` (`planAppointmentLabel`, `labelTextColor`); I/O em `services/appointment-labels.service.ts`; actions em `actions/appointment-labels.ts`; `rescheduleAppointment` em `actions/appointments.ts` (chama `updateAppointmentService`); a consulta da grade (`lib/repositories/appointment.repository.ts`) traz a etiqueta; telas em `components/scheduler/` (`appointment-labels-dialog.tsx`, `appointment-detail-dialog.tsx`, `scheduler-view.tsx`, `daily-scheduler.tsx`, `weekly-scheduler.tsx`); testes em `appointment-labels-domain.test.ts` |
+| Recorrência (7c) | Migration `061_appointment_series.sql`; tabela `appointmentSeries` e `appointments.seriesId`; regra em `domain/appointment-series.ts` (`planAppointmentSeries`, `addCalendarDays`, `describeSeriesOutcome`); I/O em `services/appointment-series.service.ts` (`createAppointmentSeriesService` repete o `createAppointmentService`; `cancelAppointmentSeriesService` repete o `cancelAppointmentService`); actions `createAppointmentSeries` e `cancelAppointmentSeries` em `actions/appointments.ts`, com o portão de criação extraído para `authorizeAppointmentCreation`; telas em `components/scheduler/create-appointment-dialog.tsx` e `appointment-detail-dialog.tsx`; testes em `appointment-series-domain.test.ts` |
 
 ### 11.7 Fatia 7a — estado (18/nov/2026)
 
@@ -3542,6 +3588,41 @@ Perguntas para o dono:
   cancelados, e saíram do Google). Conferido por leitura: nenhuma etiqueta,
   nenhum agendamento etiquetado, e os 181 agendamentos de antes iguais à cópia.
 
+### 11.9 Fatia 7c — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1304, db 296, mcp-server 409).
+- **Migration 061: NÃO aplicada.** Ela acrescenta `series_id` a `appointments`.
+  Como na 060, **publicar o código antes de aplicar quebra a criação de
+  agendamento em TODOS os salões**. A coluna não tem DEFAULT: nenhuma linha é
+  regravada. Cabe cópia de `appointments` em `backups` antes.
+- **Mexe no caminho de criar agendamento pela tela, para todos os salões:** o
+  trecho que confere quem pode criar (dono ou profissional ativo, e a troca de
+  profissional no plano SOLO) saiu de dentro do `createAppointment` para a
+  função `authorizeAppointmentCreation`, sem mudar a regra, para a série passar
+  pelo mesmo portão. O agendamento avulso continua chamando o mesmo serviço.
+- **Sem módulo.** A caixa "Repetir" aparece em todos os salões assim que o código
+  for publicado.
+- **Sem regra de agenda nova**: a série só repete o `createAppointmentService` e
+  o `cancelAppointmentService`. Os achados da §11.2 valem para cada data.
+- **Limites desta fatia:**
+  - as datas são criadas uma depois da outra, cada uma com as suas conferências
+    (e a gravação na agenda oficial, onde houver). Doze datas num salão com
+    Belasis podem demorar; não medi;
+  - se a tela cair no meio, ficam criados os que já tinham entrado, avulsos (a
+    série só é amarrada no fim);
+  - a grade não marca visualmente o agendamento de série; só o detalhe mostra;
+  - a IA não conhece séries: vê e mexe em cada agendamento isolado.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 061 e
+  publicar: criar um agendamento avulso (continua funcionando); criar com
+  "Repetir" a cada 1 semana, 3 vezes → três cartões, no mesmo dia da semana e
+  hora, e o detalhe de cada um mostra "Recorrência"; ocupar antes uma das datas
+  com outro agendamento e criar a série → o aviso lista a data que não coube;
+  série cuja primeira data não cabe → nada é criado; remarcar um da série (os
+  outros não mudam); no segundo, cancelar com "também os próximos" → o primeiro
+  fica e os demais são cancelados; cancelar o que sobrou.
+
 ## 12. Pendências do dono
 
 | Pendência | Trava |
@@ -3566,5 +3647,7 @@ Perguntas para o dono:
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
 | Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
+| Aplicar a migration 061 (ou autorizar a aplicação) e publicar a fatia 7c — ver §11.9 | Teste em uso da fatia 7c |
+| Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

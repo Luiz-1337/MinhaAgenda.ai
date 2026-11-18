@@ -372,6 +372,8 @@ export const appointments = pgTable(
     // A etiqueta do agendamento (migration 060). No máximo uma; excluir a
     // etiqueta deixa NULL.
     labelId: uuid('label_id').references((): AnyPgColumn => appointmentLabels.id, { onDelete: 'set null' }),
+    // A série de que o agendamento faz parte (migration 061). NULL = avulso.
+    seriesId: uuid('series_id').references((): AnyPgColumn => appointmentSeries.id, { onDelete: 'set null' }),
     reminderSentAt: timestamp('reminder_sent_at'),
     // --- Desfecho do atendimento (migration 027) ---------------------------
     // O fato "atendimento realizado, com valor". Sem estas colunas não existe
@@ -2232,6 +2234,23 @@ export const appointmentLabels = pgTable(
   },
   (table) => [uniqueIndex('appointment_labels_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
 )
+
+// ============================================================================
+// TABLES - Recorrência de agendamento (migration 061)
+// ============================================================================
+// Amarra os agendamentos criados de uma vez "a cada N semanas"
+// (appointments.series_id). Não gera horários: cada agendamento é comum.
+// Regra em domain/appointment-series.ts.
+
+export const appointmentSeries = pgTable('appointment_series', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+  intervalWeeks: integer('interval_weeks').notNull(),
+  // Quantas vezes foi pedido, contando a primeira.
+  occurrences: integer('occurrences').notNull(),
+  createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull()
+})
 
 // ============================================================================
 // TABLES - Dashboard Statistics
