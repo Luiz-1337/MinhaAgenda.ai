@@ -74,8 +74,8 @@ Fatia 7b (etiquetas na agenda e remarcar pela tela) na mesma branch: migration
 060 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.8.
 Fatia 7c (recorrência de agendamento) na mesma branch: migration 061 aplicada em
 18/nov/2026, publicada e testada em uso — ver §11.9.
-Fatia 7d (anamneses) feita na mesma branch — **em commit local, migration 062
-NÃO aplicada, sem publicar e sem teste em uso** — ver §11.10.
+Fatia 7d (anamneses) feita na mesma branch — migration 062 aplicada em
+18/nov/2026, publicada e testada em uso — ver §11.10.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3304,7 +3304,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
 | 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
-| 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita em código — **migration 062 não aplicada, sem publicar e sem teste em uso** (§11.10) |
+| 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita — migration 062 aplicada, publicada na branch e testada em uso (§11.10) |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
 | 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
 
@@ -3702,13 +3702,14 @@ Perguntas para o dono:
 
 ### 11.10 Fatia 7d — estado (18/nov/2026)
 
-- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
   alterados) e testes passando (web 1324, db 296, mcp-server 409).
-- **Migration 062: NÃO aplicada.** Só cria duas tabelas; não mexe em nenhuma
-  existente, então não há cópia a fazer antes. Publicar o código antes dela não
-  quebra a ficha do cliente: o cartão de anamneses carrega à parte e mostraria
-  "Não foi possível carregar as anamneses".
+- **Migration 062: aplicada em produção em 18/nov/2026** (registrada como
+  `anamneses`). Só cria duas tabelas; não mexe em nenhuma existente, então não
+  houve cópia antes. Conferido depois: RLS ligado, policy `deny_all`, sem
+  privilégio para anon/authenticated, e nenhum aviso novo nos advisors de
+  segurança.
 - **Sem módulo.** O cartão aparece em todos os salões assim que o código for
   publicado, para quem tem a permissão nova (regra 29).
 - **Permissão nova no catálogo** (`customers.anamneses`): aparece na tela de
@@ -3720,14 +3721,30 @@ Perguntas para o dono:
   - a IA não lê anamnese;
   - a tela de excluir cliente não avisa que as anamneses vão junto;
   - os modelos só se abrem por dentro da ficha de um cliente.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 062 e
-  publicar: abrir a ficha de um cliente → cartão "Anamneses" sem modelo; criar
-  um modelo com os cinco tipos de pergunta e uma obrigatória; responder
-  deixando a obrigatória em branco (recusa) e depois completo; abrir a ficha no
-  histórico e conferir as respostas; alterar o texto de uma pergunta no modelo
-  e conferir que a ficha antiga não mudou; responder de novo (duas fichas);
-  desativar o modelo (some do "responder", histórico fica); excluir o modelo
-  (histórico fica); excluir as fichas de teste.
+- **Teste em uso (18/nov/2026)**, no preview da branch, no salão de teste, na
+  ficha de um cliente, com o usuário dono:
+  - cartão "Anamneses" sem modelo, e a janela "Modelos" vazia — ok;
+  - modelo criado com os cinco tipos de pergunta e uma obrigatória — ok;
+  - responder deixando a obrigatória em branco — recusa, com o aviso
+    'Responda: "…"'; responder completo (com "Não" na obrigatória) — salva;
+  - a ficha abre no histórico com as cinco respostas, as várias opções na ordem
+    do modelo e a resposta longa com quebra de linha — ok;
+  - texto de uma pergunta alterado no modelo — a ficha antiga continua com o
+    texto do dia; o formulário novo mostra o texto novo — ok;
+  - responder de novo — duas fichas, a mais recente em cima; o modelo mostra
+    "2 fichas respondidas" — ok;
+  - modelo desativado — some do "responder", aparece "Inativo" na lista de
+    modelos, histórico fica — ok;
+  - modelo excluído — histórico fica, com o nome do modelo — ok;
+  - fichas de teste excluídas pela tela. As duas tabelas ficaram vazias.
+- **Achado do teste:** com modelo cadastrado mas inativo, o cartão diz "Use
+  Modelos para criar o primeiro" — o texto serve para "nenhum modelo", não para
+  "nenhum ativo". Ajuste de texto, não feito.
+- **Não testado:** usuário sem a permissão (o cartão some; só o dono existe no
+  salão de teste), funcionário com perfil de acesso, a lista de escolha com
+  mais de um modelo ativo, os limites (40 perguntas, 30 modelos), nome de
+  modelo repetido, mudar a ordem das perguntas, e excluir um cliente com
+  anamnese.
 
 ## 12. Pendências do dono
 
@@ -3754,7 +3771,6 @@ Perguntas para o dono:
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
 | Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
 | Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
-| Aplicar a migration 062 (ou autorizar a aplicação) e publicar a fatia 7d — ver §11.10 | Teste em uso da fatia 7d |
 | Responder às perguntas da 7d em §11.4 (quem vê anamnese, corrigir ficha, link para o cliente e assinatura, tipos de pergunta, IA, excluir cliente) | Ajustes na 7d antes do piloto |
 | Marcar "Anamneses" nos perfis de acesso de quem deve ver e preencher | Funcionário com perfil usar as anamneses |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
