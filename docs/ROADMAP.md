@@ -53,6 +53,10 @@ branch: migration 055 aplicada em 17/nov/2026, módulo `promotions` ligado só n
 salão de teste, publicada e testada em uso — ver §10.8. Fatia 6c (avaliações
 pós-atendimento) na mesma branch: migration 056 aplicada em 17/nov/2026, módulo
 `reviews` ligado só no salão de teste, publicada e testada em uso — ver §10.9.
+Fatia 6d (mensagens de cuidados e de retorno, e pedido de avaliação pelo WhatsApp)
+feita na mesma branch — **em commit local, migration 057 NÃO aplicada, módulo
+`care_messages` desligado em todos os salões, sem publicar e sem teste em uso** —
+ver §10.10.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2523,7 +2527,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
 | 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
-| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp | Pendente |
+| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita em código — **migration 057 não aplicada, sem publicar e sem teste em uso** (§10.10) |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
 
@@ -2563,6 +2567,22 @@ online público (fase 7).
   `customer_id`, `token` (único; a credencial do formulário público),
   `service_date`, `rating` (1 a 5; NULL = pendente), `comment`, `requested_at`,
   `responded_at`. CHECK: nota e data de resposta andam juntas.
+
+**Migration 057 (fatia 6d)** — MEXE em `review_settings` (três colunas com
+DEFAULT); tem que ser aplicada antes de publicar o código:
+
+- **`care_message_rules`** — a mensagem de um serviço ou produto: `kind`
+  (`pre_care`, `post_care`, `return`), `service_id` ou `product_id` (exatamente
+  um; `pre_care` só serviço), `offset_days`, `message`, `is_active`. Uma por
+  tipo e por item (índices únicos).
+- **`care_message_dispatches`** — a fila e o histórico: `customer_id`, `kind` (os
+  três, mais `review`), `rule_id` (SET NULL), a origem (`sale_id` ou
+  `appointment_id`), `review_id`, `item_name`, `scheduled_for`, `status`
+  (`pending`, `sending`, `sent`, `failed`, `skipped`), `body` (o texto que
+  saiu), `detail` (o motivo), `sent_at`. Índices únicos: um envio por comanda e
+  mensagem, um por agendamento e mensagem, um por pedido de avaliação.
+- **`review_settings`** ganha `send_whatsapp`, `whatsapp_delay_hours` (0 a 72,
+  padrão 2) e `whatsapp_text` (NULL = texto padrão).
 
 Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 `anon`/`authenticated`.
@@ -2658,6 +2678,42 @@ Fatia 6c — avaliações pós-atendimento:
 28. **Excluir** uma avaliação (ou um pedido pendente) é de quem tem
     `reviews.manage`; o link do pedido excluído deixa de funcionar.
 
+Fatia 6d — mensagens de cuidados e de retorno:
+
+29. **Três tipos de mensagem, por serviço ou por produto**: cuidados ANTES do
+    atendimento (só serviço), cuidados DEPOIS e RETORNO. Uma mensagem por tipo e
+    por item. Texto livre de até 1.000 caracteres, com `{cliente}` (primeiro
+    nome), `{item}` e `{salao}`.
+30. **Quando sai**: cuidados de antes, de 1 a 30 dias antes do AGENDAMENTO
+    (pendente ou confirmado); cuidados de depois, de 0 a 30 dias depois da COMANDA
+    faturada (0 = no mesmo dia); retorno, de 1 a 365 dias depois da comanda.
+    Agendamento marcado já dentro da janela recebe os cuidados na próxima rodada.
+31. **Um envio por origem e por mensagem.** Reabrir e faturar de novo não manda
+    outra vez. Excluir a comanda cancela o que ainda não saiu. Comanda lançada
+    com data antiga não dispara mensagem vencida há mais de um dia.
+32. **O retorno mais novo substitui o antigo** que ainda estava na fila para o
+    mesmo cliente e a mesma mensagem, e **não sai para quem já tem horário
+    marcado** na hora do envio.
+33. **Confere de novo na hora de enviar**: módulo ligado, mensagem ativa, cliente
+    com telefone, comanda faturada (reaberta, espera até 3 dias e desiste),
+    agendamento de pé. **Nada sai para quem pediu para não receber mensagens**
+    (`customers.opted_out_at`) — nem cuidado, nem retorno, nem avaliação.
+34. **A fila roda a cada meia hora e só envia das 9h às 20h** de Brasília. O que
+    vence fora desse horário sai na primeira rodada do dia seguinte.
+35. **Falha não é reenviada.** Fica na lista de envios com o motivo; reenviar
+    sozinho arrisca mandar duas vezes. Quem tem `care_messages.manage` pode
+    cancelar um envio que está na fila.
+36. **A mensagem enviada é gravada na conversa do cliente**, para a IA saber o que
+    ele recebeu quando responder.
+37. **Pedido de avaliação pelo WhatsApp** (opção das Avaliações, desligada por
+    padrão): sai N horas depois de faturar (0 a 72, padrão 2), uma vez por pedido,
+    e só se o cliente ainda não avaliou. O texto é do salão ou o padrão, e precisa
+    ter `{link}`.
+38. **No WhatsApp oficial (Cloud API), fora das 24 horas da última mensagem do
+    cliente o envio FALHA**: a Meta só aceita modelo aprovado, e não há modelo para
+    estas mensagens. Na Evolution sai a qualquer momento. A falha aparece na
+    lista, com esse motivo.
+
 Perguntas para o dono:
 
 - O cashback deve vencer (ex.: 90 dias)?
@@ -2687,6 +2743,15 @@ Perguntas para o dono:
 - (6c) O profissional pode ver as próprias avaliações, ou só quem gerencia?
 - (6c) O salão quer responder ao comentário do cliente, ou mostrar as avaliações
   no agendamento online (a Belasis tem "Mostrar avaliações")?
+- (6d) Os prazos (regra 30) e o horário de envio (regra 34) servem? Sábado e
+  domingo enviam normalmente?
+- (6d) O retorno deve sair mesmo para quem já tem horário marcado (regra 32)?
+- (6d) As mensagens devem ser cadastradas também na ficha do serviço e do produto
+  (abas Cuidados e Retorno, como na Belasis), além da tela única?
+- (6d) Para os salões no WhatsApp oficial: vale aprovar modelos na Meta para
+  cuidados, retorno e avaliação (regra 38)? Sem isso, quase nada sai neles.
+- (6d) O retorno automático convive com a retenção por IA (que já chama o cliente
+  parado, pelo ciclo médio do serviço)? Hoje nenhum dos dois sabe do outro.
 
 ### 10.4 Permissões e módulo
 
@@ -2706,6 +2771,12 @@ Avaliações (6c): módulo `reviews` e recurso `reviews` com `access` (painel, l
 e link de cada pedido) e `manage` (ativar, personalizar e excluir). Quem vê a
 comanda faturada (`sales.access`) também vê e copia o link dela. O formulário
 público não tem permissão: a credencial é o token.
+
+Cuidados e retorno (6d): módulo `care_messages` e recurso `care_messages` com
+`access` (ver as mensagens e os envios) e `manage` (criar, alterar, excluir e
+cancelar um envio da fila). O pedido de avaliação pelo WhatsApp é configurado em
+Avaliações (`reviews.manage`) e não depende do módulo `care_messages`. O cron
+que envia não tem sessão: autentica com `CRON_SECRET`.
 
 ### 10.5 Telas
 
@@ -2739,6 +2810,14 @@ público não tem permissão: a credencial é o token.
   "Link de avaliação inválido".
 - **Comanda (6c)**: a comanda faturada mostra o bloco Avaliação — "Copiar link de
   avaliação" enquanto pendente, ou a nota dada.
+- **Cuidados e retorno (6d)** no menu (módulo ligado + `care_messages.access`), em
+  `/[salonId]/care-messages`: a tabela de Mensagens (item, tipo, quando, texto,
+  situação; alterar e excluir) com "Nova mensagem" (tipo, serviço ou produto,
+  dias, texto, ativa); e a tabela de Envios (quando, cliente, tipo, situação — na
+  fila, enviada, falhou, não enviada — e o texto ou o motivo), com filtro de
+  situação e o botão de cancelar o que está na fila.
+- **Avaliações (6d)**: "Personalizar" ganha "Enviar o pedido pelo WhatsApp", as
+  horas depois de faturar e a mensagem.
 
 ### 10.6 Onde o código mora
 
@@ -2753,6 +2832,7 @@ público não tem permissão: a credencial é o token.
 | Testes | `apps/web/__tests__/lib/services/cashback-domain.test.ts` |
 | Promoções (6b) | Migration `055_promotions.sql`; tabela `promotions`, `sales.promotionId`/`couponCode` e `saleItems.couponDiscount`; regra em `domain/promotions.ts` (`planPromotion`, `promotionBlocker`, `promotionStatus`, `splitCouponDiscount`, `applyCouponToSale`); I/O em `services/promotions.service.ts` — a comanda chama `loadSaleCoupon` ao criar e ao salvar (`withCoupon`, `sales.service.ts`); actions em `actions/promotions.ts` e `checkSaleCoupon` em `actions/sales.ts`; tela em `app/[salonId]/promotions/`; testes em `promotions-domain.test.ts` |
 | Avaliações (6c) | Migration `056_reviews.sql`; tabelas `reviewSettings` e `reviews`; regra em `domain/reviews.ts` (`planReviewSettings`, `reviewFormTexts`, `shouldRequestReview`, `planReviewResponse`, `buildReviewDashboard`); I/O em `services/reviews.service.ts` — a comanda chama `requestSaleReview` no faturamento e `discardPendingSaleReview` na exclusão (`sales.service.ts`); actions do salão em `actions/reviews.ts`, `getSaleReview` em `actions/sales.ts` e a action PÚBLICA em `actions/public-reviews.ts` (sem sessão, fora da guarda de autorização de propósito); telas em `app/[salonId]/reviews/` e `app/avaliar/[token]/`; testes em `reviews-domain.test.ts` |
+| Cuidados e retorno (6d) | Migration `057_care_messages.sql`; tabelas `careMessageRules` e `careMessageDispatches`; regra em `domain/care-messages.ts` (`planCareMessageRule`, `renderCareMessage`, `saleMessageSchedule`, `isWithinCareSendHours`, `decideCareDispatch`, `toWhatsAppNumber`); I/O em `services/care-messages.service.ts` — a comanda chama `enqueueSaleCareMessages` no faturamento e `discardPendingSaleCareMessages` na exclusão; `requestSaleReview` enfileira o pedido de avaliação; a fila é `enqueueDuePreCareMessages`, `claimDueCareDispatches` e `finishCareDispatch`; o ENVIO é do app: `apps/web/lib/services/care-messages/dispatcher.service.ts`, chamado pelo cron `app/api/cron/care-messages` (`vercel.json`, a cada 30 min); actions em `actions/care-messages.ts`; tela em `app/[salonId]/care-messages/`; testes em `care-messages-domain.test.ts` |
 
 ### 10.7 Fatia 6a — estado (17/nov/2026)
 
@@ -2933,6 +3013,53 @@ público não tem permissão: a credencial é o token.
   avaliações DESATIVADAS de novo e o título em branco. Conferido por leitura: sem
   linhas em `reviews` no salão de teste.
 
+### 10.10 Fatia 6d — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1232, db 296, mcp-server 400).
+- **Migration 057: NÃO aplicada.** Ela acrescenta três colunas a
+  `review_settings`, e o código novo lê e grava essas colunas: **publicar antes de
+  aplicar quebra a tela de Avaliações e o faturamento no salão com o módulo
+  `reviews`** (hoje, só o de teste). `review_settings` tem uma linha (a do salão
+  de teste); cabe cópia em `backups` antes.
+- **O módulo `care_messages` está desligado em todos os salões.**
+- **A auditoria não descreve os campos** das abas Cuidados e Retorno da Belasis:
+  só diz que existem. Tipos, prazos e variáveis foram decididos aqui (regras 29 a
+  38).
+- **Uma tela só, não abas na ficha do serviço e do produto.** As mensagens ficam
+  em Cuidados e retorno; a ficha do serviço e a do produto não mudaram.
+- **O que o envio reaproveita**: `sendProactiveMessage` (o mesmo caminho do
+  lembrete e do marketing), que escolhe o canal do salão. Diferente do lembrete,
+  esta fila respeita o pedido de não receber mensagens e procura a conversa do
+  cliente pelas duas formas do telefone (com e sem `+`), criando-a só com
+  dígitos — como a mensagem recebida grava.
+- **Limites conhecidos:**
+  - no WhatsApp oficial quase tudo falha fora das 24 horas (regra 38) — vale
+    para o salão que já usa esse canal;
+  - o cron da Vercel só roda em PRODUÇÃO. No preview a fila não anda sozinha: o
+    envio só pode ser testado chamando `/api/cron/care-messages` com o
+    `CRON_SECRET`, ou depois de a fase ir para produção;
+  - o link da avaliação usa `NEXT_PUBLIC_APP_URL`. Enquanto a fase 6 não estiver
+    em produção, um pedido enviado de um preview levaria a um endereço que ainda
+    não tem a página;
+  - sem limite de envios por salão ou por cliente por dia, além dos 40 por rodada
+    no total; envio que espera (comanda reaberta) volta para a fila e é
+    reavaliado a cada rodada, por até 3 dias;
+  - a fila não avisa ninguém quando falha (não abre alerta): é preciso olhar a
+    lista de envios.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 057, ligar
+  o módulo e publicar: criar mensagem de cuidados de depois (0 dias) e de retorno
+  (30 dias) para um serviço, e de retorno para um produto; tentar duplicar
+  (recusado) e tentar cuidados de antes em produto (não deixa); faturar uma
+  comanda com o serviço e o produto → três envios "Na fila" com as datas certas;
+  reabrir e faturar de novo (não duplica); cancelar um envio; excluir a comanda
+  (a fila esvazia); excluir uma mensagem com envio na fila; ativar o pedido pelo
+  WhatsApp em Avaliações, com texto sem `{link}` (recusado) e com; faturar →
+  envio "Pedido de avaliação" na fila para dali a N horas. O ENVIO de verdade
+  (rodar a fila, a mensagem chegar, cair na conversa) e os cuidados de antes
+  dependem do cron — ver o limite acima.
+
 ## 11. Pendências do dono
 
 | Pendência | Trava |
@@ -2951,4 +3078,7 @@ público não tem permissão: a credencial é o token.
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
 | Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
+| Aplicar a migration 057 (ou autorizar a aplicação), ligar o módulo `care_messages` no salão de teste e publicar a fatia 6d — ver §10.10 | Teste em uso da fatia 6d |
+| Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
+| Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

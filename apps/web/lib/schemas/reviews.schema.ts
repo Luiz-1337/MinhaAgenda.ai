@@ -18,6 +18,9 @@ export const saveReviewSettingsSchema = z.object({
   title: z.string().max(200, "Título muito longo").nullable(),
   welcomeText: z.string().max(1000, "Texto de boas-vindas muito longo").nullable(),
   thanksText: z.string().max(1000, "Texto de agradecimento muito longo").nullable(),
+  sendWhatsapp: z.boolean(),
+  whatsappDelayHours: z.number().int().min(0).max(72),
+  whatsappText: z.string().max(1000, "Mensagem do WhatsApp muito longa").nullable(),
 })
 
 export const reviewRefSchema = z.object({

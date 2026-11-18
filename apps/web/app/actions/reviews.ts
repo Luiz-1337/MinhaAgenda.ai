@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache"
 import {
   DEFAULT_REVIEW_TEXTS,
+  DEFAULT_REVIEW_WHATSAPP_TEXT,
+  REVIEW_WHATSAPP_DELAY,
   deleteReviewService,
   getReviewSettingsService,
   listReviewsService,
@@ -70,7 +72,8 @@ export async function getReviews(salonId: string, filters: ReviewFilters = {}): 
       from: period.from,
       to: period.to,
       settings,
-      defaults: { ...DEFAULT_REVIEW_TEXTS },
+      defaults: { ...DEFAULT_REVIEW_TEXTS, whatsapp: DEFAULT_REVIEW_WHATSAPP_TEXT },
+      whatsappDelay: { min: REVIEW_WHATSAPP_DELAY.min, max: REVIEW_WHATSAPP_DELAY.max },
       dashboard: list.dashboard,
       reviews: list.rows.map((row) => ({
         ...row,

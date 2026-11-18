@@ -18,11 +18,14 @@ import {
  * 1 a 5, e o painel não inventa média onde não há resposta.
  */
 
+/** O que a configuração devolve quando o WhatsApp não foi mexido. */
+const WHATSAPP_OFF = { sendWhatsapp: false, whatsappDelayHours: 2, whatsappText: null }
+
 describe("planReviewSettings", () => {
   it("texto em branco vira NULL: o formulário usa o padrão", () => {
     expect(planReviewSettings({ isEnabled: true, title: "  ", welcomeText: "", thanksText: null })).toEqual({
       ok: true,
-      settings: { isEnabled: true, title: null, welcomeText: null, thanksText: null },
+      settings: { isEnabled: true, title: null, welcomeText: null, thanksText: null, ...WHATSAPP_OFF },
     })
   })
 
@@ -31,8 +34,27 @@ describe("planReviewSettings", () => {
       planReviewSettings({ isEnabled: false, title: "  Conte pra gente  ", welcomeText: "Oi!", thanksText: "Valeu!" })
     ).toEqual({
       ok: true,
-      settings: { isEnabled: false, title: "Conte pra gente", welcomeText: "Oi!", thanksText: "Valeu!" },
+      settings: {
+        isEnabled: false,
+        title: "Conte pra gente",
+        welcomeText: "Oi!",
+        thanksText: "Valeu!",
+        ...WHATSAPP_OFF,
+      },
     })
+  })
+
+  it("o pedido pelo WhatsApp: horas de 0 a 72 e mensagem com {link}", () => {
+    expect(
+      planReviewSettings({ isEnabled: true, sendWhatsapp: true, whatsappDelayHours: 0, whatsappText: " Avalie: {link} " })
+    ).toMatchObject({
+      ok: true,
+      settings: { sendWhatsapp: true, whatsappDelayHours: 0, whatsappText: "Avalie: {link}" },
+    })
+    expect(planReviewSettings({ isEnabled: true, sendWhatsapp: true, whatsappText: "Avalie a gente" }).ok).toBe(false)
+    expect(planReviewSettings({ isEnabled: true, sendWhatsapp: true, whatsappDelayHours: 73 }).ok).toBe(false)
+    expect(planReviewSettings({ isEnabled: true, sendWhatsapp: true, whatsappDelayHours: 1.5 }).ok).toBe(false)
+    expect(planReviewSettings({ isEnabled: true, whatsappText: "{link}" + "a".repeat(500) }).ok).toBe(false)
   })
 
   it("recusa texto longo demais", () => {

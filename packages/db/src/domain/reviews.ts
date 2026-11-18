@@ -16,6 +16,9 @@
 
 const MAX_TITLE_LENGTH = 80
 const MAX_TEXT_LENGTH = 300
+const MAX_WHATSAPP_TEXT_LENGTH = 500
+/** Horas entre faturar a comanda e mandar o pedido pelo WhatsApp. */
+export const REVIEW_WHATSAPP_DELAY = { min: 0, max: 72, default: 2 } as const
 export const MAX_REVIEW_COMMENT_LENGTH = 1000
 
 /** Os textos que o formulário usa quando o salão não escreveu os seus. */
@@ -30,12 +33,24 @@ export type ReviewSettingsDraft = {
   title?: string | null
   welcomeText?: string | null
   thanksText?: string | null
+  /** Mandar o pedido pelo WhatsApp (fatia 6d). */
+  sendWhatsapp?: boolean
+  whatsappDelayHours?: number
+  whatsappText?: string | null
 }
 
 export type ReviewSettingsPlan =
   | {
       ok: true
-      settings: { isEnabled: boolean; title: string | null; welcomeText: string | null; thanksText: string | null }
+      settings: {
+        isEnabled: boolean
+        title: string | null
+        welcomeText: string | null
+        thanksText: string | null
+        sendWhatsapp: boolean
+        whatsappDelayHours: number
+        whatsappText: string | null
+      }
     }
   | { ok: false; error: string }
 
@@ -57,7 +72,36 @@ export function planReviewSettings(draft: ReviewSettingsDraft): ReviewSettingsPl
     return { ok: false, error: 'Texto de agradecimento muito longo' }
   }
 
-  return { ok: true, settings: { isEnabled: draft.isEnabled === true, title, welcomeText, thanksText } }
+  const whatsappText = cleanText(draft.whatsappText)
+  if (whatsappText && whatsappText.length > MAX_WHATSAPP_TEXT_LENGTH) {
+    return { ok: false, error: 'Mensagem do WhatsApp muito longa' }
+  }
+  // Sem o link, a mensagem não leva o cliente a lugar nenhum.
+  if (whatsappText && !whatsappText.includes('{link}')) {
+    return { ok: false, error: 'A mensagem do WhatsApp precisa ter {link}, onde entra o link da avaliação' }
+  }
+
+  const whatsappDelayHours = draft.whatsappDelayHours ?? REVIEW_WHATSAPP_DELAY.default
+  if (
+    !Number.isInteger(whatsappDelayHours) ||
+    whatsappDelayHours < REVIEW_WHATSAPP_DELAY.min ||
+    whatsappDelayHours > REVIEW_WHATSAPP_DELAY.max
+  ) {
+    return { ok: false, error: `O envio pelo WhatsApp é de ${REVIEW_WHATSAPP_DELAY.min} a ${REVIEW_WHATSAPP_DELAY.max} horas depois` }
+  }
+
+  return {
+    ok: true,
+    settings: {
+      isEnabled: draft.isEnabled === true,
+      title,
+      welcomeText,
+      thanksText,
+      sendWhatsapp: draft.sendWhatsapp === true,
+      whatsappDelayHours,
+      whatsappText,
+    },
+  }
 }
 
 /** Os textos que o formulário mostra: os do salão, ou o padrão. */

@@ -194,6 +194,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/promotions`)
   // E os pedidos de avaliação (nascem no faturamento — fase 6).
   revalidatePath(`/${salonId}/reviews`)
+  // E a fila de mensagens ao cliente (fase 6).
+  revalidatePath(`/${salonId}/care-messages`)
 }
 
 // ============================================================================
@@ -812,6 +814,8 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
     redeemCashback: parsed.data.redeemCashback ?? 0,
     // Com avaliações ligadas, faturar gera o pedido de avaliação do atendimento (fase 6).
     requestReview: await salonHasModule(parsed.data.salonId, "reviews"),
+    // Com o módulo ligado, faturar agenda os cuidados de depois e o retorno (fase 6).
+    careMessages: await salonHasModule(parsed.data.salonId, "care_messages"),
   })
   if (!result.success) return { error: result.error }
 

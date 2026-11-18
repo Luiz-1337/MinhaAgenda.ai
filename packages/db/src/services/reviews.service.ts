@@ -1,7 +1,18 @@
 import { randomBytes } from "node:crypto"
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 
-import { db, customers, professionals, reviewSettings, reviews, saleItems, sales, salons } from "../index"
+import {
+  db,
+  careMessageDispatches,
+  customers,
+  professionals,
+  reviewSettings,
+  reviews,
+  saleItems,
+  sales,
+  salons,
+} from "../index"
+import { reviewMessageSchedule } from "../domain/care-messages"
 import { brazilToday } from "../domain/finance"
 import {
   buildReviewDashboard,
@@ -48,9 +59,20 @@ export type ReviewSettingsRow = {
   title: string | null
   welcomeText: string | null
   thanksText: string | null
+  sendWhatsapp: boolean
+  whatsappDelayHours: number
+  whatsappText: string | null
 }
 
-const DEFAULT_SETTINGS: ReviewSettingsRow = { isEnabled: false, title: null, welcomeText: null, thanksText: null }
+const DEFAULT_SETTINGS: ReviewSettingsRow = {
+  isEnabled: false,
+  title: null,
+  welcomeText: null,
+  thanksText: null,
+  sendWhatsapp: false,
+  whatsappDelayHours: 2,
+  whatsappText: null,
+}
 
 /** A configuração do salão. Sem linha gravada, as avaliações estão desligadas. */
 export async function getReviewSettingsService(salonId: string, executor: Executor = db): Promise<ReviewSettingsRow> {
@@ -60,6 +82,9 @@ export async function getReviewSettingsService(salonId: string, executor: Execut
       title: reviewSettings.title,
       welcomeText: reviewSettings.welcomeText,
       thanksText: reviewSettings.thanksText,
+      sendWhatsapp: reviewSettings.sendWhatsapp,
+      whatsappDelayHours: reviewSettings.whatsappDelayHours,
+      whatsappText: reviewSettings.whatsappText,
     })
     .from(reviewSettings)
     .where(eq(reviewSettings.salonId, salonId))
@@ -129,6 +154,29 @@ export async function requestSaleReview(
       requestedAt: input.now,
     })
     .onConflictDoNothing({ target: reviews.saleId })
+
+  if (!settings.sendWhatsapp) return
+
+  // O pedido pelo WhatsApp (fatia 6d): entra na fila de envios, para sair N horas
+  // depois. Um por pedido — faturar de novo depois de reabrir não manda outro.
+  const [pending] = await tx
+    .select({ id: reviews.id })
+    .from(reviews)
+    .where(and(eq(reviews.saleId, input.saleId), eq(reviews.salonId, input.salonId), isNull(reviews.rating)))
+    .limit(1)
+  if (!pending) return
+
+  await tx
+    .insert(careMessageDispatches)
+    .values({
+      salonId: input.salonId,
+      customerId: input.customerId,
+      kind: "review",
+      saleId: input.saleId,
+      reviewId: pending.id,
+      scheduledFor: reviewMessageSchedule({ now: input.now, delayHours: settings.whatsappDelayHours }),
+    })
+    .onConflictDoNothing()
 }
 
 /**

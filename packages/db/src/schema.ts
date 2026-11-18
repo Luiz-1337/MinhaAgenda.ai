@@ -2052,6 +2052,11 @@ export const reviewSettings = pgTable('review_settings', {
   title: text('title'),
   welcomeText: text('welcome_text'),
   thanksText: text('thanks_text'),
+  // O pedido pelo WhatsApp (migration 057): N horas depois de faturar.
+  sendWhatsapp: boolean('send_whatsapp').default(false).notNull(),
+  whatsappDelayHours: integer('whatsapp_delay_hours').default(2).notNull(),
+  // NULL = usa o texto padrão do sistema.
+  whatsappText: text('whatsapp_text'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
@@ -2078,6 +2083,80 @@ export const reviews = pgTable(
     uniqueIndex('reviews_sale_unique').on(table.saleId),
     index('reviews_salon_date_idx').on(table.salonId, table.serviceDate.desc()),
     index('reviews_customer_idx').on(table.customerId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Mensagens de cuidados e de retorno (migration 057)
+// ============================================================================
+// A mensagem que o salão manda ao cliente por serviço ou produto, e a fila de
+// envios (que também leva o pedido de avaliação). Regra em domain/care-messages.ts.
+
+export type CareMessageKindColumn = 'pre_care' | 'post_care' | 'return'
+export type CareDispatchKindColumn = CareMessageKindColumn | 'review'
+export type CareDispatchStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'skipped'
+
+export const careMessageRules = pgTable(
+  'care_message_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<CareMessageKindColumn>().notNull(),
+    // Exatamente um dos dois (CHECK). Cuidados de antes: só serviço.
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
+    // Dias antes do agendamento (pre_care) ou depois da comanda (os outros).
+    offsetDays: integer('offset_days').notNull(),
+    message: text('message').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('care_message_rules_service_unique')
+      .on(table.salonId, table.kind, table.serviceId)
+      .where(sql`service_id IS NOT NULL`),
+    uniqueIndex('care_message_rules_product_unique')
+      .on(table.salonId, table.kind, table.productId)
+      .where(sql`product_id IS NOT NULL`)
+  ]
+)
+
+export const careMessageDispatches = pgTable(
+  'care_message_dispatches',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<CareDispatchKindColumn>().notNull(),
+    // NULL = a mensagem foi excluída (o histórico fica) ou é pedido de avaliação.
+    ruleId: uuid('rule_id').references(() => careMessageRules.id, { onDelete: 'set null' }),
+    // A origem: a comanda ou o agendamento (CHECK: pelo menos um).
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    appointmentId: uuid('appointment_id').references(() => appointments.id, { onDelete: 'cascade' }),
+    reviewId: uuid('review_id').references(() => reviews.id, { onDelete: 'cascade' }),
+    itemName: text('item_name'),
+    scheduledFor: timestamp('scheduled_for').notNull(),
+    status: text('status').$type<CareDispatchStatus>().default('pending').notNull(),
+    // O texto que saiu.
+    body: text('body'),
+    // Por que falhou ou não foi enviado.
+    detail: text('detail'),
+    sentAt: timestamp('sent_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('care_message_dispatches_sale_rule_unique')
+      .on(table.saleId, table.ruleId)
+      .where(sql`sale_id IS NOT NULL AND rule_id IS NOT NULL`),
+    uniqueIndex('care_message_dispatches_appointment_rule_unique')
+      .on(table.appointmentId, table.ruleId)
+      .where(sql`appointment_id IS NOT NULL AND rule_id IS NOT NULL`),
+    uniqueIndex('care_message_dispatches_review_unique').on(table.reviewId).where(sql`review_id IS NOT NULL`),
+    index('care_message_dispatches_due_idx').on(table.scheduledFor).where(sql`status = 'pending'`),
+    index('care_message_dispatches_salon_idx').on(table.salonId, table.scheduledFor.desc()),
+    index('care_message_dispatches_customer_idx').on(table.customerId)
   ]
 )
 

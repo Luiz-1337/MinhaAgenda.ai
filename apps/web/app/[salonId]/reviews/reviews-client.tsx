@@ -75,6 +75,9 @@ export function ReviewsClient({ salonId, data }: { salonId: string; data: Review
   const [title, setTitle] = useState(data.settings.title ?? "")
   const [welcomeText, setWelcomeText] = useState(data.settings.welcomeText ?? "")
   const [thanksText, setThanksText] = useState(data.settings.thanksText ?? "")
+  const [sendWhatsapp, setSendWhatsapp] = useState(data.settings.sendWhatsapp)
+  const [whatsappDelayHours, setWhatsappDelayHours] = useState(String(data.settings.whatsappDelayHours))
+  const [whatsappText, setWhatsappText] = useState(data.settings.whatsappText ?? "")
 
   const { dashboard } = data
 
@@ -115,6 +118,11 @@ export function ReviewsClient({ salonId, data }: { salonId: string; data: Review
   }
 
   function submitSettings() {
+    const delayHours = Number(whatsappDelayHours)
+    if (!Number.isInteger(delayHours)) {
+      toast.error("Informe as horas em número inteiro")
+      return
+    }
     startTransition(async () => {
       const result = await saveReviewSettings({
         salonId,
@@ -122,6 +130,9 @@ export function ReviewsClient({ salonId, data }: { salonId: string; data: Review
         title: title.trim() || null,
         welcomeText: welcomeText.trim() || null,
         thanksText: thanksText.trim() || null,
+        sendWhatsapp,
+        whatsappDelayHours: delayHours,
+        whatsappText: whatsappText.trim() || null,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -425,8 +436,10 @@ export function ReviewsClient({ salonId, data }: { salonId: string; data: Review
           </div>
         )}
         <p className="p-3 border-t border-border text-xs text-muted-foreground">
-          O link de cada pedido é copiado aqui ou na comanda e enviado ao cliente por quem atende; o envio automático
-          ainda não existe. A nota de uma comanda conta para cada profissional que executou serviço nela.
+          {data.settings.sendWhatsapp
+            ? "O pedido sai sozinho pelo WhatsApp depois de a comanda ser faturada; o link também pode ser copiado aqui ou na comanda."
+            : "O link de cada pedido é copiado aqui ou na comanda e enviado ao cliente por quem atende. O envio pelo WhatsApp é ativado em Personalizar."}{" "}
+          A nota de uma comanda conta para cada profissional que executou serviço nela.
           {data.truncated ? ` Mostrando os ${data.reviews.length} pedidos mais recentes do período.` : ""}
         </p>
       </section>
@@ -491,6 +504,55 @@ export function ReviewsClient({ salonId, data }: { salonId: string; data: Review
             <p className="text-xs text-muted-foreground">
               Em branco, o formulário usa o texto de exemplo. A nota (1 a 5) e o comentário opcional são fixos, e o
               rodapé mostra a data do atendimento.
+            </p>
+
+            <hr className="border-border" />
+
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={sendWhatsapp}
+                disabled={isPending}
+                onChange={(event) => setSendWhatsapp(event.target.checked)}
+              />
+              Enviar o pedido pelo WhatsApp
+            </label>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reviews-whatsapp-delay" className={labelClass}>
+                Horas depois de faturar a comanda
+              </label>
+              <input
+                id="reviews-whatsapp-delay"
+                type="number"
+                inputMode="numeric"
+                min={data.whatsappDelay.min}
+                max={data.whatsappDelay.max}
+                step={1}
+                value={whatsappDelayHours}
+                disabled={isPending || !sendWhatsapp}
+                onChange={(event) => setWhatsappDelayHours(event.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reviews-whatsapp-text" className={labelClass}>
+                Mensagem do WhatsApp
+              </label>
+              <textarea
+                id="reviews-whatsapp-text"
+                rows={4}
+                maxLength={500}
+                placeholder={data.defaults.whatsapp}
+                value={whatsappText}
+                disabled={isPending || !sendWhatsapp}
+                onChange={(event) => setWhatsappText(event.target.value)}
+                className={`${inputClass} resize-none`}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A mensagem precisa ter {"{link}"}, onde entra o link da avaliação; {"{cliente}"} e {"{salao}"} são
+              opcionais. Ela sai das 9h às 20h, só para comandas faturadas depois de ativar, e não vai para quem pediu
+              para não receber mensagens.
             </p>
           </div>
           <div className="flex justify-end gap-2 p-4 border-t border-border">

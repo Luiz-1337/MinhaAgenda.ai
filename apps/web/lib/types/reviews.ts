@@ -36,7 +36,9 @@ export interface ReviewsDTO {
   to: string
   settings: ReviewSettingsDTO
   /** Os textos que o formulário usa quando o salão não escreveu os seus. */
-  defaults: { title: string; welcome: string; thanks: string }
+  defaults: { title: string; welcome: string; thanks: string; whatsapp: string }
+  /** Limites de "quantas horas depois" do pedido pelo WhatsApp. */
+  whatsappDelay: { min: number; max: number }
   dashboard: ReviewDashboard
   reviews: ReviewDTO[]
   truncated: boolean
@@ -50,6 +52,9 @@ export interface SaveReviewSettingsInput {
   title: string | null
   welcomeText: string | null
   thanksText: string | null
+  sendWhatsapp: boolean
+  whatsappDelayHours: number
+  whatsappText: string | null
 }
 
 /** O pedido de avaliação de uma comanda, para a tela da comanda mostrar o link. */

@@ -59,6 +59,7 @@ import type { PlannedPayment } from "../domain/sales"
 import { applyCouponToSale, type CouponRule } from "../domain/promotions"
 import { loadSaleCoupon } from "./promotions.service"
 import { discardPendingSaleReview, requestSaleReview } from "./reviews.service"
+import { discardPendingSaleCareMessages, enqueueSaleCareMessages } from "./care-messages.service"
 
 /** `professionals` uma segunda vez, para o nome de quem auxiliou no item. */
 const assistants = alias(professionals, "assistants")
@@ -543,6 +544,11 @@ export async function invoiceSaleService(input: {
    * pedido de avaliação. Quem decide é a action.
    */
   requestReview?: boolean
+  /**
+   * Módulo `care_messages` ligado no salão (fase 6): só então a comanda faturada
+   * agenda os cuidados de depois e o retorno. Quem decide é a action.
+   */
+  careMessages?: boolean
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -720,6 +726,17 @@ export async function invoiceSaleService(input: {
         customerId: sale.customerId,
         saleDate: sale.saleDate,
         moduleEnabled: input.requestReview === true,
+        now,
+      })
+
+      // Os cuidados de depois e o retorno dos serviços e produtos da comanda
+      // (fase 6). Um envio por comanda e por mensagem.
+      await enqueueSaleCareMessages(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+        saleDate: sale.saleDate,
+        moduleEnabled: input.careMessages === true,
         now,
       })
     })
@@ -957,6 +974,9 @@ export async function voidSaleService(input: {
       // O pedido de avaliação que ninguém respondeu some com a comanda; a
       // avaliação respondida fica (fase 6).
       await discardPendingSaleReview(tx, { salonId: input.salonId, saleId: sale.id })
+
+      // As mensagens ao cliente que ainda não saíram não saem mais (fase 6).
+      await discardPendingSaleCareMessages(tx, { salonId: input.salonId, saleId: sale.id })
 
       await tx
         .update(sales)
