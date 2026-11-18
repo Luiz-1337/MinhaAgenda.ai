@@ -76,6 +76,8 @@ Fatia 7c (recorrência de agendamento) na mesma branch: migration 061 aplicada e
 18/nov/2026, publicada e testada em uso — ver §11.9.
 Fatia 7d (anamneses) feita na mesma branch — migration 062 aplicada em
 18/nov/2026, publicada e testada em uso — ver §11.10.
+Fatia 7e (documentos com assinatura) feita na mesma branch — **em commit local,
+migration 063 NÃO aplicada, sem publicar e sem teste em uso** — ver §11.11.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3305,7 +3307,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
 | 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita — migration 062 aplicada, publicada na branch e testada em uso (§11.10) |
-| 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
+| 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Feita em código — **migration 063 não aplicada, sem publicar e sem teste em uso** (§11.11) |
 | 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
 
 A ordem vai do que só acrescenta ao que mexe no caminho crítico. O agendamento
@@ -3378,6 +3380,20 @@ DEFAULT); tem que ser aplicada antes de publicar o código:
 - **`customer_anamneses`** — cada ficha respondida: `customer_id` (CASCADE),
   `template_id` (SET NULL), `template_name` e `answers` (jsonb: `questionId`,
   `label`, `type`, `value`) como RETRATO do dia, e `filled_by`.
+
+**Migration 063 (fatia 7e)** — só tabelas novas, não mexe em nenhuma existente.
+Mesmo assim **tem que ser aplicada antes de publicar o código**: a exclusão de
+contato passa a consultar `customer_documents` (regra 39).
+
+- **`document_templates`** — os modelos do salão: `name` (único no salão, sem
+  diferença de maiúscula; é o título do documento), `body` (até 20.000
+  caracteres) e `is_active`.
+- **`customer_documents`** — cada documento gerado: `customer_id` (CASCADE),
+  `template_id` (SET NULL), `title` e `body` como RETRATO do dia (com os
+  campos preenchidos), `body_hash` (SHA-256 de título + texto), `token` (único
+  no sistema), `expires_at`, e a assinatura: `signed_at`, `signer_name`,
+  `signature_image` (PNG em data URL, até 200.000 caracteres), `signer_ip` e
+  `signer_user_agent`. Um CHECK garante que nome, imagem e data andam juntos.
 
 ### 11.4 Regras decididas
 
@@ -3472,6 +3488,43 @@ Fatia 7d — anamneses:
 31. **Excluir o cliente apaga as anamneses dele**, sem aviso a mais na tela de
     exclusão.
 
+Fatia 7e — documentos com assinatura:
+
+32. **O salão escreve modelos de documento**: um nome (que é o título que o
+    cliente vê) e o texto, até 20.000 caracteres, sem formatação além das quebras
+    de linha. Até 30 modelos. O texto aceita três campos, preenchidos na hora de
+    gerar: `{{cliente}}`, `{{salao}}` e `{{data}}` (o dia, em Brasília).
+    Campo que não existe (`{{cpf}}`) é recusado ao salvar o modelo.
+33. **Gerar é na ficha do cliente**, a partir de um modelo ativo. O documento é
+    um retrato: guarda título e texto do dia, já com os campos preenchidos, e o
+    SHA-256 desse texto. Alterar, desativar ou excluir o modelo não muda o
+    documento, assinado ou não.
+34. **O cliente assina por um link sem login** (`/assinar/<token>`). A única
+    credencial é o token (192 bits aleatórios). **O sistema não envia o link**:
+    gerar copia o link, e quem atende manda pelo canal que quiser.
+35. **Assinar** é: ler o texto, escrever o nome completo, desenhar a assinatura
+    (dedo, caneta ou mouse) e marcar "li e concordo". Ficam gravados o nome, a
+    imagem da assinatura, a data e a hora, o endereço de internet (IP) e o
+    navegador. **Não há conferência de identidade**: assina quem tem o link.
+    Não é assinatura com certificado digital (ICP-Brasil).
+36. **Assina-se uma vez só.** Depois de assinado, o documento não muda, e o
+    mesmo link passa a mostrar o documento com a assinatura — é a via do
+    cliente. O link nunca mostra IP, telefone nem outro dado do cadastro.
+37. **O link vale 30 dias.** Vencido sem assinatura, não aceita mais; o salão
+    gera outro. Até 10 documentos esperando assinatura por cliente.
+38. **Permissão própria** (`customers.documents`, "Documentos" em Clientes):
+    ver os documentos, gerar, copiar o link e gerenciar os modelos. Ter acesso
+    aos contatos NÃO basta. Dono e gerente sem perfil têm; funcionário sem
+    perfil não tem; perfil de acesso existente não tem até alguém marcar.
+39. **Excluir documento**: o que ainda não foi assinado sai com a permissão
+    acima; o ASSINADO pede também `customers.delete`. **Contato com documento
+    assinado não é excluído**: a tela avisa para excluir os documentos antes.
+    (Diferente da anamnese, regra 31: o documento assinado é registro do salão.)
+40. **A imagem da assinatura fica no banco**, na linha do documento, e não em
+    storage: é um PNG pequeno, e assim fica atrás do mesmo RLS do resto. O
+    servidor só aceita data URL de PNG.
+41. **O agente do WhatsApp não vê nem envia documento.**
+
 Perguntas para o dono:
 
 - (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
@@ -3509,6 +3562,21 @@ Perguntas para o dono:
   conversar com o cliente? Hoje ela não lê.
 - (7d) Ao excluir um cliente com anamnese, a tela deve avisar que as fichas vão
   junto (regra 31), ou impedir?
+- (7e) O desenho da assinatura na tela basta para o que o salão precisa, ou é
+  preciso assinatura com validade jurídica mais forte (confirmação por código no
+  WhatsApp, CPF, ou certificado digital por um serviço de terceiros)?
+- (7e) O sistema deve mandar o link pelo WhatsApp do salão, em vez de só copiar?
+  Na API oficial isso pede um modelo de mensagem aprovado.
+- (7e) 30 dias de validade do link está bom? O salão deve poder escolher?
+- (7e) O salão precisa assinar também (duas assinaturas no mesmo documento)?
+- (7e) Faz falta imprimir ou baixar o documento assinado em PDF? Hoje se vê na
+  tela (do salão e do cliente).
+- (7e) Faz falta formatação no texto (negrito, títulos), outros campos (CPF,
+  serviço, profissional) ou anexar a anamnese ao termo?
+- (7e) Bloquear a exclusão do contato com documento assinado (regra 39) é o
+  certo, ou o salão prefere que tudo saia junto, como na anamnese?
+- (7e) O documento deve poder ser pedido automaticamente (por exemplo, antes do
+  primeiro atendimento de um serviço)?
 
 ### 11.5 Telas
 
@@ -3536,6 +3604,18 @@ Perguntas para o dono:
 - **Modelos de anamnese (7d)**: janela aberta por "Modelos" no cartão. Lista os
   modelos (perguntas, fichas respondidas, "Inativo") e edita: nome, ativo, e as
   perguntas com texto, tipo, obrigatória, opções (uma por linha) e ordem.
+- **Ficha do cliente (7e)**: cartão "Documentos", abaixo das anamneses, só para
+  quem tem a permissão. "Gerar" (com a lista de modelos quando há mais de um)
+  cria o documento e copia o link. Cada documento mostra a situação (Aguardando
+  assinatura, Assinado, Link vencido), "Copiar link" enquanto dá para assinar,
+  ver e excluir. Ver abre o texto e, se assinado, a assinatura, o nome, a data,
+  o IP e o navegador, além do SHA-256.
+- **Modelos de documento (7e)**: janela aberta por "Modelos" no cartão: nome,
+  ativo e o texto, com a lista dos campos aceitos.
+- **Página pública (7e)** (`/assinar/<token>`, sem login): nome do salão, título
+  e texto; o formulário de assinatura (nome, quadro para desenhar com "Limpar",
+  "li e concordo"); depois de assinado, a assinatura e a data. Link desconhecido
+  ou vencido mostra um aviso.
 
 ### 11.6 Onde está o código
 
@@ -3545,6 +3625,7 @@ Perguntas para o dono:
 | Etiquetas e remarcar (7b) | Migration `060_appointment_labels.sql`; tabela `appointmentLabels` e `appointments.labelId`; regra em `domain/appointment-labels.ts` (`planAppointmentLabel`, `labelTextColor`); I/O em `services/appointment-labels.service.ts`; actions em `actions/appointment-labels.ts`; `rescheduleAppointment` em `actions/appointments.ts` (chama `updateAppointmentService`); a consulta da grade (`lib/repositories/appointment.repository.ts`) traz a etiqueta; telas em `components/scheduler/` (`appointment-labels-dialog.tsx`, `appointment-detail-dialog.tsx`, `scheduler-view.tsx`, `daily-scheduler.tsx`, `weekly-scheduler.tsx`); testes em `appointment-labels-domain.test.ts` |
 | Recorrência (7c) | Migration `061_appointment_series.sql`; tabela `appointmentSeries` e `appointments.seriesId`; regra em `domain/appointment-series.ts` (`planAppointmentSeries`, `addCalendarDays`, `describeSeriesOutcome`); I/O em `services/appointment-series.service.ts` (`createAppointmentSeriesService` repete o `createAppointmentService`; `cancelAppointmentSeriesService` repete o `cancelAppointmentService`); actions `createAppointmentSeries` e `cancelAppointmentSeries` em `actions/appointments.ts`, com o portão de criação extraído para `authorizeAppointmentCreation`; telas em `components/scheduler/create-appointment-dialog.tsx` e `appointment-detail-dialog.tsx`; testes em `appointment-series-domain.test.ts` |
 | Anamneses (7d) | Migration `062_anamneses.sql`; tabelas `anamnesisTemplates` e `customerAnamneses`; regra em `domain/anamneses.ts` (`planAnamnesisTemplate`, `planAnamnesisAnswers`, `parseAnamnesisQuestions`, `parseAnamnesisAnswers`, `formatAnamnesisAnswer`); I/O em `services/anamneses.service.ts`; actions em `actions/anamneses.ts` (na guarda de `actions-authz.test.ts`); permissão `customers.anamneses` em `domain/permissions.ts`, com rótulo em `permissions.constants.ts`; telas em `components/contacts/customer-anamneses-card.tsx` e `anamnesis-templates-dialog.tsx`; testes em `anamneses-domain.test.ts` |
+| Documentos com assinatura (7e) | Migration `063_customer_documents.sql`; tabelas `documentTemplates` e `customerDocuments`; regra em `domain/customer-documents.ts` (`planDocumentTemplate`, `renderDocument`, `documentStatus`, `planDocumentSignature`, `isDocumentToken`); I/O em `services/customer-documents.service.ts` (as duas funções públicas no fim do arquivo); actions em `actions/customer-documents.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-documents.ts` (pública, FORA da guarda de propósito); permissão `customers.documents`; telas em `components/contacts/customer-documents-card.tsx` e `document-templates-dialog.tsx`; página pública em `app/assinar/[token]/`; a trava de exclusão em `deleteSalonCustomer` (`actions/customers.ts`); testes em `customer-documents-domain.test.ts` |
 
 ### 11.7 Fatia 7a — estado (18/nov/2026)
 
@@ -3746,6 +3827,39 @@ Perguntas para o dono:
   modelo repetido, mudar a ordem das perguntas, e excluir um cliente com
   anamnese.
 
+### 11.11 Fatia 7e — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1351, db 296, mcp-server 409).
+- **Migration 063: NÃO aplicada.** Só cria duas tabelas, então não há cópia a
+  fazer antes. **Aplicar ANTES de publicar**: sem ela, excluir contato falha
+  ("Falha ao remover contato"), porque a exclusão consulta a tabela nova.
+- **Sem módulo.** O cartão aparece em todos os salões assim que o código for
+  publicado, para quem tem a permissão nova (regra 38).
+- **Segunda rota pública do sistema** (a primeira é `/avaliar`). Como lá, não
+  há limite de tentativas por endereço: a proteção é o tamanho do token.
+- **Limites desta fatia:**
+  - o sistema não envia o link; quem atende copia e manda;
+  - sem conferência de identidade de quem assina, e sem certificado digital;
+  - só o cliente assina; o salão não assina;
+  - texto sem formatação, três campos, sem anexo;
+  - sem PDF, impressão dedicada nem exportação;
+  - documento não é pedido automaticamente, e não aparece na agenda nem na
+    comanda;
+  - a trava de exclusão vale para `deleteSalonCustomer`; outro caminho que
+    apague cliente direto no banco leva os documentos junto (CASCADE);
+  - os modelos só se abrem por dentro da ficha de um cliente.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 063 e
+  publicar: cartão "Documentos" sem modelo; criar um modelo com os três campos
+  (e tentar um campo que não existe — recusa); gerar para um cliente e conferir
+  o link copiado; abrir o link sem login: texto com os campos preenchidos;
+  tentar assinar sem nome, sem desenho e sem o "li e concordo" (três recusas);
+  assinar; a página passa a mostrar a assinatura; na ficha, "Assinado", e o
+  ver mostra assinatura, data, IP e navegador; alterar o modelo e conferir que
+  o documento não mudou; tentar excluir o contato (recusa, com o aviso); abrir
+  um link inventado ("Link inválido"); excluir o documento e o modelo.
+
 ## 12. Pendências do dono
 
 | Pendência | Trava |
@@ -3773,5 +3887,9 @@ Perguntas para o dono:
 | Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
 | Responder às perguntas da 7d em §11.4 (quem vê anamnese, corrigir ficha, link para o cliente e assinatura, tipos de pergunta, IA, excluir cliente) | Ajustes na 7d antes do piloto |
 | Marcar "Anamneses" nos perfis de acesso de quem deve ver e preencher | Funcionário com perfil usar as anamneses |
+| Aplicar a migration 063 (ou autorizar a aplicação) e publicar a fatia 7e — ver §11.11 | Teste em uso da fatia 7e |
+| Responder às perguntas da 7e em §11.4 (força da assinatura, envio pelo WhatsApp, validade do link, PDF, exclusão de contato) | Ajustes na 7e antes do piloto |
+| Marcar "Documentos" nos perfis de acesso de quem deve gerar e ver documentos | Funcionário com perfil usar os documentos |
+| Ter o texto dos termos do salão revisado por quem entende (advogado), antes de usar com clientes | Uso dos documentos no piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql, domainServices, phonesMatch, customerProfileFromRow, maskCpf } from "@repo/db"
+import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql, domainServices, phonesMatch, customerProfileFromRow, maskCpf, customerHasSignedDocumentService } from "@repo/db"
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service"
 import { ActionResult } from "@/lib/types/common"
 import { CUSTOMERS_PAGE_SIZE } from "@/lib/types/customer"
@@ -802,7 +802,15 @@ export async function deleteSalonCustomer(
       return { error: "Contato não encontrado ou não pertence a este salão" }
     }
 
-    // 5. Remove o registro de customers
+    // 5. Documento assinado é registro do salão: não some junto com o cliente
+    //    sem que alguém o exclua de propósito (docs/ROADMAP.md, fase 7, fatia 7e).
+    if (await customerHasSignedDocumentService({ salonId, customerId })) {
+      return {
+        error: "Este contato tem documento assinado. Exclua os documentos na ficha dele antes de remover o contato.",
+      }
+    }
+
+    // 6. Remove o registro de customers
     await db.delete(customers).where(eq(customers.id, customerId))
 
     return { success: true }

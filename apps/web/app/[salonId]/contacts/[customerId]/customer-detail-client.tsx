@@ -17,6 +17,7 @@ import { CustomerPackagesCard } from "@/components/contacts/customer-packages-ca
 import { CustomerCashbackCard } from "@/components/contacts/customer-cashback-card"
 import { CustomerProfileCard } from "@/components/contacts/customer-profile-card"
 import { CustomerAnamnesesCard } from "@/components/contacts/customer-anamneses-card"
+import { CustomerDocumentsCard } from "@/components/contacts/customer-documents-card"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -226,6 +227,9 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
 
         {/* Anamneses (fase 7): só para quem tem a permissão `customers.anamneses`. */}
         <CustomerAnamnesesCard salonId={salonId} customerId={detail.id} />
+
+        {/* Documentos com assinatura (fase 7): só para quem tem `customers.documents`. */}
+        <CustomerDocumentsCard salonId={salonId} customerId={detail.id} />
 
         {/* Vendas: só aparece no salão com o módulo de comandas ligado. */}
         <CustomerSalesCard salonId={salonId} customerId={detail.id} />

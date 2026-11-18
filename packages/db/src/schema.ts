@@ -2295,6 +2295,59 @@ export const customerAnamneses = pgTable(
 )
 
 // ============================================================================
+// TABLES - Documentos com assinatura (migration 063)
+// ============================================================================
+// Modelos de termo e os documentos gerados para um cliente, assinados por link
+// público (/assinar/<token>). O documento é um retrato: guarda título e texto do
+// dia em que foi gerado. Regra em domain/customer-documents.ts.
+
+export const documentTemplates = pgTable(
+  'document_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    body: text('body').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('document_templates_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const customerDocuments = pgTable(
+  'customer_documents',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // CASCADE no banco; a aplicação recusa excluir cliente com documento ASSINADO.
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    templateId: uuid('template_id').references(() => documentTemplates.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    // SHA-256 (hex) de título + texto.
+    bodyHash: text('body_hash').notNull(),
+    // A credencial do link público: aleatório, único no sistema inteiro.
+    token: text('token').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    // NULL = ainda não assinado. Nome, imagem e data andam juntos (CHECK).
+    signedAt: timestamp('signed_at'),
+    signerName: text('signer_name'),
+    // data:image/png;base64,...
+    signatureImage: text('signature_image'),
+    signerIp: text('signer_ip'),
+    signerUserAgent: text('signer_user_agent'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('customer_documents_token_unique').on(table.token),
+    index('customer_documents_customer_idx').on(table.customerId, table.createdAt.desc()),
+    index('customer_documents_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(
