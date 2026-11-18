@@ -3257,8 +3257,9 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 - **PR #19 mesclado na `main`** em 18/nov/2026 (commit `a3d74f4`), só com a
   fase 6 (15 commits): a `main` já tinha as fases 3 e 4 (PR #17) e a fase 5
   (PR #18).
-- **O deploy de produção desse commit não foi conferido**: ainda estava
-  compilando na Vercel quando este registro foi escrito.
+- **O deploy de produção desse commit terminou sem erro** (estado READY na
+  Vercel, conferido em 18/nov/2026). Nenhuma tela foi aberta em produção depois
+  dele.
 - **Banco:** as migrations 054 a 058 já estavam aplicadas; o merge não exigiu
   nada.
 - **O CI do PR falhou, e não foi pela fase 6.** O passo de lint
@@ -3296,7 +3297,6 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
-| Conferir que o deploy de produção do commit `a3d74f4` (fase 6) terminou sem erro — ver §10.13 | Saber se a fase 6 está mesmo no ar |
 | Com a fase 6 em produção, no salão de teste: ativar as avaliações, faturar uma comanda e abrir o link de avaliação numa janela anônima — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
 | Com a fase 6 em produção, no salão de teste: cadastrar uma mensagem de cuidados de depois (0 dias), faturar uma comanda de um cliente com WhatsApp de teste e esperar a rodada do cron (a cada 30 min, das 9h às 20h) — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
 | Zerar os 152 erros de lint do `apps/web` (ou tirar o lint do caminho obrigatório do CI) — ver §10.13 | O CI falha em todo PR e não chega a rodar tipos nem build |
