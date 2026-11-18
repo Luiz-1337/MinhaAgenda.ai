@@ -211,7 +211,7 @@ export function GoalsClient({ salonId, data }: { salonId: string; data: GoalsDTO
         >
           <ChevronRight size={16} />
         </button>
-        <p className="text-sm font-semibold text-foreground capitalize ml-1">{monthLabel(data.month)}</p>
+        <p className="text-sm font-semibold text-foreground ml-1 first-letter:uppercase">{monthLabel(data.month)}</p>
         {data.month !== data.currentMonth && (
           <Button variant="ghost" size="sm" onClick={() => goTo(data.currentMonth)} disabled={isPending}>
             Mês atual
@@ -311,7 +311,7 @@ export function GoalsClient({ salonId, data }: { salonId: string; data: GoalsDTO
       {draft && (
         <Modal title={`Metas de ${draft.row.name}`} onClose={() => setDraft(null)} disabled={isPending}>
           <div className="p-4 flex flex-col gap-3">
-            <p className="text-xs text-muted-foreground capitalize">{monthLabel(data.month)}</p>
+            <p className="text-xs text-muted-foreground first-letter:uppercase">{monthLabel(data.month)}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {METRICS.map((metric) => (
                 <div key={metric.key} className="flex flex-col gap-1">

@@ -57,9 +57,9 @@ Fatia 6d (mensagens de cuidados e de retorno, e pedido de avaliação pelo Whats
 na mesma branch: migration 057 aplicada em 17/nov/2026, módulo `care_messages`
 ligado só no salão de teste, publicada, e o cadastro e a fila testados em uso —
 **o envio de verdade pelo WhatsApp NÃO foi testado** — ver §10.10.
-Fatia 6e (metas por mês) feita na mesma branch — **em commit local, migration 058
-NÃO aplicada, módulo `goals` desligado em todos os salões, sem publicar e sem
-teste em uso** — ver §10.11.
+Fatia 6e (metas por mês) na mesma branch: migration 058 aplicada em 18/nov/2026,
+módulo `goals` ligado só no salão de teste, publicada e testada em uso — ver
+§10.11.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2531,7 +2531,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
 | 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita, migration 057 aplicada e publicada; cadastro e fila testados em uso — **o envio pelo WhatsApp não foi testado** (§10.10) |
-| 6e | Metas por mês, do salão e por profissional (faturamento, serviços, produtos e comandas), com o realizado, o ritmo e "Copiar metas" | Feita em código — **migration 058 não aplicada, sem publicar e sem teste em uso** (§10.11) |
+| 6e | Metas por mês, do salão e por profissional (faturamento, serviços, produtos e comandas), com o realizado, o ritmo e "Copiar metas" | Feita, migration 058 aplicada, publicada e testada em uso (§10.11) |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
 
 O "Permitir resgate pelo agendamento online" do cashback depende do agendamento
@@ -3136,13 +3136,14 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 
 ### 10.11 Fatia 6e — estado (18/nov/2026)
 
-- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1254, db 296, mcp-server 400).
-- **Migration 058: NÃO aplicada.** Só cria a tabela `goals` (não mexe em tabela
-  existente). Sem ela, a tela de Metas dá erro — mas só o salão com o módulo
-  ligado chega nela.
-- **O módulo `goals` está desligado em todos os salões.**
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1254, db 296,
+  mcp-server 400).
+- **Migration 058 aplicada em produção em 18/nov/2026** (registrada como
+  `goals`). Só cria a tabela `goals`, por isso não houve cópia em `backups`.
+  Conferido por leitura: RLS ligado e sem acesso para `anon`/`authenticated`.
+- **O módulo `goals` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 18/nov/2026). É o único salão com ele.
 - **A auditoria só cita "Metas" (T-08) e o "Copiar metas"**, sem os campos.
   Indicadores, de onde vem o realizado e o ritmo foram decididos aqui (regras 39
   a 44).
@@ -3151,14 +3152,33 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
   de quem mudou a meta; o agente do WhatsApp não conhece as metas; o realizado é
   recalculado a cada abertura da tela (duas consultas com soma por mês — leve
   para o tamanho de hoje).
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 058,
-  ligar o módulo e publicar: abrir Metas (mês atual, aviso de "nenhuma meta");
-  definir as quatro metas do salão e uma de um profissional; conferir o
-  realizado contra as comandas faturadas do mês (por leitura no banco); faturar
-  uma comanda e ver o realizado subir, excluí-la e ver descer; apagar uma meta
-  deixando em branco; ir ao mês seguinte e "Copiar metas" do atual; copiar de
-  novo (nada a copiar); copiar de um mês sem metas (recusado); um mês passado
-  mostra "Não bateu" e um futuro, "Ainda não começou".
+- **Testada em uso em 18/nov/2026**, no preview da branch, no salão de teste
+  (comanda #30). Passou:
+  - a tela no menu, no mês atual, com o aviso de "nenhuma meta" e o salão e os
+    dois profissionais zerados (o salão não tinha comanda faturada em novembro,
+    conferido por leitura);
+  - definir as quatro metas do salão (comandas "10,5" é recusado) e a meta de
+    serviços de um profissional;
+  - faturar uma comanda com um serviço de R$ 170 e um produto de R$ 30 → salão:
+    faturamento R$ 200 (20% de R$ 1.000), serviços R$ 170 ("Meta batida", 100%
+    de R$ 170), produtos R$ 30, 1 comanda; profissional: R$ 170 em serviços (3%
+    de R$ 5.000) e 1 comanda; o produto sem vendedor não entrou na linha dele;
+  - "Copiar metas" de novembro para dezembro → "5 metas copiadas", tudo "Ainda
+    não começou"; copiar de novo → "Nada a copiar"; copiar de um mês sem metas →
+    recusado; copiar para outubro → tudo "Não bateu";
+  - apagar uma meta deixando o campo em branco (a linha some do banco);
+  - excluir a comanda → o realizado volta a zero.
+- **Não testado em uso:** "No ritmo" (nenhuma meta de teste ficou acima do
+  ritmo sem bater); as setas de mês e o "Mês atual"; meta de profissional
+  inativo na cópia; profissional inativo com venda no mês; duas pessoas na mesma
+  comanda; item de pacote ou assinatura no faturamento; perfil sem
+  `goals.access` ou sem `goals.manage`; o módulo desligado.
+- **Corrigido depois do teste, sem teste em uso:** o nome do mês aparecia como
+  "Novembro De 2026" (maiúscula em toda palavra); passou a ter maiúscula só na
+  primeira letra.
+- Dados de teste limpos: a comanda #30 reaberta e excluída pela tela (fica como
+  excluída); as 14 metas de teste (outubro, novembro e dezembro) apagadas por
+  SQL, pelo ID do salão. Conferido por leitura: `goals` vazia.
 
 ## 11. Pendências do dono
 
@@ -3180,6 +3200,5 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 | Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
 | Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
-| Aplicar a migration 058 (ou autorizar a aplicação), ligar o módulo `goals` no salão de teste e publicar a fatia 6e — ver §10.11 | Teste em uso da fatia 6e |
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
