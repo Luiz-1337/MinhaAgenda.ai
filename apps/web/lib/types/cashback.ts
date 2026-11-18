@@ -6,6 +6,7 @@
  */
 import type {
   CashbackCustomerRow,
+  CashbackHistorySummary,
   CashbackEntryKind,
   CashbackItemRow,
   CashbackRateKind,
@@ -82,4 +83,35 @@ export interface SaleCashbackDTO {
   balance: string
   minRedeem: string
   status: CashbackStatus
+}
+
+/** Uma linha do relatório "Histórico de cashback" (fatia 6f). */
+export interface CashbackHistoryEntryDTO {
+  id: string
+  kind: CashbackEntryKind
+  /** Com sinal: ganho > 0, resgate < 0, ajuste ≠ 0. */
+  amount: string
+  reason: string | null
+  /** ISO. */
+  createdAt: string
+  customerId: string
+  customerName: string
+  saleId: string | null
+  saleNumber: number | null
+  itemDescription: string | null
+}
+
+export interface CashbackHistoryFilters {
+  /** "YYYY-MM-DD". Sem datas, o mês corrente até hoje. */
+  from?: string
+  to?: string
+}
+
+export interface CashbackHistoryDTO {
+  from: string
+  to: string
+  /** Os totais do período inteiro, em centavos. */
+  summary: CashbackHistorySummary
+  entries: CashbackHistoryEntryDTO[]
+  truncated: boolean
 }

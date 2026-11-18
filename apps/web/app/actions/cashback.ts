@@ -5,6 +5,8 @@ import {
   adjustCashbackService,
   getCashbackSettingsService,
   getCustomerCashbackService,
+  listCashbackHistoryService,
+  planReportPeriod,
   listCashbackCustomersService,
   listCashbackItemsService,
   saveCashbackRuleService,
@@ -17,12 +19,15 @@ import { salonHasModule } from "@/lib/services/salon-modules.service"
 import { formatZodError } from "@/lib/services/validation.service"
 import {
   adjustCashbackSchema,
+  cashbackHistoryFiltersSchema,
   saveCashbackRuleSchema,
   saveCashbackSettingsSchema,
 } from "@/lib/schemas/cashback.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type {
   AdjustCashbackInput,
+  CashbackHistoryDTO,
+  CashbackHistoryFilters,
   CashbackOverviewDTO,
   CustomerCashbackDTO,
   SaveCashbackRuleInput,
@@ -43,6 +48,8 @@ import type {
 /** Clientes mostrados na tela e linhas do extrato na ficha. */
 const CUSTOMER_ROWS = 300
 const ENTRY_ROWS = 100
+/** Lançamentos mostrados no relatório de histórico. */
+const HISTORY_ROWS = 500
 
 async function authorizeSalon(
   salonId: string,
@@ -163,5 +170,38 @@ export async function getCustomerCashback(
   } catch (error) {
     console.error("Erro ao carregar o cashback do cliente:", error)
     return { error: "Não foi possível carregar o cashback do cliente" }
+  }
+}
+
+/**
+ * O relatório "Histórico de cashback" (fatia 6f): os lançamentos do período, de
+ * todos os clientes, com os totais.
+ */
+export async function getCashbackHistory(
+  salonId: string,
+  filters: CashbackHistoryFilters = {}
+): Promise<CashbackHistoryDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "cashback.access")
+  if ("error" in auth) return auth
+
+  const parsed = cashbackHistoryFiltersSchema.safeParse(filters)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const period = planReportPeriod(parsed.data, new Date())
+  if (!period.ok) return { error: period.error }
+
+  try {
+    const history = await listCashbackHistoryService({ salonId, from: period.from, to: period.to, limit: HISTORY_ROWS })
+
+    return {
+      from: period.from,
+      to: period.to,
+      summary: history.summary,
+      entries: history.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+      truncated: history.truncated,
+    }
+  } catch (error) {
+    console.error("Erro ao carregar o histórico de cashback:", error)
+    return { error: "Não foi possível carregar o histórico de cashback" }
   }
 }

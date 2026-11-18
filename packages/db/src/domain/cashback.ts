@@ -272,3 +272,43 @@ export function planCashbackAdjustment(input: {
   }
   return { ok: true, amount: centsToNumeric(cents), reason }
 }
+
+// ============================================================================
+// Histórico (relatório)
+// ============================================================================
+
+/** A soma (com sinal) dos lançamentos de um tipo no período — numeric como string. */
+export type CashbackKindTotal = { kind: 'earn' | 'redeem' | 'adjustment'; total: string; count: number }
+
+export type CashbackHistorySummary = {
+  /** Centavos. Gerado e resgatado são positivos; o ajuste tem sinal. */
+  earnedCents: number
+  redeemedCents: number
+  adjustmentCents: number
+  /** O quanto o saldo dos clientes mudou no período: gerado − resgatado + ajustes. */
+  netCents: number
+  entries: number
+}
+
+/**
+ * Os totais do relatório "Histórico de cashback" (fatia 6f). Comanda reaberta ou
+ * excluída não aparece: os lançamentos dela são apagados (revertSaleCashback), não
+ * estornados — o histórico mostra o que está valendo, não uma trilha de auditoria.
+ */
+export function summarizeCashbackHistory(totals: readonly CashbackKindTotal[]): CashbackHistorySummary {
+  const sum = (kind: CashbackKindTotal['kind']) =>
+    totals.filter((row) => row.kind === kind).reduce((acc, row) => acc + (toCents(row.total) ?? 0), 0)
+
+  const earnedCents = sum('earn')
+  // `0 - x`, não `-x`: sem resgate, `-0` vazaria para a tela e para as comparações.
+  const redeemedCents = 0 - sum('redeem')
+  const adjustmentCents = sum('adjustment')
+
+  return {
+    earnedCents,
+    redeemedCents,
+    adjustmentCents,
+    netCents: earnedCents - redeemedCents + adjustmentCents,
+    entries: totals.reduce((acc, row) => acc + row.count, 0),
+  }
+}

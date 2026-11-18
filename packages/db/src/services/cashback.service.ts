@@ -20,6 +20,8 @@ import {
   planCashbackRule,
   planCashbackSettings,
   planSaleCashbackEarn,
+  summarizeCashbackHistory,
+  type CashbackHistorySummary,
   type CashbackRateKind,
   type CashbackRuleForItem,
   type CashbackSettingsDraft,
@@ -579,4 +581,79 @@ export async function getSaleCashbackEarned(
       )
     )
   return centsToNumeric(toCents(row?.earned ?? "0") ?? 0)
+}
+
+// ============================================================================
+// Histórico (relatório)
+// ============================================================================
+
+export type CashbackHistoryRow = {
+  id: string
+  kind: CashbackEntryKind
+  amount: string
+  reason: string | null
+  createdAt: Date
+  customerId: string
+  customerName: string
+  saleId: string | null
+  saleNumber: number | null
+  /** O item que gerou o ganho. */
+  itemDescription: string | null
+}
+
+/**
+ * O relatório "Histórico de cashback" (fatia 6f): todos os lançamentos do período
+ * (pelo dia do lançamento, em Brasília), do mais recente para o mais antigo, e os
+ * totais. Os totais somam o período INTEIRO, mesmo quando a lista é cortada.
+ */
+export async function listCashbackHistoryService(input: {
+  salonId: string
+  /** "YYYY-MM-DD". */
+  from: string
+  to: string
+  limit: number
+}): Promise<{ rows: CashbackHistoryRow[]; truncated: boolean; summary: CashbackHistorySummary }> {
+  const entryDay = sql`(${cashbackEntries.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date`
+  const inPeriod = and(
+    eq(cashbackEntries.salonId, input.salonId),
+    sql`${entryDay} BETWEEN ${input.from}::date AND ${input.to}::date`
+  )
+
+  const [rows, totals] = await Promise.all([
+    db
+      .select({
+        id: cashbackEntries.id,
+        kind: cashbackEntries.kind,
+        amount: cashbackEntries.amount,
+        reason: cashbackEntries.reason,
+        createdAt: cashbackEntries.createdAt,
+        customerId: customers.id,
+        customerName: customers.name,
+        saleId: cashbackEntries.saleId,
+        saleNumber: sales.number,
+        itemDescription: saleItems.description,
+      })
+      .from(cashbackEntries)
+      .innerJoin(customers, eq(customers.id, cashbackEntries.customerId))
+      .leftJoin(sales, and(eq(sales.id, cashbackEntries.saleId), eq(sales.salonId, input.salonId)))
+      .leftJoin(saleItems, and(eq(saleItems.id, cashbackEntries.saleItemId), eq(saleItems.salonId, input.salonId)))
+      .where(inPeriod)
+      .orderBy(desc(cashbackEntries.createdAt), desc(cashbackEntries.id))
+      .limit(input.limit + 1),
+    db
+      .select({
+        kind: cashbackEntries.kind,
+        total: sql<string>`sum(${cashbackEntries.amount})::text`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(cashbackEntries)
+      .where(inPeriod)
+      .groupBy(cashbackEntries.kind),
+  ])
+
+  return {
+    rows: rows.slice(0, input.limit),
+    truncated: rows.length > input.limit,
+    summary: summarizeCashbackHistory(totals),
+  }
 }

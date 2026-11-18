@@ -9,6 +9,7 @@ import {
   planCashbackRule,
   planCashbackSettings,
   planSaleCashbackEarn,
+  summarizeCashbackHistory,
   type CashbackRuleForItem,
   type CashbackSaleItem,
 } from "@repo/db/src/domain/cashback"
@@ -347,5 +348,42 @@ describe("planInvoice — parte coberta por cashback", () => {
       ok: false,
       error: "Os pagamentos passam do total em R$ 10,00",
     })
+  })
+})
+
+describe("summarizeCashbackHistory", () => {
+  it("sem lançamento, tudo zerado", () => {
+    expect(summarizeCashbackHistory([])).toEqual({
+      earnedCents: 0,
+      redeemedCents: 0,
+      adjustmentCents: 0,
+      netCents: 0,
+      entries: 0,
+    })
+  })
+
+  it("gerado e resgatado saem positivos; o ajuste mantém o sinal", () => {
+    expect(
+      summarizeCashbackHistory([
+        { kind: "earn", total: "37.50", count: 4 },
+        { kind: "redeem", total: "-12.00", count: 1 },
+        { kind: "adjustment", total: "-5.50", count: 2 },
+      ])
+    ).toEqual({
+      earnedCents: 3750,
+      redeemedCents: 1200,
+      adjustmentCents: -550,
+      // 37,50 − 12,00 − 5,50
+      netCents: 2000,
+      entries: 7,
+    })
+  })
+
+  it("a variação do saldo pode ser negativa: resgatou-se mais do que se gerou", () => {
+    const summary = summarizeCashbackHistory([
+      { kind: "earn", total: "10.00", count: 1 },
+      { kind: "redeem", total: "-30.00", count: 2 },
+    ])
+    expect(summary.netCents).toBe(-2000)
   })
 })

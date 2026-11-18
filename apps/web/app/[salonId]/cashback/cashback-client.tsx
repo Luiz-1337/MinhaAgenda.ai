@@ -182,6 +182,12 @@ export function CashbackClient({ salonId, data }: { salonId: string; data: Cashb
             {item.label}
           </button>
         ))}
+        <Link
+          href={`/${salonId}/cashback/history`}
+          className="px-3 py-1.5 rounded-md border border-border bg-card text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Histórico
+        </Link>
       </nav>
 
       {tab === "customers" && (

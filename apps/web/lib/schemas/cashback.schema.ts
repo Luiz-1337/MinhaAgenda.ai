@@ -37,3 +37,11 @@ export const adjustCashbackSchema = z.object({
     .refine((value) => value !== 0, "Informe o valor do ajuste"),
   reason: z.string().trim().min(1, "Informe o motivo do ajuste").max(200, "Motivo muito longo"),
 })
+
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida")
+
+/** O período do relatório "Histórico de cashback". */
+export const cashbackHistoryFiltersSchema = z.object({
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+})

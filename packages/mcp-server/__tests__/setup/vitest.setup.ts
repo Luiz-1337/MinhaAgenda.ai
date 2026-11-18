@@ -43,6 +43,8 @@ vi.mock("@repo/db", async () => {
     // Saldo de pacotes do cliente (tool getMyPackageBalance). Sem roteiro devolve
     // undefined; o teste da tool define o que o banco responderia.
     listCustomerPackageBalancesService: vi.fn(),
+    // Saldo de cashback do cliente (tool getMyCashbackBalance), idem.
+    getCustomerCashbackService: vi.fn(),
     domainServices: {
       createAppointmentService: vi.fn(),
       updateAppointmentService: vi.fn(),

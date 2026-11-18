@@ -5,6 +5,7 @@ import { createCustomerTools } from "./customer.tools"
 import { createCatalogTools } from "./catalog.tools"
 import { createSalonTools } from "./salon.tools"
 import { createPackageTools } from "./package.tools"
+import { createCashbackTools } from "./cashback.tools"
 import type { ToolContext, ToolSet } from "./types"
 
 export { createAppointmentTools } from "./appointment.tools"
@@ -13,6 +14,7 @@ export { createCustomerTools } from "./customer.tools"
 export { createCatalogTools } from "./catalog.tools"
 export { createSalonTools } from "./salon.tools"
 export { createPackageTools } from "./package.tools"
+export { createCashbackTools } from "./cashback.tools"
 export { defineTool } from "./defineTool"
 export type { ToolContext, ToolDefinition, ToolSet } from "./types"
 
@@ -36,6 +38,7 @@ export function registerAllTools(
     ...createCatalogTools(ctx),
     ...createSalonTools(ctx),
     ...createPackageTools(ctx),
+    ...createCashbackTools(ctx),
   }
 }
 
