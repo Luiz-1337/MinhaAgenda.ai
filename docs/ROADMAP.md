@@ -61,9 +61,10 @@ Fatia 6e (metas por mês) na mesma branch: migration 058 aplicada em 18/nov/2026
 módulo `goals` ligado só no salão de teste, publicada e testada em uso — ver
 §10.11.
 Fatia 6f (saldo de cashback para o agente do WhatsApp e relatório "Histórico de
-cashback") feita na mesma branch — **em commit local, sem publicar e sem teste em
-uso**; não tem migration — ver §10.12. Com ela, todas as fatias da fase 6 estão
-escritas.
+cashback") na mesma branch, publicada, sem migration: o relatório foi testado em
+uso — **a tool do agente NÃO foi testada em uso** (só roda no worker) — ver
+§10.12. Com ela, todas as fatias da fase 6 estão escritas e publicadas na
+branch.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2536,7 +2537,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita, migration 057 aplicada e publicada; cadastro e fila testados em uso — **o envio pelo WhatsApp não foi testado** (§10.10) |
 | 6e | Metas por mês, do salão e por profissional (faturamento, serviços, produtos e comandas), com o realizado, o ritmo e "Copiar metas" | Feita, migration 058 aplicada, publicada e testada em uso (§10.11) |
-| 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Feita em código — **sem publicar e sem teste em uso** (§10.12) |
+| 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Feita e publicada; relatório testado em uso — **a tool do agente não foi testada em uso** (§10.12) |
 
 O "Permitir resgate pelo agendamento online" do cashback depende do agendamento
 online público (fase 7).
@@ -3213,8 +3214,7 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 
 ### 10.12 Fatia 6f — estado (18/nov/2026)
 
-- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+- Na branch `claude/fase-6-fidelizacao`, publicada em 18/nov/2026. Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
   passando (web 1259, db 296, mcp-server 409). O
   `generate-response.service.ts` continua com os 12 erros de lint antigos
   (`any`), nenhum novo.
@@ -3226,14 +3226,29 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
   resposta da IA passa mudou.
 - **O prompt do agente não foi mexido.** A tool se descreve sozinha; se o prompt
   de algum salão disser que não há cashback, é ele que vale para a IA.
-- **Sem teste em uso.** Roteiro, no salão de teste: (relatório) ativar o
-  cashback, faturar uma comanda que gere crédito, usar o crédito em outra,
-  fazer um ajuste na ficha → Histórico com as três linhas, os totais e os
-  filtros; reabrir uma das comandas e ver a linha sumir. (agente) pelo WhatsApp
-  do salão de teste, perguntar "tenho cashback?" com saldo, com saldo abaixo do
-  mínimo, sem saldo e com o cashback desativado. **O agente só roda no worker**:
-  não dá para testar pela tela, e a tool de pacotes da fase 5 está na mesma
-  situação.
+- **Relatório testado em uso em 18/nov/2026**, no preview da branch, no salão de
+  teste (comandas #31 e #32). Passou:
+  - o botão "Histórico" na tela de Cashback;
+  - com o cashback ativado: a #31 (serviço de R$ 170 e produto) gerou R$ 17,00 e
+    R$ 2,00; a #32 usou R$ 12,00 e gerou R$ 15,80 (10% dos R$ 158 que sobraram);
+    um ajuste de + R$ 5,00 na ficha;
+  - o Histórico mostrou as cinco linhas, com o item ou o motivo e a comanda, e os
+    totais: gerado R$ 34,80, resgatado R$ 12,00, ajustes R$ 5,00, variação
+    R$ 27,80 — igual ao saldo da cliente;
+  - filtro de tipo (só o resgate) e busca por cliente sem resultado;
+  - excluir a #32 → as duas linhas dela somem e o resgatado volta a R$ 0,00.
+- **NÃO testado em uso — a tool do agente.** O agente só roda no worker: não dá
+  para testar pela tela. Falta, pelo WhatsApp do salão de teste, perguntar
+  "tenho cashback?" com saldo, com saldo abaixo do mínimo, sem saldo e com o
+  cashback desativado. A tool de pacotes da fase 5 está na mesma situação. A
+  troca da verificação de módulos também só foi exercitada pelos testes
+  automáticos.
+- **Também não testado:** trocar o período do relatório; ajuste negativo; a lista
+  cortada em 500 linhas; o link do cliente para a ficha.
+- Dados de teste limpos: as comandas #31 e #32 reabertas e excluídas pela tela
+  (ficam como excluídas); o cashback DESATIVADO de novo pela tela; o ajuste de
+  teste apagado por SQL, pelo ID do salão e da cliente. Conferido por leitura:
+  sem lançamentos de cashback no salão de teste.
 
 ## 11. Pendências do dono
 
@@ -3256,6 +3271,5 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 | Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
-| Autorizar a publicação da fatia 6f (sem migration) — ver §10.12 | Teste em uso do Histórico de cashback |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
