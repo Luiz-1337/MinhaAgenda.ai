@@ -42,9 +42,9 @@ em 17/nov/2026 e testada em uso — ver §9.7. Fatia 5b (usar o pacote na comand
 na mesma branch: migration 052 aplicada em 17/nov/2026, publicada e testada em
 uso — ver §9.8. Fatia 5c (assinaturas de cliente) na mesma branch: migration 053
 aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9. Fatia 5d
-(relatórios e saldo de pacote para o agente do WhatsApp) feita na mesma branch —
-**em commit local, sem publicar e sem teste em uso; não tem migration** — ver
-§9.10.
+(relatórios e saldo de pacote para o agente do WhatsApp) na mesma branch,
+publicada, sem migration: os relatórios foram testados em uso; **o saldo de
+pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
 Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2003,7 +2003,7 @@ Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
 | 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
 | 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita, migration 052 aplicada, publicada e testada em uso (§9.8) |
 | 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Feita, migration 053 aplicada, publicada e testada em uso (§9.9) |
-| 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Feita em código — **sem publicar e sem teste em uso**; não tem migration (§9.10) |
+| 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Feita e publicada, sem migration. Relatórios testados em uso; **a tool do agente não foi testada em uso** (§9.10) |
 
 A página pública de planos com link copiável e a renovação automática de
 assinatura dependem de pagamento online (fase 8).
@@ -2456,22 +2456,49 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
 
 ### 9.10 Fatia 5d — estado (17/nov/2026)
 
-- Na branch `claude/fase-5-pacotes`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1098, db 296, mcp-server 400).
+- Na branch `claude/fase-5-pacotes`, publicada. Typecheck (db, web e mcp-server),
+  lint dos arquivos alterados e testes passando (web 1098, db 296, mcp-server
+  400).
 - **Não tem migration**: só leitura do que as fatias 5a a 5c gravam.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de publicar:
-  - Relatórios: vender e faturar um pacote, usar uma sessão em outra comanda e
-    cobrar uma assinatura; conferir os quatro totais, a ordem do extrato (uso e
-    venda), o valor do uso (o da sessão) e a tabela por plano; reabrir a comanda
-    do uso e ver a linha sair; trocar o período.
-  - Agente: no chat de teste do salão (ou por WhatsApp de teste), com um pacote
-    com saldo no cliente, perguntar "quantas sessões eu ainda tenho?" e conferir
-    saldo e validade; perguntar sem ter pacote; e confirmar que, num salão SEM o
-    módulo, a tool não é oferecida.
+- **Relatórios testados em uso** no preview da branch (que usa o banco de
+  produção), no salão de teste, pela tela:
+  - Sem dados → os quatro totais zerados, "Nenhum pacote vendido ou usado no
+    período" e "Nenhuma cobrança de assinatura no período"; período padrão
+    01/11/2026 a 17/11/2026.
+  - Com um pacote de R$ 432,00 vendido (#20), uma sessão usada (#21) e uma
+    assinatura de R$ 120,00 cobrada (#22): Pacotes vendidos R$ 432,00 ("1
+    pacote"); Pacotes usados R$ 136,00 ("1 sessão ou unidade"); Assinaturas
+    R$ 120,00 ("1 cobrança"); Assinantes que pagaram 1. O extrato traz o Uso da
+    #21 (Corte de Cabelo Masculino, o profissional, 1, R$ 136,00) antes da Venda
+    da #20 (R$ 432,00). Vendas por assinatura: o plano com 1 cobrança, 1
+    assinante e R$ 120,00, e a cobrança da #22 com o período 17/11/2026 a
+    17/12/2026.
+  - Período de outubro → tudo zerado. Datas invertidas na URL → trocadas
+    (17/11/2026 a 30/11/2026), com os dados. Mais de um ano → "O período do
+    relatório é de no máximo um ano".
+  - Reaberta a #21 → o Uso sai do extrato e Pacotes usados volta a R$ 0,00; a
+    Venda e a assinatura continuam.
+- **A tool do agente NÃO foi testada em uso.** O agente só roda no worker da fila
+  (`workers/message-processor.ts`), a partir de uma mensagem real de WhatsApp —
+  nenhuma tela do painel o aciona —, e este checkout não tem `.env` para rodar o
+  eval ou o replay. Em qual ambiente o worker é publicado não foi verificado. O que existe é o teste
+  automático da tool (cliente da conversa, sem ids, sem cadastro, falha do banco)
+  e do resumo. Conferido no banco: só o salão de teste tem o módulo `packages`,
+  então a tool não chega a nenhum outro agente. **Para testar:** com este código no
+  ambiente em que o worker roda, mandar por um WhatsApp de teste do salão de
+  teste "quantas sessões eu ainda tenho no pacote?", com e sem pacote com saldo.
+- **Não testado em uso nos relatórios:** mais de um plano e mais de um assinante
+  (a ordem por valor e a contagem de assinantes distintos); uso de produto;
+  várias comandas no mesmo dia; os campos de data da tela (o período foi trocado
+  pela URL); o aviso de teto de 1.000 linhas; perfil sem `packages.access`.
 - **Limite conhecido:** se a consulta ao banco falhar, a tool devolve erro e o
   cliente recebe a mensagem genérica de dificuldade técnica (a mesma das outras
   tools de leitura), não um saldo inventado.
+- Dados de teste limpos: as comandas #20, #21 e #22 reabertas (as faturadas) e
+  excluídas pela tela — ficam como excluídas, como as anteriores; a assinatura e
+  o plano excluídos pela tela; o item de pacote da #20 e o modelo apagados por
+  SQL, pelo ID. Sem modelos, pacotes, planos, assinaturas, períodos, pagamentos,
+  lançamentos, comissões nem movimentos.
 
 ## 10. Pendências do dono
 
@@ -2488,5 +2515,5 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117` e `backups.sale_items_pre_053_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
-| Autorizar a publicação da fatia 5d (sem migration) — ver §9.10 | Teste em uso da fatia 5d |
+| Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
