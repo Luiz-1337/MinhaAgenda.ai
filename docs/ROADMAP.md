@@ -45,7 +45,27 @@ aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9. Fatia 5d
 (relatórios e saldo de pacote para o agente do WhatsApp) na mesma branch,
 publicada, sem migration: os relatórios foram testados em uso; **o saldo de
 pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
-Fases 6 em diante: planejamento.
+Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
+`claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) e publicada, com a
+migration 054 aplicada em 17/nov/2026, o módulo `cashback` ligado só no salão de
+teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) na mesma
+branch: migration 055 aplicada em 17/nov/2026, módulo `promotions` ligado só no
+salão de teste, publicada e testada em uso — ver §10.8. Fatia 6c (avaliações
+pós-atendimento) na mesma branch: migration 056 aplicada em 17/nov/2026, módulo
+`reviews` ligado só no salão de teste, publicada e testada em uso — ver §10.9.
+Fatia 6d (mensagens de cuidados e de retorno, e pedido de avaliação pelo WhatsApp)
+na mesma branch: migration 057 aplicada em 17/nov/2026, módulo `care_messages`
+ligado só no salão de teste, publicada, e o cadastro e a fila testados em uso —
+**o envio de verdade pelo WhatsApp NÃO foi testado** — ver §10.10.
+Fatia 6e (metas por mês) na mesma branch: migration 058 aplicada em 18/nov/2026,
+módulo `goals` ligado só no salão de teste, publicada e testada em uso — ver
+§10.11.
+Fatia 6f (saldo de cashback para o agente do WhatsApp e relatório "Histórico de
+cashback") na mesma branch, publicada, sem migration: o relatório foi testado em
+uso — **a tool do agente NÃO foi testada em uso** (só roda no worker) — ver
+§10.12. Com ela, todas as fatias da fase 6 estão escritas e publicadas na
+branch.
+Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -2500,7 +2520,737 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
   SQL, pelo ID. Sem modelos, pacotes, planos, assinaturas, períodos, pagamentos,
   lançamentos, comissões nem movimentos.
 
-## 10. Pendências do dono
+## 10. Fase 6 — Fidelização (detalhe)
+
+Responde: o que faz o cliente voltar. Parte da comanda (fase 1). Itens da
+auditoria: M-05 (Promoções), M-06 (Avaliações), M-07 (Cashback), T-08 (Metas), as
+abas Cashback, Cuidados e Retorno do serviço e do produto, a aba Cashback da ficha
+do cliente e o relatório "Histórico de cashback". A auditoria leu as telas sem
+executar nada; quase toda a regra foi decidida aqui.
+
+### 10.1 Fatias
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
+| 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
+| 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
+| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita, migration 057 aplicada e publicada; cadastro e fila testados em uso — **o envio pelo WhatsApp não foi testado** (§10.10) |
+| 6e | Metas por mês, do salão e por profissional (faturamento, serviços, produtos e comandas), com o realizado, o ritmo e "Copiar metas" | Feita, migration 058 aplicada, publicada e testada em uso (§10.11) |
+| 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Feita e publicada; relatório testado em uso — **a tool do agente não foi testada em uso** (§10.12) |
+
+O "Permitir resgate pelo agendamento online" do cashback depende do agendamento
+online público (fase 7).
+
+### 10.2 Modelo de dados (migration 054)
+
+- **`cashback_settings`** — uma linha por salão: `is_enabled`, `default_kind`
+  (`percent` ou `fixed`), `default_value`, `min_redeem`.
+- **`cashback_rules`** — o cashback de um serviço ou de um produto (exatamente
+  um): `kind`, `value` (0 = usa o padrão), `is_active`. Um por item.
+- **`cashback_entries`** — o extrato do cliente: `kind` (`earn`, `redeem`,
+  `adjustment`), `amount` com sinal (ganho > 0, resgate < 0, ajuste ≠ 0),
+  `sale_id` e `sale_item_id` (CASCADE), `reason`, `created_by`. Um resgate por
+  comanda (índice único parcial).
+- **`sales.cashback_redeemed`** — quanto da comanda foi pago com cashback. CHECK:
+  de 0 ao total, e só em comanda faturada.
+- **Não há coluna de saldo.** O saldo do cliente é a soma do extrato.
+
+**Migration 055 (fatia 6b):**
+
+- **`promotions`** — `name`, `code` (o cupom, único no salão sem diferença de
+  maiúscula), `discount_kind` (`percent` ou `fixed`), `discount_value`,
+  `applies_to` (`all`, `services`, `products`), `starts_on`, `ends_on`,
+  `weekdays` (0 = domingo … 6 = sábado; vazio = todos), `is_active`.
+- **`sales.promotion_id`** (sem ON DELETE) e **`sales.coupon_code`** (cópia do
+  código) — andam juntos (CHECK).
+- **`sale_items.coupon_discount`** — a parte de `discount_amount` que veio do
+  cupom. CHECK: de 0 ao desconto do item.
+
+**Migration 056 (fatia 6c)** — não mexe em tabela existente:
+
+- **`review_settings`** — uma linha por salão: `is_enabled`, `title`,
+  `welcome_text`, `thanks_text` (NULL = texto padrão do sistema).
+- **`reviews`** — o pedido de avaliação e a resposta: `sale_id` (único, CASCADE),
+  `customer_id`, `token` (único; a credencial do formulário público),
+  `service_date`, `rating` (1 a 5; NULL = pendente), `comment`, `requested_at`,
+  `responded_at`. CHECK: nota e data de resposta andam juntas.
+
+**Migration 057 (fatia 6d)** — MEXE em `review_settings` (três colunas com
+DEFAULT); tem que ser aplicada antes de publicar o código:
+
+- **`care_message_rules`** — a mensagem de um serviço ou produto: `kind`
+  (`pre_care`, `post_care`, `return`), `service_id` ou `product_id` (exatamente
+  um; `pre_care` só serviço), `offset_days`, `message`, `is_active`. Uma por
+  tipo e por item (índices únicos).
+- **`care_message_dispatches`** — a fila e o histórico: `customer_id`, `kind` (os
+  três, mais `review`), `rule_id` (SET NULL), a origem (`sale_id` ou
+  `appointment_id`), `review_id`, `item_name`, `scheduled_for`, `status`
+  (`pending`, `sending`, `sent`, `failed`, `skipped`), `body` (o texto que
+  saiu), `detail` (o motivo), `sent_at`. Índices únicos: um envio por comanda e
+  mensagem, um por agendamento e mensagem, um por pedido de avaliação.
+- **`review_settings`** ganha `send_whatsapp`, `whatsapp_delay_hours` (0 a 72,
+  padrão 2) e `whatsapp_text` (NULL = texto padrão).
+
+**Migration 058 (fatia 6e)** — não mexe em tabela existente:
+
+- **`goals`** — a meta de um mês: `month` (sempre o dia 1), `professional_id`
+  (NULL = meta do salão), `metric` (`revenue`, `services`, `products`,
+  `sales_count`) e `target` (> 0). Uma por mês, indicador e dono. **O realizado
+  não é gravado**: é somado das comandas faturadas do mês.
+
+Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
+`anon`/`authenticated`.
+
+### 10.3 Regras de negócio
+
+1. **Duas chaves**: o módulo `cashback` do salão (piloto) e, dentro dele, o
+   "Cashback ativo" das configurações. Sem as duas, a comanda não gera nem aceita
+   cashback.
+2. **Valor padrão do salão e valor por item.** O padrão é um percentual do item ou
+   um valor fixo por unidade. Cada serviço e produto pode ter o seu (0 = usa o
+   padrão) ou ficar inativo (não dá cashback, nem pelo padrão).
+3. **O ganho nasce quando a comanda é FATURADA**, um lançamento por item de
+   serviço ou produto: percentual sobre o total do item (já com o desconto), ou o
+   valor fixo × quantidade — nunca mais do que foi cobrado pelo item. Venda de
+   pacote, cobrança de assinatura e item "do pacote" (que vale zero) não rendem.
+4. **A parte da comanda paga com cashback não rende cashback**: a base de cada
+   item cai na mesma proporção (R$ 100 com R$ 20 de cashback rende sobre R$ 80).
+5. **Usar é no faturamento**, no campo "Usar cashback do cliente". Não é
+   pagamento: não tem forma, taxa nem prazo, e não entra no financeiro nem no
+   caixa — o salão recebe menos. Os pagamentos mais o cashback têm de fechar o
+   total. A comissão dos itens não muda.
+6. **Situação do saldo**: Disponível para resgate (alcança o mínimo), Abaixo do
+   mínimo, ou Sem saldo. Só usa quem está em "Disponível"; usa até o saldo e até
+   o total da comanda.
+7. **O saldo é a soma do extrato.** Quem gasta ou tira saldo (resgate, ajuste,
+   reabertura) trava antes o cliente — dois faturamentos ao mesmo tempo não
+   gastam o mesmo crédito.
+8. **Reabrir a comanda** apaga os ganhos dela e devolve o que ela usou. É barrado
+   quando o saldo do cliente ficaria negativo: o ganho já foi gasto em outra
+   comanda.
+9. **Ajuste manual** (crédito ou débito) na ficha do cliente, com motivo
+   obrigatório; não deixa o saldo negativo.
+10. **Desativar o cashback não apaga saldo**: para de gerar e de aceitar, e o
+    saldo fica guardado.
+11. **Fiado**: o ganho nasce no faturamento, mesmo com valor em aberto.
+12. **O cashback não vence.**
+
+Fatia 6b — promoções e cupons:
+
+13. **A promoção** tem nome, cupom (3 a 30 caracteres: letras sem acento, números,
+    hífen ou sublinhado; guardado em maiúsculas; único no salão), desconto
+    (percentual, ou valor fixo abatido da comanda), em quais itens vale (serviços
+    e produtos, só serviços ou só produtos), vigência opcional, dias da semana
+    (nenhum marcado = todos) e ativa.
+14. **Aplicar é na comanda**: o campo Cupom confere o código e mostra o desconto;
+    ao salvar, o servidor confere de novo e grava. Um cupom por comanda.
+15. **O cupom vale pelo DIA DA COMANDA** (em Brasília), não pelo dia em que foi
+    digitado: vigência com as pontas incluídas e dia da semana. É conferido a
+    cada gravação da comanda aberta; faturar não confere de novo (fatura-se o
+    gravado).
+16. **O desconto do cupom soma ao desconto dado à mão** em cada item. Percentual:
+    sobre o que o item custa depois do desconto à mão. Fixo: repartido entre os
+    itens que valem, na proporção de cada um, com a soma exata. Nunca mais do que
+    o item custa. Pacote, assinatura e item "do pacote" não recebem. Total,
+    comissão e cashback continuam lendo um desconto só — na comissão, vale a
+    configuração "quem arca com o desconto" do salão (fase 3), como para qualquer
+    desconto.
+17. **Situação**: Ativa, Agendada (ainda não começou), Encerrada (a vigência
+    acabou) ou Desativada.
+18. **Promoção que está em comanda (aberta ou faturada) não se apaga**:
+    desativa-se. Desativar não tira o desconto das comandas já gravadas, mas
+    regravar uma comanda aberta com o cupom desativado é recusado. A comanda
+    EXCLUÍDA solta a promoção (como solta pacote e assinatura); o desconto que os
+    itens receberam continua gravado neles.
+19. **Não há limite de usos**, nem por cliente.
+20. **Sem o módulo `promotions`, a comanda não aceita cupom.**
+
+Fatia 6c — avaliações pós-atendimento:
+
+21. **Duas chaves**: o módulo `reviews` do salão (piloto) e, dentro dele, o "Pedir
+    avaliação" das configurações.
+22. **O pedido nasce quando a comanda é FATURADA e tem pelo menos um serviço.**
+    Venda só de produto, de pacote ou cobrança de assinatura não é atendimento.
+    Um pedido por comanda: reabrir e faturar de novo mantém o mesmo link. Excluir
+    a comanda apaga o pedido que ninguém respondeu; a avaliação respondida fica.
+23. **O cliente responde num formulário público**, pelo link — sem login. A única
+    credencial é o token do link (aleatório, 192 bits). A página mostra só o nome
+    do salão e o dia do atendimento: nem nome do cliente, nem comanda, nem valor.
+24. **A resposta** é uma nota inteira de 1 a 5 e um comentário opcional (até
+    1.000 caracteres). Responde-se uma vez só; depois o link mostra o
+    agradecimento.
+25. **Personalização**: título, boas-vindas e agradecimento. Em branco, vale o
+    texto padrão. A nota, o comentário e o rodapé com a data do atendimento são
+    fixos.
+26. **O envio do link é manual**: copia-se na comanda faturada ou na lista de
+    Avaliações e manda-se ao cliente. O envio automático pelo WhatsApp fica para
+    a fatia 6d.
+27. **O painel é por dia do atendimento**: média, respondidas e pedidas, taxa de
+    resposta, tempo médio entre o pedido e a resposta, distribuição por nota e por
+    profissional. A nota de uma comanda conta para CADA profissional que executou
+    serviço nela.
+28. **Excluir** uma avaliação (ou um pedido pendente) é de quem tem
+    `reviews.manage`; o link do pedido excluído deixa de funcionar.
+
+Fatia 6d — mensagens de cuidados e de retorno:
+
+29. **Três tipos de mensagem, por serviço ou por produto**: cuidados ANTES do
+    atendimento (só serviço), cuidados DEPOIS e RETORNO. Uma mensagem por tipo e
+    por item. Texto livre de até 1.000 caracteres, com `{cliente}` (primeiro
+    nome), `{item}` e `{salao}`.
+30. **Quando sai**: cuidados de antes, de 1 a 30 dias antes do AGENDAMENTO
+    (pendente ou confirmado); cuidados de depois, de 0 a 30 dias depois da COMANDA
+    faturada (0 = no mesmo dia); retorno, de 1 a 365 dias depois da comanda.
+    Agendamento marcado já dentro da janela recebe os cuidados na próxima rodada.
+31. **Um envio por origem e por mensagem.** Reabrir e faturar de novo não manda
+    outra vez. Excluir a comanda cancela o que ainda não saiu. Comanda lançada
+    com data antiga não dispara mensagem vencida há mais de um dia.
+32. **O retorno mais novo substitui o antigo** que ainda estava na fila para o
+    mesmo cliente e a mesma mensagem, e **não sai para quem já tem horário
+    marcado** na hora do envio.
+33. **Confere de novo na hora de enviar**: módulo ligado, mensagem ativa, cliente
+    com telefone, comanda faturada (reaberta, espera até 3 dias e desiste),
+    agendamento de pé. **Nada sai para quem pediu para não receber mensagens**
+    (`customers.opted_out_at`) — nem cuidado, nem retorno, nem avaliação.
+34. **A fila roda a cada meia hora e só envia das 9h às 20h** de Brasília. O que
+    vence fora desse horário sai na primeira rodada do dia seguinte.
+35. **Falha não é reenviada.** Fica na lista de envios com o motivo; reenviar
+    sozinho arrisca mandar duas vezes. Quem tem `care_messages.manage` pode
+    cancelar um envio que está na fila.
+36. **A mensagem enviada é gravada na conversa do cliente**, para a IA saber o que
+    ele recebeu quando responder.
+37. **Pedido de avaliação pelo WhatsApp** (opção das Avaliações, desligada por
+    padrão): sai N horas depois de faturar (0 a 72, padrão 2), uma vez por pedido,
+    e só se o cliente ainda não avaliou. O texto é do salão ou o padrão, e precisa
+    ter `{link}`.
+38. **No WhatsApp oficial (Cloud API), fora das 24 horas da última mensagem do
+    cliente o envio FALHA**: a Meta só aceita modelo aprovado, e não há modelo para
+    estas mensagens. Na Evolution sai a qualquer momento. A falha aparece na
+    lista, com esse motivo.
+
+Fatia 6e — metas por mês:
+
+39. **A meta é por mês, do salão e de cada profissional**, em quatro indicadores:
+    faturamento, serviços, produtos (em reais) e comandas (contagem). Cada
+    indicador é opcional: em branco, fica sem meta.
+40. **O realizado vem das comandas FATURADAS do mês**, pelo dia da comanda (em
+    Brasília): a soma do total dos itens, já com desconto e cupom. Faturamento
+    soma todos os itens (serviço, produto, pacote e assinatura); serviços e
+    produtos, só os desse tipo. Comanda excluída ou reaberta não conta. O
+    resgate de cashback não reduz o realizado (é forma de pagar, não desconto).
+41. **Na linha do profissional** entra o item em que ele é o profissional (quem
+    executou o serviço ou vendeu o produto); o auxiliar não conta. "Comandas" do
+    profissional são as comandas em que ele aparece. Por isso a soma dos
+    profissionais pode ser menor que a do salão (item sem profissional) e as
+    comandas, maior (duas pessoas na mesma comanda).
+42. **O ritmo** compara o realizado com a parte da meta que os dias corridos
+    pedem (dia 10 de um mês de 30 = um terço): "No ritmo", "Abaixo do ritmo",
+    "Meta batida", "Não bateu" (mês encerrado) ou "Ainda não começou". É régua
+    linear: não conhece dia fechado nem sazonalidade. O percentual arredonda
+    para baixo — 99,9% não vira 100%.
+43. **"Copiar metas"** traz as metas de outro mês para o mês aberto, **sem passar
+    por cima** do que ele já tem, e não copia meta de profissional inativo.
+44. **Quem aparece no quadro**: o salão, os profissionais ativos e os inativos que
+    têm meta ou venda no mês.
+
+Fatia 6f — cashback para o agente e histórico:
+
+45. **O agente do WhatsApp só INFORMA o saldo** do cliente da conversa: quanto
+    tem, o mínimo para usar e se já pode usar. Não aplica desconto, não reserva
+    saldo, não mostra o extrato e não promete quanto um serviço vai render. Usar
+    o cashback continua sendo da equipe, no fechamento da comanda.
+46. **A tool só existe para a IA no salão com o módulo `cashback` ligado.** Com o
+    módulo ligado e o cashback desativado nas configurações, ela responde que o
+    programa não está ativo e manda não informar saldo.
+47. **Cliente sem cadastro** recebe "sem saldo", não erro.
+48. **O "Histórico de cashback" é por dia do LANÇAMENTO** (em Brasília), de todos
+    os clientes: gerado, resgatado, ajustes e a variação do saldo no período. Os
+    totais somam o período inteiro, mesmo quando a lista é cortada em 500 linhas.
+49. **Comanda reaberta ou excluída sai do histórico**: os lançamentos dela são
+    apagados (regra da 6a), não estornados. O histórico mostra o que está
+    valendo; não é trilha de auditoria.
+
+Perguntas para o dono:
+
+- O cashback deve vencer (ex.: 90 dias)?
+- A base do ganho é o valor com desconto (regra 3) ou o preço cheio?
+- Comanda paga com cashback: a comissão continua sobre o valor do item (regra 5),
+  ou cai junto?
+- Venda de pacote e cobrança de assinatura devem render cashback?
+- No fiado, o ganho deve esperar o cliente pagar?
+- O cashback usado deve aparecer no financeiro como despesa de marketing? Hoje ele
+  só reduz o que a comanda recebe.
+- (6b) Quanto e sobre o quê o cupom desconta? A auditoria só mostra "Nome, Cupom,
+  Datas, Dias da semana, Status"; o desconto (percentual ou fixo, em serviços,
+  produtos ou nos dois) foi decidido aqui.
+- (6b) O cupom deve ter limite de usos, ou valer uma vez por cliente?
+- (6b) O cupom pode somar com o desconto dado à mão (regra 16), ou um exclui o
+  outro?
+- (6b) Com cupom, a comissão segue a configuração de desconto do salão (regra
+  16). A promoção deve ter regra própria (ex.: o salão sempre arca)?
+- (6b) A Belasis tem a permissão "Acessar todas ou somente as suas" em Promoções.
+  A promoção deve poder ser de um profissional só?
+- (6b) O agente do WhatsApp deve divulgar ou aceitar cupom?
+- (6c) Uma avaliação por comanda (regra 22), ou uma por profissional ou por
+  serviço?
+- (6c) O pedido deve sair sozinho pelo WhatsApp? Quanto tempo depois de faturar, e
+  com que texto?
+- (6c) O link deve vencer depois de alguns dias?
+- (6c) O profissional pode ver as próprias avaliações, ou só quem gerencia?
+- (6c) O salão quer responder ao comentário do cliente, ou mostrar as avaliações
+  no agendamento online (a Belasis tem "Mostrar avaliações")?
+- (6d) Os prazos (regra 30) e o horário de envio (regra 34) servem? Sábado e
+  domingo enviam normalmente?
+- (6d) O retorno deve sair mesmo para quem já tem horário marcado (regra 32)?
+- (6d) As mensagens devem ser cadastradas também na ficha do serviço e do produto
+  (abas Cuidados e Retorno, como na Belasis), além da tela única?
+- (6d) Para os salões no WhatsApp oficial: vale aprovar modelos na Meta para
+  cuidados, retorno e avaliação (regra 38)? Sem isso, quase nada sai neles.
+- (6d) O retorno automático convive com a retenção por IA (que já chama o cliente
+  parado, pelo ciclo médio do serviço)? Hoje nenhum dos dois sabe do outro.
+- (6e) Os quatro indicadores (regra 39) são os que o salão acompanha? Faltam
+  ticket médio, clientes novos, pacotes vendidos?
+- (6e) O faturamento da meta deve ser o que foi VENDIDO (regra 40) ou o que foi
+  RECEBIDO no mês? Pacote vendido conta na venda ou só quando a sessão é usada?
+- (6e) O profissional pode ver a própria meta — e só a dele? Hoje quem tem
+  `goals.access` vê todas.
+- (6e) Bater a meta muda a comissão (bônus)? Hoje a meta é só acompanhamento.
+- (6f) O agente deve só informar o saldo (regra 45), ou também oferecer o uso do
+  cashback ao marcar o horário?
+- (6f) O histórico deve guardar o que foi desfeito (comanda reaberta), como
+  trilha de auditoria (regra 49)?
+
+### 10.4 Permissões e módulo
+
+Módulo `cashback` em `salons.settings.modules`. Recurso novo:
+
+| Recurso | Ações |
+|---|---|
+| `cashback` | `access` (ver saldos e extratos), `manage` (configurar o salão e os itens, lançar ajuste) |
+
+Usar o cashback do cliente é de quem fatura (`sales.invoice`).
+
+Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver) e
+`manage` (criar, alterar e excluir). Aplicar o cupom é de quem monta a comanda
+(`sales.create` / `sales.edit`).
+
+Avaliações (6c): módulo `reviews` e recurso `reviews` com `access` (painel, lista
+e link de cada pedido) e `manage` (ativar, personalizar e excluir). Quem vê a
+comanda faturada (`sales.access`) também vê e copia o link dela. O formulário
+público não tem permissão: a credencial é o token.
+
+Cuidados e retorno (6d): módulo `care_messages` e recurso `care_messages` com
+`access` (ver as mensagens e os envios) e `manage` (criar, alterar, excluir e
+cancelar um envio da fila). O pedido de avaliação pelo WhatsApp é configurado em
+Avaliações (`reviews.manage`) e não depende do módulo `care_messages`. O cron
+que envia não tem sessão: autentica com `CRON_SECRET`.
+
+Metas (6e): módulo `goals` e recurso `goals` com `access` (ver o quadro — do
+salão e de todos os profissionais) e `manage` (definir e copiar metas).
+
+### 10.5 Telas
+
+- **Cashback** no menu (módulo ligado + `cashback.access`), em
+  `/[salonId]/cashback`: três totais e as abas Clientes (ganhou, usou, saldo,
+  situação), Serviços e produtos (o que cada item rende, com edição) e
+  Configurações (ativo, valor padrão, mínimo para resgate).
+- **Comanda**: no faturamento, "Usar cashback do cliente (saldo R$ X)" quando o
+  cliente tem saldo; com uma forma de pagamento só, o valor dela se ajusta. A
+  comanda faturada mostra "Pago com cashback" e "Cashback gerado para o cliente".
+  O aviso de reabrir diz o que acontece com o cashback.
+- **Ficha do cliente**: cartão Cashback (módulo ligado + `cashback.access`) com
+  saldo, situação, extrato (movimentação, motivo, data, comanda, valor) e "Ajustar
+  saldo" para quem tem `cashback.manage`.
+- **Promoções (6b)** no menu (módulo ligado + `promotions.access`), em
+  `/[salonId]/promotions`: promoção, cupom, desconto e onde vale, vigência, dias,
+  usos (comandas faturadas e quanto já descontou) e situação; "Nova promoção",
+  editar e excluir.
+- **Comanda (6b)**: bloco Cupom ao lado dos totais — campo e "Aplicar"; aplicado,
+  mostra o código, o nome e o desconto, com "Remover". Os totais ganham a linha
+  "Cupom X", e o total de cada item já desconta a parte dele.
+- **Avaliações (6c)** no menu (módulo ligado + `reviews.access`), em
+  `/[salonId]/reviews`: período na URL; quatro totais (média, avaliações, taxa de
+  resposta, tempo de resposta); distribuição por nota; por profissional; e a
+  lista (data e comanda, cliente, profissional, nota ou "Pendente", comentário)
+  com busca por cliente e filtros de situação, nota e profissional, o botão de
+  copiar o link do pedido pendente e excluir. "Personalizar" abre a configuração.
+- **Formulário público (6c)** em `/avaliar/[token]`, sem login: nome do salão,
+  título, boas-vindas, cinco estrelas, comentário opcional e o rodapé "Atendimento
+  de dd/mm/aaaa"; depois de responder, o agradecimento. Link desconhecido mostra
+  "Link de avaliação inválido".
+- **Comanda (6c)**: a comanda faturada mostra o bloco Avaliação — "Copiar link de
+  avaliação" enquanto pendente, ou a nota dada.
+- **Cuidados e retorno (6d)** no menu (módulo ligado + `care_messages.access`), em
+  `/[salonId]/care-messages`: a tabela de Mensagens (item, tipo, quando, texto,
+  situação; alterar e excluir) com "Nova mensagem" (tipo, serviço ou produto,
+  dias, texto, ativa); e a tabela de Envios (quando, cliente, tipo, situação — na
+  fila, enviada, falhou, não enviada — e o texto ou o motivo), com filtro de
+  situação e o botão de cancelar o que está na fila.
+- **Avaliações (6d)**: "Personalizar" ganha "Enviar o pedido pelo WhatsApp", as
+  horas depois de faturar e a mensagem.
+- **Metas (6e)** no menu (módulo ligado + `goals.access`), em `/[salonId]/goals`:
+  o mês na URL (`?month=YYYY-MM`), com anterior, seguinte e "Mês atual"; um
+  bloco para o salão e um por profissional, cada um com os quatro indicadores —
+  realizado, barra, "% de [meta] · faltam [valor]" e o ritmo, ou "Sem meta". O
+  lápis abre as quatro metas do dono; "Copiar metas" pede o mês de origem.
+- **Histórico de cashback (6f)** em `/[salonId]/cashback/history`, aberto pelo
+  botão "Histórico" da tela de Cashback (`cashback.access`): período na URL;
+  quatro totais (gerado, resgatado, ajustes, variação do saldo); e a lista (data,
+  cliente, tipo, origem — o item ou o motivo, com a comanda — e valor com
+  sinal), com busca por cliente e filtro de tipo.
+
+### 10.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Migration | `supabase/migrations/054_cashback.sql` |
+| Tabelas | `packages/db/src/schema.ts` (`cashbackSettings`, `cashbackRules`, `cashbackEntries`, `sales.cashbackRedeemed`) |
+| Regra pura | `packages/db/src/domain/cashback.ts` (`planCashbackSettings`, `planCashbackRule`, `effectiveCashbackRate`, `cashbackForItem`, `planSaleCashbackEarn`, `planCashbackRedeem`, `cashbackStatus`, `cashbackReopenBlocker`, `planCashbackAdjustment`); a parte coberta por cashback em `planInvoice` (`creditCents`, `domain/sales.ts`) |
+| I/O | `packages/db/src/services/cashback.service.ts`; a comanda chama `planSaleCashbackRedeem` e `recordSaleCashback` no faturamento e `revertSaleCashback` na reabertura (`sales.service.ts`) |
+| Actions | `apps/web/app/actions/cashback.ts`; `getSaleCashback` e o faturamento em `apps/web/app/actions/sales.ts` |
+| Telas | `apps/web/app/[salonId]/cashback/`; o faturamento em `sales/[saleId]/sale-editor.tsx`; `components/contacts/customer-cashback-card.tsx` |
+| Testes | `apps/web/__tests__/lib/services/cashback-domain.test.ts` |
+| Promoções (6b) | Migration `055_promotions.sql`; tabela `promotions`, `sales.promotionId`/`couponCode` e `saleItems.couponDiscount`; regra em `domain/promotions.ts` (`planPromotion`, `promotionBlocker`, `promotionStatus`, `splitCouponDiscount`, `applyCouponToSale`); I/O em `services/promotions.service.ts` — a comanda chama `loadSaleCoupon` ao criar e ao salvar (`withCoupon`, `sales.service.ts`); actions em `actions/promotions.ts` e `checkSaleCoupon` em `actions/sales.ts`; tela em `app/[salonId]/promotions/`; testes em `promotions-domain.test.ts` |
+| Avaliações (6c) | Migration `056_reviews.sql`; tabelas `reviewSettings` e `reviews`; regra em `domain/reviews.ts` (`planReviewSettings`, `reviewFormTexts`, `shouldRequestReview`, `planReviewResponse`, `buildReviewDashboard`); I/O em `services/reviews.service.ts` — a comanda chama `requestSaleReview` no faturamento e `discardPendingSaleReview` na exclusão (`sales.service.ts`); actions do salão em `actions/reviews.ts`, `getSaleReview` em `actions/sales.ts` e a action PÚBLICA em `actions/public-reviews.ts` (sem sessão, fora da guarda de autorização de propósito); telas em `app/[salonId]/reviews/` e `app/avaliar/[token]/`; testes em `reviews-domain.test.ts` |
+| Cuidados e retorno (6d) | Migration `057_care_messages.sql`; tabelas `careMessageRules` e `careMessageDispatches`; regra em `domain/care-messages.ts` (`planCareMessageRule`, `renderCareMessage`, `saleMessageSchedule`, `isWithinCareSendHours`, `decideCareDispatch`, `toWhatsAppNumber`); I/O em `services/care-messages.service.ts` — a comanda chama `enqueueSaleCareMessages` no faturamento e `discardPendingSaleCareMessages` na exclusão; `requestSaleReview` enfileira o pedido de avaliação; a fila é `enqueueDuePreCareMessages`, `claimDueCareDispatches` e `finishCareDispatch`; o ENVIO é do app: `apps/web/lib/services/care-messages/dispatcher.service.ts`, chamado pelo cron `app/api/cron/care-messages` (`vercel.json`, a cada 30 min); actions em `actions/care-messages.ts`; tela em `app/[salonId]/care-messages/`; testes em `care-messages-domain.test.ts` |
+| Metas (6e) | Migration `058_goals.sql`; tabela `goals`; regra em `domain/goals.ts` (`planGoalTargets`, `planGoalCopy`, `goalProgress`, `buildGoalBoard`, `goalMonthRange`); I/O em `services/goals.service.ts` (`getGoalBoardService` soma o realizado de `sale_items` das comandas faturadas; `saveGoalTargetsService`; `copyGoalsService`); actions em `actions/goals.ts`; tela em `app/[salonId]/goals/`; testes em `goals-domain.test.ts` |
+| Cashback para o agente e histórico (6f) | Sem migration. Tool `getMyCashbackBalance` em `packages/mcp-server/src/presentation/tools/cashback.tools.ts` (`presentCashbackBalance`), liberada por módulo em `apps/web/lib/services/ai/generate-response.service.ts` (`fetchSalonModulesForAi`, que também passou a liberar a de pacotes) e resumida em `summarizeToolResult`; relatório: `summarizeCashbackHistory` em `domain/cashback.ts`, `listCashbackHistoryService` em `services/cashback.service.ts`, `getCashbackHistory` em `actions/cashback.ts`, tela em `app/[salonId]/cashback/history/`; testes em `cashback.tools.test.ts` (mcp-server), `tool-summary.test.ts` e `cashback-domain.test.ts` |
+
+### 10.7 Fatia 6a — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1142, db 296,
+  mcp-server 400).
+- **Migration 054 aplicada em produção em 17/nov/2026** (registrada como
+  `cashback`), antes de o código ser publicado. Conferido por leitura: as três
+  tabelas com RLS, a coluna `sales.cashback_redeemed` (NOT NULL, default 0) e o
+  CHECK dela; `sales` seguiu com as 22 linhas. O advisor de segurança só mostra
+  os avisos de sempre.
+- Cópia de segurança antes da 054: `backups.sales_pre_054_20261117` (22 linhas),
+  com RLS ligado e sem acesso para `anon`/`authenticated`.
+- **O módulo `cashback` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco. O preview desta branch fica em
+  outro endereço (`…-git-claude-fase-6-fidelizacao-…`) e pediu login de novo.
+  - Tela Cashback com o módulo ligado e o cashback desativado → item no menu,
+    aviso "O cashback está desativado…", totais zerados, "Nenhum cliente com
+    movimento de cashback".
+  - Configurações: ativo, 10% e mínimo de R$ 10,00 → "Configurações salvas"; o
+    total "Valor padrão" passa a "10%" e "Mínimo para resgate: R$ 10,00".
+  - Serviços e produtos: Teste Shampoo com R$ 2,00 fixo e Teste Pente inativo →
+    a lista mostra "Padrão (10%)" no corte, "R$ 2,00 por unidade" no shampoo e
+    "Não dá cashback" no pente.
+  - Comanda #23 (1 corte de R$ 170,00, 2 shampoos, 1 pente; R$ 250,00 em PIX): o
+    faturamento não oferece cashback (cliente sem saldo); faturada, mostra
+    "Cashback gerado para o cliente R$ 21,00". No banco: ganho de R$ 17,00 no
+    corte, R$ 4,00 nos shampoos e nada no pente.
+  - Ficha da cliente: cartão Cashback com R$ 21,00, "Disponível para resgate", os
+    dois ganhos com a comanda. Aba Clientes: ganhou R$ 21,00, usou R$ 0,00, saldo
+    R$ 21,00; "Podem resgatar" 1.
+  - Comanda #24 (1 corte, R$ 170,00): o faturamento mostra "Usar cashback do
+    cliente (saldo R$ 21,00)". Com R$ 30,00 → "Passa do saldo de cashback do
+    cliente" e, ao confirmar, "O cliente só tem R$ 21,00 de cashback". Com
+    R$ 21,00 → o pagamento em PIX se ajusta sozinho para R$ 149,00 e "Pagamentos
+    fecham o total". Faturada: "Pago com cashback − R$ 21,00", "Cashback gerado
+    R$ 14,90" (10% de R$ 149,00). No banco: pagamento e lançamento no financeiro
+    de R$ 149,00, resgate de −R$ 21,00, e a base da comissão continua R$ 170,00.
+  - Reabrir a #23 (ganho já gasto) → o aviso inclui "O cashback que esta comanda
+    gerou sai do saldo do cliente, e o que ela usou volta"; confirmar é barrado:
+    "O cashback gerado por esta comanda já foi usado pelo cliente…".
+  - Reabrir a #24 → "Comanda reaberta"; o saldo volta a R$ 21,00 e o extrato fica
+    só com os dois ganhos da #23.
+  - Ajuste manual: débito de R$ 100,00 → "O cliente só tem R$ 21,00 de cashback";
+    débito de R$ 15,00 com motivo → "Ajuste lançado", saldo R$ 6,00, "Abaixo do
+    mínimo", e a linha "Ajuste · (motivo)" no extrato.
+  - Faturamento da #24 com saldo abaixo do mínimo → "Usar cashback do cliente
+    (saldo R$ 6,00)" e "Abaixo do mínimo para resgate (R$ 10,00)", sem campo.
+  - Desativar o cashback → "Configurações salvas" e o aviso de desativado volta.
+- **Corrigido depois do teste:** a mensagem que barra a reabertura mandava
+  "ajustar o saldo em Cashback"; o ajuste é na ficha do cliente, e a mensagem
+  passou a dizer isso.
+- **Limite do teste:** o salão de teste não tem regra de comissão; conferi que a
+  BASE da comissão não muda com o cashback usado, não o valor.
+- **Não testado em uso:** valor padrão fixo; comanda paga inteira com cashback
+  (sem pagamento); cashback com a comanda dividida em duas formas; cashback junto
+  com fiado; desconto no item; ajuste de crédito; comanda com cliente trocado
+  depois de digitar o cashback; o que a comanda e a ficha mostram com o cashback
+  desativado e saldo guardado; perfil sem `cashback.access` ou sem
+  `cashback.manage`; o módulo desligado.
+- Dados de teste limpos: a #24 excluída pela tela; o ajuste manual apagado por
+  SQL, pelo ID (sem ele a #23 não reabria); a #23 reaberta e excluída pela tela
+  (as duas ficam como excluídas, como as anteriores). Sem lançamentos de cashback,
+  pagamentos, lançamentos no financeiro, comissões nem movimentos de estoque.
+  **Ficaram, como apoio para as próximas fatias:** o módulo `cashback` ligado no
+  salão de teste, com o cashback DESATIVADO nas configurações (10%, mínimo
+  R$ 10,00), e as regras do Teste Shampoo (R$ 2,00 fixo) e do Teste Pente
+  (inativo).
+
+### 10.8 Fatia 6b — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1174, db 296,
+  mcp-server 400).
+- **Migration 055 aplicada em produção em 17/nov/2026** (registrada como
+  `promotions`), antes de o código ser publicado. Conferido por leitura: a tabela
+  com RLS, as três colunas novas e os CHECKs; `sales` seguiu com 24 linhas e
+  `sale_items` com 29. O advisor de segurança só mostra os avisos de sempre.
+- Cópias de segurança antes da 055: `backups.sales_pre_055_20261117` (24 linhas)
+  e `backups.sale_items_pre_055_20261117` (29 linhas), com RLS ligado e sem
+  acesso para `anon`/`authenticated`.
+- **O módulo `promotions` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco (17/nov/2026 foi terça):
+  - Tela Promoções vazia → "Nenhuma promoção"; item no menu.
+  - Promoção de 10% só em serviços, só às terças, com o cupom digitado em
+    minúsculas → "Promoção criada"; a lista mostra o cupom em maiúsculas, "10%",
+    "Só serviços", "Sem prazo", "Ter", 0 usos, Ativa.
+  - Segunda promoção com o mesmo cupom → "Já existe uma promoção com esse cupom".
+  - Outras três: valor fixo de R$ 500,00; só às quartas; e com vigência até
+    10/11/2026, que a lista mostra como "Encerrada".
+  - Comanda (corte de R$ 170,00 com R$ 20,00 de desconto à mão, 2 shampoos de
+    R$ 30,00). Cupom inexistente → "Cupom não encontrado"; o de quarta → "Este
+    cupom só vale em: quarta"; o vencido → "Este cupom valeu até 10/11/2026".
+  - Cupom de R$ 500,00 → "Cupom … − R$ 210,00" e total R$ 0,00 (não desconta mais
+    do que a comanda custa). "Remover" tira o cupom.
+  - Cupom de 10% em serviços (aplicado com Enter) → o bloco mostra o código, o nome
+    e "10% nos serviços"; corte R$ 135,00, shampoos R$ 60,00; "Descontos
+    − R$ 20,00", "Cupom … − R$ 15,00", total R$ 195,00. Salva como #25: no banco,
+    desconto de R$ 35,00 no corte, dos quais R$ 15,00 do cupom, e nada no produto.
+  - Tela recarregada: o desconto à mão continua R$ 20,00, separado do cupom.
+  - Faturada em PIX: pagamento e lançamento no financeiro de R$ 195,00. A base da
+    comissão ficou em R$ 170,00 porque o salão de teste usa "o salão arca com o
+    desconto".
+  - Excluir a promoção usada → o diálogo já avisa; confirmar mostra "Esta promoção
+    já foi usada em comanda. Desative-a em vez de excluir". Excluir uma nunca
+    usada → "Promoção excluída".
+- **Defeito achado e corrigido no teste:** na lista, "Usos" mostrava 1, mas o
+  valor descontado não aparecia. A subconsulta que soma `coupon_discount` usava a
+  coluna `sales.id` pelo Drizzle, que numa consulta de uma tabela só a escreve
+  sem o nome da tabela — dentro da subconsulta virava o id do item, e a soma
+  dava zero. Corrigido (`"sales"."id"` por extenso), publicado e conferido no
+  preview: "1 · R$ 15,00 em descontos".
+- **Mudança depois do teste, sem teste em uso:** a comanda excluída passou a
+  soltar a promoção (regra 18). No teste, a comanda excluída ainda segurava a
+  promoção, e foi preciso soltar por SQL para limpar.
+- **Não testado em uso:** promoção desativada (a mensagem e a regravação da
+  comanda); vigência com data de início; cupom só de produtos; cupom em comanda
+  com pacote, assinatura ou item do pacote; trocar a data da comanda para um dia
+  em que o cupom não vale; editar uma promoção; cashback junto com cupom (o
+  cashback estava desativado); perfil sem `promotions.access` ou sem
+  `promotions.manage`; o módulo desligado.
+- Dados de teste limpos: a #25 reaberta e excluída pela tela (fica como excluída,
+  como as anteriores); uma promoção excluída pela tela; a ligação da #25 com a
+  promoção e as outras três promoções apagadas por SQL, pelos IDs. Sem
+  promoções, pagamentos, lançamentos, comissões nem movimentos de estoque.
+  **Ficou:** o módulo `promotions` ligado no salão de teste.
+
+### 10.9 Fatia 6c — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1199, db 296,
+  mcp-server 400).
+- **Migration 056 aplicada em produção em 17/nov/2026** (registrada como
+  `reviews`). Só cria tabelas novas, por isso não houve cópia em `backups`.
+  Conferido por leitura: as duas tabelas com RLS e sem acesso para
+  `anon`/`authenticated`.
+- **O módulo `reviews` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele. As
+  avaliações continuam DESATIVADAS nas configurações: nenhuma comanda gera pedido
+  até alguém ativar em Personalizar.
+- **Primeira rota pública com dado de salão.** `/avaliar/[token]` e a action
+  `submitPublicReview` não têm sessão. O que as protege: o token aleatório de 192
+  bits, a resposta única, e o fato de não receberem nem devolverem id de salão,
+  de cliente ou de comanda. Não há limite de tentativas por IP.
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste
+  (comandas #26 a #28). Passou:
+  - ativar em Personalizar e trocar o título (o aviso de "desativadas" some);
+  - comanda com serviço faturada → bloco Avaliação com "Copiar link de avaliação"
+    (o aviso "Link de avaliação copiado" aparece) e pedido "Pendente" na lista;
+  - comanda só de produto faturada → sem bloco e sem pedido;
+  - formulário: nome do salão, o título trocado, as boas-vindas padrão e
+    "Atendimento de 17/11/2026" (dia local, com a comanda faturada às 22h33);
+  - enviar sem nota → "Escolha uma nota de 1 a 5"; nota 4 com comentário →
+    agradecimento; reabrir o link → só o agradecimento, sem campo nem botão;
+  - link inventado → "Link de avaliação inválido";
+  - painel: média 4,0, 1 avaliação, taxa 100% (50% com o segundo pedido,
+    pendente), "Menos de 1 h", distribuição e a linha do profissional; filtros de
+    situação, nota e profissional; a nota e o "Ver em Avaliações" na comanda;
+  - reabrir e faturar de novo a comanda avaliada → mesmo link, nota mantida;
+  - excluir a comanda com pedido pendente → o pedido some da lista;
+  - excluir a avaliação respondida → lista zerada e o link passa a "inválido".
+- **Não testado em uso:**
+  - **o link aberto por quem não tem login.** O preview da Vercel exige login da
+    Vercel em qualquer endereço (sem sessão, o link responde 302 para
+    `vercel.com/sso-api`), então só deu para abrir no navegador já logado. O
+    aplicativo não tem middleware que barre `/avaliar`, mas isso só se confirma
+    em produção;
+  - boas-vindas e agradecimento personalizados; os limites de tamanho dos textos;
+  - comanda com dois profissionais (a nota contando para os dois);
+  - a busca por cliente e o período do painel; perfil sem `reviews.access` ou sem
+    `reviews.manage`; o módulo desligado.
+- Dados de teste limpos pela tela: a avaliação excluída, as comandas #26, #27 e
+  #28 reabertas e excluídas (ficam como excluídas, como as anteriores), as
+  avaliações DESATIVADAS de novo e o título em branco. Conferido por leitura: sem
+  linhas em `reviews` no salão de teste.
+
+### 10.10 Fatia 6d — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1232, db 296,
+  mcp-server 400).
+- **Migration 057 aplicada em produção em 17/nov/2026** (registrada como
+  `care_messages`). Cópia antes: `backups.review_settings_pre_057_20261117` (1
+  linha). Conferido por leitura: as duas tabelas novas com RLS e sem acesso para
+  `anon`/`authenticated`; a linha de `review_settings` com os padrões novos.
+- **O módulo `care_messages` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
+- **A auditoria não descreve os campos** das abas Cuidados e Retorno da Belasis:
+  só diz que existem. Tipos, prazos e variáveis foram decididos aqui (regras 29 a
+  38).
+- **Uma tela só, não abas na ficha do serviço e do produto.** As mensagens ficam
+  em Cuidados e retorno; a ficha do serviço e a do produto não mudaram.
+- **O que o envio reaproveita**: `sendProactiveMessage` (o mesmo caminho do
+  lembrete e do marketing), que escolhe o canal do salão. Diferente do lembrete,
+  esta fila respeita o pedido de não receber mensagens e procura a conversa do
+  cliente pelas duas formas do telefone (com e sem `+`), criando-a só com
+  dígitos — como a mensagem recebida grava.
+- **Limites conhecidos:**
+  - no WhatsApp oficial quase tudo falha fora das 24 horas (regra 38) — vale
+    para o salão que já usa esse canal;
+  - o cron da Vercel só roda em PRODUÇÃO. No preview a fila não anda sozinha: o
+    envio só pode ser testado chamando `/api/cron/care-messages` com o
+    `CRON_SECRET`, ou depois de a fase ir para produção;
+  - o link da avaliação usa `NEXT_PUBLIC_APP_URL`. Enquanto a fase 6 não estiver
+    em produção, um pedido enviado de um preview levaria a um endereço que ainda
+    não tem a página;
+  - sem limite de envios por salão ou por cliente por dia, além dos 40 por rodada
+    no total; envio que espera (comanda reaberta) volta para a fila e é
+    reavaliado a cada rodada, por até 3 dias;
+  - a fila não avisa ninguém quando falha (não abre alerta): é preciso olhar a
+    lista de envios.
+- **Cadastro e fila testados em uso em 17/nov/2026**, no preview da branch, no
+  salão de teste (comanda #29). Passou:
+  - a tela no menu, vazia; criar cuidados de depois (0 dias) e retorno (30 dias)
+    para um serviço, e retorno (45 dias) para um produto;
+  - duplicar tipo e item → "Este item já tem uma mensagem desse tipo";
+  - escolher "cuidados antes" trava o campo em Serviço e troca o limite para 1 a
+    30; "retorno" mostra 1 a 365;
+  - em Avaliações, a mensagem do WhatsApp sem `{link}` é recusada; com ele, salva,
+    e o rodapé da lista passa a dizer que o pedido sai sozinho;
+  - faturar a comanda com o serviço e o produto → quatro envios "Na fila":
+    cuidados (na hora), pedido de avaliação (2 h depois), retorno do serviço (30
+    dias) e do produto (45 dias), com o link da comanda;
+  - reabrir e faturar de novo → continuam quatro (conferido por leitura);
+  - cancelar um envio da fila; excluir uma mensagem leva junto o envio dela;
+  - excluir a comanda → a fila esvazia, inclusive o pedido de avaliação.
+- **NÃO testado em uso — o envio de verdade.** Nenhuma mensagem saiu: o cron não
+  roda no preview, e não chamei a rota porque ela pede o `CRON_SECRET`. Ficaram
+  sem teste: a fila ser consumida, o texto com as variáveis trocadas, a mensagem
+  chegar no WhatsApp e cair na conversa, as recusas na hora do envio (cliente que
+  pediu para parar, mensagem desativada, comanda reaberta, quem já tem horário), o
+  horário das 9h às 20h, a falha no WhatsApp oficial e TODO o caminho dos
+  cuidados de antes (que nasce no cron). A consulta dos cuidados de antes foi
+  rodada por leitura no banco, só para conferir que é válida. Essa parte está
+  coberta apenas pelos testes da regra pura.
+- **Também não testado:** alterar e desativar uma mensagem; o filtro de situação
+  dos envios; perfil sem `care_messages.access` ou sem `care_messages.manage`; o
+  módulo desligado.
+- **Achado no teste:** cancelar um envio e depois reabrir e faturar a mesma
+  comanda agenda o envio de novo (o cancelamento apaga a linha, então nada lembra
+  que ele foi cancelado). Não corrigido.
+- Dados de teste limpos pela tela: a comanda #29 reaberta e excluída (fica como
+  excluída), as três mensagens excluídas, as avaliações DESATIVADAS de novo, o
+  envio pelo WhatsApp desmarcado e o texto em branco. Conferido por leitura: sem
+  linhas em `care_message_rules`, `care_message_dispatches` nem `reviews`.
+
+### 10.11 Fatia 6e — estado (18/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1254, db 296,
+  mcp-server 400).
+- **Migration 058 aplicada em produção em 18/nov/2026** (registrada como
+  `goals`). Só cria a tabela `goals`, por isso não houve cópia em `backups`.
+  Conferido por leitura: RLS ligado e sem acesso para `anon`/`authenticated`.
+- **O módulo `goals` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 18/nov/2026). É o único salão com ele.
+- **A auditoria só cita "Metas" (T-08) e o "Copiar metas"**, sem os campos.
+  Indicadores, de onde vem o realizado e o ritmo foram decididos aqui (regras 39
+  a 44).
+- **Não mexe na comanda nem na comissão**: a fatia só lê `sales` e `sale_items`.
+- **Limites conhecidos:** não há meta por dia nem por semana; não há histórico
+  de quem mudou a meta; o agente do WhatsApp não conhece as metas; o realizado é
+  recalculado a cada abertura da tela (duas consultas com soma por mês — leve
+  para o tamanho de hoje).
+- **Testada em uso em 18/nov/2026**, no preview da branch, no salão de teste
+  (comanda #30). Passou:
+  - a tela no menu, no mês atual, com o aviso de "nenhuma meta" e o salão e os
+    dois profissionais zerados (o salão não tinha comanda faturada em novembro,
+    conferido por leitura);
+  - definir as quatro metas do salão (comandas "10,5" é recusado) e a meta de
+    serviços de um profissional;
+  - faturar uma comanda com um serviço de R$ 170 e um produto de R$ 30 → salão:
+    faturamento R$ 200 (20% de R$ 1.000), serviços R$ 170 ("Meta batida", 100%
+    de R$ 170), produtos R$ 30, 1 comanda; profissional: R$ 170 em serviços (3%
+    de R$ 5.000) e 1 comanda; o produto sem vendedor não entrou na linha dele;
+  - "Copiar metas" de novembro para dezembro → "5 metas copiadas", tudo "Ainda
+    não começou"; copiar de novo → "Nada a copiar"; copiar de um mês sem metas →
+    recusado; copiar para outubro → tudo "Não bateu";
+  - apagar uma meta deixando o campo em branco (a linha some do banco);
+  - excluir a comanda → o realizado volta a zero.
+- **Não testado em uso:** "No ritmo" (nenhuma meta de teste ficou acima do
+  ritmo sem bater); as setas de mês e o "Mês atual"; meta de profissional
+  inativo na cópia; profissional inativo com venda no mês; duas pessoas na mesma
+  comanda; item de pacote ou assinatura no faturamento; perfil sem
+  `goals.access` ou sem `goals.manage`; o módulo desligado.
+- **Corrigido depois do teste, sem teste em uso:** o nome do mês aparecia como
+  "Novembro De 2026" (maiúscula em toda palavra); passou a ter maiúscula só na
+  primeira letra.
+- Dados de teste limpos: a comanda #30 reaberta e excluída pela tela (fica como
+  excluída); as 14 metas de teste (outubro, novembro e dezembro) apagadas por
+  SQL, pelo ID do salão. Conferido por leitura: `goals` vazia.
+
+### 10.12 Fatia 6f — estado (18/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, publicada em 18/nov/2026. Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1259, db 296, mcp-server 409). O
+  `generate-response.service.ts` continua com os 12 erros de lint antigos
+  (`any`), nenhum novo.
+- **Sem migration.** Só lê o que a 054 já criou.
+- **Muda o caminho do agente para TODOS os salões, não só o de teste:** a
+  consulta que liberava a tool de pacotes virou uma consulta só, dos módulos do
+  salão, que libera as duas tools. Para o salão sem os módulos o efeito é o
+  mesmo de antes (as duas tools são retiradas), mas o código por onde toda
+  resposta da IA passa mudou.
+- **O prompt do agente não foi mexido.** A tool se descreve sozinha; se o prompt
+  de algum salão disser que não há cashback, é ele que vale para a IA.
+- **Relatório testado em uso em 18/nov/2026**, no preview da branch, no salão de
+  teste (comandas #31 e #32). Passou:
+  - o botão "Histórico" na tela de Cashback;
+  - com o cashback ativado: a #31 (serviço de R$ 170 e produto) gerou R$ 17,00 e
+    R$ 2,00; a #32 usou R$ 12,00 e gerou R$ 15,80 (10% dos R$ 158 que sobraram);
+    um ajuste de + R$ 5,00 na ficha;
+  - o Histórico mostrou as cinco linhas, com o item ou o motivo e a comanda, e os
+    totais: gerado R$ 34,80, resgatado R$ 12,00, ajustes R$ 5,00, variação
+    R$ 27,80 — igual ao saldo da cliente;
+  - filtro de tipo (só o resgate) e busca por cliente sem resultado;
+  - excluir a #32 → as duas linhas dela somem e o resgatado volta a R$ 0,00.
+- **NÃO testado em uso — a tool do agente.** O agente só roda no worker: não dá
+  para testar pela tela. Falta, pelo WhatsApp do salão de teste, perguntar
+  "tenho cashback?" com saldo, com saldo abaixo do mínimo, sem saldo e com o
+  cashback desativado. A tool de pacotes da fase 5 está na mesma situação. A
+  troca da verificação de módulos também só foi exercitada pelos testes
+  automáticos.
+- **Também não testado:** trocar o período do relatório; ajuste negativo; a lista
+  cortada em 500 linhas; o link do cliente para a ficha.
+- Dados de teste limpos: as comandas #31 e #32 reabertas e excluídas pela tela
+  (ficam como excluídas); o cashback DESATIVADO de novo pela tela; o ajuste de
+  teste apagado por SQL, pelo ID do salão e da cliente. Conferido por leitura:
+  sem lançamentos de cashback no salão de teste.
+
+## 11. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -2513,7 +3263,13 @@ reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o mód
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117` e `backups.sale_items_pre_053_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117`, `backups.sales_pre_054_20261117`, `backups.sales_pre_055_20261117` e `backups.sale_items_pre_055_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
+| Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
+| Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
+| Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
+| Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
+| Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
+| Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

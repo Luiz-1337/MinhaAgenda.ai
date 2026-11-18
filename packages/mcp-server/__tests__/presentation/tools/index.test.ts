@@ -30,6 +30,7 @@ describe("presentation/tools/index", () => {
       "qualifyLead",
       "setChatKanbanColumn",
       "getMyPackageBalance",
+      "getMyCashbackBalance",
     ])
   })
 

@@ -43,6 +43,10 @@
     {
       "path": "/api/cron/reconcile-webhooks",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/care-messages",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

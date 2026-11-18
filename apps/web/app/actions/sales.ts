@@ -19,11 +19,16 @@ import {
   inArray,
   or,
   brazilToday,
+  cashbackStatus,
   createSaleService,
+  getCashbackBalanceCents,
+  getCashbackSettingsService,
   getDebtTotalsService,
+  getSaleReviewService,
   getSaleService,
   invoiceSaleService,
   listCustomerPackageBalancesService,
+  loadSaleCoupon,
   listCustomerSubscriptionOptionsService,
   receiveSaleDebtPaymentService,
   listSaleItemSummariesService,
@@ -47,6 +52,9 @@ import {
 } from "@/lib/schemas/sales.schema"
 import type { ActionResult } from "@/lib/types/common"
 import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
+import type { SaleCashbackDTO } from "@/lib/types/cashback"
+import type { SaleCouponDTO } from "@/lib/types/promotions"
+import type { SaleReviewDTO } from "@/lib/types/reviews"
 import type {
   CustomerSalesOverview,
   InvoiceSaleInput,
@@ -153,6 +161,9 @@ function toDetailDTO(sale: SaleDetail): SaleDetailDTO {
     total: sale.total,
     amountDue: sale.amountDue,
     debtDueDate: sale.debtDueDate,
+    cashbackRedeemed: sale.cashbackRedeemed,
+    cashbackEarned: sale.cashbackEarned,
+    coupon: sale.coupon,
     invoicedAt: sale.invoicedAt ? sale.invoicedAt.toISOString() : null,
     voidedAt: sale.voidedAt ? sale.voidedAt.toISOString() : null,
     voidReason: sale.voidReason,
@@ -177,6 +188,14 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/packages`)
   // E a situação das assinaturas (cobrança — fase 5, fatia 5c).
   revalidatePath(`/${salonId}/packages/subscriptions`)
+  // E o saldo de cashback dos clientes (ganho e resgate — fase 6).
+  revalidatePath(`/${salonId}/cashback`)
+  // E o uso das promoções (cupom na comanda — fase 6).
+  revalidatePath(`/${salonId}/promotions`)
+  // E os pedidos de avaliação (nascem no faturamento — fase 6).
+  revalidatePath(`/${salonId}/reviews`)
+  // E a fila de mensagens ao cliente (fase 6).
+  revalidatePath(`/${salonId}/care-messages`)
 }
 
 // ============================================================================
@@ -254,6 +273,9 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       commissionsEnabled,
       inventoryEnabled,
       packagesEnabled,
+      cashbackEnabled,
+      promotionsEnabled,
+      reviewsEnabled,
     ] = await Promise.all([
       db
         .select({
@@ -297,6 +319,12 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       salonHasModule(salonId, "inventory"),
       // Com pacotes ligados, a comanda vende pacote predefinido (fase 5).
       salonHasModule(salonId, "packages"),
+      // Com cashback ligado, o faturamento oferece usar o saldo do cliente (fase 6).
+      salonHasModule(salonId, "cashback"),
+      // Com promoções ligadas, a comanda aceita cupom (fase 6).
+      salonHasModule(salonId, "promotions"),
+      // Com avaliações ligadas, a comanda faturada mostra o link do pedido (fase 6).
+      salonHasModule(salonId, "reviews"),
     ])
 
     const packageRows = packagesEnabled
@@ -319,6 +347,9 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       commissionsEnabled,
       inventoryEnabled,
       packagesEnabled,
+      cashbackEnabled,
+      promotionsEnabled,
+      reviewsEnabled,
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),
@@ -403,6 +434,119 @@ export async function getSaleSubscriptionOptions(
   } catch (error) {
     console.error("Erro ao carregar as assinaturas do cliente:", error)
     return { error: "Não foi possível carregar as assinaturas do cliente" }
+  }
+}
+
+/**
+ * O saldo de cashback do cliente da comanda — o campo "Usar cashback" do
+ * faturamento (fase 6). Desligado (`enabled: false`) com o módulo `cashback`
+ * desligado ou o cashback desativado nas configurações do salão.
+ *
+ * Só com permissão de faturar: quem fecha a comanda precisa ver o saldo, mesmo sem
+ * acesso à tela de Cashback.
+ */
+export async function getSaleCashback(
+  salonId: string,
+  customerId: string
+): Promise<SaleCashbackDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.invoice")
+  if ("error" in auth) return auth
+
+  if (!/^[0-9a-f-]{36}$/i.test(customerId ?? "")) return { error: "Cliente inválido" }
+
+  const off: SaleCashbackDTO = { enabled: false, balance: "0.00", minRedeem: "0.00", status: "empty" }
+
+  try {
+    if (!(await salonHasModule(salonId, "cashback"))) return off
+
+    const [settings, balanceCents] = await Promise.all([
+      getCashbackSettingsService(salonId),
+      getCashbackBalanceCents(db, { salonId, customerId }),
+    ])
+    if (!settings.isEnabled) return off
+
+    return {
+      enabled: true,
+      balance: (balanceCents / 100).toFixed(2),
+      minRedeem: settings.minRedeem,
+      status: cashbackStatus({ balanceCents, minRedeemCents: Math.round(Number(settings.minRedeem) * 100) }),
+    }
+  } catch (error) {
+    console.error("Erro ao carregar o cashback do cliente:", error)
+    return { error: "Não foi possível carregar o cashback do cliente" }
+  }
+}
+
+/**
+ * Confere um cupom para a comanda, ANTES de salvar: devolve a regra dele para a
+ * tela mostrar o desconto (fase 6). `saleDate` é a data da comanda (ISO) — o cupom
+ * vale pelo dia dela, não pelo dia em que foi digitado. Quem grava o desconto é
+ * `saveSale`, que confere tudo de novo.
+ *
+ * Só com permissão de comanda: quem monta a comanda aplica o cupom, mesmo sem
+ * acesso à tela de Promoções.
+ */
+export async function checkSaleCoupon(
+  salonId: string,
+  code: string,
+  saleDate: string
+): Promise<SaleCouponDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.access")
+  if ("error" in auth) return auth
+
+  const date = new Date(saleDate)
+  if (Number.isNaN(date.getTime())) return { error: "Informe a data da comanda" }
+  if (typeof code !== "string" || code.trim().length === 0 || code.length > 60) return { error: "Informe o cupom" }
+
+  try {
+    if (!(await salonHasModule(salonId, "promotions"))) return { error: "Cupons não estão disponíveis neste salão" }
+
+    const coupon = await loadSaleCoupon(db, { salonId, code, saleDay: brazilToday(date) })
+    if (!coupon.ok) return { error: coupon.error }
+
+    const { code: couponCode, name, discountKind, discountValue, appliesTo } = coupon.promotion
+    return { code: couponCode, name, discountKind, discountValue, appliesTo }
+  } catch (error) {
+    console.error("Erro ao conferir o cupom:", error)
+    return { error: "Não foi possível conferir o cupom" }
+  }
+}
+
+/**
+ * O pedido de avaliação de uma comanda — o link que a tela da comanda mostra para
+ * copiar e enviar ao cliente (fase 6). NULL = a comanda não gerou pedido (módulo
+ * desligado, avaliações desativadas ou comanda sem serviço).
+ *
+ * Só para quem pode ver a comanda: o link é a credencial do formulário público.
+ */
+export async function getSaleReview(
+  salonId: string,
+  saleId: string
+): Promise<{ review: SaleReviewDTO | null } | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.access")
+  if ("error" in auth) return auth
+
+  if (!/^[0-9a-f-]{36}$/i.test(saleId ?? "")) return { error: "Comanda inválida" }
+
+  try {
+    if (!(await salonHasModule(salonId, "reviews"))) return { review: null }
+
+    const visible = await loadVisibleSale(salonId, auth.userId, saleId)
+    if ("error" in visible) return visible
+
+    const review = await getSaleReviewService({ salonId, saleId })
+    return {
+      review: review
+        ? {
+            token: review.token,
+            rating: review.rating,
+            respondedAt: review.respondedAt ? review.respondedAt.toISOString() : null,
+          }
+        : null,
+    }
+  } catch (error) {
+    console.error("Erro ao carregar a avaliação da comanda:", error)
+    return { error: "Não foi possível carregar a avaliação da comanda" }
   }
 }
 
@@ -612,6 +756,8 @@ export async function saveSale(input: SaveSaleInput): Promise<ActionResult<{ sal
     items: data.items,
     userId: auth.userId,
     packagesEnabled: await salonHasModule(data.salonId, "packages"),
+    couponCode: data.couponCode?.trim() || null,
+    promotionsEnabled: await salonHasModule(data.salonId, "promotions"),
   }
 
   if (data.saleId) {
@@ -663,6 +809,13 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
     recordCommissions: await salonHasModule(parsed.data.salonId, "commissions"),
     // Com o estoque ligado, faturar baixa os produtos controlados (fase 4).
     recordStock: await salonHasModule(parsed.data.salonId, "inventory"),
+    // Com cashback ligado, faturar gera o cashback dos itens e aceita usar o saldo (fase 6).
+    recordCashback: await salonHasModule(parsed.data.salonId, "cashback"),
+    redeemCashback: parsed.data.redeemCashback ?? 0,
+    // Com avaliações ligadas, faturar gera o pedido de avaliação do atendimento (fase 6).
+    requestReview: await salonHasModule(parsed.data.salonId, "reviews"),
+    // Com o módulo ligado, faturar agenda os cuidados de depois e o retorno (fase 6).
+    careMessages: await salonHasModule(parsed.data.salonId, "care_messages"),
   })
   if (!result.success) return { error: result.error }
 

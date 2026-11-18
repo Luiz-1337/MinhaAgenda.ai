@@ -30,6 +30,7 @@ export const saveSaleSchema = z.object({
   saleDate: z.coerce.date({ message: "Data inválida" }),
   notes: z.string().max(2000, "Observações muito longas").nullish(),
   items: z.array(saleItemSchema).max(100, "A comanda aceita no máximo 100 itens"),
+  couponCode: z.string().trim().max(60, "Cupom muito longo").nullish(),
 })
 
 export const invoiceSaleSchema = z.object({
@@ -48,6 +49,7 @@ export const invoiceSaleSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data de vencimento inválida")
     .nullish(),
+  redeemCashback: z.number().finite().min(0, "Valor de cashback inválido").max(1_000_000).optional(),
 })
 
 export const receiveSalePaymentSchema = z.object({

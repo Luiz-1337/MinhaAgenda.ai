@@ -8,11 +8,13 @@ import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
   CalendarCheck,
+  Copy,
   Plus,
   Receipt,
   RotateCcw,
   Save,
   Search,
+  Tag,
   Trash2,
   Wallet,
   X,
@@ -22,7 +24,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
+  checkSaleCoupon,
+  getSaleCashback,
   getSalePackageBalances,
+  getSaleReview,
   getSaleSubscriptionOptions,
   invoiceSale,
   receiveSalePayment,
@@ -35,6 +40,7 @@ import { SALE_STATUS_BADGE, SALE_STATUS_LABELS } from "@/lib/constants/sales.con
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 import { parseQuantity as parseTypedQuantity, quantityToInput } from "@/lib/utils/quantity.utils"
 import { centsToNumeric, toCents } from "@repo/db/src/domain/sales"
+import { describeCouponDiscount, splitCouponDiscount } from "@repo/db/src/domain/promotions"
 import type {
   SaleCustomerOption,
   SaleDetailDTO,
@@ -44,6 +50,8 @@ import type {
   SalePackageBalanceDTO,
 } from "@/lib/types/sale"
 import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
+import type { SaleCashbackDTO } from "@/lib/types/cashback"
+import type { SaleCouponDTO } from "@/lib/types/promotions"
 
 // ============================================================================
 // Estado de edição
@@ -156,7 +164,11 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
     // Sem separador de milhar: "1.000" no campo seria relido como um.
     quantity: quantityToInput(item.quantity),
     unitPrice: moneyToInput(item.unitPrice),
-    discount: Number(item.discountAmount) > 0 ? moneyToInput(item.discountAmount) : "",
+    // O campo é o desconto dado À MÃO: o do cupom é recalculado a cada gravação.
+    discount: (() => {
+      const manual = (toCents(item.discountAmount) ?? 0) - (toCents(item.couponDiscount) ?? 0)
+      return manual > 0 ? moneyToInput(centsToNumeric(manual)) : ""
+    })(),
     appointmentId: item.appointmentId,
     packageLineId: item.customerPackageItemId,
     packageName: item.packageName,
@@ -214,6 +226,11 @@ export function SaleEditor({
   // Fiado: deixar parte (ou tudo) em aberto de propósito. Exige marcar a caixa.
   const [acceptDebt, setAcceptDebt] = useState(false)
   const [debtDueDate, setDebtDueDate] = useState("")
+  // Cashback do cliente usado para pagar parte da comanda (fase 6).
+  const [cashbackUse, setCashbackUse] = useState("")
+  // O cupom aplicado (fase 6) e o que está sendo digitado.
+  const [coupon, setCoupon] = useState<SaleCouponDTO | null>(sale?.coupon ?? null)
+  const [couponInput, setCouponInput] = useState("")
 
   const amountDueCents = sale ? (toCents(sale.amountDue) ?? 0) : 0
   const hasDebt = status === "invoiced" && amountDueCents > 0
@@ -310,6 +327,43 @@ export function SaleEditor({
     return [...subscriptions.map((s) => ({ id: s.id, name: `Assinatura: ${s.name}` })), ...extra]
   }, [subscriptions, sale])
 
+  // O saldo de cashback do cliente, para o campo "Usar cashback" do faturamento.
+  const cashbackQueryEnabled =
+    options.cashbackEnabled && options.can.invoice && status === "open" && customerId !== null
+  const cashbackQuery = useQuery({
+    queryKey: ["sale-cashback", salonId, customerId],
+    queryFn: async (): Promise<SaleCashbackDTO> => {
+      const result = await getSaleCashback(salonId, customerId as string)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: cashbackQueryEnabled,
+  })
+  const cashback = cashbackQueryEnabled ? (cashbackQuery.data ?? null) : null
+  const cashbackBalanceCents = cashback?.enabled ? (toCents(cashback.balance) ?? 0) : 0
+  const cashbackUsable = cashback?.enabled === true && cashback.status === "available"
+
+  // O pedido de avaliação da comanda faturada (fase 6): o link para enviar ao cliente.
+  const reviewQueryEnabled = options.reviewsEnabled && status === "invoiced" && saleId !== undefined
+  const reviewQuery = useQuery({
+    queryKey: ["sale-review", salonId, saleId ?? null],
+    queryFn: async () => {
+      const result = await getSaleReview(salonId, saleId as string)
+      if ("error" in result) throw new Error(result.error)
+      return result.review
+    },
+    enabled: reviewQueryEnabled,
+  })
+  const saleReview = reviewQueryEnabled ? (reviewQuery.data ?? null) : null
+
+  function copyReviewLink() {
+    if (!saleReview) return
+    navigator.clipboard.writeText(`${window.location.origin}/avaliar/${saleReview.token}`).then(
+      () => toast.success("Link de avaliação copiado"),
+      () => toast.error("Não foi possível copiar o link")
+    )
+  }
+
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
     // Profissional ou auxiliar que saiu do salão continua aparecendo na comanda dele.
@@ -327,6 +381,23 @@ export function SaleEditor({
     return [...options.professionals, ...extra]
   }, [options.professionals, sale])
 
+  // Quanto o cupom desconta de cada item — a MESMA conta do servidor
+  // (domain/promotions.ts), sobre o que sobra depois do desconto dado à mão.
+  const couponShares = useMemo(() => {
+    if (!coupon) return rows.map(() => 0)
+    return splitCouponDiscount(
+      coupon,
+      rows.map((row) => {
+        const cents = rowCents(row)
+        return {
+          kind: row.kind,
+          baseCents: Math.max(0, cents.gross - cents.discount),
+          fromPackage: row.packageLineId !== null,
+        }
+      })
+    )
+  }, [coupon, rows])
+
   const totals = useMemo(() => {
     let subtotal = 0
     let discount = 0
@@ -335,8 +406,9 @@ export function SaleEditor({
       subtotal += cents.gross
       discount += cents.discount
     }
-    return { subtotal, discount, total: subtotal - discount }
-  }, [rows])
+    const couponCents = couponShares.reduce((sum, share) => sum + share, 0)
+    return { subtotal, discount, coupon: couponCents, total: subtotal - discount - couponCents }
+  }, [rows, couponShares])
 
   // --------------------------------------------------------------------------
   // Itens
@@ -413,6 +485,35 @@ export function SaleEditor({
     setDirty(true)
   }
 
+  /** Confere o cupom no servidor (vale pelo dia da comanda) e passa a mostrá-lo. */
+  function applyCoupon() {
+    const code = couponInput.trim()
+    if (!code) {
+      toast.error("Informe o cupom")
+      return
+    }
+    const parsedDate = new Date(saleDate)
+    if (Number.isNaN(parsedDate.getTime())) {
+      toast.error("Informe a data da comanda")
+      return
+    }
+    startTransition(async () => {
+      const result = await checkSaleCoupon(salonId, code, parsedDate.toISOString())
+      if ("error" in result) {
+        toast.error(result.error)
+        return
+      }
+      setCoupon(result)
+      setCouponInput("")
+      setDirty(true)
+    })
+  }
+
+  function removeCoupon() {
+    setCoupon(null)
+    setDirty(true)
+  }
+
   function removeRow(key: string) {
     setRows((current) => current.filter((row) => row.key !== key))
     setDirty(true)
@@ -484,6 +585,7 @@ export function SaleEditor({
     setDialogMode("invoice")
     setAcceptDebt(false)
     setDebtDueDate("")
+    setCashbackUse("")
     setPayments(
       totals.total > 0 ? [{ key: nextKey(), methodId: firstMethod, amount: moneyToInput(centsToNumeric(totals.total)) }] : []
     )
@@ -523,6 +625,7 @@ export function SaleEditor({
         saleDate: parsedDate.toISOString(),
         notes,
         items,
+        couponCode: coupon?.code ?? null,
       })
 
       if ("error" in result) {
@@ -559,7 +662,24 @@ export function SaleEditor({
   const paidCents = payments.reduce((sum, p) => sum + (toCents(parseBRL(p.amount)) ?? 0), 0)
   // O alvo do diálogo: o total, ao faturar; o valor em aberto, ao receber depois.
   const targetCents = dialogMode === "receive" ? amountDueCents : totals.total
-  const remainingCents = targetCents - paidCents
+  // Só no faturamento, e só se o cliente pode resgatar.
+  const cashbackCents =
+    dialogMode === "invoice" && cashbackUsable ? Math.max(0, toCents(parseBRL(cashbackUse)) ?? 0) : 0
+  const remainingCents = targetCents - paidCents - cashbackCents
+
+  /**
+   * Mudar o cashback ajusta o pagamento quando há uma linha só — é o caso comum, e
+   * poupa a pessoa de refazer a conta. Com a comanda dividida em formas, ela ajusta.
+   */
+  function changeCashbackUse(value: string) {
+    setCashbackUse(value)
+    const use = Math.max(0, toCents(parseBRL(value)) ?? 0)
+    setPayments((current) => {
+      if (current.length !== 1) return current
+      const rest = totals.total - use
+      return rest > 0 ? [{ ...current[0], amount: moneyToInput(centsToNumeric(rest)) }] : []
+    })
+  }
   const leavingDebt = dialogMode === "invoice" && acceptDebt && options.can.invoiceDebt && remainingCents > 0
 
   const confirmBlocked =
@@ -599,6 +719,11 @@ export function SaleEditor({
       return
     }
 
+    if (cashbackCents > cashbackBalanceCents) {
+      toast.error(`O cliente só tem ${formatBRL(centsToNumeric(cashbackBalanceCents))} de cashback`)
+      return
+    }
+
     startTransition(async () => {
       const result = await invoiceSale({
         salonId,
@@ -606,6 +731,7 @@ export function SaleEditor({
         payments: list,
         acceptDebt: leavingDebt,
         debtDueDate: leavingDebt && debtDueDate ? debtDueDate : null,
+        redeemCashback: cashbackCents > 0 ? cashbackCents / 100 : undefined,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -1027,7 +1153,9 @@ export function SaleEditor({
                             ? "Pacote"
                             : row.unitPrice.trim() === ""
                               ? "—"
-                              : formatBRL(centsToNumeric(Math.max(0, cents.gross - cents.discount)))}
+                              : formatBRL(
+                                  centsToNumeric(Math.max(0, cents.gross - cents.discount - (couponShares[index] ?? 0)))
+                                )}
                         </p>
                         {row.packageLineId && editable && availableByLine.has(row.packageLineId) && (
                           <p
@@ -1077,7 +1205,63 @@ export function SaleEditor({
               className={`${inputClass} resize-none`}
             />
           </div>
-          <div className="bg-card border border-border rounded-md p-4 space-y-2 text-sm self-start">
+          <div className="space-y-3 self-start">
+          {/* Cupom: com o módulo ligado, ou quando a comanda já tem um. */}
+          {(options.promotionsEnabled || coupon) && (
+            <div className="bg-card border border-border rounded-md p-3 space-y-2 text-sm">
+              <span className={labelClass}>Cupom</span>
+              {coupon ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 text-foreground">
+                    <Tag size={14} className="inline mr-1 text-accent" />
+                    <span className="font-mono font-bold">{coupon.code}</span>
+                    <span className="block text-xs text-muted-foreground truncate">
+                      {coupon.name} · {describeCouponDiscount(coupon)}
+                      {coupon.appliesTo === "services"
+                        ? " nos serviços"
+                        : coupon.appliesTo === "products"
+                          ? " nos produtos"
+                          : ""}
+                    </span>
+                  </p>
+                  {editable && (
+                    <button
+                      onClick={removeCoupon}
+                      disabled={isPending}
+                      className="text-xs font-bold text-muted-foreground hover:text-destructive flex-shrink-0 disabled:opacity-50"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+              ) : editable ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    aria-label="Cupom"
+                    placeholder="Código do cupom"
+                    value={couponInput}
+                    disabled={isPending}
+                    onChange={(event) => setCouponInput(event.target.value.toUpperCase())}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") applyCoupon()
+                    }}
+                    className={`${inputClass} font-mono`}
+                  />
+                  <button
+                    onClick={applyCoupon}
+                    disabled={isPending}
+                    className="px-3 py-2 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted transition-colors flex-shrink-0 disabled:opacity-50"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Sem cupom.</p>
+              )}
+            </div>
+          )}
+          <div className="bg-card border border-border rounded-md p-4 space-y-2 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span className="font-mono tabular-nums">{formatBRL(centsToNumeric(totals.subtotal))}</span>
@@ -1086,10 +1270,29 @@ export function SaleEditor({
               <span>Descontos</span>
               <span className="font-mono tabular-nums">− {formatBRL(centsToNumeric(totals.discount))}</span>
             </div>
+            {coupon && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Cupom {coupon.code}</span>
+                <span className="font-mono tabular-nums">− {formatBRL(centsToNumeric(totals.coupon))}</span>
+              </div>
+            )}
             <div className="flex justify-between text-foreground font-bold text-base border-t border-border pt-2">
               <span>Total</span>
               <span className="font-mono tabular-nums">{formatBRL(centsToNumeric(Math.max(0, totals.total)))}</span>
             </div>
+            {sale && Number(sale.cashbackRedeemed) > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Pago com cashback</span>
+                <span className="font-mono tabular-nums">− {formatBRL(sale.cashbackRedeemed)}</span>
+              </div>
+            )}
+            {sale && Number(sale.cashbackEarned) > 0 && (
+              <div className="flex justify-between text-emerald-700 dark:text-emerald-400 text-xs">
+                <span>Cashback gerado para o cliente</span>
+                <span className="font-mono tabular-nums">{formatBRL(sale.cashbackEarned)}</span>
+              </div>
+            )}
+          </div>
           </div>
         </section>
 
@@ -1109,6 +1312,37 @@ export function SaleEditor({
                   <span className="font-mono font-medium text-foreground tabular-nums">{formatBRL(payment.amount)}</span>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Avaliação do atendimento: o link que quem atende envia ao cliente. */}
+        {saleReview && (
+          <section className="space-y-3">
+            <h3 className={labelClass}>Avaliação</h3>
+            <div className="bg-card border border-border rounded-md p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
+              {saleReview.rating === null ? (
+                <>
+                  <span className="text-muted-foreground">
+                    O cliente ainda não avaliou este atendimento. Envie o link para ele.
+                  </span>
+                  <button
+                    onClick={copyReviewLink}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted transition-colors flex-shrink-0"
+                  >
+                    <Copy size={14} />
+                    Copiar link de avaliação
+                  </button>
+                </>
+              ) : (
+                <span className="text-foreground">
+                  O cliente deu nota <span className="font-bold">{saleReview.rating} de 5</span>
+                  {saleReview.respondedAt ? ` em ${dateTimeFormat.format(new Date(saleReview.respondedAt))}` : ""}.{" "}
+                  <Link href={`/${salonId}/reviews`} className="text-accent font-semibold hover:underline">
+                    Ver em Avaliações
+                  </Link>
+                </span>
+              )}
             </div>
           </section>
         )}
@@ -1158,6 +1392,34 @@ export function SaleEditor({
               </p>
             ) : (
               <>
+                {/* Cashback: só aparece quando o cliente tem saldo que pode resgatar. */}
+                {dialogMode === "invoice" && cashback?.enabled && cashbackBalanceCents > 0 && (
+                  <div className="space-y-1 border-b border-border pb-4">
+                    <label htmlFor="invoice-cashback" className="text-[11px] font-semibold text-muted-foreground">
+                      Usar cashback do cliente (saldo {formatBRL(cashback.balance)})
+                    </label>
+                    {cashbackUsable ? (
+                      <input
+                        id="invoice-cashback"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        value={cashbackUse}
+                        disabled={isPending}
+                        onChange={(event) => changeCashbackUse(event.target.value)}
+                        className={inputClass}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Abaixo do mínimo para resgate ({formatBRL(cashback.minRedeem)}).
+                      </p>
+                    )}
+                    {cashbackCents > cashbackBalanceCents && (
+                      <p className="text-xs text-destructive">Passa do saldo de cashback do cliente.</p>
+                    )}
+                  </div>
+                )}
+
                 {payments.map((payment, index) => {
                   const method = options.paymentMethods.find((m) => m.id === payment.methodId)
                   const amountCents = toCents(parseBRL(payment.amount)) ?? 0
@@ -1210,7 +1472,9 @@ export function SaleEditor({
                       <div className="col-span-1 flex justify-end">
                         {/* A última linha só sai quando dá para faturar sem pagamento
                             nenhum (fiado inteiro). */}
-                        {(payments.length > 1 || (dialogMode === "invoice" && options.can.invoiceDebt)) && (
+                        {(payments.length > 1 ||
+                          cashbackCents > 0 ||
+                          (dialogMode === "invoice" && options.can.invoiceDebt)) && (
                           <button
                             onClick={() => setPayments((current) => current.filter((p) => p.key !== payment.key))}
                             disabled={isPending}
@@ -1360,6 +1624,9 @@ export function SaleEditor({
           (hasPackageUse ? " O que esta comanda usou dos pacotes do cliente volta para o saldo." : "") +
           (hasSubscriptionItem
             ? " A renovação de assinatura paga por esta comanda é desfeita e volta quando ela for faturada."
+            : "") +
+          (sale && (Number(sale.cashbackEarned) > 0 || Number(sale.cashbackRedeemed) > 0)
+            ? " O cashback que esta comanda gerou sai do saldo do cliente, e o que ela usou volta."
             : "") +
           " Depois de editar, é preciso faturar de novo."
         }

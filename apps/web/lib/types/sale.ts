@@ -6,6 +6,7 @@
  * conta é feita no servidor, em centavos (`@repo/db` domain/sales.ts).
  */
 import type { PaymentMethodKind, SaleStatus } from "@repo/db"
+import type { SaleCouponDTO } from "./promotions"
 
 export interface PaymentMethodDTO {
   id: string
@@ -78,7 +79,10 @@ export interface SaleItemDTO {
   assistantName: string | null
   quantity: string
   unitPrice: string | null
+  /** O desconto todo do item: o dado à mão mais o do cupom. */
   discountAmount: string
+  /** A parte do desconto que veio do cupom da comanda (fase 6). */
+  couponDiscount: string
   total: string
   appointmentId: string | null
   /** Item "do pacote" (fase 5): a linha do pacote do cliente que ele usa. */
@@ -112,6 +116,12 @@ export interface SaleDetailDTO {
   amountDue: string
   /** Quando a cliente combinou de pagar ("YYYY-MM-DD"), se combinou. */
   debtDueDate: string | null
+  /** Quanto da comanda foi pago com cashback do cliente (fase 6). "0.00" = nada. */
+  cashbackRedeemed: string
+  /** Quanto a comanda gerou de cashback para o cliente. */
+  cashbackEarned: string
+  /** O cupom aplicado na comanda (fase 6). */
+  coupon: SaleCouponDTO | null
   invoicedAt: string | null
   voidedAt: string | null
   voidReason: string | null
@@ -134,6 +144,12 @@ export interface SaleFormOptions {
   inventoryEnabled: boolean
   /** O salão tem o módulo `packages`: a comanda vende pacote (fase 5). */
   packagesEnabled: boolean
+  /** O salão tem o módulo `cashback`: o faturamento oferece usar o saldo do cliente (fase 6). */
+  cashbackEnabled: boolean
+  /** O salão tem o módulo `promotions`: a comanda aceita cupom (fase 6). */
+  promotionsEnabled: boolean
+  /** O salão tem o módulo `reviews`: a comanda faturada mostra o link de avaliação (fase 6). */
+  reviewsEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean
@@ -244,6 +260,8 @@ export interface SaveSaleInput {
   saleDate: string
   notes?: string | null
   items: SaleItemInput[]
+  /** O cupom aplicado (fase 6). Vazio ou ausente = sem cupom. */
+  couponCode?: string | null
 }
 
 export interface InvoiceSaleInput {
@@ -257,6 +275,8 @@ export interface InvoiceSaleInput {
   acceptDebt?: boolean
   /** Quando a cliente combinou de pagar ("YYYY-MM-DD"). Só com `acceptDebt`. */
   debtDueDate?: string | null
+  /** Quanto do total pagar com o cashback do cliente, em reais (fase 6). */
+  redeemCashback?: number
 }
 
 /** Recebimento (todo ou parte) do valor em aberto de uma comanda faturada. */

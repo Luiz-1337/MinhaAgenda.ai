@@ -10,6 +10,7 @@ import {
   paymentMethods,
   products,
   professionals,
+  promotions,
   saleCounters,
   saleItems,
   salePayments,
@@ -47,8 +48,18 @@ import {
   saleSubscriptionsRenewedLater,
 } from "./subscriptions.service"
 import { subscriptionReopenBlocker } from "../domain/subscriptions"
+import {
+  getSaleCashbackEarned,
+  planSaleCashbackRedeem,
+  recordSaleCashback,
+  revertSaleCashback,
+} from "./cashback.service"
 import { brazilToday, isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
+import { applyCouponToSale, type CouponRule } from "../domain/promotions"
+import { loadSaleCoupon } from "./promotions.service"
+import { discardPendingSaleReview, requestSaleReview } from "./reviews.service"
+import { discardPendingSaleCareMessages, enqueueSaleCareMessages } from "./care-messages.service"
 
 /** `professionals` uma segunda vez, para o nome de quem auxiliou no item. */
 const assistants = alias(professionals, "assistants")
@@ -269,6 +280,41 @@ export type SaveSaleInput = {
   userId: string
   /** Módulo `packages` ligado: aceita item de pacote (fase 5). Quem decide é a action. */
   packagesEnabled?: boolean
+  /** O cupom digitado na comanda (fase 6). Vazio ou ausente = sem cupom. */
+  couponCode?: string | null
+  /** Módulo `promotions` ligado: aceita cupom. Quem decide é a action. */
+  promotionsEnabled?: boolean
+}
+
+type SaleTotals = {
+  items: ReturnType<typeof applyCouponToSale>["items"]
+  subtotalCents: number
+  discountCents: number
+  totalCents: number
+  promotionId: string | null
+  couponCode: string | null
+}
+
+/**
+ * Aplica o cupom (se houver) aos itens já validados: confere se ele vale no dia da
+ * comanda e reparte o desconto. Sem cupom, devolve o plano como veio.
+ */
+async function withCoupon(
+  tx: Tx,
+  input: Pick<SaveSaleInput, "salonId" | "saleDate" | "couponCode" | "promotionsEnabled">,
+  plan: { items: SaleTotals["items"]; subtotalCents: number; discountCents: number; totalCents: number }
+): Promise<SaleTotals> {
+  const code = (input.couponCode ?? "").trim()
+  if (!code) return { ...plan, promotionId: null, couponCode: null }
+
+  if (!input.promotionsEnabled) fail("Cupons não estão disponíveis neste salão")
+
+  const coupon = await loadSaleCoupon(tx, { salonId: input.salonId, code, saleDay: brazilToday(input.saleDate) })
+  if (!coupon.ok) fail(coupon.error)
+
+  const rule: CouponRule = coupon.promotion
+  const applied = applyCouponToSale(rule, plan)
+  return { ...applied, promotionId: coupon.promotion.id, couponCode: coupon.promotion.code }
 }
 
 /** Cria uma comanda aberta (Pendente). */
@@ -289,6 +335,7 @@ export async function createSaleService(
         lines: catalog.packageLines,
       })
 
+      const totals = await withCoupon(tx, input, plan)
       const number = await nextSaleNumber(tx, input.salonId)
 
       const [sale] = await tx
@@ -300,17 +347,19 @@ export async function createSaleService(
           status: "open",
           saleDate: input.saleDate,
           notes: input.notes,
-          subtotal: centsToNumeric(plan.subtotalCents),
-          discountTotal: centsToNumeric(plan.discountCents),
-          total: centsToNumeric(plan.totalCents),
+          subtotal: centsToNumeric(totals.subtotalCents),
+          discountTotal: centsToNumeric(totals.discountCents),
+          total: centsToNumeric(totals.totalCents),
+          promotionId: totals.promotionId,
+          couponCode: totals.couponCode,
           createdBy: input.userId,
         })
         .returning({ id: sales.id })
 
-      if (plan.items.length > 0) {
+      if (totals.items.length > 0) {
         await tx
           .insert(saleItems)
-          .values(plan.items.map((item) => ({ ...item, saleId: sale.id, salonId: input.salonId })))
+          .values(totals.items.map((item) => ({ ...item, saleId: sale.id, salonId: input.salonId })))
       }
 
       return { saleId: sale.id, number }
@@ -348,12 +397,14 @@ export async function updateSaleService(
         lines: catalog.packageLines,
       })
 
+      const totals = await withCoupon(tx, input, plan)
+
       await tx.delete(saleItems).where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
 
-      if (plan.items.length > 0) {
+      if (totals.items.length > 0) {
         await tx
           .insert(saleItems)
-          .values(plan.items.map((item) => ({ ...item, saleId: sale.id, salonId: input.salonId })))
+          .values(totals.items.map((item) => ({ ...item, saleId: sale.id, salonId: input.salonId })))
       }
 
       await tx
@@ -362,9 +413,11 @@ export async function updateSaleService(
           customerId: input.customerId,
           saleDate: input.saleDate,
           notes: input.notes,
-          subtotal: centsToNumeric(plan.subtotalCents),
-          discountTotal: centsToNumeric(plan.discountCents),
-          total: centsToNumeric(plan.totalCents),
+          subtotal: centsToNumeric(totals.subtotalCents),
+          discountTotal: centsToNumeric(totals.discountCents),
+          total: centsToNumeric(totals.totalCents),
+          promotionId: totals.promotionId,
+          couponCode: totals.couponCode,
           updatedAt: new Date(),
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
@@ -479,6 +532,23 @@ export async function invoiceSaleService(input: {
    * de estoque é tocada.
    */
   recordStock?: boolean
+  /**
+   * Módulo `cashback` ligado no salão (fase 6): só então a comanda gera cashback e
+   * aceita `redeemCashback`. Quem decide é a action.
+   */
+  recordCashback?: boolean
+  /** Quanto do total pagar com o cashback do cliente, em reais. */
+  redeemCashback?: number
+  /**
+   * Módulo `reviews` ligado no salão (fase 6): só então a comanda faturada gera um
+   * pedido de avaliação. Quem decide é a action.
+   */
+  requestReview?: boolean
+  /**
+   * Módulo `care_messages` ligado no salão (fase 6): só então a comanda faturada
+   * agenda os cuidados de depois e o retorno. Quem decide é a action.
+   */
+  careMessages?: boolean
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -545,6 +615,18 @@ export async function invoiceSaleService(input: {
           : [],
       ])
 
+      // Cashback usado na comanda: confere saldo e mínimo com o cliente travado até
+      // o fim da transação — dois faturamentos não gastam o mesmo crédito (fase 6).
+      const saleTotalCents = items.reduce((sum, item) => sum + Math.max(0, toCents(item.total) ?? 0), 0)
+      const redeem = await planSaleCashbackRedeem(tx, {
+        salonId: input.salonId,
+        customerId: sale.customerId,
+        requested: input.redeemCashback ?? 0,
+        totalCents: saleTotalCents,
+        moduleEnabled: input.recordCashback === true,
+      })
+      if (!redeem.ok) fail(redeem.error)
+
       const now = new Date()
       const plan = planInvoice({
         items,
@@ -552,6 +634,7 @@ export async function invoiceSaleService(input: {
         methods: new Map(methodRows.map((m) => [m.id, m])),
         appointments: new Map(appointmentRows.map((a) => [a.id, { status: a.status, date: a.date }])),
         allowDebt: input.allowDebt,
+        creditCents: redeem.redeemCents,
         now,
       })
       if (!plan.ok) fail(plan.error)
@@ -571,6 +654,7 @@ export async function invoiceSaleService(input: {
           status: "invoiced",
           total: centsToNumeric(plan.totalCents),
           amountDue: centsToNumeric(plan.dueCents),
+          cashbackRedeemed: centsToNumeric(plan.creditCents),
           // Vencimento só enquanto há valor em aberto (CHECK no banco).
           debtDueDate: plan.dueCents > 0 ? (input.debtDueDate ?? null) : null,
           invoicedAt: now,
@@ -622,6 +706,39 @@ export async function invoiceSaleService(input: {
         saleDate: sale.saleDate,
       })
       if (subscriptionError) fail(subscriptionError)
+
+      // O resgate (se houve) e o cashback que os itens rendem (fase 6).
+      await recordSaleCashback(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+        totalCents: plan.totalCents,
+        redeemCents: plan.creditCents,
+        moduleEnabled: input.recordCashback === true,
+        userId: input.userId,
+      })
+
+      // O pedido de avaliação do atendimento (fase 6). Um por comanda: faturar de
+      // novo depois de reabrir mantém o mesmo link.
+      await requestSaleReview(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+        saleDate: sale.saleDate,
+        moduleEnabled: input.requestReview === true,
+        now,
+      })
+
+      // Os cuidados de depois e o retorno dos serviços e produtos da comanda
+      // (fase 6). Um envio por comanda e por mensagem.
+      await enqueueSaleCareMessages(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+        saleDate: sale.saleDate,
+        moduleEnabled: input.careMessages === true,
+        now,
+      })
     })
 
     return { success: true, data: undefined }
@@ -751,6 +868,15 @@ export async function reopenSaleService(input: {
       )
       if (renewedLater) fail(renewedLater)
 
+      // O cashback que a comanda gerou sai do saldo, e o que ela usou volta — a não
+      // ser que o cliente já tenha gasto esse ganho em outra comanda (fase 6).
+      const cashbackBlocker = await revertSaleCashback(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+      })
+      if (cashbackBlocker) fail(cashbackBlocker)
+
       const now = new Date()
 
       await tx
@@ -766,6 +892,7 @@ export async function reopenSaleService(input: {
           invoicedBy: null,
           amountDue: "0.00",
           debtDueDate: null,
+          cashbackRedeemed: "0.00",
           updatedAt: now,
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
@@ -844,6 +971,13 @@ export async function voidSaleService(input: {
         .set({ appointmentId: null, customerPackageItemId: null, customerSubscriptionId: null })
         .where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
 
+      // O pedido de avaliação que ninguém respondeu some com a comanda; a
+      // avaliação respondida fica (fase 6).
+      await discardPendingSaleReview(tx, { salonId: input.salonId, saleId: sale.id })
+
+      // As mensagens ao cliente que ainda não saíram não saem mais (fase 6).
+      await discardPendingSaleCareMessages(tx, { salonId: input.salonId, saleId: sale.id })
+
       await tx
         .update(sales)
         .set({
@@ -851,6 +985,11 @@ export async function voidSaleService(input: {
           voidedAt: now,
           voidedBy: input.userId,
           voidReason: input.reason,
+          // A comanda excluída solta a promoção, como solta pacote e assinatura:
+          // senão uma promoção criada por engano nunca mais poderia ser apagada.
+          // O desconto que os itens receberam continua gravado neles.
+          promotionId: null,
+          couponCode: null,
           updatedAt: now,
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
@@ -930,6 +1069,17 @@ export type SaleDetail = {
   /** Quanto da comanda faturada ainda não foi pago. "0.00" = quitada. */
   amountDue: string
   debtDueDate: string | null
+  /** Quanto da comanda foi pago com cashback, e quanto ela gerou (fase 6). */
+  cashbackRedeemed: string
+  cashbackEarned: string
+  /** O cupom aplicado e a regra dele HOJE, para a tela refazer a conta (fase 6). */
+  coupon: {
+    code: string
+    name: string
+    discountKind: "percent" | "fixed"
+    discountValue: string
+    appliesTo: "all" | "services" | "products"
+  } | null
   invoicedAt: Date | null
   voidedAt: Date | null
   voidReason: string | null
@@ -951,6 +1101,8 @@ export type SaleDetail = {
     quantity: string
     unitPrice: string | null
     discountAmount: string
+    /** A parte do desconto que veio do cupom. */
+    couponDiscount: string
     total: string
     appointmentId: string | null
     /** Item "do pacote" (fase 5): a linha usada e o nome do pacote. */
@@ -982,6 +1134,12 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
       total: sales.total,
       amountDue: sales.amountDue,
       debtDueDate: sales.debtDueDate,
+      cashbackRedeemed: sales.cashbackRedeemed,
+      couponCode: sales.couponCode,
+      promotionName: promotions.name,
+      promotionKind: promotions.discountKind,
+      promotionValue: promotions.discountValue,
+      promotionAppliesTo: promotions.appliesTo,
       invoicedAt: sales.invoicedAt,
       voidedAt: sales.voidedAt,
       voidReason: sales.voidReason,
@@ -992,12 +1150,13 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
     })
     .from(sales)
     .innerJoin(customers, eq(customers.id, sales.customerId))
+    .leftJoin(promotions, and(eq(promotions.id, sales.promotionId), eq(promotions.salonId, salonId)))
     .where(and(eq(sales.id, saleId), eq(sales.salonId, salonId)))
     .limit(1)
 
   if (!sale) return null
 
-  const [items, payments] = await Promise.all([
+  const [items, payments, cashbackEarned] = await Promise.all([
     db
       .select({
         id: saleItems.id,
@@ -1014,6 +1173,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
         quantity: saleItems.quantity,
         unitPrice: saleItems.unitPrice,
         discountAmount: saleItems.discountAmount,
+        couponDiscount: saleItems.couponDiscount,
         total: saleItems.total,
         appointmentId: saleItems.appointmentId,
         customerPackageItemId: saleItems.customerPackageItemId,
@@ -1041,6 +1201,7 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
       .innerJoin(paymentMethods, eq(paymentMethods.id, salePayments.paymentMethodId))
       .where(and(eq(salePayments.saleId, saleId), eq(salePayments.salonId, salonId)))
       .orderBy(salePayments.createdAt),
+    getSaleCashbackEarned(db, { salonId, saleId }),
   ])
 
   return {
@@ -1054,6 +1215,18 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
     total: sale.total,
     amountDue: sale.amountDue,
     debtDueDate: sale.debtDueDate,
+    cashbackRedeemed: sale.cashbackRedeemed,
+    cashbackEarned,
+    coupon:
+      sale.couponCode && sale.promotionName && sale.promotionKind && sale.promotionValue && sale.promotionAppliesTo
+        ? {
+            code: sale.couponCode,
+            name: sale.promotionName,
+            discountKind: sale.promotionKind,
+            discountValue: sale.promotionValue,
+            appliesTo: sale.promotionAppliesTo,
+          }
+        : null,
     invoicedAt: sale.invoicedAt,
     voidedAt: sale.voidedAt,
     voidReason: sale.voidReason,

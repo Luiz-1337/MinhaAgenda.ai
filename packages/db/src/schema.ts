@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   integer,
+  smallint,
   numeric,
   boolean,
   pgEnum,
@@ -1030,6 +1031,13 @@ export const sales = pgTable(
     amountDue: numeric('amount_due', { precision: 12, scale: 2 }).default('0').notNull(),
     // Quando a cliente combinou de pagar ("YYYY-MM-DD"). Só com valor em aberto.
     debtDueDate: date('debt_due_date'),
+    // Quanto da comanda faturada foi pago com cashback do cliente (migration 054).
+    // Não é pagamento: não entra em sale_payments nem no financeiro.
+    cashbackRedeemed: numeric('cashback_redeemed', { precision: 12, scale: 2 }).default('0').notNull(),
+    // A promoção aplicada e o cupom digitado (migration 055). Os dois andam juntos
+    // (CHECK no banco). O código é cópia: renomear o cupom não muda o histórico.
+    promotionId: uuid('promotion_id').references((): AnyPgColumn => promotions.id),
+    couponCode: text('coupon_code'),
     invoicedAt: timestamp('invoiced_at'),
     invoicedBy: uuid('invoiced_by').references(() => profiles.id, { onDelete: 'set null' }),
     voidedAt: timestamp('voided_at'),
@@ -1044,7 +1052,8 @@ export const sales = pgTable(
     index('sales_salon_date_idx').on(table.salonId, table.saleDate.desc()),
     index('sales_salon_status_idx').on(table.salonId, table.status, table.saleDate.desc()),
     index('sales_customer_idx').on(table.customerId),
-    index('sales_debt_idx').on(table.salonId, table.customerId).where(sql`status = 'invoiced' AND amount_due > 0`)
+    index('sales_debt_idx').on(table.salonId, table.customerId).where(sql`status = 'invoiced' AND amount_due > 0`),
+    index('sales_promotion_idx').on(table.promotionId).where(sql`promotion_id IS NOT NULL`)
   ]
 )
 
@@ -1068,6 +1077,9 @@ export const saleItems = pgTable(
     // NULL enquanto aberta = preço ainda não informado (faixa / sob avaliação).
     unitPrice: numeric('unit_price', { precision: 12, scale: 2 }),
     discountAmount: numeric('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // A parte de `discountAmount` que veio do cupom da comanda (migration 055).
+    // Nunca mais que o desconto do item (CHECK no banco).
+    couponDiscount: numeric('coupon_discount', { precision: 12, scale: 2 }).default('0').notNull(),
     total: numeric('total', { precision: 12, scale: 2 }).default('0').notNull(),
     // Um agendamento entra em no máximo uma comanda (índice único parcial).
     appointmentId: uuid('appointment_id').references(() => appointments.id),
@@ -1921,6 +1933,263 @@ export const customerSubscriptionPeriods = pgTable(
     index('customer_subscription_periods_subscription_idx').on(table.subscriptionId, table.periodEnd.desc()),
     index('customer_subscription_periods_sale_idx').on(table.saleId),
     index('customer_subscription_periods_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Cashback (migration 054)
+// ============================================================================
+// O cliente ganha crédito ao comprar e usa numa próxima comanda. O saldo é a soma
+// de cashback_entries (ganho > 0, resgate < 0, ajuste com sinal). Regra em
+// domain/cashback.ts.
+
+export type CashbackRateKindColumn = 'percent' | 'fixed'
+export type CashbackEntryKind = 'earn' | 'redeem' | 'adjustment'
+
+export const cashbackSettings = pgTable('cashback_settings', {
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).primaryKey().notNull(),
+  isEnabled: boolean('is_enabled').default(false).notNull(),
+  // Percentual do item ou valor fixo por unidade.
+  defaultKind: text('default_kind').$type<CashbackRateKindColumn>().default('percent').notNull(),
+  defaultValue: numeric('default_value', { precision: 12, scale: 2 }).default('0').notNull(),
+  // Saldo mínimo para o cliente poder resgatar.
+  minRedeem: numeric('min_redeem', { precision: 12, scale: 2 }).default('0').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
+export const cashbackRules = pgTable(
+  'cashback_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<CashbackRateKindColumn>().default('percent').notNull(),
+    // 0 = usa o padrão do salão.
+    value: numeric('value', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Inativa = o item não dá cashback.
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('cashback_rules_service_unique')
+      .on(table.salonId, table.serviceId)
+      .where(sql`service_id IS NOT NULL`),
+    uniqueIndex('cashback_rules_product_unique')
+      .on(table.salonId, table.productId)
+      .where(sql`product_id IS NOT NULL`)
+  ]
+)
+
+export const cashbackEntries = pgTable(
+  'cashback_entries',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    kind: text('kind').$type<CashbackEntryKind>().notNull(),
+    // Com sinal: ganho > 0, resgate < 0, ajuste ≠ 0 (CHECK no banco).
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    // O item que gerou o ganho. NULL no resgate e no ajuste.
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }),
+    // O motivo do ajuste manual.
+    reason: text('reason'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('cashback_entries_customer_idx').on(table.salonId, table.customerId, table.createdAt.desc()),
+    index('cashback_entries_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
+    uniqueIndex('cashback_entries_sale_redeem_unique').on(table.saleId).where(sql`kind = 'redeem'`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Promoções e cupons (migration 055)
+// ============================================================================
+// Desconto com código, vigência e dias da semana, aplicado na comanda
+// (sales.promotion_id). Regra em domain/promotions.ts.
+
+export type PromotionDiscountKindColumn = 'percent' | 'fixed'
+export type PromotionAppliesToColumn = 'all' | 'services' | 'products'
+
+export const promotions = pgTable(
+  'promotions',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // O cupom, em maiúsculas. Único no salão, sem diferença de maiúscula.
+    code: text('code').notNull(),
+    discountKind: text('discount_kind').$type<PromotionDiscountKindColumn>().default('percent').notNull(),
+    discountValue: numeric('discount_value', { precision: 12, scale: 2 }).notNull(),
+    appliesTo: text('applies_to').$type<PromotionAppliesToColumn>().default('all').notNull(),
+    // Vigência pelo dia da comanda. NULL = sem começo / sem fim.
+    startsOn: date('starts_on'),
+    endsOn: date('ends_on'),
+    // 0 = domingo … 6 = sábado. Vazio = todos os dias.
+    weekdays: integer('weekdays').array().default(sql`'{}'::integer[]`).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('promotions_salon_code_unique').on(table.salonId, sql`lower(${table.code})`)]
+)
+
+// ============================================================================
+// TABLES - Avaliações pós-atendimento (migration 056)
+// ============================================================================
+// Um pedido de avaliação por comanda faturada, respondido pelo cliente num
+// formulário público (o token é a credencial). Regra em domain/reviews.ts.
+
+export const reviewSettings = pgTable('review_settings', {
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).primaryKey().notNull(),
+  isEnabled: boolean('is_enabled').default(false).notNull(),
+  // Textos do formulário. NULL = usa o padrão do sistema.
+  title: text('title'),
+  welcomeText: text('welcome_text'),
+  thanksText: text('thanks_text'),
+  // O pedido pelo WhatsApp (migration 057): N horas depois de faturar.
+  sendWhatsapp: boolean('send_whatsapp').default(false).notNull(),
+  whatsappDelayHours: integer('whatsapp_delay_hours').default(2).notNull(),
+  // NULL = usa o texto padrão do sistema.
+  whatsappText: text('whatsapp_text'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    // A credencial do formulário público: aleatório, único no sistema inteiro.
+    token: text('token').notNull(),
+    // Dia da comanda (Brasília).
+    serviceDate: date('service_date').notNull(),
+    // 1 a 5. NULL = pendente. Nota e data de resposta andam juntas (CHECK).
+    rating: smallint('rating'),
+    comment: text('comment'),
+    requestedAt: timestamp('requested_at').defaultNow().notNull(),
+    respondedAt: timestamp('responded_at')
+  },
+  (table) => [
+    uniqueIndex('reviews_token_unique').on(table.token),
+    uniqueIndex('reviews_sale_unique').on(table.saleId),
+    index('reviews_salon_date_idx').on(table.salonId, table.serviceDate.desc()),
+    index('reviews_customer_idx').on(table.customerId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Mensagens de cuidados e de retorno (migration 057)
+// ============================================================================
+// A mensagem que o salão manda ao cliente por serviço ou produto, e a fila de
+// envios (que também leva o pedido de avaliação). Regra em domain/care-messages.ts.
+
+export type CareMessageKindColumn = 'pre_care' | 'post_care' | 'return'
+export type CareDispatchKindColumn = CareMessageKindColumn | 'review'
+export type CareDispatchStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'skipped'
+
+export const careMessageRules = pgTable(
+  'care_message_rules',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<CareMessageKindColumn>().notNull(),
+    // Exatamente um dos dois (CHECK). Cuidados de antes: só serviço.
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
+    // Dias antes do agendamento (pre_care) ou depois da comanda (os outros).
+    offsetDays: integer('offset_days').notNull(),
+    message: text('message').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('care_message_rules_service_unique')
+      .on(table.salonId, table.kind, table.serviceId)
+      .where(sql`service_id IS NOT NULL`),
+    uniqueIndex('care_message_rules_product_unique')
+      .on(table.salonId, table.kind, table.productId)
+      .where(sql`product_id IS NOT NULL`)
+  ]
+)
+
+export const careMessageDispatches = pgTable(
+  'care_message_dispatches',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    kind: text('kind').$type<CareDispatchKindColumn>().notNull(),
+    // NULL = a mensagem foi excluída (o histórico fica) ou é pedido de avaliação.
+    ruleId: uuid('rule_id').references(() => careMessageRules.id, { onDelete: 'set null' }),
+    // A origem: a comanda ou o agendamento (CHECK: pelo menos um).
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    appointmentId: uuid('appointment_id').references(() => appointments.id, { onDelete: 'cascade' }),
+    reviewId: uuid('review_id').references(() => reviews.id, { onDelete: 'cascade' }),
+    itemName: text('item_name'),
+    scheduledFor: timestamp('scheduled_for').notNull(),
+    status: text('status').$type<CareDispatchStatus>().default('pending').notNull(),
+    // O texto que saiu.
+    body: text('body'),
+    // Por que falhou ou não foi enviado.
+    detail: text('detail'),
+    sentAt: timestamp('sent_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('care_message_dispatches_sale_rule_unique')
+      .on(table.saleId, table.ruleId)
+      .where(sql`sale_id IS NOT NULL AND rule_id IS NOT NULL`),
+    uniqueIndex('care_message_dispatches_appointment_rule_unique')
+      .on(table.appointmentId, table.ruleId)
+      .where(sql`appointment_id IS NOT NULL AND rule_id IS NOT NULL`),
+    uniqueIndex('care_message_dispatches_review_unique').on(table.reviewId).where(sql`review_id IS NOT NULL`),
+    index('care_message_dispatches_due_idx').on(table.scheduledFor).where(sql`status = 'pending'`),
+    index('care_message_dispatches_salon_idx').on(table.salonId, table.scheduledFor.desc()),
+    index('care_message_dispatches_customer_idx').on(table.customerId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Metas por mês (migration 058)
+// ============================================================================
+// Só a META é gravada; o realizado é somado das comandas faturadas do mês.
+// Regra em domain/goals.ts.
+
+export type GoalMetricColumn = 'revenue' | 'services' | 'products' | 'sales_count'
+
+export const goals = pgTable(
+  'goals',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // Dia 1 do mês da meta (CHECK).
+    month: date('month').notNull(),
+    // NULL = meta do salão.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    metric: text('metric').$type<GoalMetricColumn>().notNull(),
+    // Reais nos indicadores de dinheiro; contagem em 'sales_count'.
+    target: numeric('target', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('goals_salon_unique')
+      .on(table.salonId, table.month, table.metric)
+      .where(sql`professional_id IS NULL`),
+    uniqueIndex('goals_professional_unique')
+      .on(table.salonId, table.month, table.professionalId, table.metric)
+      .where(sql`professional_id IS NOT NULL`)
   ]
 )
 

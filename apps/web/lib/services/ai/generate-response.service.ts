@@ -49,7 +49,7 @@ import { AIGenerationError, WhatsAppError } from "../../errors";
 import { db, customers, customerTrinksProfile, professionals, salons, eq, and, sql, domainServices } from "@repo/db";
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service";
 // Caminho direto (módulo puro): os testes que simulam "@repo/db" não precisam conhecê-lo.
-import { parseSalonModules } from "@repo/db/src/domain/permissions";
+import { parseSalonModules, type SalonModule } from "@repo/db/src/domain/permissions";
 import type { ProcessedMedia } from "./media-processor.service";
 import { formatAdReferralText } from "../messaging/cloud/content";
 import type { AdReferral } from "../messaging/cloud/content";
@@ -76,19 +76,21 @@ async function isAiKanbanEnabled(salonId: string): Promise<boolean> {
 }
 
 /**
- * Salão tem o módulo `packages` ligado? (gate da tool getMyPackageBalance — fase 5,
- * fatia 5d). Consulta direta, sem o cache de request do salon-modules.service:
- * este código roda no worker da fila.
+ * Os módulos ligados no salão — o gate das tools que só existem para a IA quando o
+ * módulo existe para o salão: getMyPackageBalance (`packages`, fase 5) e
+ * getMyCashbackBalance (`cashback`, fase 6). Consulta direta, sem o cache de
+ * request do salon-modules.service: este código roda no worker da fila. Na dúvida
+ * (erro de banco), nenhum módulo: a tool some em vez de falhar na frente do cliente.
  */
-async function isPackagesModuleEnabled(salonId: string): Promise<boolean> {
+async function fetchSalonModulesForAi(salonId: string): Promise<SalonModule[]> {
   try {
     const row = await db.query.salons.findFirst({
       where: eq(salons.id, salonId),
       columns: { settings: true },
     });
-    return parseSalonModules(row?.settings).includes("packages");
+    return parseSalonModules(row?.settings);
   } catch {
-    return false;
+    return [];
   }
 }
 
@@ -307,7 +309,7 @@ export async function generateAIResponse(
       officialAgenda: await loadOfficialAgendaContext(salonId, customerId, upcoming, contextLogger),
     }));
 
-    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, packagesEnabled, { upcomingAppointments, officialAgenda }] = await Promise.all([
+    const [agentInfo, preferences, historyMessages, mcpTools, noShowRisk, soloProfessional, speculativeEmbedding, trinksProfile, kanbanEnabled, salonModules, { upcomingAppointments, officialAgenda }] = await Promise.all([
       getActiveAgentInfo(salonId),
       fetchCustomerPreferences(salonId, customerId, contextLogger),
       getChatHistory(chatId, Number(process.env.AI_HISTORY_LIMIT) || 30),
@@ -317,7 +319,7 @@ export async function generateAIResponse(
       embeddingPromise.catch(() => null),
       fetchTrinksProfile(salonId, customerId, clientPhone, contextLogger),
       isAiKanbanEnabled(salonId),
-      isPackagesModuleEnabled(salonId),
+      fetchSalonModulesForAi(salonId),
       agendaAwarePromise,
     ]);
     timer.mark("context_loaded");
@@ -329,8 +331,13 @@ export async function generateAIResponse(
     }
 
     // Saldo de pacote só existe para a IA no salão com o módulo de pacotes ligado.
-    if (!packagesEnabled) {
+    if (!salonModules.includes("packages")) {
       delete (mcpTools as Record<string, unknown>).getMyPackageBalance;
+    }
+
+    // Idem para o saldo de cashback.
+    if (!salonModules.includes("cashback")) {
+      delete (mcpTools as Record<string, unknown>).getMyCashbackBalance;
     }
 
     if (!agentInfo) {
@@ -1073,6 +1080,15 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
       const cancelledId = data.appointmentId || data.id;
       const base = data.message || "OK";
       return cancelledId ? `cancelado: ${base} (id:${cancelledId})` : `cancelado: ${base}`;
+    }
+
+    // Saldo de cashback: o valor e se já dá para usar. Curto de propósito — é o
+    // que a IA precisa lembrar nos turnos seguintes.
+    if (toolName === "getMyCashbackBalance" && typeof data.saldo === "string") {
+      if (data.programaAtivo === false) return "cashback: programa inativo no salão";
+      return data.podeUsar === true
+        ? `cashback: saldo ${data.saldo}, pode usar`
+        : `cashback: saldo ${data.saldo}, ainda não pode usar (mínimo ${data.minimoParaUsar})`;
     }
 
     // Saldo de pacotes: o que resta de cada item e até quando vale. Sem isso o

@@ -96,6 +96,38 @@ describe("summarizeToolResult / getServices", () => {
     )
   })
 
+  it("saldo de cashback: guarda o valor e se já pode usar", () => {
+    expect(
+      summarizeToolResult("getMyCashbackBalance", {
+        programaAtivo: true,
+        saldo: "R$ 12,50",
+        minimoParaUsar: "R$ 10,00",
+        podeUsar: true,
+        message: "...",
+      })
+    ).toBe("cashback: saldo R$ 12,50, pode usar")
+
+    expect(
+      summarizeToolResult("getMyCashbackBalance", {
+        programaAtivo: true,
+        saldo: "R$ 4,00",
+        minimoParaUsar: "R$ 10,00",
+        podeUsar: false,
+        message: "...",
+      })
+    ).toBe("cashback: saldo R$ 4,00, ainda não pode usar (mínimo R$ 10,00)")
+
+    expect(
+      summarizeToolResult("getMyCashbackBalance", {
+        programaAtivo: false,
+        saldo: "R$ 0,00",
+        minimoParaUsar: "R$ 0,00",
+        podeUsar: false,
+        message: "...",
+      })
+    ).toBe("cashback: programa inativo no salão")
+  })
+
   it("saldo de pacotes vazio não vira JSON cortado", () => {
     expect(summarizeToolResult("getMyPackageBalance", { total: 0, packages: [], message: "..." })).toBe(
       "nenhum pacote com saldo"
