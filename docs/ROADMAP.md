@@ -47,8 +47,8 @@ publicada, sem migration: os relatórios foram testados em uso; **o saldo de
 pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
 Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
 `claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) e publicada, com a
-migration 054 aplicada em 17/nov/2026 e o módulo `cashback` ligado só no salão de
-teste — **sem teste em uso** — ver §10.7.
+migration 054 aplicada em 17/nov/2026, o módulo `cashback` ligado só no salão de
+teste, e testada em uso — ver §10.7.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2516,7 +2516,7 @@ executar nada; quase toda a regra foi decidida aqui.
 
 | Fatia | Entrega | Estado |
 |---|---|---|
-| 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada e publicada — **sem teste em uso** (§10.7) |
+| 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Pendente |
 | 6c | Avaliações pós-atendimento: formulário enviado ao cliente (personalizável), painel (média, total, distribuição por nota, por profissional) e lista filtrável; pedido de avaliação pelo agente do WhatsApp | Pendente |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto | Pendente |
@@ -2638,16 +2638,61 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
   com RLS ligado e sem acesso para `anon`/`authenticated`.
 - **O módulo `cashback` foi ligado no salão de teste** (por SQL, em
   `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
-- **Sem teste em uso.** O preview desta branch fica em outro endereço
-  (`…-git-claude-fase-6-fidelizacao-…`) e o login do app é por endereço: o dono
-  precisa entrar nele antes do teste. Roteiro, no salão de teste: ativar o cashback com 10% e mínimo de R$ 10,00; faturar uma
-  comanda de serviço → "Cashback gerado" na comanda, saldo e extrato na ficha,
-  cliente na aba Clientes; item com valor próprio e item inativo; comanda nova
-  usando parte do saldo → "Pago com cashback", pagamento menor, ganho só sobre a
-  parte paga; tentar usar mais que o saldo; saldo abaixo do mínimo; reabrir a
-  primeira comanda com o ganho já gasto (barrado); reabrir a segunda (saldo
-  volta); ajuste manual de crédito e de débito além do saldo (barrado); conferir
-  que o financeiro e a comissão não mudam com o cashback usado.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco. O preview desta branch fica em
+  outro endereço (`…-git-claude-fase-6-fidelizacao-…`) e pediu login de novo.
+  - Tela Cashback com o módulo ligado e o cashback desativado → item no menu,
+    aviso "O cashback está desativado…", totais zerados, "Nenhum cliente com
+    movimento de cashback".
+  - Configurações: ativo, 10% e mínimo de R$ 10,00 → "Configurações salvas"; o
+    total "Valor padrão" passa a "10%" e "Mínimo para resgate: R$ 10,00".
+  - Serviços e produtos: Teste Shampoo com R$ 2,00 fixo e Teste Pente inativo →
+    a lista mostra "Padrão (10%)" no corte, "R$ 2,00 por unidade" no shampoo e
+    "Não dá cashback" no pente.
+  - Comanda #23 (1 corte de R$ 170,00, 2 shampoos, 1 pente; R$ 250,00 em PIX): o
+    faturamento não oferece cashback (cliente sem saldo); faturada, mostra
+    "Cashback gerado para o cliente R$ 21,00". No banco: ganho de R$ 17,00 no
+    corte, R$ 4,00 nos shampoos e nada no pente.
+  - Ficha da cliente: cartão Cashback com R$ 21,00, "Disponível para resgate", os
+    dois ganhos com a comanda. Aba Clientes: ganhou R$ 21,00, usou R$ 0,00, saldo
+    R$ 21,00; "Podem resgatar" 1.
+  - Comanda #24 (1 corte, R$ 170,00): o faturamento mostra "Usar cashback do
+    cliente (saldo R$ 21,00)". Com R$ 30,00 → "Passa do saldo de cashback do
+    cliente" e, ao confirmar, "O cliente só tem R$ 21,00 de cashback". Com
+    R$ 21,00 → o pagamento em PIX se ajusta sozinho para R$ 149,00 e "Pagamentos
+    fecham o total". Faturada: "Pago com cashback − R$ 21,00", "Cashback gerado
+    R$ 14,90" (10% de R$ 149,00). No banco: pagamento e lançamento no financeiro
+    de R$ 149,00, resgate de −R$ 21,00, e a base da comissão continua R$ 170,00.
+  - Reabrir a #23 (ganho já gasto) → o aviso inclui "O cashback que esta comanda
+    gerou sai do saldo do cliente, e o que ela usou volta"; confirmar é barrado:
+    "O cashback gerado por esta comanda já foi usado pelo cliente…".
+  - Reabrir a #24 → "Comanda reaberta"; o saldo volta a R$ 21,00 e o extrato fica
+    só com os dois ganhos da #23.
+  - Ajuste manual: débito de R$ 100,00 → "O cliente só tem R$ 21,00 de cashback";
+    débito de R$ 15,00 com motivo → "Ajuste lançado", saldo R$ 6,00, "Abaixo do
+    mínimo", e a linha "Ajuste · (motivo)" no extrato.
+  - Faturamento da #24 com saldo abaixo do mínimo → "Usar cashback do cliente
+    (saldo R$ 6,00)" e "Abaixo do mínimo para resgate (R$ 10,00)", sem campo.
+  - Desativar o cashback → "Configurações salvas" e o aviso de desativado volta.
+- **Corrigido depois do teste:** a mensagem que barra a reabertura mandava
+  "ajustar o saldo em Cashback"; o ajuste é na ficha do cliente, e a mensagem
+  passou a dizer isso.
+- **Limite do teste:** o salão de teste não tem regra de comissão; conferi que a
+  BASE da comissão não muda com o cashback usado, não o valor.
+- **Não testado em uso:** valor padrão fixo; comanda paga inteira com cashback
+  (sem pagamento); cashback com a comanda dividida em duas formas; cashback junto
+  com fiado; desconto no item; ajuste de crédito; comanda com cliente trocado
+  depois de digitar o cashback; o que a comanda e a ficha mostram com o cashback
+  desativado e saldo guardado; perfil sem `cashback.access` ou sem
+  `cashback.manage`; o módulo desligado.
+- Dados de teste limpos: a #24 excluída pela tela; o ajuste manual apagado por
+  SQL, pelo ID (sem ele a #23 não reabria); a #23 reaberta e excluída pela tela
+  (as duas ficam como excluídas, como as anteriores). Sem lançamentos de cashback,
+  pagamentos, lançamentos no financeiro, comissões nem movimentos de estoque.
+  **Ficaram, como apoio para as próximas fatias:** o módulo `cashback` ligado no
+  salão de teste, com o cashback DESATIVADO nas configurações (10%, mínimo
+  R$ 10,00), e as regras do Teste Shampoo (R$ 2,00 fixo) e do Teste Pente
+  (inativo).
 
 ## 11. Pendências do dono
 
@@ -2665,6 +2710,5 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117` e `backups.sales_pre_054_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
-| Entrar no preview da branch `claude/fase-6-fidelizacao` (endereço novo, pede login) — ver §10.7 | Teste em uso da fatia 6a |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro) | Ajustes na fase 6 antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

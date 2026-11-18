@@ -245,7 +245,7 @@ export function cashbackReopenBlocker(input: {
   saleNetCents: number
 }): string | null {
   if (input.balanceCents - input.saleNetCents >= 0) return null
-  return 'O cashback gerado por esta comanda já foi usado pelo cliente. Reabra antes a comanda em que ele foi usado, ou ajuste o saldo em Cashback'
+  return 'O cashback gerado por esta comanda já foi usado pelo cliente. Reabra antes a comanda em que ele foi usado, ou ajuste o saldo de cashback na ficha dele'
 }
 
 // ============================================================================
