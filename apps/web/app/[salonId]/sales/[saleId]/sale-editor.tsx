@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
   CalendarCheck,
+  Copy,
   Plus,
   Receipt,
   RotateCcw,
@@ -26,6 +27,7 @@ import {
   checkSaleCoupon,
   getSaleCashback,
   getSalePackageBalances,
+  getSaleReview,
   getSaleSubscriptionOptions,
   invoiceSale,
   receiveSalePayment,
@@ -340,6 +342,27 @@ export function SaleEditor({
   const cashback = cashbackQueryEnabled ? (cashbackQuery.data ?? null) : null
   const cashbackBalanceCents = cashback?.enabled ? (toCents(cashback.balance) ?? 0) : 0
   const cashbackUsable = cashback?.enabled === true && cashback.status === "available"
+
+  // O pedido de avaliação da comanda faturada (fase 6): o link para enviar ao cliente.
+  const reviewQueryEnabled = options.reviewsEnabled && status === "invoiced" && saleId !== undefined
+  const reviewQuery = useQuery({
+    queryKey: ["sale-review", salonId, saleId ?? null],
+    queryFn: async () => {
+      const result = await getSaleReview(salonId, saleId as string)
+      if ("error" in result) throw new Error(result.error)
+      return result.review
+    },
+    enabled: reviewQueryEnabled,
+  })
+  const saleReview = reviewQueryEnabled ? (reviewQuery.data ?? null) : null
+
+  function copyReviewLink() {
+    if (!saleReview) return
+    navigator.clipboard.writeText(`${window.location.origin}/avaliar/${saleReview.token}`).then(
+      () => toast.success("Link de avaliação copiado"),
+      () => toast.error("Não foi possível copiar o link")
+    )
+  }
 
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
@@ -1289,6 +1312,37 @@ export function SaleEditor({
                   <span className="font-mono font-medium text-foreground tabular-nums">{formatBRL(payment.amount)}</span>
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Avaliação do atendimento: o link que quem atende envia ao cliente. */}
+        {saleReview && (
+          <section className="space-y-3">
+            <h3 className={labelClass}>Avaliação</h3>
+            <div className="bg-card border border-border rounded-md p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm">
+              {saleReview.rating === null ? (
+                <>
+                  <span className="text-muted-foreground">
+                    O cliente ainda não avaliou este atendimento. Envie o link para ele.
+                  </span>
+                  <button
+                    onClick={copyReviewLink}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted transition-colors flex-shrink-0"
+                  >
+                    <Copy size={14} />
+                    Copiar link de avaliação
+                  </button>
+                </>
+              ) : (
+                <span className="text-foreground">
+                  O cliente deu nota <span className="font-bold">{saleReview.rating} de 5</span>
+                  {saleReview.respondedAt ? ` em ${dateTimeFormat.format(new Date(saleReview.respondedAt))}` : ""}.{" "}
+                  <Link href={`/${salonId}/reviews`} className="text-accent font-semibold hover:underline">
+                    Ver em Avaliações
+                  </Link>
+                </span>
+              )}
             </div>
           </section>
         )}

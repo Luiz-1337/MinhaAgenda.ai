@@ -148,6 +148,8 @@ export interface SaleFormOptions {
   cashbackEnabled: boolean
   /** O salão tem o módulo `promotions`: a comanda aceita cupom (fase 6). */
   promotionsEnabled: boolean
+  /** O salão tem o módulo `reviews`: a comanda faturada mostra o link de avaliação (fase 6). */
+  reviewsEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean

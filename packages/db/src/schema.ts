@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   integer,
+  smallint,
   numeric,
   boolean,
   pgEnum,
@@ -2036,6 +2037,48 @@ export const promotions = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [uniqueIndex('promotions_salon_code_unique').on(table.salonId, sql`lower(${table.code})`)]
+)
+
+// ============================================================================
+// TABLES - Avaliações pós-atendimento (migration 056)
+// ============================================================================
+// Um pedido de avaliação por comanda faturada, respondido pelo cliente num
+// formulário público (o token é a credencial). Regra em domain/reviews.ts.
+
+export const reviewSettings = pgTable('review_settings', {
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).primaryKey().notNull(),
+  isEnabled: boolean('is_enabled').default(false).notNull(),
+  // Textos do formulário. NULL = usa o padrão do sistema.
+  title: text('title'),
+  welcomeText: text('welcome_text'),
+  thanksText: text('thanks_text'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    // A credencial do formulário público: aleatório, único no sistema inteiro.
+    token: text('token').notNull(),
+    // Dia da comanda (Brasília).
+    serviceDate: date('service_date').notNull(),
+    // 1 a 5. NULL = pendente. Nota e data de resposta andam juntas (CHECK).
+    rating: smallint('rating'),
+    comment: text('comment'),
+    requestedAt: timestamp('requested_at').defaultNow().notNull(),
+    respondedAt: timestamp('responded_at')
+  },
+  (table) => [
+    uniqueIndex('reviews_token_unique').on(table.token),
+    uniqueIndex('reviews_sale_unique').on(table.saleId),
+    index('reviews_salon_date_idx').on(table.salonId, table.serviceDate.desc()),
+    index('reviews_customer_idx').on(table.customerId)
+  ]
 )
 
 // ============================================================================

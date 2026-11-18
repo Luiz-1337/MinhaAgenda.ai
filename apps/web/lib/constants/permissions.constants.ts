@@ -32,6 +32,7 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   packages: "Pacotes",
   cashback: "Cashback",
   promotions: "Promoções",
+  reviews: "Avaliações",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {

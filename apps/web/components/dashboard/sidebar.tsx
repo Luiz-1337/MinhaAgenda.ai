@@ -30,6 +30,7 @@ import {
   Gift,
   Coins,
   Tag,
+  Star,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
@@ -54,6 +55,7 @@ const MODULE_ITEMS: Record<string, (salon: SalonListItem) => boolean> = {
   cashback: (salon) => salon.modules.includes("cashback") && salon.permissions.includes("cashback.access"),
   promotions: (salon) =>
     salon.modules.includes("promotions") && salon.permissions.includes("promotions.access"),
+  reviews: (salon) => salon.modules.includes("reviews") && salon.permissions.includes("reviews.access"),
 }
 
 // Helper para verificar permissões de visualização
@@ -96,6 +98,7 @@ const menuGroups = [
       { href: "packages", label: "Pacotes", icon: Gift },
       { href: "cashback", label: "Cashback", icon: Coins },
       { href: "promotions", label: "Promoções", icon: Tag },
+      { href: "reviews", label: "Avaliações", icon: Star },
     ]
   },
   {

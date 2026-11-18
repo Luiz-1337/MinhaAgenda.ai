@@ -58,6 +58,7 @@ import { brazilToday, isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
 import { applyCouponToSale, type CouponRule } from "../domain/promotions"
 import { loadSaleCoupon } from "./promotions.service"
+import { discardPendingSaleReview, requestSaleReview } from "./reviews.service"
 
 /** `professionals` uma segunda vez, para o nome de quem auxiliou no item. */
 const assistants = alias(professionals, "assistants")
@@ -537,6 +538,11 @@ export async function invoiceSaleService(input: {
   recordCashback?: boolean
   /** Quanto do total pagar com o cashback do cliente, em reais. */
   redeemCashback?: number
+  /**
+   * Módulo `reviews` ligado no salão (fase 6): só então a comanda faturada gera um
+   * pedido de avaliação. Quem decide é a action.
+   */
+  requestReview?: boolean
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -704,6 +710,17 @@ export async function invoiceSaleService(input: {
         redeemCents: plan.creditCents,
         moduleEnabled: input.recordCashback === true,
         userId: input.userId,
+      })
+
+      // O pedido de avaliação do atendimento (fase 6). Um por comanda: faturar de
+      // novo depois de reabrir mantém o mesmo link.
+      await requestSaleReview(tx, {
+        salonId: input.salonId,
+        saleId: sale.id,
+        customerId: sale.customerId,
+        saleDate: sale.saleDate,
+        moduleEnabled: input.requestReview === true,
+        now,
       })
     })
 
@@ -936,6 +953,10 @@ export async function voidSaleService(input: {
         .update(saleItems)
         .set({ appointmentId: null, customerPackageItemId: null, customerSubscriptionId: null })
         .where(and(eq(saleItems.saleId, sale.id), eq(saleItems.salonId, input.salonId)))
+
+      // O pedido de avaliação que ninguém respondeu some com a comanda; a
+      // avaliação respondida fica (fase 6).
+      await discardPendingSaleReview(tx, { salonId: input.salonId, saleId: sale.id })
 
       await tx
         .update(sales)

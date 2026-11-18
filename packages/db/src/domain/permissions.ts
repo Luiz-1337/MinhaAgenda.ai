@@ -60,6 +60,9 @@ export const PERMISSION_CATALOG = {
   // Promoções e cupons (fase 6). `access` = ver as promoções. `manage` = criar,
   // alterar e excluir. APLICAR o cupom é na comanda, com as permissões de comanda.
   promotions: ['access', 'manage'],
+  // Avaliações (fase 6). `access` = ver o painel, a lista e o link de cada pedido.
+  // `manage` = ativar, personalizar o formulário e excluir avaliação.
+  reviews: ['access', 'manage'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -164,7 +167,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

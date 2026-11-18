@@ -50,7 +50,10 @@ Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
 migration 054 aplicada em 17/nov/2026, o módulo `cashback` ligado só no salão de
 teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) na mesma
 branch: migration 055 aplicada em 17/nov/2026, módulo `promotions` ligado só no
-salão de teste, publicada e testada em uso — ver §10.8.
+salão de teste, publicada e testada em uso — ver §10.8. Fatia 6c (avaliações
+pós-atendimento) feita na mesma branch — **em commit local, migration 056 NÃO
+aplicada, módulo `reviews` desligado em todos os salões, sem publicar e sem teste
+em uso** — ver §10.9.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2520,8 +2523,8 @@ executar nada; quase toda a regra foi decidida aqui.
 |---|---|---|
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
-| 6c | Avaliações pós-atendimento: formulário enviado ao cliente (personalizável), painel (média, total, distribuição por nota, por profissional) e lista filtrável; pedido de avaliação pelo agente do WhatsApp | Pendente |
-| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto | Pendente |
+| 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita em código — **migration 056 não aplicada, sem publicar e sem teste em uso** (§10.9) |
+| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp | Pendente |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
 
@@ -2552,6 +2555,15 @@ online público (fase 7).
   código) — andam juntos (CHECK).
 - **`sale_items.coupon_discount`** — a parte de `discount_amount` que veio do
   cupom. CHECK: de 0 ao desconto do item.
+
+**Migration 056 (fatia 6c)** — não mexe em tabela existente:
+
+- **`review_settings`** — uma linha por salão: `is_enabled`, `title`,
+  `welcome_text`, `thanks_text` (NULL = texto padrão do sistema).
+- **`reviews`** — o pedido de avaliação e a resposta: `sale_id` (único, CASCADE),
+  `customer_id`, `token` (único; a credencial do formulário público),
+  `service_date`, `rating` (1 a 5; NULL = pendente), `comment`, `requested_at`,
+  `responded_at`. CHECK: nota e data de resposta andam juntas.
 
 Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 `anon`/`authenticated`.
@@ -2620,6 +2632,33 @@ Fatia 6b — promoções e cupons:
 19. **Não há limite de usos**, nem por cliente.
 20. **Sem o módulo `promotions`, a comanda não aceita cupom.**
 
+Fatia 6c — avaliações pós-atendimento:
+
+21. **Duas chaves**: o módulo `reviews` do salão (piloto) e, dentro dele, o "Pedir
+    avaliação" das configurações.
+22. **O pedido nasce quando a comanda é FATURADA e tem pelo menos um serviço.**
+    Venda só de produto, de pacote ou cobrança de assinatura não é atendimento.
+    Um pedido por comanda: reabrir e faturar de novo mantém o mesmo link. Excluir
+    a comanda apaga o pedido que ninguém respondeu; a avaliação respondida fica.
+23. **O cliente responde num formulário público**, pelo link — sem login. A única
+    credencial é o token do link (aleatório, 192 bits). A página mostra só o nome
+    do salão e o dia do atendimento: nem nome do cliente, nem comanda, nem valor.
+24. **A resposta** é uma nota inteira de 1 a 5 e um comentário opcional (até
+    1.000 caracteres). Responde-se uma vez só; depois o link mostra o
+    agradecimento.
+25. **Personalização**: título, boas-vindas e agradecimento. Em branco, vale o
+    texto padrão. A nota, o comentário e o rodapé com a data do atendimento são
+    fixos.
+26. **O envio do link é manual**: copia-se na comanda faturada ou na lista de
+    Avaliações e manda-se ao cliente. O envio automático pelo WhatsApp fica para
+    a fatia 6d.
+27. **O painel é por dia do atendimento**: média, respondidas e pedidas, taxa de
+    resposta, tempo médio entre o pedido e a resposta, distribuição por nota e por
+    profissional. A nota de uma comanda conta para CADA profissional que executou
+    serviço nela.
+28. **Excluir** uma avaliação (ou um pedido pendente) é de quem tem
+    `reviews.manage`; o link do pedido excluído deixa de funcionar.
+
 Perguntas para o dono:
 
 - O cashback deve vencer (ex.: 90 dias)?
@@ -2641,6 +2680,14 @@ Perguntas para o dono:
 - (6b) A Belasis tem a permissão "Acessar todas ou somente as suas" em Promoções.
   A promoção deve poder ser de um profissional só?
 - (6b) O agente do WhatsApp deve divulgar ou aceitar cupom?
+- (6c) Uma avaliação por comanda (regra 22), ou uma por profissional ou por
+  serviço?
+- (6c) O pedido deve sair sozinho pelo WhatsApp? Quanto tempo depois de faturar, e
+  com que texto?
+- (6c) O link deve vencer depois de alguns dias?
+- (6c) O profissional pode ver as próprias avaliações, ou só quem gerencia?
+- (6c) O salão quer responder ao comentário do cliente, ou mostrar as avaliações
+  no agendamento online (a Belasis tem "Mostrar avaliações")?
 
 ### 10.4 Permissões e módulo
 
@@ -2655,6 +2702,11 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver) e
 `manage` (criar, alterar e excluir). Aplicar o cupom é de quem monta a comanda
 (`sales.create` / `sales.edit`).
+
+Avaliações (6c): módulo `reviews` e recurso `reviews` com `access` (painel, lista
+e link de cada pedido) e `manage` (ativar, personalizar e excluir). Quem vê a
+comanda faturada (`sales.access`) também vê e copia o link dela. O formulário
+público não tem permissão: a credencial é o token.
 
 ### 10.5 Telas
 
@@ -2676,6 +2728,18 @@ Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver)
 - **Comanda (6b)**: bloco Cupom ao lado dos totais — campo e "Aplicar"; aplicado,
   mostra o código, o nome e o desconto, com "Remover". Os totais ganham a linha
   "Cupom X", e o total de cada item já desconta a parte dele.
+- **Avaliações (6c)** no menu (módulo ligado + `reviews.access`), em
+  `/[salonId]/reviews`: período na URL; quatro totais (média, avaliações, taxa de
+  resposta, tempo de resposta); distribuição por nota; por profissional; e a
+  lista (data e comanda, cliente, profissional, nota ou "Pendente", comentário)
+  com busca por cliente e filtros de situação, nota e profissional, o botão de
+  copiar o link do pedido pendente e excluir. "Personalizar" abre a configuração.
+- **Formulário público (6c)** em `/avaliar/[token]`, sem login: nome do salão,
+  título, boas-vindas, cinco estrelas, comentário opcional e o rodapé "Atendimento
+  de dd/mm/aaaa"; depois de responder, o agradecimento. Link desconhecido mostra
+  "Link de avaliação inválido".
+- **Comanda (6c)**: a comanda faturada mostra o bloco Avaliação — "Copiar link de
+  avaliação" enquanto pendente, ou a nota dada.
 
 ### 10.6 Onde o código mora
 
@@ -2689,6 +2753,7 @@ Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver)
 | Telas | `apps/web/app/[salonId]/cashback/`; o faturamento em `sales/[saleId]/sale-editor.tsx`; `components/contacts/customer-cashback-card.tsx` |
 | Testes | `apps/web/__tests__/lib/services/cashback-domain.test.ts` |
 | Promoções (6b) | Migration `055_promotions.sql`; tabela `promotions`, `sales.promotionId`/`couponCode` e `saleItems.couponDiscount`; regra em `domain/promotions.ts` (`planPromotion`, `promotionBlocker`, `promotionStatus`, `splitCouponDiscount`, `applyCouponToSale`); I/O em `services/promotions.service.ts` — a comanda chama `loadSaleCoupon` ao criar e ao salvar (`withCoupon`, `sales.service.ts`); actions em `actions/promotions.ts` e `checkSaleCoupon` em `actions/sales.ts`; tela em `app/[salonId]/promotions/`; testes em `promotions-domain.test.ts` |
+| Avaliações (6c) | Migration `056_reviews.sql`; tabelas `reviewSettings` e `reviews`; regra em `domain/reviews.ts` (`planReviewSettings`, `reviewFormTexts`, `shouldRequestReview`, `planReviewResponse`, `buildReviewDashboard`); I/O em `services/reviews.service.ts` — a comanda chama `requestSaleReview` no faturamento e `discardPendingSaleReview` na exclusão (`sales.service.ts`); actions do salão em `actions/reviews.ts`, `getSaleReview` em `actions/sales.ts` e a action PÚBLICA em `actions/public-reviews.ts` (sem sessão, fora da guarda de autorização de propósito); telas em `app/[salonId]/reviews/` e `app/avaliar/[token]/`; testes em `reviews-domain.test.ts` |
 
 ### 10.7 Fatia 6a — estado (17/nov/2026)
 
@@ -2820,6 +2885,30 @@ Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver)
   promoções, pagamentos, lançamentos, comissões nem movimentos de estoque.
   **Ficou:** o módulo `promotions` ligado no salão de teste.
 
+### 10.9 Fatia 6c — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1199, db 296, mcp-server 400).
+- **Migration 056: NÃO aplicada.** Só cria tabelas novas (não mexe em tabela
+  existente), mas tem que entrar antes de o módulo ser ligado: com ele ligado,
+  faturar uma comanda consulta `review_settings`.
+- **O módulo `reviews` está desligado em todos os salões.** Para testar, é
+  preciso ligá-lo no salão de teste (`salons.settings.modules`).
+- **Primeira rota pública com dado de salão.** `/avaliar/[token]` e a action
+  `submitPublicReview` não têm sessão. O que as protege: o token aleatório de 192
+  bits, a resposta única, e o fato de não receberem nem devolverem id de salão,
+  de cliente ou de comanda. Não há limite de tentativas por IP.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar, ligar o
+  módulo e publicar: ativar em Personalizar e trocar o título; faturar uma
+  comanda com serviço → bloco Avaliação na comanda e pedido "Pendente" na lista;
+  comanda só de produto não gera pedido; copiar o link e abrir numa janela sem
+  login → salão, título, data; enviar sem nota (recusado); enviar nota e
+  comentário → agradecimento; reabrir o link (mostra a nota, não deixa responder
+  de novo); link inventado → "inválido"; conferir o painel, os filtros e a nota
+  na comanda; reabrir e faturar de novo (mesmo link); excluir uma avaliação;
+  excluir uma comanda com pedido pendente (o pedido some).
+
 ## 11. Pendências do dono
 
 | Pendência | Trava |
@@ -2836,5 +2925,6 @@ Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver)
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117`, `backups.sales_pre_054_20261117`, `backups.sales_pre_055_20261117` e `backups.sale_items_pre_055_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
-| Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp) | Ajustes na fase 6 antes do piloto |
+| Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
+| Aplicar a migration 056 (ou autorizar a aplicação), ligar o módulo `reviews` no salão de teste e publicar a fatia 6c — ver §10.9 | Teste em uso da fatia 6c |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

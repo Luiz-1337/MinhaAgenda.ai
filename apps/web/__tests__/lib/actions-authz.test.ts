@@ -37,6 +37,9 @@ const GUARDED_FILES = [
   "subscriptions.ts",
   "cashback.ts",
   "promotions.ts",
+  // `public-reviews.ts` fica de fora de propósito: é o formulário público de
+  // avaliação, sem sessão, com o token do pedido como única credencial.
+  "reviews.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */
