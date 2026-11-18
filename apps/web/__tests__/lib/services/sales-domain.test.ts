@@ -27,6 +27,7 @@ const catalog: SaleCatalog = {
     ["s-progressiva", { name: "Progressiva" }],
   ]),
   products: new Map([["p-shampoo", { name: "Shampoo" }]]),
+  packageTemplates: new Map(),
   professionalIds: new Set(["pro-1", "pro-2"]),
   appointments: new Map([
     ["a-1", { customerId: CUSTOMER, status: "confirmed" }],

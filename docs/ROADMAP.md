@@ -35,7 +35,17 @@ saída pelo profissional) feita na mesma branch e publicada, com a migration 050
 aplicada e registrada em 17/nov/2026 e testada em uso — ver §8.11. Fatia 4f
 (relatórios de estoque) feita na mesma branch e publicada, sem migration, e
 testada em uso em 17/nov/2026 — ver §8.12.
-Fases 5 em diante: planejamento.
+Fase 5 (pacotes e assinaturas): detalhada em §9. Fatia 5a (pacotes predefinidos e
+venda de pacote pela comanda) feita na branch `claude/fase-5-pacotes` (sai de
+`claude/fase-4-estoque`) e publicada, com a migration 051 aplicada e registrada
+em 17/nov/2026 e testada em uso — ver §9.7. Fatia 5b (usar o pacote na comanda)
+na mesma branch: migration 052 aplicada em 17/nov/2026, publicada e testada em
+uso — ver §9.8. Fatia 5c (assinaturas de cliente) na mesma branch: migration 053
+aplicada em 17/nov/2026, publicada e testada em uso — ver §9.9. Fatia 5d
+(relatórios e saldo de pacote para o agente do WhatsApp) na mesma branch,
+publicada, sem migration: os relatórios foram testados em uso; **o saldo de
+pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
+Fases 6 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -1974,7 +1984,523 @@ UPDATE salons
   removido, os três pela tela; o acerto apagado por SQL, pelo ID. Sem movimentos,
   solicitações, vales, consumos, comissões nem lançamentos no financeiro.
 
-## 9. Pendências do dono
+## 9. Fase 5 — Pacotes e assinaturas (detalhe)
+
+Responde: o que o cliente comprou adiantado, quanto ainda tem e quando vence.
+Parte da comanda (fase 1) e do financeiro (fase 2). Itens da auditoria: P-06 a
+P-10, T-05, F-02 (assinaturas de clientes), a aba Pacotes da ficha do cliente, o
+relatório "Extrato de Pacotes" e a permissão Pacotes (Acessar, Criar, Editar,
+Excluir). A auditoria diz pouco da regra: "Pacote predefinido: modelo com itens e
+total (ex.: 5 sessões de laser)", "Pacote vendido: Cliente, Data, Validade, Pacote
+Predefinido, Vendedor, Descrição, itens; Salvar ou Faturar", "a lista mostra
+Disponibilidade (saldo de sessões)", e na ficha "Pacote, Qtde, Saldo,
+Disponibilidade, Comandas". O resto foi decidido aqui (§9.3).
+
+### 9.1 Fatias
+
+| Fatia | Entrega | Estado |
+|---|---|---|
+| 5a | Pacotes predefinidos (itens, valor, validade, ativo); venda de pacote como item da comanda; o pacote do cliente nasce no faturamento e some na reabertura; lista de pacotes vendidos com disponibilidade e situação | Feita — migration 051 aplicada, testada em uso em 17/nov/2026 (§9.7) |
+| 5b | Usar o pacote na comanda: item "do pacote" (serviço ou produto, sem cobrança), que baixa o saldo ao faturar e devolve ao reabrir; comissão de quem executou sobre o valor da sessão; produto do pacote baixa o estoque; aba Pacotes na ficha do cliente | Feita, migration 052 aplicada, publicada e testada em uso (§9.8) |
+| 5c | Assinaturas de cliente: modelos (nome, valor, periodicidade, situação, visível), assinatura com vencimento e situação (Pendente, Ativa, Expirada, Desativada), renovação manual gerando a cobrança | Feita, migration 053 aplicada, publicada e testada em uso (§9.9) |
+| 5d | Relatórios (extrato de pacotes, vendas por assinatura); saldo de pacote para o agente do WhatsApp | Feita e publicada, sem migration. Relatórios testados em uso; **a tool do agente não foi testada em uso** (§9.10) |
+
+A página pública de planos com link copiável e a renovação automática de
+assinatura dependem de pagamento online (fase 8).
+
+### 9.2 Modelo de dados (migration 051)
+
+**`package_templates`** — o pacote predefinido: `name` (único no salão, sem
+diferença de maiúscula), `description`, `price` numeric(12,2), `validity_days`
+(1 a 3650; NULL = não vence), `is_active`.
+
+**`package_template_items`** — o que o modelo inclui: `kind` (`service` ou
+`product`), `service_id` ou `product_id` (exatamente um), `quantity` inteira (1 a
+999), `position`. O mesmo serviço (ou produto) uma vez por modelo.
+
+**`sale_items`** — `kind` aceita `package`, com `package_template_id` (sem ON
+DELETE). Item de pacote tem quantidade 1 (CHECK).
+
+**`customer_packages`** — o pacote do cliente: `customer_id`, `sale_id` e
+`sale_item_id` (único, CASCADE), `template_id`, `name` (cópia), `sold_on`,
+`expires_on`, `seller_id`, `price` (o total do item).
+
+**`customer_package_items`** — cópia dos itens do modelo no faturamento:
+`kind`, `service_id`/`product_id`, `description`, `quantity`.
+
+Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
+`anon`/`authenticated`.
+
+**Migration 052 (fatia 5b):**
+
+- `customer_package_items.value` numeric(12,2) — a parte do preço pago pelo pacote
+  que cabe à linha (rateio no faturamento, regra 15).
+- `sale_items.customer_package_item_id` (sem ON DELETE) — o item "do pacote": de
+  qual linha do pacote do cliente ele sai. CHECK: só em serviço ou produto, com
+  total e desconto zero e quantidade inteira.
+- **Não há tabela de consumo.** O saldo de uma linha é a quantidade dela menos a
+  soma das quantidades dos itens de comandas FATURADAS que a citam. Reabrir a
+  comanda que usou devolve o saldo sem desfazer nada.
+
+**Migration 053 (fatia 5c):**
+
+- **`subscription_plans`** — o plano: `name` (único no salão, sem diferença de
+  maiúscula), `description`, `price`, `interval_months` (1 a 36), `is_active`,
+  `is_visible`.
+- **`customer_subscriptions`** — a assinatura do cliente: `customer_id`,
+  `plan_id`, cópias de `name`, `price` e `interval_months`, `started_on`,
+  `deactivated_at` (NULL = em vigor). Uma em vigor por cliente e plano (índice
+  único parcial).
+- **`sale_items`** — `kind` aceita `subscription`, com
+  `customer_subscription_id` (sem ON DELETE). Item de assinatura tem quantidade 1.
+- **`customer_subscription_periods`** — o período pago: `subscription_id`,
+  `sale_id` e `sale_item_id` (único, CASCADE), `period_start`, `period_end` (o
+  vencimento), `amount`.
+- **Não há coluna de situação.** Ela sai dos períodos e de `deactivated_at`
+  (regra 26). Reabrir a comanda apaga o período e a situação volta sozinha.
+
+### 9.3 Regras de negócio
+
+1. **Vender pacote é um item da comanda** ("+ Pacote"). Pagamento, taxas,
+   financeiro, caixa e fiado são os da comanda — nada novo. A Belasis tem uma tela
+   "Novo pacote" com Salvar/Faturar própria; aqui a comanda faz esse papel.
+2. **O pacote do cliente nasce quando a comanda é faturada**, um por item de
+   pacote. Comanda pendente não dá pacote.
+3. **Um item de pacote é UM pacote** (quantidade 1). Para vender dois, dois itens.
+4. **O pacote do cliente COPIA o modelo no faturamento**: nome, itens, quantidades
+   e validade. Mudar ou desativar o modelo depois não muda o que foi vendido.
+5. **A data do pacote é o dia da comanda em Brasília**; a validade conta a partir
+   dela e vale até o último dia, inclusive. Sem validade, não vence.
+6. **O valor do pacote é o total do item da comanda**: o valor do modelo é
+   sugestão, pode ser alterado e levar desconto, como qualquer item.
+7. **Vendedor é opcional**: o profissional do item, como no produto.
+8. **Reabrir a comanda apaga os pacotes que ela vendeu**; faturar de novo cria
+   outros. (Na 5b: reabrir é barrado se uma sessão do pacote já foi usada.)
+9. **Venda de pacote não gera comissão nem baixa estoque.** A comissão e a baixa
+   acontecem no USO (5b), sobre o que foi feito.
+10. **Modelo que já entrou em comanda (mesmo pendente) não se apaga**:
+    desativa-se. Inativo some da comanda nova, mas continua na comanda que já o
+    tinha.
+11. **Situação do pacote vendido**: Disponível (tem saldo e está na validade),
+    Vencido (passou da validade com saldo) ou Utilizado (sem saldo).
+12. **Quantidade dos itens é inteira** — sessões e unidades.
+13. **Sem o módulo `packages`, a comanda não vende pacote** (o servidor recusa o
+    item). Mas uma comanda faturada com pacote cria o pacote mesmo que o módulo
+    tenha sido desligado depois: o cliente pagou.
+
+Fatia 5b — usar o pacote:
+
+14. **Usar é um item da comanda "do pacote"**: o serviço (ou produto) da linha do
+    pacote, sem cobrança (valor e desconto zero, travados), quantidade inteira. O
+    serviço continua exigindo quem executou. Pode vir de agendamento; o
+    agendamento fecha com valor cobrado zero (a receita entrou na venda do pacote).
+15. **O valor de cada linha é o preço pago pelo pacote rateado** pelo preço de
+    tabela × quantidade das linhas, no faturamento da venda (sem preço de tabela,
+    pela quantidade). Em centavos, a soma das linhas é o preço. O valor de uma
+    sessão é o valor da linha ÷ sessões.
+16. **O saldo baixa quando a comanda que usa é FATURADA** e volta quando ela é
+    reaberta. Ao faturar, as linhas usadas ficam travadas (FOR UPDATE) até o fim
+    — duas comandas não usam a mesma última sessão. Salvar também confere, para
+    avisar cedo, mas a palavra final é do faturamento.
+17. **Só o pacote do próprio cliente**, só com saldo, e só no período do pacote: a
+    data da comanda (Brasília) entre a compra e o último dia da validade,
+    inclusive. Vencido não se usa (regra provisória — ver perguntas).
+18. **Comissão no USO**, para quem executou, sobre o valor da sessão (regra 15),
+    pela regra de comissão do serviço — sem desconto e sem taxa (a taxa foi da
+    comanda que vendeu o pacote). A venda do pacote continua sem comissão (regra 9).
+19. **Estoque**: o produto do pacote e o consumo do serviço do pacote baixam o
+    estoque no faturamento da comanda que usa, como qualquer item.
+20. **A comanda que vendeu um pacote não reabre se ele está em uso** em outra
+    comanda (aberta ou faturada) — reabrir apagaria o pacote. A mensagem diz qual
+    comanda. Excluir a comanda (aberta) que usava solta a ligação.
+21. **Sem o módulo `packages`, a comanda não aceita item do pacote novo**; uma
+    comanda que já tinha item do pacote ainda fatura (o saldo é conferido igual).
+
+Fatia 5c — assinaturas de cliente:
+
+22. **O plano de assinatura** tem nome, valor (maior que zero), periodicidade em
+    meses (a tela oferece mensal, bimestral, trimestral, semestral e anual),
+    ativo e visível. "Visível" só é guardado: a página pública de planos é da
+    fase 8.
+23. **A assinatura é o plano de UM cliente** e COPIA nome, valor e periodicidade
+    no dia em que é criada: mudar o plano depois não muda quem já assina. Uma em
+    vigor por cliente e plano. Nasce Pendente, sem cobrança.
+24. **Cobrar (ou renovar) é um item da comanda.** "Renovar" na tela de
+    Assinaturas abre uma comanda do cliente com o item, já no faturamento; a
+    comanda também tem "+ Assinatura" quando o cliente tem uma em vigor. O valor
+    da assinatura é sugestão: pode ser alterado e levar desconto. Quantidade 1,
+    uma cobrança por assinatura em cada comanda, vendedor opcional. Se já existe
+    comanda aberta com a cobrança, "Renovar" abre essa.
+25. **O período pago nasce quando a comanda é FATURADA.** Em dia (a assinatura
+    ainda vale no dia da comanda), emenda no vencimento atual — quem paga
+    adiantado não perde dias. Atrasada ou primeira cobrança, começa no dia da
+    comanda (Brasília). O vencimento é o mesmo dia do mês, N meses depois (31/jan
+    + 1 mês = 28 ou 29/fev), e a assinatura vale até ele, inclusive.
+26. **Situação**, sem coluna própria: Pendente (nunca paga), Ativa (o último
+    período vence hoje ou depois), Expirada (o último período venceu) e
+    Desativada (encerrada à mão — vale mais que as outras).
+27. **Reabrir a comanda apaga o período que ela pagou.** Só a última renovação
+    reabre: se a assinatura já foi renovada depois em outra comanda, a mensagem
+    diz qual reabrir primeiro. Excluir a comanda (aberta) solta a assinatura.
+28. **Desativar** não apaga o que foi pago; a assinatura deixa de aceitar
+    cobrança, e uma comanda aberta com o item dela não fatura. Pode ser
+    reativada. **Excluir** só a que nunca foi cobrada e não está em comanda.
+    Plano que já teve assinatura não se apaga: desativa-se.
+29. **Assinatura não gera comissão nem mexe no estoque.** O dinheiro entra pelo
+    pagamento da comanda, como qualquer item — inclusive fiado: faturou, o
+    período conta como pago.
+30. **Anda com o módulo `packages`** e as permissões dele (§9.4). Sem o módulo, a
+    comanda não aceita item de assinatura novo; a que já tinha ainda fatura.
+31. **A renovação é manual.** Não há cobrança automática nem aviso de vencimento
+    (dependem de pagamento online, fase 8).
+
+Fatia 5d — relatórios e o agente do WhatsApp:
+
+32. **Extrato de pacotes**, por período: as VENDAS (no dia da comanda, pelo que o
+    cliente pagou) e os USOS (itens "do pacote" de comandas FATURADAS, no dia da
+    comanda, pelo valor da sessão — regra 15) numa lista só, do mais recente para
+    o mais antigo. Totais: pacotes vendidos e valor, sessões e unidades usadas e
+    valor. Comanda reaberta sai do extrato.
+33. **Vendas por assinatura**, por período: as cobranças faturadas (os períodos
+    pagos), no dia da comanda — o total por plano (cobranças, assinantes
+    distintos e valor, o que mais rendeu primeiro) e a lista. Agrupa pelo plano,
+    mesmo que a assinatura guarde o nome antigo dele.
+34. **O período** é o dos relatórios de estoque: sem datas, o mês corrente até
+    hoje (Brasília); no máximo um ano. Cada lista mostra até 1.000 linhas; acima
+    disso a tela avisa que os totais são parciais.
+35. **O agente do WhatsApp consulta o saldo de pacote** (tool
+    `getMyPackageBalance`): os pacotes com saldo e na validade do cliente DA
+    CONVERSA, com o que resta de cada item e até quando vale. Só leitura: não
+    vende pacote, não informa preço e não baixa saldo — o uso é da recepção, na
+    comanda. Salão e cliente vêm do contexto do WhatsApp, nunca do modelo, e a
+    resposta não leva ids internos. Cliente sem cadastro recebe "não tem pacote",
+    não um erro.
+36. **A tool só existe para a IA no salão com o módulo `packages` ligado.** Nos
+    outros ela é removida antes de a conversa começar, como a do Kanban. O prompt
+    do agente não mudou: a descrição da tool diz quando usar.
+
+Perguntas para o dono:
+
+- Vender pacote pela comanda (regra 1) serve, ou a recepção precisa da tela
+  própria "Novo pacote" da Belasis?
+- O pacote vendido precisa ser editável (itens, validade) depois da venda, ou a
+  cópia do modelo basta?
+- A comissão do pacote deve ser no uso (regra 9, sobre o valor da sessão), na
+  venda (para o vendedor), ou nos dois?
+- O valor da sessão para a comissão no uso: preço do pacote ÷ sessões, ou o preço
+  de tabela do serviço?
+- Pacote vencido com saldo: o salão estende a validade, devolve dinheiro, ou só
+  perde?
+- O pacote deve poder ser usado em outro salão da mesma rede (multiunidade)?
+- (5b) O rateio do preço do pacote pelo preço de tabela (regra 15) serve, ou cada
+  linha do modelo deve ter o seu valor informado à mão?
+- (5b) Usar sessão de pacote vencido deve ser possível com uma permissão (a
+  recepção "estende" na hora), ou vencido é vencido?
+- (5b) A comissão no uso deve seguir a regra do serviço (regra 18) ou ter um
+  percentual próprio para sessões de pacote?
+- (5c) O que o assinante leva? Hoje a assinatura só registra a cobrança e a
+  situação; serviços inclusos por período ou desconto de assinante não existem.
+- (5c) Assinatura cobrada no fiado conta como paga (regra 29), ou só depois de o
+  dinheiro entrar?
+- (5c) Renovação atrasada começa no dia do pagamento (regra 25), ou cobra desde o
+  vencimento anterior?
+- (5c) Mudar o valor do plano deve mudar as assinaturas que já existem?
+- (5c) Quem vende a assinatura recebe comissão?
+- (5c) Assinaturas precisam de permissão própria, separada da de pacotes?
+- (5c) O salão quer avisar o cliente pelo WhatsApp quando a assinatura está para
+  vencer?
+- (5d) O agente do WhatsApp deve também dizer a situação e o vencimento da
+  assinatura do cliente? Hoje só informa pacote.
+- (5d) Ao agendar um serviço que o cliente tem no pacote, o agente deve avisar
+  que a sessão sai do pacote? Hoje ele só responde quando perguntam.
+- (5d) O extrato de pacotes precisa mostrar o que falta entregar (o valor das
+  sessões ainda não usadas)? E os relatórios precisam de exportação?
+
+### 9.4 Permissões e módulo
+
+Módulo `packages` em `salons.settings.modules`. Recurso novo:
+
+| Recurso | Ações |
+|---|---|
+| `packages` | `access` (ver pacotes vendidos e predefinidos), `manage` (criar, alterar e excluir predefinidos) |
+
+Vender é pela comanda, com as permissões de comanda. A Belasis tem Acessar,
+Criar, Editar e Excluir em Pacotes; aqui Criar/Editar/Excluir viraram `manage`.
+
+Assinaturas (5c) usam o mesmo módulo e as mesmas chaves: `packages.access` vê
+assinaturas e planos; `packages.manage` cria e altera planos e cria, desativa,
+reativa e exclui assinaturas. "Renovar" abre comanda, então pede também o módulo
+`sales` e `sales.create`.
+
+### 9.5 Telas
+
+- **Pacotes** no menu (módulo ligado + `packages.access`), em
+  `/[salonId]/packages`: pacotes vendidos (data, comanda, cliente, pacote,
+  disponibilidade por item, validade, vendedor, valor, situação), com os filtros
+  Todos, Disponíveis, Vencidos e Utilizados, e os três totais.
+- **Pacotes predefinidos** (`/[salonId]/packages/templates`): lista (pacote, o que
+  inclui, valor, validade, vendidos), "Novo pacote", editar e excluir.
+- **Comanda**: botão "+ Pacote" (com o módulo ligado), quantidade travada em 1; o
+  aviso de reabrir diz que os pacotes da comanda deixam de existir.
+- **Comanda (5b)**: "+ Do pacote" aparece quando o cliente tem saldo, com cada
+  linha ("pacote · serviço (saldo N)"); o item entra com valor e desconto travados,
+  "do pacote X" no rótulo, "Pacote" no total e quanto sobra do saldo. O aviso de
+  reabrir diz que o usado volta para o saldo.
+- **Pacotes (5b)**: a disponibilidade mostra o saldo real e "Usado em #N".
+- **Ficha do cliente (5b)**: cartão Pacotes (módulo ligado + `packages.access`):
+  pacote, data, comanda, valor, validade, saldo de cada item, comandas em que foi
+  usado e a situação.
+- **Assinaturas (5c)** (`/[salonId]/packages/subscriptions`): cliente, plano e
+  periodicidade, valor, desde, vencimento com a comanda que pagou, situação e a
+  cobrança aberta, se houver; filtros Todas, Pendentes, Ativas, Expiradas e
+  Desativadas, com os quatro totais; "Nova assinatura" (cliente + plano),
+  "Cobrar"/"Renovar", "Desativar"/"Reativar" e excluir a que nunca foi cobrada.
+- **Planos de assinatura (5c)** (`/[salonId]/packages/subscription-plans`): plano,
+  periodicidade, valor, assinantes e visível; "Novo plano", editar e excluir.
+- **Comanda (5c)**: "+ Assinatura" aparece quando o cliente tem assinatura em
+  vigor, com o vencimento de cada uma; o item entra com o valor da assinatura,
+  sem troca de item e com quantidade travada em 1. O aviso de reabrir diz que a
+  renovação é desfeita.
+- **Relatórios (5d)** (`/[salonId]/packages/reports`, `packages.access`): o
+  período na URL, quatro totais (pacotes vendidos, pacotes usados, assinaturas e
+  assinantes que pagaram), o extrato de pacotes (data e comanda, Venda ou Uso,
+  cliente, pacote, item e profissional, quantidade, valor) e as vendas por
+  assinatura (por plano, e a lista de cobranças com o período pago).
+
+### 9.6 Onde o código mora
+
+| O quê | Onde |
+|---|---|
+| Migration | `supabase/migrations/051_packages.sql` |
+| Tabelas | `packages/db/src/schema.ts` (`packageTemplates`, `packageTemplateItems`, `customerPackages`, `customerPackageItems`, `saleItems.packageTemplateId`) |
+| Regra pura | `packages/db/src/domain/packages.ts` (`planPackageTemplate`, `packageTemplateDeleteBlocker`, `packageExpiry`, `planCustomerPackages`, `customerPackageStatus`); o item de pacote em `planSaleItems` (`domain/sales.ts`) |
+| I/O | `packages/db/src/services/packages.service.ts`; a comanda chama `recordSalePackages` no faturamento e `revertSalePackages` na reabertura (`sales.service.ts`) |
+| Actions | `apps/web/app/actions/packages.ts`; a venda em `apps/web/app/actions/sales.ts` |
+| Telas | `apps/web/app/[salonId]/packages/`; o item na comanda em `sales/[saleId]/sale-editor.tsx` |
+| Testes | `apps/web/__tests__/lib/services/packages-domain.test.ts`; uso (5b) em `package-usage-domain.test.ts` |
+| Uso (5b) | Migration `052_package_usage.sql`; regra `splitPackagePrice`, `planPackageUsage`, `packageUseValue` (`domain/packages.ts`), o item em `planSaleItems`, a base em `planSaleCommissions` (`packageValue`); I/O `loadPackageLines`, `salePackagesInUse`, `listCustomerPackageBalancesService` (`packages.service.ts`), chamados por `sales.service.ts` e `commissions.service.ts`; action `getSalePackageBalances` (`actions/sales.ts`); cartão `components/contacts/customer-packages-card.tsx` |
+| Assinaturas (5c) | Migration `053_subscriptions.sql`; tabelas `subscriptionPlans`, `customerSubscriptions`, `customerSubscriptionPeriods` e `saleItems.customerSubscriptionId`; regra em `domain/subscriptions.ts` (`planSubscriptionPlan`, `planCustomerSubscription`, `nextSubscriptionPeriod`, `planSubscriptionPeriods`, `customerSubscriptionStatus`, `subscriptionReopenBlocker`) e o item em `planSaleItems`; I/O em `services/subscriptions.service.ts` — a comanda chama `recordSaleSubscriptions` no faturamento e `saleSubscriptionsRenewedLater` + `revertSaleSubscriptions` na reabertura; actions em `actions/subscriptions.ts` e `getSaleSubscriptionOptions` em `actions/sales.ts`; telas em `app/[salonId]/packages/subscriptions/` e `subscription-plans/`; testes em `subscriptions-domain.test.ts` |
+| Relatórios (5d) | Regra em `domain/package-reports.ts` (`buildPackageStatement`, `buildSubscriptionSalesReport`); I/O em `services/package-reports.service.ts`; action `getPackageReports` (`actions/packages.ts`); tela em `app/[salonId]/packages/reports/`; testes em `package-reports-domain.test.ts` |
+| Agente do WhatsApp (5d) | Tool `getMyPackageBalance` em `packages/mcp-server/src/presentation/tools/package.tools.ts` (lê `listCustomerPackageBalancesService`); o gate do módulo e o resumo da tool em `apps/web/lib/services/ai/generate-response.service.ts` (`isPackagesModuleEnabled`, `summarizeToolResult`); testes em `packages/mcp-server/__tests__/presentation/tools/package.tools.test.ts` e `apps/web/__tests__/ai/tool-summary.test.ts` |
+
+### 9.7 Fatia 5a — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes` (sai de `claude/fase-4-estoque`),
+  **publicada**. Typecheck (db, web e mcp-server), lint dos arquivos alterados e
+  testes passando.
+- **Migration 051: aplicada em produção em 17/nov/2026** (pelo assistente, com a
+  autorização do dono dada na hora), conferida por leitura (as quatro tabelas com
+  RLS, `deny_all` e sem acesso para `anon`; os três CHECKs de `sale_items`; as 19
+  linhas de `sale_items` intactas) e registrada em `schema_migrations` (nome
+  `packages`).
+- Cópia de segurança antes da 051: `backups.sale_items_pre_051_20261117` (19
+  linhas). **Apagar só com o OK do dono.**
+- Em outro ambiente, **aplicar a 051 antes de publicar o código**: ela acrescenta
+  a coluna `package_template_id` em `sale_items`, e o INSERT do Drizzle lista
+  todas as colunas — sem ela, salvar QUALQUER comanda falharia.
+- Módulo `packages` ligado no salão de teste em 17/nov/2026.
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste. A
+  captura de tela do navegador falhou nesta sessão; as conferências foram pelo
+  texto da página, pelo estado dos campos (lido no navegador) e por leitura do
+  banco:
+  - Pacotes predefinidos vazio → "Nenhum pacote predefinido". Criado "Teste 3
+    Cortes" (3 × Corte de Cabelo Masculino, 1 × Teste Shampoo, R$ 400,00, 30 dias)
+    → a lista mostra os itens, "(produto)" no shampoo, R$ 400,00, "30 dias" e 0
+    vendidos. "teste 3 cortes" (minúsculas) é recusado: "Já existe um pacote com
+    esse nome".
+  - Comanda nova: "+ Pacote" lista só o pacote ativo; escolher preenche R$ 400,00;
+    a quantidade fica travada em 1; vendedor Marcos; desconto R$ 20,00 → total
+    R$ 380,00. Salva como #15, pendente: no banco, item `package` com o modelo,
+    quantidade 1, total 380,00 e nenhum pacote do cliente.
+  - Faturada em PIX → "Pacotes vendidos": 17/11/2026, Comanda #15, cliente, "3 de 3
+    · Corte de Cabelo Masculino" e "1 de 1 · Teste Shampoo", validade 17/12/2026,
+    Marcos Affonso, R$ 380,00, Disponível; totais 1/0/0. No banco: um lançamento de
+    R$ 380,00 no financeiro, nenhuma comissão e nenhum movimento de estoque.
+  - Excluir o modelo vendido → o diálogo já avisa que não pode; confirmar mostra
+    "Este pacote já foi usado em comanda. Desative-o em vez de excluir". Desativado
+    → a lista mostra "inativo" e 1 vendido; o "+ Pacote" de uma comanda nova fica
+    sem opção.
+  - Reabrir a #15 → o aviso inclui "Os pacotes vendidos nesta comanda deixam de
+    existir e são criados de novo quando ela for faturada"; a lista fica "Nenhum
+    pacote vendido". Faturada de novo (com o modelo já inativo) → o pacote volta,
+    igual.
+- **Não testado em uso:** editar um modelo (trocar itens, valor, validade) e
+  excluir um que nunca foi vendido; modelo sem validade ("Não vence"); vender dois
+  pacotes na mesma comanda; pacote junto com serviço e produto na mesma comanda;
+  fiado com pacote; os filtros Vencidos e Utilizados (só existem com o tempo ou com
+  a 5b); perfil só com `packages.access`; o módulo desligado com comanda aberta
+  que já tinha pacote.
+- Dados de teste limpos: a comanda #15 reaberta e excluída pela tela (fica como
+  excluída, como as anteriores); o item de pacote dela e o modelo apagados por SQL,
+  pelo ID — o modelo não sai pela tela porque a comanda excluída ainda apontava para
+  ele. Sem modelos, pacotes, pagamentos, lançamentos, comissões nem movimentos.
+  **Ficou:** o módulo `packages` ligado no salão de teste.
+
+### 9.8 Fatia 5b — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes`, publicada. Typecheck (db, web e mcp-server),
+  lint dos arquivos alterados e testes passando (web 1044, db 296).
+- **Migration 052 aplicada em produção em 17/nov/2026** (registrada como
+  `package_usage`), antes de o código ser publicado. Conferido por leitura: as
+  duas colunas, os dois CHECKs, a FK e o índice parcial existem; `sale_items`
+  seguiu com as 19 linhas. O advisor de segurança só mostra os avisos de sempre
+  (cópias em `backups` com RLS e sem policy, `vector` em `public`, senha vazada).
+- Cópias de segurança antes da 052: `backups.sale_items_pre_052_20261117` (19
+  linhas) e `backups.customer_package_items_pre_052_20261117` (vazia), com RLS
+  ligado e sem acesso para `anon`/`authenticated`.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco:
+  - Modelo "TESTE 5b pacote" (3 × Corte de Cabelo Masculino, 1 × Teste Shampoo,
+    R$ 432,00, 30 dias). Vendido na comanda #16 e faturado em PIX → no banco, a
+    linha do corte vale R$ 408,00 e a do shampoo R$ 24,00 (rateio pelo preço de
+    tabela, 510 e 30; a soma é o preço).
+  - Comanda nova da mesma cliente: aparece "+ Do pacote" com "TESTE 5b pacote ·
+    Corte de Cabelo Masculino (saldo 3)" e "· Teste Shampoo (saldo 1)". Cada item
+    entra com "do pacote TESTE 5b pacote", item, valor e desconto travados,
+    "Pacote" no total e "sobram 2" / "sobram 0"; a linha que zerou sai da lista e a
+    do corte passa a "(saldo 2)". Total da comanda R$ 0,00.
+  - Quantidade 5 no corte → "passa do saldo" na tela; salvar é recusado: 'Pacote
+    "TESTE 5b pacote": Corte de Cabelo Masculino tem saldo de 3, e a comanda usa 5'.
+  - Quantidade 1, profissional Marcos → faturar mostra "Esta comanda não tem valor
+    a receber. Ela será finalizada sem pagamento"; faturada como #17. No banco: os
+    dois itens com total 0 e a linha do pacote; **comissão com base R$ 136,00**
+    (408 ÷ 3) para quem executou; **saída de 1 Teste Shampoo no estoque**; nenhuma
+    comissão na #16.
+  - "Pacotes vendidos": "2 de 3 · Corte de Cabelo Masculino", "0 de 1 · Teste
+    Shampoo", "Usado em #17", Disponível. Ficha da cliente: cartão Pacotes com
+    "17/11/2026 · Comanda #16 · R$ 432,00 · vale até 17/12/2026", "saldo 2 de 3",
+    "saldo 0 de 1", "Usado em #17" e Disponível.
+  - Reabrir a #16 (a da venda) → barrado: "Um pacote vendido nesta comanda já está
+    em uso (comanda #17). Tire o item do pacote de lá antes de reabrir esta". Também
+    barrado com a #17 só aberta.
+  - Reabrir a #17 → o aviso inclui "O que esta comanda usou dos pacotes do cliente
+    volta para o saldo"; a lista volta a "3 de 3" e "1 de 1", sem "Usado em"; no
+    banco, a comissão e a saída de estoque somem.
+  - Excluir a #17 (aberta) solta a ligação: a #16 reabre ("Comanda reaberta") e o
+    pacote deixa de existir.
+- **Limite do teste:** o salão de teste não tem regra de comissão, então o
+  percentual saiu 0% e o valor da comissão R$ 0,00 — o que se viu foi a BASE
+  (R$ 136,00). O percentual sobre a base é o cálculo da fase 3, coberto pelos
+  testes automáticos.
+- **Não testado em uso:** item do pacote vindo de agendamento; pacote vencido e
+  comanda com data anterior à compra; pacote de outro cliente (trocar o cliente da
+  comanda com item do pacote); duas comandas disputando a última sessão; auxiliar
+  no serviço do pacote; item do pacote junto com itens cobrados na mesma comanda;
+  consumo de produto pelo serviço do pacote; o filtro Utilizados; perfil sem
+  `packages.access` (o cartão da ficha some); o módulo desligado com comanda que
+  já tinha item do pacote.
+- Dados de teste limpos: a #17 excluída pela tela; a #16 reaberta e excluída pela
+  tela (as duas ficam como excluídas, como as anteriores); o item de pacote da #16
+  e o modelo apagados por SQL, pelo ID. Sem modelos, pacotes, pagamentos,
+  comissões nem movimentos de estoque.
+
+### 9.9 Fatia 5c — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes`, publicada. Typecheck (db, web e mcp-server),
+  lint dos arquivos alterados e testes passando (web 1086, db 296).
+- **Migration 053 aplicada em produção em 17/nov/2026** (registrada como
+  `subscriptions`), antes de o código ser publicado. Conferido por leitura: as
+  três tabelas com RLS, a coluna `sale_items.customer_subscription_id`, os CHECKs
+  de tipo, referência, assinatura e quantidade; `sale_items` seguiu com as 21
+  linhas. O advisor de segurança só mostra os avisos de sempre.
+- Cópia de segurança antes da 053: `backups.sale_items_pre_053_20261117` (21
+  linhas), com RLS ligado e sem acesso para `anon`/`authenticated`.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco:
+  - Planos de assinatura vazio → "Nenhum plano de assinatura". Criado "TESTE 5c
+    clube" (R$ 120,00, mensal) → a lista mostra Mensal, R$ 120,00, 0 assinantes,
+    visível Não.
+  - "Nova assinatura" (busca da cliente + plano) → "Assinatura criada. Use
+    “Cobrar” para abrir a comanda"; na lista: Pendente, sem vencimento, com
+    "Cobrar" e "Desativar".
+  - "Cobrar" → abre a comanda #18 da cliente com o item "Assinatura: TESTE 5c
+    clube" a R$ 120,00, já no faturamento. Faturada em PIX → Ativa, vencimento
+    17/12/2026, "Comanda #18"; o botão vira "Renovar".
+  - "Renovar" → comanda #19; de volta à lista, "Cobrança aberta na comanda #19".
+    "Renovar" de novo → abre a MESMA #19 (não cria outra). Faturada → vencimento
+    17/01/2027, "Comanda #19 · 2 cobranças". No banco: períodos 17/11→17/12 (#18)
+    e 17/12→17/01 (#19), R$ 120,00 cada; nenhuma comissão e nenhum movimento de
+    estoque.
+  - Reabrir a #18 → o aviso inclui "A renovação de assinatura paga por esta
+    comanda é desfeita e volta quando ela for faturada"; confirmar é barrado: 'A
+    assinatura "TESTE 5c clube" já foi renovada depois, na comanda #19. Reabra
+    aquela antes desta'.
+  - Reabrir a #19 → o vencimento volta a 17/12/2026 e a lista mostra "Cobrança
+    aberta na comanda #19".
+  - Desativar com a cobrança aberta → Desativada, só "Reativar". Faturar a #19 é
+    barrado: 'A assinatura "TESTE 5c clube" foi desativada. Tire o item da comanda
+    para faturar'; no banco, a #19 segue aberta e sem pagamento. Reativar → Ativa.
+  - Comanda nova da cliente: "+ Assinatura" lista "TESTE 5c clube (vence em
+    17/12/2026)"; o item entra a R$ 120,00, a quantidade traz a dica "Uma cobrança
+    por comanda" e a opção some da lista. (Não foi salva; que o item e a
+    quantidade ficam travados não foi conferido na tela.)
+  - Excluir o plano com assinatura → "Este plano já tem assinatura. Desative-o em
+    vez de excluir".
+  - Com a #18 reaberta (assinatura de novo Pendente, mas numa comanda aberta),
+    excluir a assinatura → "Esta assinatura está em uma comanda. Tire o item de lá
+    ou desative a assinatura". Excluída a comanda, a assinatura sai ("Assinatura
+    excluída") e depois o plano ("Plano excluído").
+- **Não testado em uso:** renovação atrasada (assinatura expirada — só existe com
+  o tempo) e a situação Expirada; periodicidade diferente de mensal; editar um
+  plano e desativá-lo; segunda assinatura do mesmo plano para a mesma cliente;
+  valor alterado e desconto no item; assinatura junto com outros itens na comanda;
+  fiado; trocar o cliente de uma comanda com item de assinatura; os filtros da
+  lista; perfil sem `packages.manage` ou sem `sales.create`; o módulo desligado.
+- **Fora desta fatia:** as assinaturas na ficha do cliente; cobrança automática,
+  aviso de vencimento e página pública de planos (fase 8); o relatório de vendas
+  por assinatura (5d).
+- Dados de teste limpos, tudo pela tela: a #19 excluída; a #18 reaberta e
+  excluída (as duas ficam como excluídas, como as anteriores); a assinatura e o
+  plano excluídos. Sem planos, assinaturas, períodos, pagamentos, lançamentos,
+  comissões nem movimentos.
+
+### 9.10 Fatia 5d — estado (17/nov/2026)
+
+- Na branch `claude/fase-5-pacotes`, publicada. Typecheck (db, web e mcp-server),
+  lint dos arquivos alterados e testes passando (web 1098, db 296, mcp-server
+  400).
+- **Não tem migration**: só leitura do que as fatias 5a a 5c gravam.
+- **Relatórios testados em uso** no preview da branch (que usa o banco de
+  produção), no salão de teste, pela tela:
+  - Sem dados → os quatro totais zerados, "Nenhum pacote vendido ou usado no
+    período" e "Nenhuma cobrança de assinatura no período"; período padrão
+    01/11/2026 a 17/11/2026.
+  - Com um pacote de R$ 432,00 vendido (#20), uma sessão usada (#21) e uma
+    assinatura de R$ 120,00 cobrada (#22): Pacotes vendidos R$ 432,00 ("1
+    pacote"); Pacotes usados R$ 136,00 ("1 sessão ou unidade"); Assinaturas
+    R$ 120,00 ("1 cobrança"); Assinantes que pagaram 1. O extrato traz o Uso da
+    #21 (Corte de Cabelo Masculino, o profissional, 1, R$ 136,00) antes da Venda
+    da #20 (R$ 432,00). Vendas por assinatura: o plano com 1 cobrança, 1
+    assinante e R$ 120,00, e a cobrança da #22 com o período 17/11/2026 a
+    17/12/2026.
+  - Período de outubro → tudo zerado. Datas invertidas na URL → trocadas
+    (17/11/2026 a 30/11/2026), com os dados. Mais de um ano → "O período do
+    relatório é de no máximo um ano".
+  - Reaberta a #21 → o Uso sai do extrato e Pacotes usados volta a R$ 0,00; a
+    Venda e a assinatura continuam.
+- **A tool do agente NÃO foi testada em uso.** O agente só roda no worker da fila
+  (`workers/message-processor.ts`), a partir de uma mensagem real de WhatsApp —
+  nenhuma tela do painel o aciona —, e este checkout não tem `.env` para rodar o
+  eval ou o replay. Em qual ambiente o worker é publicado não foi verificado. O que existe é o teste
+  automático da tool (cliente da conversa, sem ids, sem cadastro, falha do banco)
+  e do resumo. Conferido no banco: só o salão de teste tem o módulo `packages`,
+  então a tool não chega a nenhum outro agente. **Para testar:** com este código no
+  ambiente em que o worker roda, mandar por um WhatsApp de teste do salão de
+  teste "quantas sessões eu ainda tenho no pacote?", com e sem pacote com saldo.
+- **Não testado em uso nos relatórios:** mais de um plano e mais de um assinante
+  (a ordem por valor e a contagem de assinantes distintos); uso de produto;
+  várias comandas no mesmo dia; os campos de data da tela (o período foi trocado
+  pela URL); o aviso de teto de 1.000 linhas; perfil sem `packages.access`.
+- **Limite conhecido:** se a consulta ao banco falhar, a tool devolve erro e o
+  cliente recebe a mensagem genérica de dificuldade técnica (a mesma das outras
+  tools de leitura), não um saldo inventado.
+- Dados de teste limpos: as comandas #20, #21 e #22 reabertas (as faturadas) e
+  excluídas pela tela — ficam como excluídas, como as anteriores; a assinatura e
+  o plano excluídos pela tela; o item de pacote da #20 e o modelo apagados por
+  SQL, pelo ID. Sem modelos, pacotes, planos, assinaturas, períodos, pagamentos,
+  lançamentos, comissões nem movimentos.
+
+## 10. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -1987,5 +2513,7 @@ UPDATE salons
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117` e `backups.products_pre_050_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117` e `backups.sale_items_pre_053_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
+| Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeft,
   CalendarCheck,
@@ -21,6 +22,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
+  getSalePackageBalances,
+  getSaleSubscriptionOptions,
   invoiceSale,
   receiveSalePayment,
   reopenSale,
@@ -38,7 +41,9 @@ import type {
   SaleDraftFromAppointment,
   SaleFormOptions,
   SaleItemInput,
+  SalePackageBalanceDTO,
 } from "@/lib/types/sale"
+import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
 
 // ============================================================================
 // Estado de edição
@@ -46,8 +51,11 @@ import type {
 
 type ItemRow = {
   key: string
-  kind: "service" | "product"
-  /** id do serviço ou do produto, conforme `kind`. Vazio = ainda não escolhido. */
+  kind: "service" | "product" | "package" | "subscription"
+  /**
+   * id do serviço, do produto, do pacote ou da assinatura do cliente, conforme
+   * `kind`. Vazio = ainda não escolhido.
+   */
   refId: string
   professionalId: string
   /** Quem auxiliou no serviço. Vazio = sem auxiliar. */
@@ -56,6 +64,9 @@ type ItemRow = {
   unitPrice: string
   discount: string
   appointmentId: string | null
+  /** Item "do pacote" (fase 5): a linha do pacote do cliente. Sem cobrança. */
+  packageLineId: string | null
+  packageName: string | null
 }
 
 type PaymentRow = { key: string; methodId: string; amount: string }
@@ -125,12 +136,21 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
       unitPrice: moneyToInput(item.suggestedPrice),
       discount: "",
       appointmentId: item.appointmentId,
+      packageLineId: null,
+      packageName: null,
     }))
   }
   return sale.items.map((item) => ({
     key: nextKey(),
     kind: item.kind,
-    refId: (item.kind === "service" ? item.serviceId : item.productId) ?? "",
+    refId:
+      (item.kind === "service"
+        ? item.serviceId
+        : item.kind === "package"
+          ? item.packageTemplateId
+          : item.kind === "subscription"
+            ? item.customerSubscriptionId
+            : item.productId) ?? "",
     professionalId: item.professionalId ?? "",
     assistantId: item.assistantId ?? "",
     // Sem separador de milhar: "1.000" no campo seria relido como um.
@@ -138,6 +158,8 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
     unitPrice: moneyToInput(item.unitPrice),
     discount: Number(item.discountAmount) > 0 ? moneyToInput(item.discountAmount) : "",
     appointmentId: item.appointmentId,
+    packageLineId: item.customerPackageItemId,
+    packageName: item.packageName,
   }))
 }
 
@@ -215,6 +237,79 @@ export function SaleEditor({
     return [...options.products, ...extra]
   }, [options.products, sale])
 
+  // Pacote desativado depois de entrar na comanda continua aparecendo nela.
+  const packageOptions = useMemo(() => {
+    const known = new Set(options.packageTemplates.map((p) => p.id))
+    const extra = (sale?.items ?? [])
+      .filter((i) => i.kind === "package" && i.packageTemplateId && !known.has(i.packageTemplateId))
+      .map((i) => ({ id: i.packageTemplateId as string, name: i.description, price: null }))
+    return [...options.packageTemplates, ...extra]
+  }, [options.packageTemplates, sale])
+
+  const hasPackageItem = rows.some((row) => row.kind === "package")
+  const hasSubscriptionItem = rows.some((row) => row.kind === "subscription")
+  const hasPackageUse = rows.some((row) => row.packageLineId !== null)
+
+  // O que o cliente ainda tem nos pacotes (fase 5, fatia 5b). Recarrega quando o
+  // cliente muda; o saldo não conta esta comanda.
+  const customerId = customer?.id ?? null
+  const saleId = sale?.id
+  const balancesEnabled = options.packagesEnabled && editable && customerId !== null
+  const balancesQuery = useQuery({
+    queryKey: ["sale-package-balances", salonId, customerId, saleId ?? null],
+    queryFn: async (): Promise<SalePackageBalanceDTO[]> => {
+      const result = await getSalePackageBalances(salonId, customerId as string, saleId)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: balancesEnabled,
+  })
+  const balances = useMemo(
+    () => (balancesEnabled ? (balancesQuery.data ?? []) : []),
+    [balancesEnabled, balancesQuery.data]
+  )
+
+  // Saldo de cada linha descontando o que os itens desta comanda já usam.
+  const availableByLine = useMemo(() => {
+    const available = new Map(balances.map((balance) => [balance.lineId, balance.remaining]))
+    for (const row of rows) {
+      if (!row.packageLineId || !available.has(row.packageLineId)) continue
+      const quantity = parseQuantity(row.quantity) ?? 0
+      available.set(row.packageLineId, (available.get(row.packageLineId) ?? 0) - quantity)
+    }
+    return available
+  }, [balances, rows])
+
+  const usableBalances = balances.filter((balance) => (availableByLine.get(balance.lineId) ?? 0) > 0)
+
+  // As assinaturas em vigor do cliente (fase 5, fatia 5c): cada uma pode entrar
+  // uma vez na comanda, como cobrança de um período.
+  const subscriptionsQuery = useQuery({
+    queryKey: ["sale-subscription-options", salonId, customerId],
+    queryFn: async (): Promise<SaleSubscriptionOptionDTO[]> => {
+      const result = await getSaleSubscriptionOptions(salonId, customerId as string)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: balancesEnabled,
+  })
+  const subscriptions = useMemo(
+    () => (balancesEnabled ? (subscriptionsQuery.data ?? []) : []),
+    [balancesEnabled, subscriptionsQuery.data]
+  )
+  const chargeableSubscriptions = subscriptions.filter(
+    (subscription) => !rows.some((row) => row.kind === "subscription" && row.refId === subscription.id)
+  )
+
+  // A assinatura do item gravado continua aparecendo, mesmo que o cliente mude.
+  const subscriptionOptions = useMemo(() => {
+    const known = new Set(subscriptions.map((s) => s.id))
+    const extra = (sale?.items ?? [])
+      .filter((i) => i.kind === "subscription" && i.customerSubscriptionId && !known.has(i.customerSubscriptionId))
+      .map((i) => ({ id: i.customerSubscriptionId as string, name: i.description }))
+    return [...subscriptions.map((s) => ({ id: s.id, name: `Assinatura: ${s.name}` })), ...extra]
+  }, [subscriptions, sale])
+
   const professionalOptions = useMemo(() => {
     const known = new Set(options.professionals.map((p) => p.id))
     // Profissional ou auxiliar que saiu do salão continua aparecendo na comanda dele.
@@ -252,7 +347,7 @@ export function SaleEditor({
     setDirty(true)
   }
 
-  function addRow(kind: "service" | "product") {
+  function addRow(kind: "service" | "product" | "package") {
     setRows((current) => [
       ...current,
       {
@@ -265,6 +360,54 @@ export function SaleEditor({
         unitPrice: "",
         discount: "",
         appointmentId: null,
+        packageLineId: null,
+        packageName: null,
+      },
+    ])
+    setDirty(true)
+  }
+
+  /** Uma sessão (ou unidade) do pacote do cliente: sem cobrança. */
+  function addPackageUse(lineId: string) {
+    const balance = balances.find((b) => b.lineId === lineId)
+    if (!balance) return
+    setRows((current) => [
+      ...current,
+      {
+        key: nextKey(),
+        kind: balance.kind,
+        refId: (balance.kind === "service" ? balance.serviceId : balance.productId) ?? "",
+        professionalId: "",
+        assistantId: "",
+        quantity: "1",
+        unitPrice: "0,00",
+        discount: "",
+        appointmentId: null,
+        packageLineId: balance.lineId,
+        packageName: balance.packageName,
+      },
+    ])
+    setDirty(true)
+  }
+
+  /** A cobrança de um período da assinatura do cliente, no valor dela. */
+  function addSubscriptionCharge(subscriptionId: string) {
+    const subscription = subscriptions.find((s) => s.id === subscriptionId)
+    if (!subscription) return
+    setRows((current) => [
+      ...current,
+      {
+        key: nextKey(),
+        kind: "subscription",
+        refId: subscription.id,
+        professionalId: "",
+        assistantId: "",
+        quantity: "1",
+        unitPrice: moneyToInput(subscription.price),
+        discount: "",
+        appointmentId: null,
+        packageLineId: null,
+        packageName: null,
       },
     ])
     setDirty(true)
@@ -280,7 +423,9 @@ export function SaleEditor({
     const suggested =
       row.kind === "service"
         ? serviceOptions.find((s) => s.id === refId)?.suggestedPrice ?? null
-        : productOptions.find((p) => p.id === refId)?.price ?? null
+        : row.kind === "package"
+          ? packageOptions.find((p) => p.id === refId)?.price ?? null
+          : productOptions.find((p) => p.id === refId)?.price ?? null
 
     updateRow(row.key, { refId, unitPrice: suggested === null ? "" : moneyToInput(suggested) })
   }
@@ -294,7 +439,10 @@ export function SaleEditor({
 
     for (const [index, row] of rows.entries()) {
       const label = `Item ${index + 1}`
-      if (!row.refId) return `${label}: escolha o ${row.kind === "service" ? "serviço" : "produto"}`
+      if (!row.refId) {
+        if (row.kind === "subscription") return `${label}: escolha a assinatura`
+        return `${label}: escolha o ${row.kind === "service" ? "serviço" : row.kind === "package" ? "pacote" : "produto"}`
+      }
       if (row.kind === "service" && !row.professionalId) return `${label}: informe o profissional`
       if (row.assistantId && row.assistantId === row.professionalId) {
         return `${label}: o auxiliar não pode ser o próprio profissional`
@@ -303,22 +451,28 @@ export function SaleEditor({
       const quantity = parseQuantity(row.quantity)
       if (quantity === null) return `${label}: quantidade inválida`
 
-      const unitPrice = row.unitPrice.trim() === "" ? null : parseBRL(row.unitPrice)
+      if (row.packageLineId && !Number.isInteger(quantity)) return `${label}: a quantidade do pacote é inteira`
+
+      // Item do pacote não é cobrado: valor e desconto zero, sempre.
+      const unitPrice = row.packageLineId ? 0 : row.unitPrice.trim() === "" ? null : parseBRL(row.unitPrice)
       if (row.unitPrice.trim() !== "" && (unitPrice === null || unitPrice < 0)) return `${label}: valor inválido`
 
-      const discountAmount = row.discount.trim() === "" ? 0 : parseBRL(row.discount)
+      const discountAmount = row.packageLineId ? 0 : row.discount.trim() === "" ? 0 : parseBRL(row.discount)
       if (discountAmount === null || discountAmount < 0) return `${label}: desconto inválido`
 
       items.push({
         kind: row.kind,
         serviceId: row.kind === "service" ? row.refId : null,
         productId: row.kind === "product" ? row.refId : null,
+        packageTemplateId: row.kind === "package" ? row.refId : null,
         professionalId: row.professionalId || null,
         assistantId: row.kind === "service" ? row.assistantId || null : null,
         quantity,
         unitPrice,
         discountAmount,
         appointmentId: row.appointmentId,
+        customerPackageItemId: row.packageLineId,
+        customerSubscriptionId: row.kind === "subscription" ? row.refId : null,
       })
     }
 
@@ -642,6 +796,54 @@ export function SaleEditor({
                   <Plus size={14} />
                   Produto
                 </button>
+                {options.packagesEnabled && (
+                  <button
+                    onClick={() => addRow("package")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Plus size={14} />
+                    Pacote
+                  </button>
+                )}
+                {/* Usar o pacote: só aparece quando o cliente tem saldo. */}
+                {usableBalances.length > 0 && (
+                  <select
+                    aria-label="Usar o pacote do cliente"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) addPackageUse(event.target.value)
+                    }}
+                    className="px-3 py-1.5 rounded-md border border-accent/40 bg-accent/10 text-xs font-bold text-foreground hover:bg-accent/20 transition-colors cursor-pointer"
+                  >
+                    <option value="">+ Do pacote</option>
+                    {usableBalances.map((balance) => (
+                      <option key={balance.lineId} value={balance.lineId}>
+                        {balance.packageName} · {balance.description} (saldo {availableByLine.get(balance.lineId)})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {/* Cobrar a assinatura: só aparece quando o cliente tem uma em vigor. */}
+                {chargeableSubscriptions.length > 0 && (
+                  <select
+                    aria-label="Cobrar a assinatura do cliente"
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) addSubscriptionCharge(event.target.value)
+                    }}
+                    className="px-3 py-1.5 rounded-md border border-accent/40 bg-accent/10 text-xs font-bold text-foreground hover:bg-accent/20 transition-colors cursor-pointer"
+                  >
+                    <option value="">+ Assinatura</option>
+                    {chargeableSubscriptions.map((subscription) => (
+                      <option key={subscription.id} value={subscription.id}>
+                        {subscription.name}
+                        {subscription.paidUntil
+                          ? ` (vence em ${subscription.paidUntil.split("-").reverse().join("/")})`
+                          : " (nunca cobrada)"}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
           </div>
@@ -654,8 +856,25 @@ export function SaleEditor({
             <div className="bg-card border border-border rounded-md divide-y divide-border">
               {rows.map((row, index) => {
                 const cents = rowCents(row)
-                const itemOptions = row.kind === "service" ? serviceOptions : productOptions
-                const itemLabel = row.kind === "service" ? "Serviço" : "Produto"
+                const itemOptions =
+                  row.kind === "service"
+                    ? serviceOptions
+                    : row.kind === "package"
+                      ? packageOptions
+                      : row.kind === "subscription"
+                        ? subscriptionOptions
+                        : productOptions
+                const itemLabel =
+                  row.kind === "service"
+                    ? "Serviço"
+                    : row.kind === "package"
+                      ? "Pacote"
+                      : row.kind === "subscription"
+                        ? "Assinatura"
+                        : "Produto"
+                // A cobrança da assinatura e o item que sai do pacote não se trocam.
+                const fixedItem = row.packageLineId !== null || row.kind === "subscription"
+                const fixedQuantity = row.kind === "package" || row.kind === "subscription"
 
                 return (
                   <div key={row.key} className="p-3 grid gap-3 md:grid-cols-12 md:items-end">
@@ -668,11 +887,18 @@ export function SaleEditor({
                             agendamento
                           </span>
                         )}
+                        {row.packageLineId && (
+                          <span className="text-accent truncate" title="Sai do pacote do cliente, sem cobrança">
+                            do pacote {row.packageName ?? ""}
+                          </span>
+                        )}
                       </label>
                       <select
                         id={`${row.key}-item`}
                         value={row.refId}
-                        disabled={!editable}
+                        // O item do pacote é o da linha do pacote, e a cobrança é a da
+                        // assinatura: não se trocam.
+                        disabled={!editable || fixedItem}
                         onChange={(event) => chooseItem(row, event.target.value)}
                         className={inputClass}
                       >
@@ -720,7 +946,16 @@ export function SaleEditor({
                         type="text"
                         inputMode="decimal"
                         value={row.quantity}
-                        disabled={!editable}
+                        // Um item de pacote é um pacote, e um de assinatura é uma
+                        // cobrança: a quantidade é sempre 1.
+                        disabled={!editable || fixedQuantity}
+                        title={
+                          row.kind === "package"
+                            ? "Um item para cada pacote"
+                            : row.kind === "subscription"
+                              ? "Uma cobrança por comanda"
+                              : undefined
+                        }
                         onChange={(event) => updateRow(row.key, { quantity: event.target.value })}
                         className={inputClass}
                       />
@@ -736,7 +971,8 @@ export function SaleEditor({
                         inputMode="decimal"
                         placeholder="0,00"
                         value={row.unitPrice}
-                        disabled={!editable}
+                        disabled={!editable || row.packageLineId !== null}
+                        title={row.packageLineId ? "Item do pacote não é cobrado" : undefined}
                         onChange={(event) => updateRow(row.key, { unitPrice: event.target.value })}
                         className={inputClass}
                       />
@@ -752,7 +988,7 @@ export function SaleEditor({
                         inputMode="decimal"
                         placeholder="0,00"
                         value={row.discount}
-                        disabled={!editable}
+                        disabled={!editable || row.packageLineId !== null}
                         onChange={(event) => updateRow(row.key, { discount: event.target.value })}
                         className={inputClass}
                       />
@@ -787,10 +1023,23 @@ export function SaleEditor({
                       <div className="text-right">
                         <p className="text-[11px] font-semibold text-muted-foreground">Total</p>
                         <p className="font-mono text-sm font-medium text-foreground tabular-nums">
-                          {row.unitPrice.trim() === ""
-                            ? "—"
-                            : formatBRL(centsToNumeric(Math.max(0, cents.gross - cents.discount)))}
+                          {row.packageLineId
+                            ? "Pacote"
+                            : row.unitPrice.trim() === ""
+                              ? "—"
+                              : formatBRL(centsToNumeric(Math.max(0, cents.gross - cents.discount)))}
                         </p>
+                        {row.packageLineId && editable && availableByLine.has(row.packageLineId) && (
+                          <p
+                            className={`text-[11px] ${
+                              (availableByLine.get(row.packageLineId) ?? 0) < 0 ? "text-destructive" : "text-muted-foreground"
+                            }`}
+                          >
+                            {(availableByLine.get(row.packageLineId) ?? 0) < 0
+                              ? "passa do saldo"
+                              : `sobram ${availableByLine.get(row.packageLineId)}`}
+                          </p>
+                        )}
                       </div>
                       {editable && (
                         <button
@@ -1104,6 +1353,13 @@ export function SaleEditor({
             : "") +
           (options.inventoryEnabled
             ? " Os produtos com estoque controlado voltam para o estoque e saem de novo quando ela for faturada."
+            : "") +
+          (hasPackageItem
+            ? " Os pacotes vendidos nesta comanda deixam de existir e são criados de novo quando ela for faturada."
+            : "") +
+          (hasPackageUse ? " O que esta comanda usou dos pacotes do cliente volta para o saldo." : "") +
+          (hasSubscriptionItem
+            ? " A renovação de assinatura paga por esta comanda é desfeita e volta quando ela for faturada."
             : "") +
           " Depois de editar, é preciso faturar de novo."
         }

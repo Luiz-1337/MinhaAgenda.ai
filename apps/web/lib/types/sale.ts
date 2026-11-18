@@ -63,9 +63,13 @@ export interface SaleListFilters {
 
 export interface SaleItemDTO {
   id: string
-  kind: "service" | "product"
+  /** "package" = venda de pacote predefinido; "subscription" = cobrança de assinatura (fase 5). */
+  kind: "service" | "product" | "package" | "subscription"
   serviceId: string | null
   productId: string | null
+  packageTemplateId: string | null
+  /** Item de assinatura (fatia 5c). NULL em comanda excluída. */
+  customerSubscriptionId: string | null
   description: string
   professionalId: string | null
   professionalName: string | null
@@ -77,6 +81,10 @@ export interface SaleItemDTO {
   discountAmount: string
   total: string
   appointmentId: string | null
+  /** Item "do pacote" (fase 5): a linha do pacote do cliente que ele usa. */
+  customerPackageItemId: string | null
+  /** Nome do pacote de onde o item sai. */
+  packageName: string | null
 }
 
 export interface SalePaymentDTO {
@@ -116,12 +124,16 @@ export interface SaleDetailDTO {
 export interface SaleFormOptions {
   services: { id: string; name: string; suggestedPrice: number | null }[]
   products: { id: string; name: string; price: number | null }[]
+  /** Pacotes predefinidos ativos — vazio com o módulo `packages` desligado (fase 5). */
+  packageTemplates: { id: string; name: string; price: number | null }[]
   professionals: { id: string; name: string }[]
   paymentMethods: PaymentMethodDTO[]
   /** O salão tem o módulo `commissions`: a comanda mostra o auxiliar do serviço. */
   commissionsEnabled: boolean
   /** O salão tem o módulo `inventory`: reabrir a comanda devolve o estoque baixado. */
   inventoryEnabled: boolean
+  /** O salão tem o módulo `packages`: a comanda vende pacote (fase 5). */
+  packagesEnabled: boolean
   /** O que o usuário atual pode fazer — a tela só esconde botão; a trava é no servidor. */
   can: {
     create: boolean
@@ -188,9 +200,10 @@ export interface SaleCustomerOption {
 }
 
 export interface SaleItemInput {
-  kind: "service" | "product"
+  kind: "service" | "product" | "package" | "subscription"
   serviceId?: string | null
   productId?: string | null
+  packageTemplateId?: string | null
   professionalId?: string | null
   /** Só em serviço; nunca o mesmo que `professionalId`. */
   assistantId?: string | null
@@ -198,6 +211,28 @@ export interface SaleItemInput {
   unitPrice: number | null
   discountAmount: number
   appointmentId?: string | null
+  /** Item "do pacote" (fase 5): sem cobrança, quantidade inteira. */
+  customerPackageItemId?: string | null
+  /** Item de assinatura (fatia 5c): a assinatura do cliente que ele cobra. */
+  customerSubscriptionId?: string | null
+}
+
+/**
+ * O que o cliente ainda pode usar dos pacotes dele: uma linha com saldo de um
+ * pacote dentro da validade (fase 5, fatia 5b).
+ */
+export interface SalePackageBalanceDTO {
+  lineId: string
+  customerPackageId: string
+  packageName: string
+  kind: "service" | "product"
+  serviceId: string | null
+  productId: string | null
+  description: string
+  quantity: number
+  /** Saldo sem contar esta comanda. */
+  remaining: number
+  expiresOn: string | null
 }
 
 export interface SaveSaleInput {

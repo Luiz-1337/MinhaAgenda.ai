@@ -51,6 +51,12 @@ export function addMonthsToDate(date: string, months: number): string {
   return target.toISOString().slice(0, 10)
 }
 
+/** Soma dias a um dia de calendário ("YYYY-MM-DD"), sem fuso. */
+export function addDaysToDate(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+
 // ============================================================================
 // Lançamento manual (recebimento / despesa)
 // ============================================================================

@@ -9,15 +9,18 @@ import { z } from "zod"
 const money = z.number().finite().min(0).max(1_000_000)
 
 export const saleItemSchema = z.object({
-  kind: z.enum(["service", "product"]),
+  kind: z.enum(["service", "product", "package", "subscription"]),
   serviceId: z.string().uuid().nullish(),
   productId: z.string().uuid().nullish(),
+  packageTemplateId: z.string().uuid().nullish(),
   professionalId: z.string().uuid().nullish(),
   assistantId: z.string().uuid().nullish(),
   quantity: z.number().finite().positive().max(9999),
   unitPrice: money.nullable(),
   discountAmount: money,
   appointmentId: z.string().uuid().nullish(),
+  customerPackageItemId: z.string().uuid().nullish(),
+  customerSubscriptionId: z.string().uuid().nullish(),
 })
 
 export const saveSaleSchema = z.object({

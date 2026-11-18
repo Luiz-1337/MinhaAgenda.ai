@@ -48,9 +48,14 @@ const MAX_QUANTITY = 9999
 const MAX_UNIT_PRICE_CENTS = 100_000_000 // R$ 1.000.000,00
 
 export type SaleItemDraft = {
-  kind: 'service' | 'product'
+  /**
+   * 'package' = venda de pacote predefinido (fase 5, fatia 5a).
+   * 'subscription' = cobrança de assinatura do cliente (fase 5, fatia 5c).
+   */
+  kind: 'service' | 'product' | 'package' | 'subscription'
   serviceId?: string | null
   productId?: string | null
+  packageTemplateId?: string | null
   professionalId?: string | null
   /** Quem auxiliou no serviço (fase 3, fatia 3b). Só em item de serviço. */
   assistantId?: string | null
@@ -59,21 +64,45 @@ export type SaleItemDraft = {
   unitPrice: number | null
   discountAmount: number
   appointmentId?: string | null
+  /**
+   * Item "do pacote" (fase 5, fatia 5b): serviço ou produto que sai de uma linha do
+   * pacote do cliente. Não é cobrado — valor e desconto zero.
+   */
+  customerPackageItemId?: string | null
+  /** Item de assinatura (fase 5, fatia 5c): a assinatura do cliente que ele cobra. */
+  customerSubscriptionId?: string | null
 }
 
 /** O que o serviço carregou do banco, JÁ filtrado pelo salão. */
 export type SaleCatalog = {
   services: ReadonlyMap<string, { name: string }>
   products: ReadonlyMap<string, { name: string }>
+  /**
+   * Pacotes predefinidos ATIVOS do salão que os itens citam. Vazio quando o módulo
+   * de pacotes está desligado — aí item de pacote é "não encontrado".
+   */
+  packageTemplates: ReadonlyMap<string, { name: string }>
   professionalIds: ReadonlySet<string>
   appointments: ReadonlyMap<string, { customerId: string; status: string }>
+  /**
+   * Linhas de pacote de cliente que os itens citam (fatia 5b). Aqui só se confere
+   * que o item É o da linha; saldo, validade e dono do pacote são de
+   * planPackageUsage (domain/packages.ts).
+   */
+  packageLines?: ReadonlyMap<string, { kind: 'service' | 'product'; serviceId: string | null; productId: string | null }>
+  /**
+   * Assinaturas de cliente que os itens citam (fatia 5c). Vazio quando o módulo
+   * está desligado — aí item de assinatura é "não encontrada".
+   */
+  subscriptions?: ReadonlyMap<string, { name: string; customerId: string; deactivated: boolean }>
 }
 
 export type PlannedSaleItem = {
   position: number
-  kind: 'service' | 'product'
+  kind: 'service' | 'product' | 'package' | 'subscription'
   serviceId: string | null
   productId: string | null
+  packageTemplateId: string | null
   description: string
   professionalId: string | null
   assistantId: string | null
@@ -82,6 +111,8 @@ export type PlannedSaleItem = {
   discountAmount: string
   total: string
   appointmentId: string | null
+  customerPackageItemId: string | null
+  customerSubscriptionId: string | null
 }
 
 export type SaleItemsPlan =
@@ -113,6 +144,7 @@ export function planSaleItems(
 
   const items: PlannedSaleItem[] = []
   const seenAppointments = new Set<string>()
+  const seenSubscriptions = new Set<string>()
   let subtotalCents = 0
   let discountCents = 0
 
@@ -122,6 +154,8 @@ export function planSaleItems(
     let description: string
     let serviceId: string | null = null
     let productId: string | null = null
+    let packageTemplateId: string | null = null
+    let customerSubscriptionId: string | null = null
 
     if (draft.kind === 'service') {
       const service = draft.serviceId ? catalog.services.get(draft.serviceId) : undefined
@@ -133,6 +167,32 @@ export function planSaleItems(
       if (!product || !draft.productId) return { ok: false, error: `${label}: produto não encontrado` }
       productId = draft.productId
       description = product.name
+    } else if (draft.kind === 'package') {
+      const template = draft.packageTemplateId ? catalog.packageTemplates.get(draft.packageTemplateId) : undefined
+      if (!template || !draft.packageTemplateId) return { ok: false, error: `${label}: pacote não encontrado` }
+      packageTemplateId = draft.packageTemplateId
+      description = template.name
+    } else if (draft.kind === 'subscription') {
+      const subscription = draft.customerSubscriptionId
+        ? catalog.subscriptions?.get(draft.customerSubscriptionId)
+        : undefined
+      if (!subscription || !draft.customerSubscriptionId) {
+        return { ok: false, error: `${label}: assinatura não encontrada` }
+      }
+      if (subscription.customerId !== customerId) {
+        return { ok: false, error: `${label}: a assinatura é de outro cliente` }
+      }
+      if (subscription.deactivated) {
+        return { ok: false, error: `${label}: a assinatura "${subscription.name}" está desativada` }
+      }
+      // Uma cobrança por assinatura em cada comanda: para pagar dois períodos,
+      // duas comandas.
+      if (seenSubscriptions.has(draft.customerSubscriptionId)) {
+        return { ok: false, error: `${label}: a mesma assinatura aparece em dois itens` }
+      }
+      seenSubscriptions.add(draft.customerSubscriptionId)
+      customerSubscriptionId = draft.customerSubscriptionId
+      description = `Assinatura: ${subscription.name}`
     } else {
       return { ok: false, error: `${label}: tipo inválido` }
     }
@@ -165,6 +225,14 @@ export function planSaleItems(
     }
     const quantityMilli = toMilli(draft.quantity)
     if (quantityMilli <= 0) return { ok: false, error: `${label}: quantidade inválida` }
+    // Um item de pacote é UM pacote: para vender dois, dois itens.
+    if (draft.kind === 'package' && quantityMilli !== 1000) {
+      return { ok: false, error: `${label}: pacote vai com quantidade 1. Para vender mais de um, use um item para cada` }
+    }
+    // Um item de assinatura é UMA cobrança (um período).
+    if (draft.kind === 'subscription' && quantityMilli !== 1000) {
+      return { ok: false, error: `${label}: assinatura vai com quantidade 1` }
+    }
 
     const unitCents = draft.unitPrice === null ? null : toCents(draft.unitPrice)
     if (draft.unitPrice !== null && (unitCents === null || unitCents < 0 || unitCents > MAX_UNIT_PRICE_CENTS)) {
@@ -181,6 +249,29 @@ export function planSaleItems(
     const grossCents = unitCents === null ? 0 : Math.round((quantityMilli * unitCents) / 1000)
     if (itemDiscountCents > grossCents) {
       return { ok: false, error: `${label}: o desconto é maior que o valor do item` }
+    }
+
+    // Item do pacote: é exatamente o serviço (ou produto) da linha, sem cobrança e
+    // em quantidade inteira — sessões e unidades.
+    const customerPackageItemId = draft.customerPackageItemId || null
+    if (customerPackageItemId) {
+      if (draft.kind === 'package') {
+        return { ok: false, error: `${label}: pacote não pode sair de outro pacote` }
+      }
+      if (draft.kind === 'subscription') {
+        return { ok: false, error: `${label}: assinatura não sai de pacote` }
+      }
+      const line = catalog.packageLines?.get(customerPackageItemId)
+      if (!line) return { ok: false, error: `${label}: item do pacote não encontrado` }
+      if (line.kind !== draft.kind || line.serviceId !== serviceId || line.productId !== productId) {
+        return { ok: false, error: `${label}: não é o item do pacote` }
+      }
+      if (unitCents !== 0 || itemDiscountCents !== 0) {
+        return { ok: false, error: `${label}: item do pacote não é cobrado` }
+      }
+      if (quantityMilli % 1000 !== 0) {
+        return { ok: false, error: `${label}: a quantidade do pacote é inteira` }
+      }
     }
 
     const appointmentId = draft.appointmentId || null
@@ -210,6 +301,7 @@ export function planSaleItems(
       kind: draft.kind,
       serviceId,
       productId,
+      packageTemplateId,
       description,
       professionalId,
       assistantId,
@@ -218,6 +310,8 @@ export function planSaleItems(
       discountAmount: centsToNumeric(itemDiscountCents),
       total: centsToNumeric(grossCents - itemDiscountCents),
       appointmentId,
+      customerPackageItemId,
+      customerSubscriptionId,
     })
   }
 

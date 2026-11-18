@@ -40,6 +40,9 @@ vi.mock("@repo/db", async () => {
     db: {
       query: {},
     },
+    // Saldo de pacotes do cliente (tool getMyPackageBalance). Sem roteiro devolve
+    // undefined; o teste da tool define o que o banco responderia.
+    listCustomerPackageBalancesService: vi.fn(),
     domainServices: {
       createAppointmentService: vi.fn(),
       updateAppointmentService: vi.fn(),

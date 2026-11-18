@@ -19,7 +19,8 @@ import {
   unique,
   bigint,
   customType,
-  primaryKey
+  primaryKey,
+  type AnyPgColumn
 } from 'drizzle-orm/pg-core'
 
 import type { LeadSource } from './domain/constants'
@@ -971,7 +972,11 @@ export const financialCategories = pgTable(
 
 export type PaymentMethodKind = 'cash' | 'pix' | 'credit_card' | 'debit_card' | 'other'
 export type SaleStatus = 'open' | 'invoiced' | 'void'
-export type SaleItemKind = 'service' | 'product'
+/**
+ * 'package' = venda de pacote predefinido (fase 5, migration 051).
+ * 'subscription' = cobrança de assinatura de cliente (fase 5, migration 053).
+ */
+export type SaleItemKind = 'service' | 'product' | 'package' | 'subscription'
 
 export const paymentMethods = pgTable(
   'payment_methods',
@@ -1066,6 +1071,21 @@ export const saleItems = pgTable(
     total: numeric('total', { precision: 12, scale: 2 }).default('0').notNull(),
     // Um agendamento entra em no máximo uma comanda (índice único parcial).
     appointmentId: uuid('appointment_id').references(() => appointments.id),
+    // Só em item de pacote (migration 051, CHECK no banco). Sem ON DELETE: modelo
+    // vendido não se apaga.
+    packageTemplateId: uuid('package_template_id').references(() => packageTemplates.id),
+    // Item "do pacote" (migration 052): serviço ou produto que sai de uma linha do
+    // pacote do cliente, sem cobrança (CHECK no banco). Sem ON DELETE: pacote em uso
+    // não some.
+    // Tipo explícito: sale_items → customer_package_items → customer_packages →
+    // sale_items é circular, e o TypeScript não infere.
+    customerPackageItemId: uuid('customer_package_item_id').references((): AnyPgColumn => customerPackageItems.id),
+    // Item de assinatura (migration 053): a cobrança de um período da assinatura do
+    // cliente. Sem ON DELETE: assinatura em comanda não se apaga. A comanda excluída
+    // zera a coluna (solta a assinatura).
+    customerSubscriptionId: uuid('customer_subscription_id').references(
+      (): AnyPgColumn => customerSubscriptions.id
+    ),
     createdAt: timestamp('created_at').defaultNow().notNull()
   },
   (table) => [
@@ -1073,7 +1093,16 @@ export const saleItems = pgTable(
     index('sale_items_salon_idx').on(table.salonId),
     index('sale_items_professional_idx').on(table.professionalId).where(sql`professional_id IS NOT NULL`),
     index('sale_items_assistant_idx').on(table.assistantId).where(sql`assistant_id IS NOT NULL`),
-    uniqueIndex('sale_items_appointment_unique').on(table.appointmentId).where(sql`appointment_id IS NOT NULL`)
+    uniqueIndex('sale_items_appointment_unique').on(table.appointmentId).where(sql`appointment_id IS NOT NULL`),
+    index('sale_items_package_template_idx')
+      .on(table.packageTemplateId)
+      .where(sql`package_template_id IS NOT NULL`),
+    index('sale_items_customer_package_item_idx')
+      .on(table.customerPackageItemId)
+      .where(sql`customer_package_item_id IS NOT NULL`),
+    index('sale_items_customer_subscription_idx')
+      .on(table.customerSubscriptionId)
+      .where(sql`customer_subscription_id IS NOT NULL`)
   ]
 )
 
@@ -1710,6 +1739,188 @@ export const purchaseItems = pgTable(
     index('purchase_items_purchase_idx').on(table.purchaseId, table.position),
     index('purchase_items_product_idx').on(table.productId),
     index('purchase_items_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Pacotes (migration 051)
+// ============================================================================
+// Pacote predefinido (modelo) e pacote do cliente. Vender é um item da comanda
+// (sale_items.kind = 'package'); faturar cria o pacote do cliente. Regra em
+// domain/packages.ts.
+
+/** O que um pacote inclui: sessões de um serviço ou unidades de um produto. */
+export type PackageItemKind = 'service' | 'product'
+
+export const packageTemplates = pgTable(
+  'package_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    price: numeric('price', { precision: 12, scale: 2 }).default('0').notNull(),
+    // Validade a partir da data da venda. NULL = não vence.
+    validityDays: integer('validity_days'),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('package_templates_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const packageTemplateItems = pgTable(
+  'package_template_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    templateId: uuid('template_id').references(() => packageTemplates.id, { onDelete: 'cascade' }).notNull(),
+    position: integer('position').default(0).notNull(),
+    kind: text('kind').$type<PackageItemKind>().notNull(),
+    serviceId: uuid('service_id').references(() => services.id),
+    productId: uuid('product_id').references(() => products.id),
+    quantity: integer('quantity').notNull()
+  },
+  (table) => [
+    index('package_template_items_template_idx').on(table.templateId, table.position),
+    uniqueIndex('package_template_items_service_unique')
+      .on(table.templateId, table.serviceId)
+      .where(sql`service_id IS NOT NULL`),
+    uniqueIndex('package_template_items_product_unique')
+      .on(table.templateId, table.productId)
+      .where(sql`product_id IS NOT NULL`)
+  ]
+)
+
+export const customerPackages = pgTable(
+  'customer_packages',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    // O item faturado que gerou o pacote (um item = um pacote).
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }).notNull(),
+    templateId: uuid('template_id').references(() => packageTemplates.id).notNull(),
+    // Cópia do nome do modelo na venda.
+    name: text('name').notNull(),
+    // Dia da comanda (Brasília) e até quando vale. NULL = não vence.
+    soldOn: date('sold_on').notNull(),
+    expiresOn: date('expires_on'),
+    sellerId: uuid('seller_id').references(() => professionals.id),
+    // O total do item da comanda.
+    price: numeric('price', { precision: 12, scale: 2 }).default('0').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('customer_packages_sale_item_unique').on(table.saleItemId),
+    index('customer_packages_salon_idx').on(table.salonId, table.soldOn.desc()),
+    index('customer_packages_customer_idx').on(table.customerId),
+    index('customer_packages_sale_idx').on(table.saleId),
+    index('customer_packages_template_idx').on(table.templateId)
+  ]
+)
+
+export const customerPackageItems = pgTable(
+  'customer_package_items',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerPackageId: uuid('customer_package_id')
+      .references(() => customerPackages.id, { onDelete: 'cascade' })
+      .notNull(),
+    position: integer('position').default(0).notNull(),
+    kind: text('kind').$type<PackageItemKind>().notNull(),
+    serviceId: uuid('service_id').references(() => services.id),
+    productId: uuid('product_id').references(() => products.id),
+    // Cópia do nome na venda.
+    description: text('description').notNull(),
+    quantity: integer('quantity').notNull(),
+    // Parte do preço do pacote que cabe a esta linha (migration 052): a base da
+    // comissão de quem executa cada sessão.
+    value: numeric('value', { precision: 12, scale: 2 }).default('0').notNull()
+  },
+  (table) => [index('customer_package_items_package_idx').on(table.customerPackageId, table.position)]
+)
+
+// ============================================================================
+// TABLES - Assinaturas de cliente (migration 053)
+// ============================================================================
+// Plano (modelo), assinatura do cliente e período pago. Renovar é um item da
+// comanda (sale_items.kind = 'subscription'); faturar cria o período. A situação
+// não é coluna: sai dos períodos e de `deactivated_at`. Regra em
+// domain/subscriptions.ts.
+
+export const subscriptionPlans = pgTable(
+  'subscription_plans',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    price: numeric('price', { precision: 12, scale: 2 }).default('0').notNull(),
+    // De quanto em quanto tempo se cobra, em meses (1 = mensal, 12 = anual).
+    intervalMonths: integer('interval_months').default(1).notNull(),
+    // Inativo não aceita assinatura nova.
+    isActive: boolean('is_active').default(true).notNull(),
+    // Aparece na página pública de planos (fase 8). Hoje só é guardado.
+    isVisible: boolean('is_visible').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('subscription_plans_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const customerSubscriptions = pgTable(
+  'customer_subscriptions',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    customerId: uuid('customer_id').references(() => customers.id).notNull(),
+    planId: uuid('plan_id').references(() => subscriptionPlans.id).notNull(),
+    // Cópias do plano no dia em que a assinatura foi criada.
+    name: text('name').notNull(),
+    price: numeric('price', { precision: 12, scale: 2 }).default('0').notNull(),
+    intervalMonths: integer('interval_months').default(1).notNull(),
+    // Dia em que foi criada (Brasília).
+    startedOn: date('started_on').notNull(),
+    // NULL = em vigor. Preenchida = desativada.
+    deactivatedAt: timestamp('deactivated_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('customer_subscriptions_salon_idx').on(table.salonId, table.createdAt.desc()),
+    index('customer_subscriptions_customer_idx').on(table.customerId),
+    index('customer_subscriptions_plan_idx').on(table.planId),
+    uniqueIndex('customer_subscriptions_customer_plan_unique')
+      .on(table.customerId, table.planId)
+      .where(sql`deactivated_at IS NULL`)
+  ]
+)
+
+export const customerSubscriptionPeriods = pgTable(
+  'customer_subscription_periods',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    subscriptionId: uuid('subscription_id').references(() => customerSubscriptions.id).notNull(),
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+    // O item faturado que pagou o período (um item = um período).
+    saleItemId: uuid('sale_item_id').references(() => saleItems.id, { onDelete: 'cascade' }).notNull(),
+    // `periodEnd` é o vencimento: vale até ele, inclusive, e a renovação seguinte
+    // começa nele.
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    // O total do item da comanda.
+    amount: numeric('amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('customer_subscription_periods_sale_item_unique').on(table.saleItemId),
+    index('customer_subscription_periods_subscription_idx').on(table.subscriptionId, table.periodEnd.desc()),
+    index('customer_subscription_periods_sale_idx').on(table.saleId),
+    index('customer_subscription_periods_salon_idx').on(table.salonId)
   ]
 )
 
