@@ -66,6 +66,9 @@ export const PERMISSION_CATALOG = {
   // Mensagens de cuidados e de retorno (fase 6). `access` = ver as mensagens e os
   // envios. `manage` = criar, alterar, excluir e cancelar um envio.
   care_messages: ['access', 'manage'],
+  // Metas por mês (fase 6). `access` = ver o quadro de metas (do salão e de todos
+  // os profissionais). `manage` = definir e copiar metas.
+  goals: ['access', 'manage'],
 } as const satisfies Record<string, readonly string[]>
 
 export type PermissionResource = keyof typeof PERMISSION_CATALOG
@@ -170,7 +173,7 @@ export function resolvePermissions(
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews', 'care_messages'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews', 'care_messages', 'goals'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

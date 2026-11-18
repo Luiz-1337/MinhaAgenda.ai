@@ -41,6 +41,7 @@ const GUARDED_FILES = [
   // avaliação, sem sessão, com o token do pedido como única credencial.
   "reviews.ts",
   "care-messages.ts",
+  "goals.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */

@@ -57,6 +57,9 @@ Fatia 6d (mensagens de cuidados e de retorno, e pedido de avaliação pelo Whats
 na mesma branch: migration 057 aplicada em 17/nov/2026, módulo `care_messages`
 ligado só no salão de teste, publicada, e o cadastro e a fila testados em uso —
 **o envio de verdade pelo WhatsApp NÃO foi testado** — ver §10.10.
+Fatia 6e (metas por mês) feita na mesma branch — **em commit local, migration 058
+NÃO aplicada, módulo `goals` desligado em todos os salões, sem publicar e sem
+teste em uso** — ver §10.11.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2528,7 +2531,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
 | 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita, migration 057 aplicada e publicada; cadastro e fila testados em uso — **o envio pelo WhatsApp não foi testado** (§10.10) |
-| 6e | Metas por mês, com "Copiar metas" | Pendente |
+| 6e | Metas por mês, do salão e por profissional (faturamento, serviços, produtos e comandas), com o realizado, o ritmo e "Copiar metas" | Feita em código — **migration 058 não aplicada, sem publicar e sem teste em uso** (§10.11) |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
 
 O "Permitir resgate pelo agendamento online" do cashback depende do agendamento
@@ -2583,6 +2586,13 @@ DEFAULT); tem que ser aplicada antes de publicar o código:
   mensagem, um por agendamento e mensagem, um por pedido de avaliação.
 - **`review_settings`** ganha `send_whatsapp`, `whatsapp_delay_hours` (0 a 72,
   padrão 2) e `whatsapp_text` (NULL = texto padrão).
+
+**Migration 058 (fatia 6e)** — não mexe em tabela existente:
+
+- **`goals`** — a meta de um mês: `month` (sempre o dia 1), `professional_id`
+  (NULL = meta do salão), `metric` (`revenue`, `services`, `products`,
+  `sales_count`) e `target` (> 0). Uma por mês, indicador e dono. **O realizado
+  não é gravado**: é somado das comandas faturadas do mês.
 
 Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 `anon`/`authenticated`.
@@ -2714,6 +2724,31 @@ Fatia 6d — mensagens de cuidados e de retorno:
     estas mensagens. Na Evolution sai a qualquer momento. A falha aparece na
     lista, com esse motivo.
 
+Fatia 6e — metas por mês:
+
+39. **A meta é por mês, do salão e de cada profissional**, em quatro indicadores:
+    faturamento, serviços, produtos (em reais) e comandas (contagem). Cada
+    indicador é opcional: em branco, fica sem meta.
+40. **O realizado vem das comandas FATURADAS do mês**, pelo dia da comanda (em
+    Brasília): a soma do total dos itens, já com desconto e cupom. Faturamento
+    soma todos os itens (serviço, produto, pacote e assinatura); serviços e
+    produtos, só os desse tipo. Comanda excluída ou reaberta não conta. O
+    resgate de cashback não reduz o realizado (é forma de pagar, não desconto).
+41. **Na linha do profissional** entra o item em que ele é o profissional (quem
+    executou o serviço ou vendeu o produto); o auxiliar não conta. "Comandas" do
+    profissional são as comandas em que ele aparece. Por isso a soma dos
+    profissionais pode ser menor que a do salão (item sem profissional) e as
+    comandas, maior (duas pessoas na mesma comanda).
+42. **O ritmo** compara o realizado com a parte da meta que os dias corridos
+    pedem (dia 10 de um mês de 30 = um terço): "No ritmo", "Abaixo do ritmo",
+    "Meta batida", "Não bateu" (mês encerrado) ou "Ainda não começou". É régua
+    linear: não conhece dia fechado nem sazonalidade. O percentual arredonda
+    para baixo — 99,9% não vira 100%.
+43. **"Copiar metas"** traz as metas de outro mês para o mês aberto, **sem passar
+    por cima** do que ele já tem, e não copia meta de profissional inativo.
+44. **Quem aparece no quadro**: o salão, os profissionais ativos e os inativos que
+    têm meta ou venda no mês.
+
 Perguntas para o dono:
 
 - O cashback deve vencer (ex.: 90 dias)?
@@ -2752,6 +2787,13 @@ Perguntas para o dono:
   cuidados, retorno e avaliação (regra 38)? Sem isso, quase nada sai neles.
 - (6d) O retorno automático convive com a retenção por IA (que já chama o cliente
   parado, pelo ciclo médio do serviço)? Hoje nenhum dos dois sabe do outro.
+- (6e) Os quatro indicadores (regra 39) são os que o salão acompanha? Faltam
+  ticket médio, clientes novos, pacotes vendidos?
+- (6e) O faturamento da meta deve ser o que foi VENDIDO (regra 40) ou o que foi
+  RECEBIDO no mês? Pacote vendido conta na venda ou só quando a sessão é usada?
+- (6e) O profissional pode ver a própria meta — e só a dele? Hoje quem tem
+  `goals.access` vê todas.
+- (6e) Bater a meta muda a comissão (bônus)? Hoje a meta é só acompanhamento.
 
 ### 10.4 Permissões e módulo
 
@@ -2777,6 +2819,9 @@ Cuidados e retorno (6d): módulo `care_messages` e recurso `care_messages` com
 cancelar um envio da fila). O pedido de avaliação pelo WhatsApp é configurado em
 Avaliações (`reviews.manage`) e não depende do módulo `care_messages`. O cron
 que envia não tem sessão: autentica com `CRON_SECRET`.
+
+Metas (6e): módulo `goals` e recurso `goals` com `access` (ver o quadro — do
+salão e de todos os profissionais) e `manage` (definir e copiar metas).
 
 ### 10.5 Telas
 
@@ -2818,6 +2863,11 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
   situação e o botão de cancelar o que está na fila.
 - **Avaliações (6d)**: "Personalizar" ganha "Enviar o pedido pelo WhatsApp", as
   horas depois de faturar e a mensagem.
+- **Metas (6e)** no menu (módulo ligado + `goals.access`), em `/[salonId]/goals`:
+  o mês na URL (`?month=YYYY-MM`), com anterior, seguinte e "Mês atual"; um
+  bloco para o salão e um por profissional, cada um com os quatro indicadores —
+  realizado, barra, "% de [meta] · faltam [valor]" e o ritmo, ou "Sem meta". O
+  lápis abre as quatro metas do dono; "Copiar metas" pede o mês de origem.
 
 ### 10.6 Onde o código mora
 
@@ -2833,6 +2883,7 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
 | Promoções (6b) | Migration `055_promotions.sql`; tabela `promotions`, `sales.promotionId`/`couponCode` e `saleItems.couponDiscount`; regra em `domain/promotions.ts` (`planPromotion`, `promotionBlocker`, `promotionStatus`, `splitCouponDiscount`, `applyCouponToSale`); I/O em `services/promotions.service.ts` — a comanda chama `loadSaleCoupon` ao criar e ao salvar (`withCoupon`, `sales.service.ts`); actions em `actions/promotions.ts` e `checkSaleCoupon` em `actions/sales.ts`; tela em `app/[salonId]/promotions/`; testes em `promotions-domain.test.ts` |
 | Avaliações (6c) | Migration `056_reviews.sql`; tabelas `reviewSettings` e `reviews`; regra em `domain/reviews.ts` (`planReviewSettings`, `reviewFormTexts`, `shouldRequestReview`, `planReviewResponse`, `buildReviewDashboard`); I/O em `services/reviews.service.ts` — a comanda chama `requestSaleReview` no faturamento e `discardPendingSaleReview` na exclusão (`sales.service.ts`); actions do salão em `actions/reviews.ts`, `getSaleReview` em `actions/sales.ts` e a action PÚBLICA em `actions/public-reviews.ts` (sem sessão, fora da guarda de autorização de propósito); telas em `app/[salonId]/reviews/` e `app/avaliar/[token]/`; testes em `reviews-domain.test.ts` |
 | Cuidados e retorno (6d) | Migration `057_care_messages.sql`; tabelas `careMessageRules` e `careMessageDispatches`; regra em `domain/care-messages.ts` (`planCareMessageRule`, `renderCareMessage`, `saleMessageSchedule`, `isWithinCareSendHours`, `decideCareDispatch`, `toWhatsAppNumber`); I/O em `services/care-messages.service.ts` — a comanda chama `enqueueSaleCareMessages` no faturamento e `discardPendingSaleCareMessages` na exclusão; `requestSaleReview` enfileira o pedido de avaliação; a fila é `enqueueDuePreCareMessages`, `claimDueCareDispatches` e `finishCareDispatch`; o ENVIO é do app: `apps/web/lib/services/care-messages/dispatcher.service.ts`, chamado pelo cron `app/api/cron/care-messages` (`vercel.json`, a cada 30 min); actions em `actions/care-messages.ts`; tela em `app/[salonId]/care-messages/`; testes em `care-messages-domain.test.ts` |
+| Metas (6e) | Migration `058_goals.sql`; tabela `goals`; regra em `domain/goals.ts` (`planGoalTargets`, `planGoalCopy`, `goalProgress`, `buildGoalBoard`, `goalMonthRange`); I/O em `services/goals.service.ts` (`getGoalBoardService` soma o realizado de `sale_items` das comandas faturadas; `saveGoalTargetsService`; `copyGoalsService`); actions em `actions/goals.ts`; tela em `app/[salonId]/goals/`; testes em `goals-domain.test.ts` |
 
 ### 10.7 Fatia 6a — estado (17/nov/2026)
 
@@ -3083,6 +3134,32 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
   envio pelo WhatsApp desmarcado e o texto em branco. Conferido por leitura: sem
   linhas em `care_message_rules`, `care_message_dispatches` nem `reviews`.
 
+### 10.11 Fatia 6e — estado (18/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1254, db 296, mcp-server 400).
+- **Migration 058: NÃO aplicada.** Só cria a tabela `goals` (não mexe em tabela
+  existente). Sem ela, a tela de Metas dá erro — mas só o salão com o módulo
+  ligado chega nela.
+- **O módulo `goals` está desligado em todos os salões.**
+- **A auditoria só cita "Metas" (T-08) e o "Copiar metas"**, sem os campos.
+  Indicadores, de onde vem o realizado e o ritmo foram decididos aqui (regras 39
+  a 44).
+- **Não mexe na comanda nem na comissão**: a fatia só lê `sales` e `sale_items`.
+- **Limites conhecidos:** não há meta por dia nem por semana; não há histórico
+  de quem mudou a meta; o agente do WhatsApp não conhece as metas; o realizado é
+  recalculado a cada abertura da tela (duas consultas com soma por mês — leve
+  para o tamanho de hoje).
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 058,
+  ligar o módulo e publicar: abrir Metas (mês atual, aviso de "nenhuma meta");
+  definir as quatro metas do salão e uma de um profissional; conferir o
+  realizado contra as comandas faturadas do mês (por leitura no banco); faturar
+  uma comanda e ver o realizado subir, excluí-la e ver descer; apagar uma meta
+  deixando em branco; ir ao mês seguinte e "Copiar metas" do atual; copiar de
+  novo (nada a copiar); copiar de um mês sem metas (recusado); um mês passado
+  mostra "Não bateu" e um futuro, "Ainda não começou".
+
 ## 11. Pendências do dono
 
 | Pendência | Trava |
@@ -3103,4 +3180,6 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
 | Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
 | Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
+| Aplicar a migration 058 (ou autorizar a aplicação), ligar o módulo `goals` no salão de teste e publicar a fatia 6e — ver §10.11 | Teste em uso da fatia 6e |
+| Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

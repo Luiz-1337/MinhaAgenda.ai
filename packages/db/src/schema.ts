@@ -2161,6 +2161,39 @@ export const careMessageDispatches = pgTable(
 )
 
 // ============================================================================
+// TABLES - Metas por mês (migration 058)
+// ============================================================================
+// Só a META é gravada; o realizado é somado das comandas faturadas do mês.
+// Regra em domain/goals.ts.
+
+export type GoalMetricColumn = 'revenue' | 'services' | 'products' | 'sales_count'
+
+export const goals = pgTable(
+  'goals',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // Dia 1 do mês da meta (CHECK).
+    month: date('month').notNull(),
+    // NULL = meta do salão.
+    professionalId: uuid('professional_id').references(() => professionals.id, { onDelete: 'cascade' }),
+    metric: text('metric').$type<GoalMetricColumn>().notNull(),
+    // Reais nos indicadores de dinheiro; contagem em 'sales_count'.
+    target: numeric('target', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('goals_salon_unique')
+      .on(table.salonId, table.month, table.metric)
+      .where(sql`professional_id IS NULL`),
+    uniqueIndex('goals_professional_unique')
+      .on(table.salonId, table.month, table.professionalId, table.metric)
+      .where(sql`professional_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(

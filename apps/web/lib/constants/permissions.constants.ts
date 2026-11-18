@@ -34,6 +34,7 @@ export const PERMISSION_RESOURCE_LABELS: Record<PermissionResource, string> = {
   promotions: "Promoções",
   reviews: "Avaliações",
   care_messages: "Cuidados e retorno",
+  goals: "Metas",
 }
 
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
