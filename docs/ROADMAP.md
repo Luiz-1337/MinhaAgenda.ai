@@ -54,9 +54,9 @@ salão de teste, publicada e testada em uso — ver §10.8. Fatia 6c (avaliaçõ
 pós-atendimento) na mesma branch: migration 056 aplicada em 17/nov/2026, módulo
 `reviews` ligado só no salão de teste, publicada e testada em uso — ver §10.9.
 Fatia 6d (mensagens de cuidados e de retorno, e pedido de avaliação pelo WhatsApp)
-feita na mesma branch — **em commit local, migration 057 NÃO aplicada, módulo
-`care_messages` desligado em todos os salões, sem publicar e sem teste em uso** —
-ver §10.10.
+na mesma branch: migration 057 aplicada em 17/nov/2026, módulo `care_messages`
+ligado só no salão de teste, publicada, e o cadastro e a fila testados em uso —
+**o envio de verdade pelo WhatsApp NÃO foi testado** — ver §10.10.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2527,7 +2527,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
 | 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
-| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita em código — **migration 057 não aplicada, sem publicar e sem teste em uso** (§10.10) |
+| 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp; fila e histórico de envios | Feita, migration 057 aplicada e publicada; cadastro e fila testados em uso — **o envio pelo WhatsApp não foi testado** (§10.10) |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
 
@@ -3015,15 +3015,15 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
 
 ### 10.10 Fatia 6d — estado (17/nov/2026)
 
-- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1232, db 296, mcp-server 400).
-- **Migration 057: NÃO aplicada.** Ela acrescenta três colunas a
-  `review_settings`, e o código novo lê e grava essas colunas: **publicar antes de
-  aplicar quebra a tela de Avaliações e o faturamento no salão com o módulo
-  `reviews`** (hoje, só o de teste). `review_settings` tem uma linha (a do salão
-  de teste); cabe cópia em `backups` antes.
-- **O módulo `care_messages` está desligado em todos os salões.**
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1232, db 296,
+  mcp-server 400).
+- **Migration 057 aplicada em produção em 17/nov/2026** (registrada como
+  `care_messages`). Cópia antes: `backups.review_settings_pre_057_20261117` (1
+  linha). Conferido por leitura: as duas tabelas novas com RLS e sem acesso para
+  `anon`/`authenticated`; a linha de `review_settings` com os padrões novos.
+- **O módulo `care_messages` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
 - **A auditoria não descreve os campos** das abas Cuidados e Retorno da Belasis:
   só diz que existem. Tipos, prazos e variáveis foram decididos aqui (regras 29 a
   38).
@@ -3048,17 +3048,40 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
     reavaliado a cada rodada, por até 3 dias;
   - a fila não avisa ninguém quando falha (não abre alerta): é preciso olhar a
     lista de envios.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 057, ligar
-  o módulo e publicar: criar mensagem de cuidados de depois (0 dias) e de retorno
-  (30 dias) para um serviço, e de retorno para um produto; tentar duplicar
-  (recusado) e tentar cuidados de antes em produto (não deixa); faturar uma
-  comanda com o serviço e o produto → três envios "Na fila" com as datas certas;
-  reabrir e faturar de novo (não duplica); cancelar um envio; excluir a comanda
-  (a fila esvazia); excluir uma mensagem com envio na fila; ativar o pedido pelo
-  WhatsApp em Avaliações, com texto sem `{link}` (recusado) e com; faturar →
-  envio "Pedido de avaliação" na fila para dali a N horas. O ENVIO de verdade
-  (rodar a fila, a mensagem chegar, cair na conversa) e os cuidados de antes
-  dependem do cron — ver o limite acima.
+- **Cadastro e fila testados em uso em 17/nov/2026**, no preview da branch, no
+  salão de teste (comanda #29). Passou:
+  - a tela no menu, vazia; criar cuidados de depois (0 dias) e retorno (30 dias)
+    para um serviço, e retorno (45 dias) para um produto;
+  - duplicar tipo e item → "Este item já tem uma mensagem desse tipo";
+  - escolher "cuidados antes" trava o campo em Serviço e troca o limite para 1 a
+    30; "retorno" mostra 1 a 365;
+  - em Avaliações, a mensagem do WhatsApp sem `{link}` é recusada; com ele, salva,
+    e o rodapé da lista passa a dizer que o pedido sai sozinho;
+  - faturar a comanda com o serviço e o produto → quatro envios "Na fila":
+    cuidados (na hora), pedido de avaliação (2 h depois), retorno do serviço (30
+    dias) e do produto (45 dias), com o link da comanda;
+  - reabrir e faturar de novo → continuam quatro (conferido por leitura);
+  - cancelar um envio da fila; excluir uma mensagem leva junto o envio dela;
+  - excluir a comanda → a fila esvazia, inclusive o pedido de avaliação.
+- **NÃO testado em uso — o envio de verdade.** Nenhuma mensagem saiu: o cron não
+  roda no preview, e não chamei a rota porque ela pede o `CRON_SECRET`. Ficaram
+  sem teste: a fila ser consumida, o texto com as variáveis trocadas, a mensagem
+  chegar no WhatsApp e cair na conversa, as recusas na hora do envio (cliente que
+  pediu para parar, mensagem desativada, comanda reaberta, quem já tem horário), o
+  horário das 9h às 20h, a falha no WhatsApp oficial e TODO o caminho dos
+  cuidados de antes (que nasce no cron). A consulta dos cuidados de antes foi
+  rodada por leitura no banco, só para conferir que é válida. Essa parte está
+  coberta apenas pelos testes da regra pura.
+- **Também não testado:** alterar e desativar uma mensagem; o filtro de situação
+  dos envios; perfil sem `care_messages.access` ou sem `care_messages.manage`; o
+  módulo desligado.
+- **Achado no teste:** cancelar um envio e depois reabrir e faturar a mesma
+  comanda agenda o envio de novo (o cancelamento apaga a linha, então nada lembra
+  que ele foi cancelado). Não corrigido.
+- Dados de teste limpos pela tela: a comanda #29 reaberta e excluída (fica como
+  excluída), as três mensagens excluídas, as avaliações DESATIVADAS de novo, o
+  envio pelo WhatsApp desmarcado e o texto em branco. Conferido por leitura: sem
+  linhas em `care_message_rules`, `care_message_dispatches` nem `reviews`.
 
 ## 11. Pendências do dono
 
@@ -3078,7 +3101,6 @@ que envia não tem sessão: autentica com `CRON_SECRET`.
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
 | Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
-| Aplicar a migration 057 (ou autorizar a aplicação), ligar o módulo `care_messages` no salão de teste e publicar a fatia 6d — ver §10.10 | Teste em uso da fatia 6d |
 | Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
