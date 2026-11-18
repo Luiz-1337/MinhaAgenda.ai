@@ -11,7 +11,9 @@
 --     são a mesma pessoa cadastrada duas vezes. O dígito verificador é conferido
 --     no código (domain/customer-profile.ts), não aqui.
 --   - CEP só com os 8 dígitos; UF com 2 letras maiúsculas.
---   - Nascimento não pode ser no futuro nem antes de 1900.
+--   - Nascimento não pode ser antes de 1900. "Não pode ser no futuro" fica no
+--     código: um CHECK com a data de hoje deixaria de valer sozinho com o tempo
+--     e atrapalharia uma restauração.
 --
 -- MEXE em tabela existente (customers), só acrescentando colunas sem DEFAULT:
 -- nenhuma linha é regravada. Aplicar ANTES de publicar o código — o Drizzle lista
@@ -37,7 +39,7 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'customers_birth_date_check') THEN
     ALTER TABLE public.customers ADD CONSTRAINT customers_birth_date_check
-      CHECK (birth_date IS NULL OR (birth_date >= DATE '1900-01-01' AND birth_date <= CURRENT_DATE + 1));
+      CHECK (birth_date IS NULL OR birth_date >= DATE '1900-01-01');
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'customers_cpf_check') THEN
     ALTER TABLE public.customers ADD CONSTRAINT customers_cpf_check
