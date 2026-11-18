@@ -70,9 +70,8 @@ módulos continuam ligados só no salão de teste.
 Fase 7 (cliente e agenda): detalhada em §11. Fatia 7a (ficha do cliente completa)
 feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6):
 migration 059 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.7.
-Fatia 7b (etiquetas na agenda e remarcar pela tela) feita na mesma branch — **em
-commit local, migration 060 NÃO aplicada, sem publicar e sem teste em uso** — ver
-§11.8.
+Fatia 7b (etiquetas na agenda e remarcar pela tela) na mesma branch: migration
+060 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.8.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3299,7 +3298,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | Fatia | O que entra | Estado |
 |---|---|---|
 | 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
-| 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita em código — **migration 060 não aplicada, sem publicar e sem teste em uso** (§11.8) |
+| 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
 | 7c | Recorrência de agendamento (repetir toda semana, a cada N semanas, até uma data) | Pendente |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
@@ -3494,14 +3493,13 @@ Perguntas para o dono:
 
 ### 11.8 Fatia 7b — estado (18/nov/2026)
 
-- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
-  alterados) e testes passando (web 1293, db 296, mcp-server 409).
-- **Migration 060: NÃO aplicada.** Ela acrescenta `label_id` a `appointments`.
-  **Publicar o código antes de aplicar quebra a criação de agendamento em TODOS
-  os salões** — pela tela e pela IA —, porque o Drizzle passa a listar a coluna
-  nova. A coluna não tem DEFAULT: nenhuma linha é regravada. Cabe cópia de
-  `appointments` em `backups` antes.
+- Na branch `claude/fase-7-cliente-agenda`, publicada. Typecheck (db, web e
+  mcp-server), lint (nenhum erro novo nos arquivos alterados) e testes passando
+  (web 1293, db 296, mcp-server 409).
+- **Migration 060 aplicada em produção em 18/nov/2026** (registrada como
+  `appointment_labels`). Cópia antes: `backups.appointments_pre_060_20261118`
+  (181 linhas). Conferido por leitura: os 181 agendamentos, a tabela nova com RLS
+  e sem acesso para `anon`/`authenticated`.
 - **O worker da IA também grava em `appointments`.** Ele roda outra cópia do
   código; com a migration aplicada, tanto a versão antiga (que não conhece a
   coluna) quanto a nova funcionam.
@@ -3516,16 +3514,33 @@ Perguntas para o dono:
   visão mensal não mostra a etiqueta; não há filtro por etiqueta; remarcar não
   troca profissional nem serviço e não avisa o cliente; o formulário de remarcar
   pede a hora digitada, sem mostrar horários livres (como o de criar).
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 060 e
-  publicar: abrir Etiquetas, criar duas, repetir um nome (recusado), trocar a cor
-  de uma; criar um agendamento futuro; no detalhe, pôr a etiqueta (o selo aparece
-  no cartão do dia e da semana), trocar e tirar; excluir uma etiqueta em uso (o
-  agendamento fica sem etiqueta); remarcar para outro dia e hora (o cartão muda
-  de lugar); remarcar para um horário já ocupado (recusado) e para o passado
-  (recusado); conferir que um agendamento concluído não oferece "Remarcar";
-  cancelar o agendamento de teste. **O salão de teste não tem agenda oficial** (só o
-  Google Calendar ligado): remarcar com a Belasis não dá para testar ali, e o
-  agendamento de teste vai aparecer no Google da conta ligada ao salão de teste.
+- **Testada em uso em 18/nov/2026**, no preview da branch, no salão de teste.
+  Passou:
+  - o botão "Etiquetas" abre o diálogo vazio; criar duas etiquetas (amarela e
+    azul); o mesmo nome com outra caixa não entra (conferido por leitura: só as
+    duas no banco — o texto do aviso não foi capturado); trocar a cor de uma;
+  - criar agendamento pela tela DEPOIS da migration funciona (dois criados, os
+    dois espelhados no Google);
+  - no detalhe, pôr a etiqueta → "Etiqueta aplicada" e o selo aparece no cartão
+    da semana; a lista de etiquetas passa a mostrar "1 agendamento";
+  - remarcar para o passado → "Não é possível reagendar para um horário que já
+    passou"; remarcar de quinta 14h para sexta 15h → o cartão muda de lugar e a
+    etiqueta continua nele;
+  - remarcar para cima de outro agendamento do mesmo profissional → recusado (o
+    diálogo fica aberto e o horário não muda — o texto do aviso não foi
+    capturado);
+  - excluir a etiqueta em uso → o agendamento fica sem etiqueta e continua de
+    pé; sem nenhuma etiqueta no salão, o campo "Etiqueta" some do detalhe.
+- **Não testado em uso:** tirar a etiqueta pelo campo ("Sem etiqueta"); o selo na
+  visão do dia (só a semana foi olhada); o limite de 30 etiquetas; furar a regra
+  de dia e horário do serviço ao remarcar; "Remarcar" ausente em agendamento
+  concluído; remarcar por um profissional que não é dono (só há o usuário dono);
+  remarcar com agenda oficial — **o salão de teste não tem Belasis**, só o Google
+  Calendar; e a IA criando agendamento depois da migration (o worker).
+- Dados de teste limpos pela tela: as duas etiquetas excluídas e os dois
+  agendamentos cancelados (ficam no histórico da cliente de teste como
+  cancelados, e saíram do Google). Conferido por leitura: nenhuma etiqueta,
+  nenhum agendamento etiquetado, e os 181 agendamentos de antes iguais à cópia.
 
 ## 12. Pendências do dono
 
@@ -3550,7 +3565,6 @@ Perguntas para o dono:
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
-| Aplicar a migration 060 (ou autorizar a aplicação) e publicar a fatia 7b — ver §11.8 | Teste em uso da fatia 7b |
 | Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
