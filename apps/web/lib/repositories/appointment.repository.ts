@@ -1,4 +1,4 @@
-import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, ne, desc, inArray } from "@repo/db"
+import { appointments, appointmentLabels, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, ne, desc, inArray } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
 import type { AppointmentStatus } from "@/lib/utils/appointment-status"
 
@@ -37,6 +37,10 @@ export interface AppointmentDTO {
   completedAt: Date | null
   noShowAt: Date | null
   cancelledAt: Date | null
+  /** A etiqueta do agendamento (fase 7). NULL = sem etiqueta. */
+  labelId: string | null
+  labelName: string | null
+  labelColor: string | null
 }
 
 export interface ProfessionalDTO {
@@ -159,8 +163,12 @@ export async function getAppointmentsByRange({
         completedAt: appointments.completedAt,
         noShowAt: appointments.noShowAt,
         cancelledAt: appointments.cancelledAt,
+        labelId: appointments.labelId,
+        labelName: appointmentLabels.name,
+        labelColor: appointmentLabels.color,
       })
       .from(appointments)
+      .leftJoin(appointmentLabels, eq(appointments.labelId, appointmentLabels.id))
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
       .innerJoin(customers, eq(appointments.clientId, customers.id))
       .innerJoin(services, eq(appointments.serviceId, services.id))

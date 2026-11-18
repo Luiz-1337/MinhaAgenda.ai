@@ -70,6 +70,9 @@ módulos continuam ligados só no salão de teste.
 Fase 7 (cliente e agenda): detalhada em §11. Fatia 7a (ficha do cliente completa)
 feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6):
 migration 059 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.7.
+Fatia 7b (etiquetas na agenda e remarcar pela tela) feita na mesma branch — **em
+commit local, migration 060 NÃO aplicada, sem publicar e sem teste em uso** — ver
+§11.8.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3296,7 +3299,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | Fatia | O que entra | Estado |
 |---|---|---|
 | 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
-| 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — hoje só a IA remarca | Pendente |
+| 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita em código — **migration 060 não aplicada, sem publicar e sem teste em uso** (§11.8) |
 | 7c | Recorrência de agendamento (repetir toda semana, a cada N semanas, até uma data) | Pendente |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
@@ -3348,6 +3351,14 @@ DEFAULT, todas opcionais); tem que ser aplicada antes de publicar o código:
   e `referral_source`. Índice único `(salon_id, cpf)` e índice de aniversário
   (mês e dia).
 
+**Migration 060 (fatia 7b)** — MEXE em `appointments` (uma coluna nova, sem
+DEFAULT); tem que ser aplicada antes de publicar o código:
+
+- **`appointment_labels`** — as etiquetas do salão: `name` (até 30 caracteres,
+  único no salão sem diferença de maiúscula) e `color` (`#RRGGBB`).
+- **`appointments.label_id`** — a etiqueta do agendamento, no máximo uma. Excluir
+  a etiqueta deixa NULL (`ON DELETE SET NULL`).
+
 ### 11.4 Regras decididas
 
 Fatia 7a — ficha do cliente:
@@ -3373,6 +3384,28 @@ Fatia 7a — ficha do cliente:
 8. **O agente do WhatsApp não recebe estes dados.** Nenhuma tool nova, e o
    contexto que a IA lê do cliente não foi mexido.
 
+Fatia 7b — etiquetas na agenda e remarcar:
+
+9. **A etiqueta é um marcador de tela**: nome e cor, uma por agendamento. Não
+   muda horário, status, cobrança nem comissão, e o agente do WhatsApp não a vê.
+10. **O salão cria as suas** (até 30), escolhendo entre nove cores. O texto sobre
+    a cor é preto ou branco, o que der mais contraste.
+11. **Pôr ou tirar a etiqueta** é no detalhe do agendamento, inclusive nos já
+    concluídos. Ainda não dá para escolher a etiqueta ao CRIAR o agendamento.
+12. **Excluir a etiqueta** tira a marca dos agendamentos que a usavam; eles
+    continuam como estão.
+13. **Quem mexe**: ver as etiquetas é de quem tem `schedule.access`; criar,
+    alterar, excluir e etiquetar é de quem tem `schedule.edit`.
+14. **Remarcar pela tela** muda só a data e a hora — mesmo cliente, serviço e
+    profissional. Só o que está pendente ou confirmado é remarcado.
+15. **O horário novo passa pelas mesmas conferências de um agendamento novo**
+    (o mesmo serviço que a IA usa): expediente, regra de dia e horário do
+    serviço, conflito com outro agendamento, agenda oficial e Google. A equipe
+    pode furar a regra de dia e horário do serviço depois de confirmar, como no
+    criar; conflito não se fura.
+16. **Quem remarca** é quem já podia concluir ou cancelar aquele agendamento:
+    dono, gerente, ou o profissional do próprio atendimento.
+
 Perguntas para o dono:
 
 - (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
@@ -3384,6 +3417,12 @@ Perguntas para o dono:
 - (7a) Lista de aniversariantes do mês e mensagem de parabéns pelo WhatsApp entram
   nesta fase?
 - (7a) A IA deve poder perguntar e gravar a data de nascimento na conversa?
+- (7b) Uma etiqueta por agendamento basta, ou a Belasis deixa várias?
+- (7b) A etiqueta deve mudar a cor do cartão inteiro na agenda? Hoje a cor do
+  cartão é só para diferenciar um do outro, e a etiqueta entra como um selo.
+- (7b) Remarcar deve também trocar o profissional e o serviço? Hoje só data e
+  hora.
+- (7b) O cliente deve ser avisado pelo WhatsApp quando o salão remarca?
 
 ### 11.5 Telas
 
@@ -3391,12 +3430,19 @@ Perguntas para o dono:
   nascimento (com idade e "Aniversário hoje"), CPF, gênero, endereço numa linha e
   "como conheceu"; ficha vazia mostra um aviso. "Editar" troca o cartão pelo
   formulário (onze campos) no lugar.
+- **Agenda (7b)**: botão "Etiquetas" no cabeçalho abre o diálogo das etiquetas do
+  salão (lista com quantos agendamentos usam cada uma, criar, alterar a cor e o
+  nome, excluir). Os cartões do dia e da semana mostram a etiqueta como um selo
+  colorido embaixo do nome do cliente.
+- **Detalhe do agendamento (7b)**: campo "Etiqueta" (aparece quando o salão tem
+  etiquetas) e botão "Remarcar", que pede a nova data e a nova hora.
 
 ### 11.6 Onde está o código
 
 | Parte | Arquivos |
 |---|---|
 | Ficha do cliente (7a) | Migration `059_customer_profile.sql`; colunas em `customers` (`schema.ts`); regra em `domain/customer-profile.ts` (`planCustomerProfile`, `isValidCpf`, `maskCpf`, `customerAge`, `isBirthday`, `formatCustomerAddress`); I/O em `services/customer-profile.service.ts`; action em `actions/customer-profile.ts`; `getCustomerDetail` (`actions/customers.ts`) devolve `profile` e `canEditProfile`; cartão em `components/contacts/customer-profile-card.tsx`; testes em `customer-profile-domain.test.ts` |
+| Etiquetas e remarcar (7b) | Migration `060_appointment_labels.sql`; tabela `appointmentLabels` e `appointments.labelId`; regra em `domain/appointment-labels.ts` (`planAppointmentLabel`, `labelTextColor`); I/O em `services/appointment-labels.service.ts`; actions em `actions/appointment-labels.ts`; `rescheduleAppointment` em `actions/appointments.ts` (chama `updateAppointmentService`); a consulta da grade (`lib/repositories/appointment.repository.ts`) traz a etiqueta; telas em `components/scheduler/` (`appointment-labels-dialog.tsx`, `appointment-detail-dialog.tsx`, `scheduler-view.tsx`, `daily-scheduler.tsx`, `weekly-scheduler.tsx`); testes em `appointment-labels-domain.test.ts` |
 
 ### 11.7 Fatia 7a — estado (18/nov/2026)
 
@@ -3446,6 +3492,41 @@ Perguntas para o dono:
   cliente. Conferido por leitura: nenhum cliente com dado cadastral, e os
   clientes do salão de teste idênticos à cópia de antes.
 
+### 11.8 Fatia 7b — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1293, db 296, mcp-server 409).
+- **Migration 060: NÃO aplicada.** Ela acrescenta `label_id` a `appointments`.
+  **Publicar o código antes de aplicar quebra a criação de agendamento em TODOS
+  os salões** — pela tela e pela IA —, porque o Drizzle passa a listar a coluna
+  nova. A coluna não tem DEFAULT: nenhuma linha é regravada. Cabe cópia de
+  `appointments` em `backups` antes.
+- **O worker da IA também grava em `appointments`.** Ele roda outra cópia do
+  código; com a migration aplicada, tanto a versão antiga (que não conhece a
+  coluna) quanto a nova funcionam.
+- **Sem módulo.** A agenda é do produto base: o botão "Etiquetas", o campo no
+  detalhe e o "Remarcar" aparecem em todos os salões assim que o código for
+  publicado.
+- **Remarcar não tem código novo de regra**: a action só confere quem pode e o
+  status, e chama o `updateAppointmentService` que a IA já usa. Os achados da
+  §11.2 valem aqui também — ele aceita marcar dentro do intervalo de almoço e não
+  lê folgas.
+- **Limites desta fatia:** não se escolhe a etiqueta ao criar o agendamento; a
+  visão mensal não mostra a etiqueta; não há filtro por etiqueta; remarcar não
+  troca profissional nem serviço e não avisa o cliente; o formulário de remarcar
+  pede a hora digitada, sem mostrar horários livres (como o de criar).
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 060 e
+  publicar: abrir Etiquetas, criar duas, repetir um nome (recusado), trocar a cor
+  de uma; criar um agendamento futuro; no detalhe, pôr a etiqueta (o selo aparece
+  no cartão do dia e da semana), trocar e tirar; excluir uma etiqueta em uso (o
+  agendamento fica sem etiqueta); remarcar para outro dia e hora (o cartão muda
+  de lugar); remarcar para um horário já ocupado (recusado) e para o passado
+  (recusado); conferir que um agendamento concluído não oferece "Remarcar";
+  cancelar o agendamento de teste. **O salão de teste não tem agenda oficial** (só o
+  Google Calendar ligado): remarcar com a Belasis não dá para testar ali, e o
+  agendamento de teste vai aparecer no Google da conta ligada ao salão de teste.
+
 ## 12. Pendências do dono
 
 | Pendência | Trava |
@@ -3469,5 +3550,7 @@ Perguntas para o dono:
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
+| Aplicar a migration 060 (ou autorizar a aplicação) e publicar a fatia 7b — ver §11.8 | Teste em uso da fatia 7b |
+| Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

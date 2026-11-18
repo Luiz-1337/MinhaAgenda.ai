@@ -369,6 +369,9 @@ export const appointments = pgTable(
     syncStatus: syncStatusEnum('sync_status').default('pending').notNull(),
     syncSource: syncSourceEnum('sync_source'),
     notes: text('notes'),
+    // A etiqueta do agendamento (migration 060). No máximo uma; excluir a
+    // etiqueta deixa NULL.
+    labelId: uuid('label_id').references((): AnyPgColumn => appointmentLabels.id, { onDelete: 'set null' }),
     reminderSentAt: timestamp('reminder_sent_at'),
     // --- Desfecho do atendimento (migration 027) ---------------------------
     // O fato "atendimento realizado, com valor". Sem estas colunas não existe
@@ -2208,6 +2211,26 @@ export const goals = pgTable(
       .on(table.salonId, table.month, table.professionalId, table.metric)
       .where(sql`professional_id IS NOT NULL`)
   ]
+)
+
+// ============================================================================
+// TABLES - Etiquetas na agenda (migration 060)
+// ============================================================================
+// Um rótulo com cor por agendamento (appointments.label_id). Regra em
+// domain/appointment-labels.ts.
+
+export const appointmentLabels = pgTable(
+  'appointment_labels',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // "#rrggbb"
+    color: text('color').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('appointment_labels_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
 )
 
 // ============================================================================

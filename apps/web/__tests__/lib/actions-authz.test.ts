@@ -43,6 +43,7 @@ const GUARDED_FILES = [
   "care-messages.ts",
   "goals.ts",
   "customer-profile.ts",
+  "appointment-labels.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */

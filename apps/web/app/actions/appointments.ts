@@ -424,6 +424,53 @@ async function authorizeAppointmentOutcome(
 }
 
 /**
+ * REMARCA um agendamento a partir do painel: mesmo cliente, serviço e
+ * profissional, em outra data e hora (docs/ROADMAP.md, fase 7, fatia 7b).
+ *
+ * Reusa `updateAppointmentService`, o mesmo caminho que a IA usa: expediente,
+ * regra de dia e horário do serviço, conflito, agenda oficial e Google. Só o que
+ * ainda está de pé (pendente ou confirmado) é remarcado.
+ *
+ * `date` é "YYYY-MM-DDTHH:mm" em horário de Brasília, como no criar.
+ */
+export async function rescheduleAppointment(input: {
+  appointmentId: string
+  salonId: string
+  date: string
+  /** A equipe pode furar a regra de dia/horário do serviço, depois de confirmar. */
+  allowServiceRuleOverride?: boolean
+}): Promise<ActionResult<void>> {
+  const auth = await authorizeAppointmentOutcome(input?.appointmentId, input?.salonId)
+  if ("error" in auth) return { error: auth.error }
+
+  if (typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(input.date)) {
+    return { error: "Data e hora inválidas" }
+  }
+
+  const current = await db.query.appointments.findFirst({
+    where: eq(appointments.id, auth.appointment.id),
+    columns: { status: true },
+  })
+  if (!current || (current.status !== "pending" && current.status !== "confirmed")) {
+    return { error: "Só dá para remarcar um agendamento pendente ou confirmado" }
+  }
+
+  const result = await sharedServices.updateAppointmentService({
+    appointmentId: auth.appointment.id,
+    salonId: auth.appointment.salonId,
+    date: input.date,
+    allowServiceRuleOverride: input.allowServiceRuleOverride === true,
+  })
+
+  if (!result.success) {
+    // Propaga o code para a tela poder oferecer "remarcar mesmo assim".
+    return result.code ? { error: result.error, code: result.code } : { error: result.error }
+  }
+
+  return { success: true, data: undefined }
+}
+
+/**
  * CANCELA um agendamento a partir do painel.
  *
  * Não apaga mais a linha: reusa `cancelAppointmentService`, o mesmo caminho que a
