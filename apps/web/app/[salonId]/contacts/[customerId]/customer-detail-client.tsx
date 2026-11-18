@@ -15,6 +15,7 @@ import { TagPill } from "@/components/contacts/tag-pill"
 import { CustomerSalesCard } from "@/components/contacts/customer-sales-card"
 import { CustomerPackagesCard } from "@/components/contacts/customer-packages-card"
 import { CustomerCashbackCard } from "@/components/contacts/customer-cashback-card"
+import { CustomerProfileCard } from "@/components/contacts/customer-profile-card"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -212,6 +213,15 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
             </div>
           )}
         </Card>
+
+        {/* Dados cadastrais: nascimento, CPF, endereço… (fase 7). */}
+        <CustomerProfileCard
+          salonId={salonId}
+          customerId={detail.id}
+          profile={detail.profile}
+          canEdit={detail.canEditProfile}
+          onSaved={() => void queryClient.invalidateQueries({ queryKey: ["customer-detail", salonId, detail.id] })}
+        />
 
         {/* Vendas: só aparece no salão com o módulo de comandas ligado. */}
         <CustomerSalesCard salonId={salonId} customerId={detail.id} />

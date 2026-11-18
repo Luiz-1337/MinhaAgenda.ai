@@ -42,6 +42,7 @@ const GUARDED_FILES = [
   "reviews.ts",
   "care-messages.ts",
   "goals.ts",
+  "customer-profile.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */

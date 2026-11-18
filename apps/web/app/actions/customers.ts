@@ -1,13 +1,13 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql, domainServices, phonesMatch } from "@repo/db"
+import { db, customers, customerNotes, customerTagAssignments, chats, profiles, eq, desc, and, inArray, sql, domainServices, phonesMatch, customerProfileFromRow, maskCpf } from "@repo/db"
 import { evaluateNoShowRisk } from "@repo/db/src/services/no-show-predictor.service"
 import { ActionResult } from "@/lib/types/common"
 import { CUSTOMERS_PAGE_SIZE } from "@/lib/types/customer"
 import type { CustomerDetail, CustomerAppointmentRow, CustomerNoteRow } from "@/lib/types/customer"
 
-import { hasSalonPermission, canReadCrm } from "@/lib/services/permissions.service"
+import { hasSalonPermission, canReadCrm, can } from "@/lib/services/permissions.service"
 
 export type CustomerRow = {
   id: string
@@ -442,6 +442,11 @@ export async function getCustomerDetail(
     const str = (v: unknown) => (v === null || v === undefined ? null : String(v))
 
     const trinks = customer.trinksProfile
+
+    // Dados cadastrais (fase 7). Quem só lê a ficha não vê o CPF inteiro.
+    const canEditProfile = await can(salonId, user.id, "customers.edit")
+    const profile = customerProfileFromRow(customer)
+
     return {
       success: true,
       data: {
@@ -509,6 +514,8 @@ export async function getCustomerDetail(
           sampleSize: risk.totalAppointments,
         },
         chatId: chatRow?.id ?? null,
+        profile: canEditProfile ? profile : { ...profile, cpf: maskCpf(profile.cpf) },
+        canEditProfile,
       },
     }
   } catch (error) {
@@ -912,11 +919,17 @@ export async function updateSalonCustomer(
         ? { notes: input.preferences.trim() }
         : null
 
-      // Mescla com preferências existentes se houver
+      // Só a chave `notes` é deste campo. O resto do jsonb é o que a IA aprendeu
+      // (alergias, profissional preferido…): esvaziar a observação apagava tudo
+      // junto. Agora sai só a observação.
       const currentPreferences = (existingCustomer.preferences as Record<string, unknown>) || {}
-      updates.preferences = preferencesData
-        ? { ...currentPreferences, ...preferencesData }
-        : null
+      if (preferencesData) {
+        updates.preferences = { ...currentPreferences, ...preferencesData }
+      } else {
+        const { notes: _removed, ...rest } = currentPreferences
+        void _removed
+        updates.preferences = Object.keys(rest).length > 0 ? rest : null
+      }
     }
 
     // 6. Atualiza apenas se houver mudanças

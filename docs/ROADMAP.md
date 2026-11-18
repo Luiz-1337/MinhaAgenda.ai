@@ -67,7 +67,11 @@ uso — **a tool do agente NÃO foi testada em uso** (só roda no worker) — ve
 **As fases 3 a 6 estão na `main`**: fases 3 e 4 pelo PR #17, fase 5 pelo PR #18 e
 fase 6 pelo PR #19, mesclado em 18/nov/2026 (commit `a3d74f4`) — ver §10.13. Os
 módulos continuam ligados só no salão de teste.
-Fases 7 em diante: planejamento.
+Fase 7 (cliente e agenda): detalhada em §11. Fatia 7a (ficha do cliente completa)
+feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6) —
+**em commit local, migration 059 NÃO aplicada, sem publicar e sem teste em uso** —
+ver §11.7.
+Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -3278,10 +3282,150 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
   - o agente passa a consultar os módulos do salão para liberar as tools de
     saldo de pacote e de cashback (o worker precisa estar com esta versão).
 - **Os testes que dependiam de produção deixaram de estar travados** (lista em
-  §11): o link de avaliação sem login, o envio de verdade das mensagens da 6d e
+  §12): o link de avaliação sem login, o envio de verdade das mensagens da 6d e
   as duas tools do agente.
 
-## 11. Pendências do dono
+## 11. Fase 7 — Cliente e agenda
+
+Responde: quem é o cliente, e como ele chega à agenda. Parte da ficha do cliente
+e da agenda que já existem. A auditoria lista as telas da Belasis (ficha completa,
+anamneses, documentos com assinatura, recorrência e etiquetas na agenda,
+agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
+
+### 11.1 Fatias
+
+| Fatia | O que entra | Estado |
+|---|---|---|
+| 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita em código — **migration 059 não aplicada, sem publicar e sem teste em uso** (§11.7) |
+| 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — hoje só a IA remarca | Pendente |
+| 7c | Recorrência de agendamento (repetir toda semana, a cada N semanas, até uma data) | Pendente |
+| 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
+| 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
+| 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
+
+A ordem vai do que só acrescenta ao que mexe no caminho crítico. O agendamento
+online fica por último de propósito: depende de UM cálculo de horários livres, e
+hoje há dois que divergem (§11.2).
+
+### 11.2 O que o levantamento encontrou (18/nov/2026)
+
+Vale para a fase inteira; cada item volta na fatia que o toca.
+
+- **Dois cálculos de horários livres.** `getAvailableSlots`
+  (`packages/db/src/services/availability.ts`) ignora intervalos (almoço),
+  Google e agenda oficial; o `CheckAvailabilityUseCase` do mcp-server considera
+  os três. Uma página pública em cima do primeiro ofereceria horário de almoço e
+  horário já vendido na Belasis, que falhariam ao confirmar. **Trava a 7f.**
+- **`schedule_overrides` (folgas e bloqueios pontuais) não é lido por ninguém**:
+  nem pelos dois cálculos, nem pelo `createAppointmentService`, e não há tela
+  para criar. Quem está de férias aparece como livre.
+- **`createAppointmentService` aceita marcar dentro do intervalo** (`is_break`) e
+  **não confere se o cliente é do salão** (só a FK segura).
+- **A tela não remarca nem edita agendamento**: só cria, cancela, conclui e marca
+  falta. `updateAppointmentService` existe, mas só a IA chama. O formulário de
+  criar pede a hora digitada, sem mostrar horários livres.
+- **A trava de horário duplo é só na aplicação** (`pg_advisory_xact_lock` +
+  consulta de sobreposição dentro do serviço). Não há constraint no banco: quem
+  inserir por fora do serviço não é barrado.
+- **`salons.slug` está aposentado** desde a migration 023 (nullable, o app não
+  gera nem lê). A página pública vai precisar de um endereço próprio.
+- **`salons` não tem logo nem endereço estruturado.**
+- **Não há middleware**: quem exige login é o layout de `app/[salonId]`. Rota
+  pública nova precisa de um primeiro segmento fixo (como `/avaliar`).
+- **Excluir cliente é exclusão de verdade** (`deleteSalonCustomer`). Com anamnese
+  e documento assinado ligados ao cliente, isso precisa de decisão (7d e 7e).
+- **O único storage é o do WhatsApp** (`lib/supabase/storage.ts`, bucket
+  `whatsapp-media`, com `chatId` e `messageId` no caminho). Documento assinado
+  vai precisar de bucket e caminho próprios.
+
+### 11.3 Modelo de dados
+
+**Migration 059 (fatia 7a)** — MEXE em `customers` (onze colunas novas, sem
+DEFAULT, todas opcionais); tem que ser aplicada antes de publicar o código:
+
+- **`customers`** ganha `birth_date`, `cpf` (11 dígitos), `gender` (`female`,
+  `male`, `other`), `zip_code` (8 dígitos), `address_street`, `address_number`,
+  `address_complement`, `address_district`, `address_city`, `address_state` (UF)
+  e `referral_source`. Índice único `(salon_id, cpf)` e índice de aniversário
+  (mês e dia).
+
+### 11.4 Regras decididas
+
+Fatia 7a — ficha do cliente:
+
+1. **Tudo é opcional.** O cadastro que nasce do WhatsApp continua só com nome e
+   telefone; a ficha é completada no salão.
+2. **CPF**: só entra o que tem os dígitos verificadores certos; sequência
+   repetida ("111.111.111-11") é recusada. **Um CPF por salão**: o segundo
+   cadastro com o mesmo CPF é recusado com aviso.
+3. **Nascimento**: não pode ser no futuro nem antes de 1900. A ficha mostra a
+   idade e avisa quando é o aniversário (quem nasceu em 29/fev comemora em 28/fev
+   fora de ano bissexto).
+4. **Endereço**: CEP com 8 dígitos e UF da lista; o resto é texto. Não há busca
+   de endereço pelo CEP.
+5. **"Como conheceu"** é texto curto e livre (até 80 caracteres), separado da
+   origem do lead (anúncio × orgânico), que é automática.
+6. **Quem edita**: quem tem `customers.edit`. **Quem só lê a ficha vê o CPF
+   mascarado** ("•••.•••.•••-09"), e a máscara é feita no servidor. Endereço e
+   nascimento aparecem para quem lê a ficha.
+7. **Nome, telefone, e-mail e etiquetas** continuam sendo editados na lista de
+   contatos, como antes.
+8. **O agente do WhatsApp não recebe estes dados.** Nenhuma tool nova, e o
+   contexto que a IA lê do cliente não foi mexido.
+
+Perguntas para o dono:
+
+- (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
+  para assinar documento)?
+- (7a) Faltam campos da ficha da Belasis: RG, profissão, estado civil, e-mail
+  secundário, foto, "indicado por" ligando a outro cliente?
+- (7a) O CPF mascarado para quem só lê (regra 6) é o que o salão quer? E o
+  endereço?
+- (7a) Lista de aniversariantes do mês e mensagem de parabéns pelo WhatsApp entram
+  nesta fase?
+- (7a) A IA deve poder perguntar e gravar a data de nascimento na conversa?
+
+### 11.5 Telas
+
+- **Ficha do cliente (7a)**: cartão "Dados cadastrais", acima de Vendas —
+  nascimento (com idade e "Aniversário hoje"), CPF, gênero, endereço numa linha e
+  "como conheceu"; ficha vazia mostra um aviso. "Editar" troca o cartão pelo
+  formulário (onze campos) no lugar.
+
+### 11.6 Onde está o código
+
+| Parte | Arquivos |
+|---|---|
+| Ficha do cliente (7a) | Migration `059_customer_profile.sql`; colunas em `customers` (`schema.ts`); regra em `domain/customer-profile.ts` (`planCustomerProfile`, `isValidCpf`, `maskCpf`, `customerAge`, `isBirthday`, `formatCustomerAddress`); I/O em `services/customer-profile.service.ts`; action em `actions/customer-profile.ts`; `getCustomerDetail` (`actions/customers.ts`) devolve `profile` e `canEditProfile`; cartão em `components/contacts/customer-profile-card.tsx`; testes em `customer-profile-domain.test.ts` |
+
+### 11.7 Fatia 7a — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos novos e testes passando
+  (web 1278, db 296, mcp-server 409).
+- **Migration 059: NÃO aplicada.** Ela acrescenta colunas a `customers`, a tabela
+  mais usada do sistema — o WhatsApp cria cliente a toda hora. **Publicar o
+  código antes de aplicar quebra a criação de cliente em TODOS os salões**, porque
+  o Drizzle passa a listar as colunas novas. Acrescentar coluna sem DEFAULT não
+  regrava linhas; cabe cópia de `customers` em `backups` antes.
+- **Sem módulo.** A ficha do cliente é do produto base: o cartão aparece em todos
+  os salões assim que o código for publicado.
+- **Correção junto, em código antigo:** editar o contato na lista com o campo
+  "Observações / Preferências" vazio apagava o `preferences` INTEIRO, inclusive
+  o que a IA tinha aprendido (alergias, profissional preferido). Passou a sair só
+  a observação. Vale para todos os salões.
+- **`actions/customer-profile.ts` entrou na guarda de autorização**;
+  `actions/customers.ts` (antigo) continua fora dela, com o padrão anterior.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 059 e
+  publicar: abrir a ficha de um cliente (cartão vazio com aviso); editar e gravar
+  nascimento, CPF, gênero, endereço e "como conheceu"; CPF inválido e nascimento
+  no futuro são recusados; repetir o CPF em outro cliente (recusado); apagar tudo
+  e gravar (ficha vazia de novo); com um usuário sem `customers.edit`, o CPF
+  aparece mascarado e não há "Editar"; criar um cliente novo pela lista e por
+  uma mensagem de WhatsApp continua funcionando; editar um contato na lista com a
+  observação vazia e conferir que as preferências da IA ficaram.
+
+## 12. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -3303,4 +3447,7 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
+| Aplicar a migration 059 (ou autorizar a aplicação) e publicar a fatia 7a — ver §11.7 | Teste em uso da fatia 7a |
+| Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
+| Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

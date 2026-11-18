@@ -689,11 +689,28 @@ export const customers = pgTable(
     // anúncio (messages.ad_referral); 'organic' = o resto do canal oficial; NULL =
     // canal que não entrega a origem. Só sobe de 'organic' para 'paid_traffic'.
     leadSource: text('lead_source').$type<LeadSource>(),
+    // Dados cadastrais (migration 059), todos opcionais. Regra em
+    // domain/customer-profile.ts. CPF e CEP só com dígitos; UF em maiúsculas.
+    birthDate: date('birth_date'),
+    cpf: text('cpf'),
+    // 'female' | 'male' | 'other'
+    gender: text('gender'),
+    zipCode: text('zip_code'),
+    addressStreet: text('address_street'),
+    addressNumber: text('address_number'),
+    addressComplement: text('address_complement'),
+    addressDistrict: text('address_district'),
+    addressCity: text('address_city'),
+    addressState: text('address_state'),
+    // Como o cliente conheceu o salão (texto curto, livre).
+    referralSource: text('referral_source'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
     uniqueIndex('customers_salon_phone_unique').on(table.salonId, table.phone),
+    // Um CPF por salão (migration 059).
+    uniqueIndex('customers_salon_cpf_unique').on(table.salonId, table.cpf).where(sql`cpf IS NOT NULL`),
     index('customers_salon_idx').on(table.salonId),
     index('customers_phone_idx').on(table.phone),
     // Reflete índice parcial existente só no banco (reconciliação 21/jun — DRIFT-1)
