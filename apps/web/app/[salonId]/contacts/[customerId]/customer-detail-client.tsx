@@ -16,6 +16,7 @@ import { CustomerSalesCard } from "@/components/contacts/customer-sales-card"
 import { CustomerPackagesCard } from "@/components/contacts/customer-packages-card"
 import { CustomerCashbackCard } from "@/components/contacts/customer-cashback-card"
 import { CustomerProfileCard } from "@/components/contacts/customer-profile-card"
+import { CustomerAnamnesesCard } from "@/components/contacts/customer-anamneses-card"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import { formatBRL } from "@/lib/utils/money.utils"
@@ -222,6 +223,9 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
           canEdit={detail.canEditProfile}
           onSaved={() => void queryClient.invalidateQueries({ queryKey: ["customer-detail", salonId, detail.id] })}
         />
+
+        {/* Anamneses (fase 7): só para quem tem a permissão `customers.anamneses`. */}
+        <CustomerAnamnesesCard salonId={salonId} customerId={detail.id} />
 
         {/* Vendas: só aparece no salão com o módulo de comandas ligado. */}
         <CustomerSalesCard salonId={salonId} customerId={detail.id} />

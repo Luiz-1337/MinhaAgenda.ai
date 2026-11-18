@@ -14,7 +14,9 @@
  */
 export const PERMISSION_CATALOG = {
   schedule: ['access', 'create', 'edit', 'delete', 'view_all'],
-  customers: ['access', 'create', 'edit', 'delete', 'view_phones', 'notes'],
+  // `anamneses` (fase 7) = ver e preencher as anamneses dos clientes e gerenciar
+  // os modelos. É dado de saúde: não vem junto com `customers.access`.
+  customers: ['access', 'create', 'edit', 'delete', 'view_phones', 'notes', 'anamneses'],
   services: ['access', 'create', 'edit', 'delete'],
   products: ['access', 'create', 'edit', 'delete'],
   team: ['access', 'create', 'edit', 'delete'],

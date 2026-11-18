@@ -2253,6 +2253,48 @@ export const appointmentSeries = pgTable('appointment_series', {
 })
 
 // ============================================================================
+// TABLES - Anamneses (migration 062)
+// ============================================================================
+// Modelos de ficha com perguntas e as fichas respondidas na ficha do cliente.
+// A ficha respondida é um retrato: guarda o nome do modelo e o texto de cada
+// pergunta como estavam no dia. Regra em domain/anamneses.ts.
+
+export const anamnesisTemplates = pgTable(
+  'anamnesis_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // [{ id, label, type, required, options }]
+    questions: jsonb('questions').default(sql`'[]'::jsonb`).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('anamnesis_templates_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const customerAnamneses = pgTable(
+  'customer_anamneses',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // CASCADE: excluir o cliente apaga as fichas dele (dado de saúde não fica órfão).
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    templateId: uuid('template_id').references(() => anamnesisTemplates.id, { onDelete: 'set null' }),
+    templateName: text('template_name').notNull(),
+    // [{ questionId, label, type, value }]
+    answers: jsonb('answers').notNull(),
+    filledBy: uuid('filled_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('customer_anamneses_customer_idx').on(table.customerId, table.createdAt.desc()),
+    index('customer_anamneses_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(

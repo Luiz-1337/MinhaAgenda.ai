@@ -74,6 +74,8 @@ Fatia 7b (etiquetas na agenda e remarcar pela tela) na mesma branch: migration
 060 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.8.
 Fatia 7c (recorrência de agendamento) na mesma branch: migration 061 aplicada em
 18/nov/2026, publicada e testada em uso — ver §11.9.
+Fatia 7d (anamneses) feita na mesma branch — **em commit local, migration 062
+NÃO aplicada, sem publicar e sem teste em uso** — ver §11.10.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3302,7 +3304,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
 | 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
-| 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Pendente |
+| 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita em código — **migration 062 não aplicada, sem publicar e sem teste em uso** (§11.10) |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Pendente |
 | 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
 
@@ -3367,6 +3369,15 @@ DEFAULT); tem que ser aplicada antes de publicar o código:
   (2 a 12, o que foi PEDIDO) e `created_by`. Não guarda regra para o futuro: só
   amarra os agendamentos criados de uma vez.
 - **`appointments.series_id`** — a série do agendamento. NULL = avulso.
+
+**Migration 062 (fatia 7d)** — só tabelas novas, não mexe em nenhuma existente:
+
+- **`anamnesis_templates`** — os modelos do salão: `name` (único no salão, sem
+  diferença de maiúscula), `questions` (jsonb: `id`, `label`, `type`,
+  `required`, `options`) e `is_active`.
+- **`customer_anamneses`** — cada ficha respondida: `customer_id` (CASCADE),
+  `template_id` (SET NULL), `template_name` e `answers` (jsonb: `questionId`,
+  `label`, `type`, `value`) como RETRATO do dia, e `filled_by`.
 
 ### 11.4 Regras decididas
 
@@ -3435,6 +3446,32 @@ Fatia 7c — recorrência:
 23. **Quem cria a série** é quem já podia criar agendamento (dono ou profissional
     ativo; no plano SOLO, sempre para o profissional do dono).
 
+Fatia 7d — anamneses:
+
+24. **O salão monta modelos**: um nome e de 1 a 40 perguntas, em ordem. Tipos de
+    pergunta: resposta curta (até 200 caracteres), resposta longa (até 2.000),
+    sim ou não, uma opção e várias opções (de 2 a 20 opções). Cada pergunta pode
+    ser obrigatória. Até 30 modelos por salão.
+25. **Responder é na ficha do cliente**, por quem atende — não há link para o
+    cliente responder sozinho (isso é parente da 7e). Pergunta obrigatória não
+    passa em branco, e "Não" conta como resposta. Ficha toda em branco não é
+    gravada.
+26. **A ficha respondida é um retrato**: guarda o nome do modelo e o texto de
+    cada pergunta como estavam no dia. Alterar, desativar ou excluir o modelo não
+    muda o que já foi respondido.
+27. **A ficha respondida não se edita.** Responder de novo cria outra; o
+    histórico é a lista, da mais recente para a mais antiga, com data e quem
+    preencheu.
+28. **Modelo inativo** não aparece para responder; continua na lista de modelos.
+29. **Anamnese é dado de saúde, com permissão própria** (`customers.anamneses`,
+    "Anamneses" em Clientes): ver, responder e gerenciar os modelos. Ter acesso
+    aos contatos NÃO basta. Dono e gerente sem perfil têm; funcionário sem
+    perfil não tem; perfil de acesso existente não tem até alguém marcar.
+30. **Excluir uma ficha respondida** pede, além dessa permissão, a de excluir
+    clientes (`customers.delete`).
+31. **Excluir o cliente apaga as anamneses dele**, sem aviso a mais na tela de
+    exclusão.
+
 Perguntas para o dono:
 
 - (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
@@ -3460,6 +3497,18 @@ Perguntas para o dono:
   cada agendamento isolado.
 - (7c) O lembrete de 24 horas de cada agendamento da série basta, ou o cliente
   recebe um resumo com todas as datas ao marcar?
+- (7d) Quem pode ver anamnese? Hoje é uma permissão só (ver, responder e
+  gerenciar modelos — regra 29). Precisa separar "ver" de "gerenciar modelos"?
+- (7d) A ficha respondida deve poder ser corrigida, ou só refeita (regra 27)?
+- (7d) O cliente deve responder sozinho, por um link no WhatsApp, antes do
+  atendimento? E a anamnese precisa de assinatura (liga com a 7e)?
+- (7d) Faz falta pergunta "Sim → qual?" (um campo que só abre quando a resposta
+  é sim), data, ou foto? Hoje o salão resolve com uma pergunta de texto em
+  seguida.
+- (7d) A IA deve saber o que está na anamnese (por exemplo, alergia) ao
+  conversar com o cliente? Hoje ela não lê.
+- (7d) Ao excluir um cliente com anamnese, a tela deve avisar que as fichas vão
+  junto (regra 31), ou impedir?
 
 ### 11.5 Telas
 
@@ -3480,6 +3529,13 @@ Perguntas para o dono:
 - **Detalhe do agendamento (7c)**: linha "Recorrência — faz parte de uma série, a
   cada N semanas"; ao cancelar, a caixa "Cancelar também os próximos desta
   série".
+- **Ficha do cliente (7d)**: cartão "Anamneses", logo abaixo dos dados
+  cadastrais, só para quem tem a permissão. Mostra o que dá para responder (um
+  botão quando há um modelo; uma lista quando há mais), o formulário do modelo
+  escolhido e o histórico — cada ficha abre para mostrar pergunta e resposta.
+- **Modelos de anamnese (7d)**: janela aberta por "Modelos" no cartão. Lista os
+  modelos (perguntas, fichas respondidas, "Inativo") e edita: nome, ativo, e as
+  perguntas com texto, tipo, obrigatória, opções (uma por linha) e ordem.
 
 ### 11.6 Onde está o código
 
@@ -3488,6 +3544,7 @@ Perguntas para o dono:
 | Ficha do cliente (7a) | Migration `059_customer_profile.sql`; colunas em `customers` (`schema.ts`); regra em `domain/customer-profile.ts` (`planCustomerProfile`, `isValidCpf`, `maskCpf`, `customerAge`, `isBirthday`, `formatCustomerAddress`); I/O em `services/customer-profile.service.ts`; action em `actions/customer-profile.ts`; `getCustomerDetail` (`actions/customers.ts`) devolve `profile` e `canEditProfile`; cartão em `components/contacts/customer-profile-card.tsx`; testes em `customer-profile-domain.test.ts` |
 | Etiquetas e remarcar (7b) | Migration `060_appointment_labels.sql`; tabela `appointmentLabels` e `appointments.labelId`; regra em `domain/appointment-labels.ts` (`planAppointmentLabel`, `labelTextColor`); I/O em `services/appointment-labels.service.ts`; actions em `actions/appointment-labels.ts`; `rescheduleAppointment` em `actions/appointments.ts` (chama `updateAppointmentService`); a consulta da grade (`lib/repositories/appointment.repository.ts`) traz a etiqueta; telas em `components/scheduler/` (`appointment-labels-dialog.tsx`, `appointment-detail-dialog.tsx`, `scheduler-view.tsx`, `daily-scheduler.tsx`, `weekly-scheduler.tsx`); testes em `appointment-labels-domain.test.ts` |
 | Recorrência (7c) | Migration `061_appointment_series.sql`; tabela `appointmentSeries` e `appointments.seriesId`; regra em `domain/appointment-series.ts` (`planAppointmentSeries`, `addCalendarDays`, `describeSeriesOutcome`); I/O em `services/appointment-series.service.ts` (`createAppointmentSeriesService` repete o `createAppointmentService`; `cancelAppointmentSeriesService` repete o `cancelAppointmentService`); actions `createAppointmentSeries` e `cancelAppointmentSeries` em `actions/appointments.ts`, com o portão de criação extraído para `authorizeAppointmentCreation`; telas em `components/scheduler/create-appointment-dialog.tsx` e `appointment-detail-dialog.tsx`; testes em `appointment-series-domain.test.ts` |
+| Anamneses (7d) | Migration `062_anamneses.sql`; tabelas `anamnesisTemplates` e `customerAnamneses`; regra em `domain/anamneses.ts` (`planAnamnesisTemplate`, `planAnamnesisAnswers`, `parseAnamnesisQuestions`, `parseAnamnesisAnswers`, `formatAnamnesisAnswer`); I/O em `services/anamneses.service.ts`; actions em `actions/anamneses.ts` (na guarda de `actions-authz.test.ts`); permissão `customers.anamneses` em `domain/permissions.ts`, com rótulo em `permissions.constants.ts`; telas em `components/contacts/customer-anamneses-card.tsx` e `anamnesis-templates-dialog.tsx`; testes em `anamneses-domain.test.ts` |
 
 ### 11.7 Fatia 7a — estado (18/nov/2026)
 
@@ -3643,6 +3700,35 @@ Perguntas para o dono:
 - **Ficou no salão de teste:** seis agendamentos cancelados com observação
   "TESTE 7c…" e duas séries (histórico, como os da 7b).
 
+### 11.10 Fatia 7d — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1324, db 296, mcp-server 409).
+- **Migration 062: NÃO aplicada.** Só cria duas tabelas; não mexe em nenhuma
+  existente, então não há cópia a fazer antes. Publicar o código antes dela não
+  quebra a ficha do cliente: o cartão de anamneses carrega à parte e mostraria
+  "Não foi possível carregar as anamneses".
+- **Sem módulo.** O cartão aparece em todos os salões assim que o código for
+  publicado, para quem tem a permissão nova (regra 29).
+- **Permissão nova no catálogo** (`customers.anamneses`): aparece na tela de
+  perfis de acesso, desmarcada nos perfis que já existem.
+- **Limites desta fatia:**
+  - só quem atende responde; não há link para o cliente, nem assinatura;
+  - sem pergunta condicional, data ou foto;
+  - a ficha respondida não se edita, e não há impressão nem exportação;
+  - a IA não lê anamnese;
+  - a tela de excluir cliente não avisa que as anamneses vão junto;
+  - os modelos só se abrem por dentro da ficha de um cliente.
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 062 e
+  publicar: abrir a ficha de um cliente → cartão "Anamneses" sem modelo; criar
+  um modelo com os cinco tipos de pergunta e uma obrigatória; responder
+  deixando a obrigatória em branco (recusa) e depois completo; abrir a ficha no
+  histórico e conferir as respostas; alterar o texto de uma pergunta no modelo
+  e conferir que a ficha antiga não mudou; responder de novo (duas fichas);
+  desativar o modelo (some do "responder", histórico fica); excluir o modelo
+  (histórico fica); excluir as fichas de teste.
+
 ## 12. Pendências do dono
 
 | Pendência | Trava |
@@ -3668,5 +3754,8 @@ Perguntas para o dono:
 | Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
 | Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
 | Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
+| Aplicar a migration 062 (ou autorizar a aplicação) e publicar a fatia 7d — ver §11.10 | Teste em uso da fatia 7d |
+| Responder às perguntas da 7d em §11.4 (quem vê anamnese, corrigir ficha, link para o cliente e assinatura, tipos de pergunta, IA, excluir cliente) | Ajustes na 7d antes do piloto |
+| Marcar "Anamneses" nos perfis de acesso de quem deve ver e preencher | Funcionário com perfil usar as anamneses |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
