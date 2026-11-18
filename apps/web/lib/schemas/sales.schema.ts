@@ -30,6 +30,7 @@ export const saveSaleSchema = z.object({
   saleDate: z.coerce.date({ message: "Data inválida" }),
   notes: z.string().max(2000, "Observações muito longas").nullish(),
   items: z.array(saleItemSchema).max(100, "A comanda aceita no máximo 100 itens"),
+  couponCode: z.string().trim().max(60, "Cupom muito longo").nullish(),
 })
 
 export const invoiceSaleSchema = z.object({

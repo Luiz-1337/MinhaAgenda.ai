@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Tag,
   Trash2,
   Wallet,
   X,
@@ -22,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
+  checkSaleCoupon,
   getSaleCashback,
   getSalePackageBalances,
   getSaleSubscriptionOptions,
@@ -36,6 +38,7 @@ import { SALE_STATUS_BADGE, SALE_STATUS_LABELS } from "@/lib/constants/sales.con
 import { formatBRL, parseBRL } from "@/lib/utils/money.utils"
 import { parseQuantity as parseTypedQuantity, quantityToInput } from "@/lib/utils/quantity.utils"
 import { centsToNumeric, toCents } from "@repo/db/src/domain/sales"
+import { describeCouponDiscount, splitCouponDiscount } from "@repo/db/src/domain/promotions"
 import type {
   SaleCustomerOption,
   SaleDetailDTO,
@@ -46,6 +49,7 @@ import type {
 } from "@/lib/types/sale"
 import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
 import type { SaleCashbackDTO } from "@/lib/types/cashback"
+import type { SaleCouponDTO } from "@/lib/types/promotions"
 
 // ============================================================================
 // Estado de edição
@@ -158,7 +162,11 @@ function rowsFromSale(sale: SaleDetailDTO | null, draft: AppointmentDraft | null
     // Sem separador de milhar: "1.000" no campo seria relido como um.
     quantity: quantityToInput(item.quantity),
     unitPrice: moneyToInput(item.unitPrice),
-    discount: Number(item.discountAmount) > 0 ? moneyToInput(item.discountAmount) : "",
+    // O campo é o desconto dado À MÃO: o do cupom é recalculado a cada gravação.
+    discount: (() => {
+      const manual = (toCents(item.discountAmount) ?? 0) - (toCents(item.couponDiscount) ?? 0)
+      return manual > 0 ? moneyToInput(centsToNumeric(manual)) : ""
+    })(),
     appointmentId: item.appointmentId,
     packageLineId: item.customerPackageItemId,
     packageName: item.packageName,
@@ -218,6 +226,9 @@ export function SaleEditor({
   const [debtDueDate, setDebtDueDate] = useState("")
   // Cashback do cliente usado para pagar parte da comanda (fase 6).
   const [cashbackUse, setCashbackUse] = useState("")
+  // O cupom aplicado (fase 6) e o que está sendo digitado.
+  const [coupon, setCoupon] = useState<SaleCouponDTO | null>(sale?.coupon ?? null)
+  const [couponInput, setCouponInput] = useState("")
 
   const amountDueCents = sale ? (toCents(sale.amountDue) ?? 0) : 0
   const hasDebt = status === "invoiced" && amountDueCents > 0
@@ -347,6 +358,23 @@ export function SaleEditor({
     return [...options.professionals, ...extra]
   }, [options.professionals, sale])
 
+  // Quanto o cupom desconta de cada item — a MESMA conta do servidor
+  // (domain/promotions.ts), sobre o que sobra depois do desconto dado à mão.
+  const couponShares = useMemo(() => {
+    if (!coupon) return rows.map(() => 0)
+    return splitCouponDiscount(
+      coupon,
+      rows.map((row) => {
+        const cents = rowCents(row)
+        return {
+          kind: row.kind,
+          baseCents: Math.max(0, cents.gross - cents.discount),
+          fromPackage: row.packageLineId !== null,
+        }
+      })
+    )
+  }, [coupon, rows])
+
   const totals = useMemo(() => {
     let subtotal = 0
     let discount = 0
@@ -355,8 +383,9 @@ export function SaleEditor({
       subtotal += cents.gross
       discount += cents.discount
     }
-    return { subtotal, discount, total: subtotal - discount }
-  }, [rows])
+    const couponCents = couponShares.reduce((sum, share) => sum + share, 0)
+    return { subtotal, discount, coupon: couponCents, total: subtotal - discount - couponCents }
+  }, [rows, couponShares])
 
   // --------------------------------------------------------------------------
   // Itens
@@ -430,6 +459,35 @@ export function SaleEditor({
         packageName: null,
       },
     ])
+    setDirty(true)
+  }
+
+  /** Confere o cupom no servidor (vale pelo dia da comanda) e passa a mostrá-lo. */
+  function applyCoupon() {
+    const code = couponInput.trim()
+    if (!code) {
+      toast.error("Informe o cupom")
+      return
+    }
+    const parsedDate = new Date(saleDate)
+    if (Number.isNaN(parsedDate.getTime())) {
+      toast.error("Informe a data da comanda")
+      return
+    }
+    startTransition(async () => {
+      const result = await checkSaleCoupon(salonId, code, parsedDate.toISOString())
+      if ("error" in result) {
+        toast.error(result.error)
+        return
+      }
+      setCoupon(result)
+      setCouponInput("")
+      setDirty(true)
+    })
+  }
+
+  function removeCoupon() {
+    setCoupon(null)
     setDirty(true)
   }
 
@@ -544,6 +602,7 @@ export function SaleEditor({
         saleDate: parsedDate.toISOString(),
         notes,
         items,
+        couponCode: coupon?.code ?? null,
       })
 
       if ("error" in result) {
@@ -1071,7 +1130,9 @@ export function SaleEditor({
                             ? "Pacote"
                             : row.unitPrice.trim() === ""
                               ? "—"
-                              : formatBRL(centsToNumeric(Math.max(0, cents.gross - cents.discount)))}
+                              : formatBRL(
+                                  centsToNumeric(Math.max(0, cents.gross - cents.discount - (couponShares[index] ?? 0)))
+                                )}
                         </p>
                         {row.packageLineId && editable && availableByLine.has(row.packageLineId) && (
                           <p
@@ -1121,7 +1182,63 @@ export function SaleEditor({
               className={`${inputClass} resize-none`}
             />
           </div>
-          <div className="bg-card border border-border rounded-md p-4 space-y-2 text-sm self-start">
+          <div className="space-y-3 self-start">
+          {/* Cupom: com o módulo ligado, ou quando a comanda já tem um. */}
+          {(options.promotionsEnabled || coupon) && (
+            <div className="bg-card border border-border rounded-md p-3 space-y-2 text-sm">
+              <span className={labelClass}>Cupom</span>
+              {coupon ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 text-foreground">
+                    <Tag size={14} className="inline mr-1 text-accent" />
+                    <span className="font-mono font-bold">{coupon.code}</span>
+                    <span className="block text-xs text-muted-foreground truncate">
+                      {coupon.name} · {describeCouponDiscount(coupon)}
+                      {coupon.appliesTo === "services"
+                        ? " nos serviços"
+                        : coupon.appliesTo === "products"
+                          ? " nos produtos"
+                          : ""}
+                    </span>
+                  </p>
+                  {editable && (
+                    <button
+                      onClick={removeCoupon}
+                      disabled={isPending}
+                      className="text-xs font-bold text-muted-foreground hover:text-destructive flex-shrink-0 disabled:opacity-50"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+              ) : editable ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    aria-label="Cupom"
+                    placeholder="Código do cupom"
+                    value={couponInput}
+                    disabled={isPending}
+                    onChange={(event) => setCouponInput(event.target.value.toUpperCase())}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") applyCoupon()
+                    }}
+                    className={`${inputClass} font-mono`}
+                  />
+                  <button
+                    onClick={applyCoupon}
+                    disabled={isPending}
+                    className="px-3 py-2 rounded-md border border-border text-xs font-bold text-foreground hover:bg-muted transition-colors flex-shrink-0 disabled:opacity-50"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Sem cupom.</p>
+              )}
+            </div>
+          )}
+          <div className="bg-card border border-border rounded-md p-4 space-y-2 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span className="font-mono tabular-nums">{formatBRL(centsToNumeric(totals.subtotal))}</span>
@@ -1130,6 +1247,12 @@ export function SaleEditor({
               <span>Descontos</span>
               <span className="font-mono tabular-nums">− {formatBRL(centsToNumeric(totals.discount))}</span>
             </div>
+            {coupon && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Cupom {coupon.code}</span>
+                <span className="font-mono tabular-nums">− {formatBRL(centsToNumeric(totals.coupon))}</span>
+              </div>
+            )}
             <div className="flex justify-between text-foreground font-bold text-base border-t border-border pt-2">
               <span>Total</span>
               <span className="font-mono tabular-nums">{formatBRL(centsToNumeric(Math.max(0, totals.total)))}</span>
@@ -1146,6 +1269,7 @@ export function SaleEditor({
                 <span className="font-mono tabular-nums">{formatBRL(sale.cashbackEarned)}</span>
               </div>
             )}
+          </div>
           </div>
         </section>
 

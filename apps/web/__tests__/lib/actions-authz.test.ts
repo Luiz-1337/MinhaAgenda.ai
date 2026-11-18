@@ -36,6 +36,7 @@ const GUARDED_FILES = [
   "packages.ts",
   "subscriptions.ts",
   "cashback.ts",
+  "promotions.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */

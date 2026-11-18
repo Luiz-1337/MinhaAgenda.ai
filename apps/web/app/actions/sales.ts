@@ -27,6 +27,7 @@ import {
   getSaleService,
   invoiceSaleService,
   listCustomerPackageBalancesService,
+  loadSaleCoupon,
   listCustomerSubscriptionOptionsService,
   receiveSaleDebtPaymentService,
   listSaleItemSummariesService,
@@ -51,6 +52,7 @@ import {
 import type { ActionResult } from "@/lib/types/common"
 import type { SaleSubscriptionOptionDTO } from "@/lib/types/subscriptions"
 import type { SaleCashbackDTO } from "@/lib/types/cashback"
+import type { SaleCouponDTO } from "@/lib/types/promotions"
 import type {
   CustomerSalesOverview,
   InvoiceSaleInput,
@@ -159,6 +161,7 @@ function toDetailDTO(sale: SaleDetail): SaleDetailDTO {
     debtDueDate: sale.debtDueDate,
     cashbackRedeemed: sale.cashbackRedeemed,
     cashbackEarned: sale.cashbackEarned,
+    coupon: sale.coupon,
     invoicedAt: sale.invoicedAt ? sale.invoicedAt.toISOString() : null,
     voidedAt: sale.voidedAt ? sale.voidedAt.toISOString() : null,
     voidReason: sale.voidReason,
@@ -185,6 +188,8 @@ function revalidateSales(salonId: string, saleId?: string) {
   revalidatePath(`/${salonId}/packages/subscriptions`)
   // E o saldo de cashback dos clientes (ganho e resgate — fase 6).
   revalidatePath(`/${salonId}/cashback`)
+  // E o uso das promoções (cupom na comanda — fase 6).
+  revalidatePath(`/${salonId}/promotions`)
 }
 
 // ============================================================================
@@ -263,6 +268,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       inventoryEnabled,
       packagesEnabled,
       cashbackEnabled,
+      promotionsEnabled,
     ] = await Promise.all([
       db
         .select({
@@ -308,6 +314,8 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       salonHasModule(salonId, "packages"),
       // Com cashback ligado, o faturamento oferece usar o saldo do cliente (fase 6).
       salonHasModule(salonId, "cashback"),
+      // Com promoções ligadas, a comanda aceita cupom (fase 6).
+      salonHasModule(salonId, "promotions"),
     ])
 
     const packageRows = packagesEnabled
@@ -331,6 +339,7 @@ export async function getSaleFormOptions(salonId: string): Promise<SaleFormOptio
       inventoryEnabled,
       packagesEnabled,
       cashbackEnabled,
+      promotionsEnabled,
       can: {
         create: permissions.has("sales.create"),
         edit: permissions.has("sales.edit"),
@@ -455,6 +464,41 @@ export async function getSaleCashback(
   } catch (error) {
     console.error("Erro ao carregar o cashback do cliente:", error)
     return { error: "Não foi possível carregar o cashback do cliente" }
+  }
+}
+
+/**
+ * Confere um cupom para a comanda, ANTES de salvar: devolve a regra dele para a
+ * tela mostrar o desconto (fase 6). `saleDate` é a data da comanda (ISO) — o cupom
+ * vale pelo dia dela, não pelo dia em que foi digitado. Quem grava o desconto é
+ * `saveSale`, que confere tudo de novo.
+ *
+ * Só com permissão de comanda: quem monta a comanda aplica o cupom, mesmo sem
+ * acesso à tela de Promoções.
+ */
+export async function checkSaleCoupon(
+  salonId: string,
+  code: string,
+  saleDate: string
+): Promise<SaleCouponDTO | { error: string }> {
+  const auth = await authorizeSalon(salonId, "sales.access")
+  if ("error" in auth) return auth
+
+  const date = new Date(saleDate)
+  if (Number.isNaN(date.getTime())) return { error: "Informe a data da comanda" }
+  if (typeof code !== "string" || code.trim().length === 0 || code.length > 60) return { error: "Informe o cupom" }
+
+  try {
+    if (!(await salonHasModule(salonId, "promotions"))) return { error: "Cupons não estão disponíveis neste salão" }
+
+    const coupon = await loadSaleCoupon(db, { salonId, code, saleDay: brazilToday(date) })
+    if (!coupon.ok) return { error: coupon.error }
+
+    const { code: couponCode, name, discountKind, discountValue, appliesTo } = coupon.promotion
+    return { code: couponCode, name, discountKind, discountValue, appliesTo }
+  } catch (error) {
+    console.error("Erro ao conferir o cupom:", error)
+    return { error: "Não foi possível conferir o cupom" }
   }
 }
 
@@ -664,6 +708,8 @@ export async function saveSale(input: SaveSaleInput): Promise<ActionResult<{ sal
     items: data.items,
     userId: auth.userId,
     packagesEnabled: await salonHasModule(data.salonId, "packages"),
+    couponCode: data.couponCode?.trim() || null,
+    promotionsEnabled: await salonHasModule(data.salonId, "promotions"),
   }
 
   if (data.saleId) {

@@ -1033,6 +1033,10 @@ export const sales = pgTable(
     // Quanto da comanda faturada foi pago com cashback do cliente (migration 054).
     // Não é pagamento: não entra em sale_payments nem no financeiro.
     cashbackRedeemed: numeric('cashback_redeemed', { precision: 12, scale: 2 }).default('0').notNull(),
+    // A promoção aplicada e o cupom digitado (migration 055). Os dois andam juntos
+    // (CHECK no banco). O código é cópia: renomear o cupom não muda o histórico.
+    promotionId: uuid('promotion_id').references((): AnyPgColumn => promotions.id),
+    couponCode: text('coupon_code'),
     invoicedAt: timestamp('invoiced_at'),
     invoicedBy: uuid('invoiced_by').references(() => profiles.id, { onDelete: 'set null' }),
     voidedAt: timestamp('voided_at'),
@@ -1047,7 +1051,8 @@ export const sales = pgTable(
     index('sales_salon_date_idx').on(table.salonId, table.saleDate.desc()),
     index('sales_salon_status_idx').on(table.salonId, table.status, table.saleDate.desc()),
     index('sales_customer_idx').on(table.customerId),
-    index('sales_debt_idx').on(table.salonId, table.customerId).where(sql`status = 'invoiced' AND amount_due > 0`)
+    index('sales_debt_idx').on(table.salonId, table.customerId).where(sql`status = 'invoiced' AND amount_due > 0`),
+    index('sales_promotion_idx').on(table.promotionId).where(sql`promotion_id IS NOT NULL`)
   ]
 )
 
@@ -1071,6 +1076,9 @@ export const saleItems = pgTable(
     // NULL enquanto aberta = preço ainda não informado (faixa / sob avaliação).
     unitPrice: numeric('unit_price', { precision: 12, scale: 2 }),
     discountAmount: numeric('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
+    // A parte de `discountAmount` que veio do cupom da comanda (migration 055).
+    // Nunca mais que o desconto do item (CHECK no banco).
+    couponDiscount: numeric('coupon_discount', { precision: 12, scale: 2 }).default('0').notNull(),
     total: numeric('total', { precision: 12, scale: 2 }).default('0').notNull(),
     // Um agendamento entra em no máximo uma comanda (índice único parcial).
     appointmentId: uuid('appointment_id').references(() => appointments.id),
@@ -1996,6 +2004,38 @@ export const cashbackEntries = pgTable(
     index('cashback_entries_sale_idx').on(table.saleId).where(sql`sale_id IS NOT NULL`),
     uniqueIndex('cashback_entries_sale_redeem_unique').on(table.saleId).where(sql`kind = 'redeem'`)
   ]
+)
+
+// ============================================================================
+// TABLES - Promoções e cupons (migration 055)
+// ============================================================================
+// Desconto com código, vigência e dias da semana, aplicado na comanda
+// (sales.promotion_id). Regra em domain/promotions.ts.
+
+export type PromotionDiscountKindColumn = 'percent' | 'fixed'
+export type PromotionAppliesToColumn = 'all' | 'services' | 'products'
+
+export const promotions = pgTable(
+  'promotions',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // O cupom, em maiúsculas. Único no salão, sem diferença de maiúscula.
+    code: text('code').notNull(),
+    discountKind: text('discount_kind').$type<PromotionDiscountKindColumn>().default('percent').notNull(),
+    discountValue: numeric('discount_value', { precision: 12, scale: 2 }).notNull(),
+    appliesTo: text('applies_to').$type<PromotionAppliesToColumn>().default('all').notNull(),
+    // Vigência pelo dia da comanda. NULL = sem começo / sem fim.
+    startsOn: date('starts_on'),
+    endsOn: date('ends_on'),
+    // 0 = domingo … 6 = sábado. Vazio = todos os dias.
+    weekdays: integer('weekdays').array().default(sql`'{}'::integer[]`).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('promotions_salon_code_unique').on(table.salonId, sql`lower(${table.code})`)]
 )
 
 // ============================================================================

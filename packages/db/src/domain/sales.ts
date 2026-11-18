@@ -108,7 +108,13 @@ export type PlannedSaleItem = {
   assistantId: string | null
   quantity: string
   unitPrice: string | null
+  /** O desconto TODO do item: o dado à mão mais o do cupom. */
   discountAmount: string
+  /**
+   * A parte de `discountAmount` que veio do cupom (fase 6). Sai "0.00" daqui;
+   * quem a preenche é applyCouponToSale (domain/promotions.ts).
+   */
+  couponDiscount: string
   total: string
   appointmentId: string | null
   customerPackageItemId: string | null
@@ -308,6 +314,7 @@ export function planSaleItems(
       quantity: milliToNumeric(quantityMilli),
       unitPrice: unitCents === null ? null : centsToNumeric(unitCents),
       discountAmount: centsToNumeric(itemDiscountCents),
+      couponDiscount: centsToNumeric(0),
       total: centsToNumeric(grossCents - itemDiscountCents),
       appointmentId,
       customerPackageItemId,

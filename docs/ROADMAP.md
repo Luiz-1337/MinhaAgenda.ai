@@ -48,7 +48,9 @@ pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
 Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
 `claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) e publicada, com a
 migration 054 aplicada em 17/nov/2026, o módulo `cashback` ligado só no salão de
-teste, e testada em uso — ver §10.7.
+teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) feita na mesma
+branch — **em commit local, migration 055 NÃO aplicada, módulo `promotions`
+desligado em todos os salões, sem publicar e sem teste em uso** — ver §10.8.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2517,7 +2519,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
-| 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Pendente |
+| 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita em código — **migration 055 não aplicada, sem publicar e sem teste em uso** (§10.8) |
 | 6c | Avaliações pós-atendimento: formulário enviado ao cliente (personalizável), painel (média, total, distribuição por nota, por profissional) e lista filtrável; pedido de avaliação pelo agente do WhatsApp | Pendente |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto | Pendente |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
@@ -2539,6 +2541,17 @@ online público (fase 7).
 - **`sales.cashback_redeemed`** — quanto da comanda foi pago com cashback. CHECK:
   de 0 ao total, e só em comanda faturada.
 - **Não há coluna de saldo.** O saldo do cliente é a soma do extrato.
+
+**Migration 055 (fatia 6b):**
+
+- **`promotions`** — `name`, `code` (o cupom, único no salão sem diferença de
+  maiúscula), `discount_kind` (`percent` ou `fixed`), `discount_value`,
+  `applies_to` (`all`, `services`, `products`), `starts_on`, `ends_on`,
+  `weekdays` (0 = domingo … 6 = sábado; vazio = todos), `is_active`.
+- **`sales.promotion_id`** (sem ON DELETE) e **`sales.coupon_code`** (cópia do
+  código) — andam juntos (CHECK).
+- **`sale_items.coupon_discount`** — a parte de `discount_amount` que veio do
+  cupom. CHECK: de 0 ao desconto do item.
 
 Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 `anon`/`authenticated`.
@@ -2577,6 +2590,32 @@ Todas com `salon_id`, RLS ligado, `deny_all` e sem acesso para
 11. **Fiado**: o ganho nasce no faturamento, mesmo com valor em aberto.
 12. **O cashback não vence.**
 
+Fatia 6b — promoções e cupons:
+
+13. **A promoção** tem nome, cupom (3 a 30 caracteres: letras sem acento, números,
+    hífen ou sublinhado; guardado em maiúsculas; único no salão), desconto
+    (percentual, ou valor fixo abatido da comanda), em quais itens vale (serviços
+    e produtos, só serviços ou só produtos), vigência opcional, dias da semana
+    (nenhum marcado = todos) e ativa.
+14. **Aplicar é na comanda**: o campo Cupom confere o código e mostra o desconto;
+    ao salvar, o servidor confere de novo e grava. Um cupom por comanda.
+15. **O cupom vale pelo DIA DA COMANDA** (em Brasília), não pelo dia em que foi
+    digitado: vigência com as pontas incluídas e dia da semana. É conferido a
+    cada gravação da comanda aberta; faturar não confere de novo (fatura-se o
+    gravado).
+16. **O desconto do cupom soma ao desconto dado à mão** em cada item. Percentual:
+    sobre o que o item custa depois do desconto à mão. Fixo: repartido entre os
+    itens que valem, na proporção de cada um, com a soma exata. Nunca mais do que
+    o item custa. Pacote, assinatura e item "do pacote" não recebem. Total,
+    comissão e cashback continuam lendo um desconto só.
+17. **Situação**: Ativa, Agendada (ainda não começou), Encerrada (a vigência
+    acabou) ou Desativada.
+18. **Promoção que já entrou em comanda não se apaga** (mesmo em comanda
+    excluída): desativa-se. Desativar não tira o desconto das comandas já
+    gravadas, mas regravar uma comanda aberta com o cupom desativado é recusado.
+19. **Não há limite de usos**, nem por cliente.
+20. **Sem o módulo `promotions`, a comanda não aceita cupom.**
+
 Perguntas para o dono:
 
 - O cashback deve vencer (ex.: 90 dias)?
@@ -2587,6 +2626,17 @@ Perguntas para o dono:
 - No fiado, o ganho deve esperar o cliente pagar?
 - O cashback usado deve aparecer no financeiro como despesa de marketing? Hoje ele
   só reduz o que a comanda recebe.
+- (6b) Quanto e sobre o quê o cupom desconta? A auditoria só mostra "Nome, Cupom,
+  Datas, Dias da semana, Status"; o desconto (percentual ou fixo, em serviços,
+  produtos ou nos dois) foi decidido aqui.
+- (6b) O cupom deve ter limite de usos, ou valer uma vez por cliente?
+- (6b) O cupom pode somar com o desconto dado à mão (regra 16), ou um exclui o
+  outro?
+- (6b) Com cupom, a comissão do profissional cai junto (como em qualquer
+  desconto), ou o salão arca com a promoção?
+- (6b) A Belasis tem a permissão "Acessar todas ou somente as suas" em Promoções.
+  A promoção deve poder ser de um profissional só?
+- (6b) O agente do WhatsApp deve divulgar ou aceitar cupom?
 
 ### 10.4 Permissões e módulo
 
@@ -2597,6 +2647,10 @@ Módulo `cashback` em `salons.settings.modules`. Recurso novo:
 | `cashback` | `access` (ver saldos e extratos), `manage` (configurar o salão e os itens, lançar ajuste) |
 
 Usar o cashback do cliente é de quem fatura (`sales.invoice`).
+
+Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver) e
+`manage` (criar, alterar e excluir). Aplicar o cupom é de quem monta a comanda
+(`sales.create` / `sales.edit`).
 
 ### 10.5 Telas
 
@@ -2611,6 +2665,13 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 - **Ficha do cliente**: cartão Cashback (módulo ligado + `cashback.access`) com
   saldo, situação, extrato (movimentação, motivo, data, comanda, valor) e "Ajustar
   saldo" para quem tem `cashback.manage`.
+- **Promoções (6b)** no menu (módulo ligado + `promotions.access`), em
+  `/[salonId]/promotions`: promoção, cupom, desconto e onde vale, vigência, dias,
+  usos (comandas faturadas e quanto já descontou) e situação; "Nova promoção",
+  editar e excluir.
+- **Comanda (6b)**: bloco Cupom ao lado dos totais — campo e "Aplicar"; aplicado,
+  mostra o código, o nome e o desconto, com "Remover". Os totais ganham a linha
+  "Cupom X", e o total de cada item já desconta a parte dele.
 
 ### 10.6 Onde o código mora
 
@@ -2623,6 +2684,7 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 | Actions | `apps/web/app/actions/cashback.ts`; `getSaleCashback` e o faturamento em `apps/web/app/actions/sales.ts` |
 | Telas | `apps/web/app/[salonId]/cashback/`; o faturamento em `sales/[saleId]/sale-editor.tsx`; `components/contacts/customer-cashback-card.tsx` |
 | Testes | `apps/web/__tests__/lib/services/cashback-domain.test.ts` |
+| Promoções (6b) | Migration `055_promotions.sql`; tabela `promotions`, `sales.promotionId`/`couponCode` e `saleItems.couponDiscount`; regra em `domain/promotions.ts` (`planPromotion`, `promotionBlocker`, `promotionStatus`, `splitCouponDiscount`, `applyCouponToSale`); I/O em `services/promotions.service.ts` — a comanda chama `loadSaleCoupon` ao criar e ao salvar (`withCoupon`, `sales.service.ts`); actions em `actions/promotions.ts` e `checkSaleCoupon` em `actions/sales.ts`; tela em `app/[salonId]/promotions/`; testes em `promotions-domain.test.ts` |
 
 ### 10.7 Fatia 6a — estado (17/nov/2026)
 
@@ -2694,6 +2756,28 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
   R$ 10,00), e as regras do Teste Shampoo (R$ 2,00 fixo) e do Teste Pente
   (inativo).
 
+### 10.8 Fatia 6b — estado (17/nov/2026)
+
+- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
+  passando (web 1174, db 296, mcp-server 400).
+- **Migration 055: NÃO aplicada.** Tem que entrar **antes** de o código ser
+  publicado: acrescenta colunas em `sales` e em `sale_items`, e o INSERT do
+  Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda falharia.
+- Antes de aplicar: cópia de segurança de `sales` e `sale_items` no schema
+  `backups` (a tabela nova nasce vazia).
+- **O módulo `promotions` está desligado em todos os salões.** Para testar, é
+  preciso ligá-lo no salão de teste (`salons.settings.modules`).
+- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar, ligar o
+  módulo e publicar: criar uma promoção de 10% só em serviços, para o dia da
+  semana de hoje; comanda com um serviço (com desconto à mão) e um produto →
+  aplicar o cupom, conferir o desconto por item e os totais, salvar e reabrir a
+  tela (o desconto à mão continua separado do cupom); cupom inexistente, de
+  outro dia da semana, fora da vigência e desativado; cupom de valor fixo maior
+  que a comanda; remover o cupom; faturar e conferir "Usos" e o valor descontado
+  na lista; excluir promoção usada (barrado); conferir o cashback e a comissão
+  sobre o valor já com o cupom.
+
 ## 11. Pendências do dono
 
 | Pendência | Trava |
@@ -2710,5 +2794,6 @@ Usar o cashback do cliente é de quem fatura (`sales.invoice`).
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117` e `backups.sales_pre_054_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
-| Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro) | Ajustes na fase 6 antes do piloto |
+| Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp) | Ajustes na fase 6 antes do piloto |
+| Aplicar a migration 055 (ou autorizar a aplicação), ligar o módulo `promotions` no salão de teste e publicar a fatia 6b — ver §10.8 | Teste em uso da fatia 6b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
