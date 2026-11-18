@@ -63,8 +63,10 @@ módulo `goals` ligado só no salão de teste, publicada e testada em uso — ve
 Fatia 6f (saldo de cashback para o agente do WhatsApp e relatório "Histórico de
 cashback") na mesma branch, publicada, sem migration: o relatório foi testado em
 uso — **a tool do agente NÃO foi testada em uso** (só roda no worker) — ver
-§10.12. Com ela, todas as fatias da fase 6 estão escritas e publicadas na
-branch.
+§10.12. Com ela, todas as fatias da fase 6 estão escritas.
+**As fases 3 a 6 estão na `main`**: fases 3 e 4 pelo PR #17, fase 5 pelo PR #18 e
+fase 6 pelo PR #19, mesclado em 18/nov/2026 (commit `a3d74f4`) — ver §10.13. Os
+módulos continuam ligados só no salão de teste.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3250,6 +3252,35 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
   teste apagado por SQL, pelo ID do salão e da cliente. Conferido por leitura:
   sem lançamentos de cashback no salão de teste.
 
+### 10.13 Fase 6 na `main` (18/nov/2026)
+
+- **PR #19 mesclado na `main`** em 18/nov/2026 (commit `a3d74f4`), só com a
+  fase 6 (15 commits): a `main` já tinha as fases 3 e 4 (PR #17) e a fase 5
+  (PR #18).
+- **O deploy de produção desse commit terminou sem erro** (estado READY na
+  Vercel, conferido em 18/nov/2026). Nenhuma tela foi aberta em produção depois
+  dele.
+- **Banco:** as migrations 054 a 058 já estavam aplicadas; o merge não exigiu
+  nada.
+- **O CI do PR falhou, e não foi pela fase 6.** O passo de lint
+  (`pnpm turbo run lint`) acusa 152 erros no `apps/web` inteiro, quase todos
+  `any` antigos, e o workflow falha em toda execução recente — nos PRs #17 e
+  #18 e na própria `main`. Nos arquivos que a fase 6 alterou, os erros de lint
+  são anteriores a ela (`generate-response.service.ts` e
+  `customer-detail-client.tsx`). Enquanto o lint não for zerado, o CI não
+  distingue PR bom de PR ruim, e os passos de tipos e de build nem chegam a
+  rodar.
+- **O que passa a valer em produção:**
+  - o cron `/api/cron/care-messages` roda a cada 30 minutos. Sem mensagem
+    cadastrada e sem envio na fila, não manda nada — e só o salão de teste tem
+    o módulo;
+  - a rota pública `/avaliar/[token]` existe em produção;
+  - o agente passa a consultar os módulos do salão para liberar as tools de
+    saldo de pacote e de cashback (o worker precisa estar com esta versão).
+- **Os testes que dependiam de produção deixaram de estar travados** (lista em
+  §11): o link de avaliação sem login, o envio de verdade das mensagens da 6d e
+  as duas tools do agente.
+
 ## 11. Pendências do dono
 
 | Pendência | Trava |
@@ -3261,14 +3292,14 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 | Provedor de pagamento e provedor fiscal | Fases 8 e 10 |
 | Respostas às perguntas da §6.3 (baixa de cartão, retroativo, quem vê) | Fatias 2d em diante |
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
-| Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
 | Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117`, `backups.sales_pre_054_20261117`, `backups.sales_pre_055_20261117` e `backups.sale_items_pre_055_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
-| Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
-| Decidir como testar o envio de verdade das mensagens: rodar o cron no preview com o `CRON_SECRET`, ou esperar a produção — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
+| Com a fase 6 em produção, no salão de teste: ativar as avaliações, faturar uma comanda e abrir o link de avaliação numa janela anônima — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
+| Com a fase 6 em produção, no salão de teste: cadastrar uma mensagem de cuidados de depois (0 dias), faturar uma comanda de um cliente com WhatsApp de teste e esperar a rodada do cron (a cada 30 min, das 9h às 20h) — ver §10.10 | Saber se a mensagem chega ao cliente e cai na conversa |
+| Zerar os 152 erros de lint do `apps/web` (ou tirar o lint do caminho obrigatório do CI) — ver §10.13 | O CI falha em todo PR e não chega a rodar tipos nem build |
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
