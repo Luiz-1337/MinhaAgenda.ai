@@ -52,8 +52,7 @@ teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) na mesma
 branch: migration 055 aplicada em 17/nov/2026, módulo `promotions` ligado só no
 salão de teste, publicada e testada em uso — ver §10.8. Fatia 6c (avaliações
 pós-atendimento) na mesma branch: migration 056 aplicada em 17/nov/2026, módulo
-`reviews` ligado só no salão de teste e publicada — **sem teste em uso** — ver
-§10.9.
+`reviews` ligado só no salão de teste, publicada e testada em uso — ver §10.9.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2523,7 +2522,7 @@ executar nada; quase toda a regra foi decidida aqui.
 |---|---|---|
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
-| 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, migration 056 aplicada e publicada — **sem teste em uso** (§10.9) |
+| 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, publicada e testada em uso (§10.9) |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp | Pendente |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
@@ -2902,16 +2901,37 @@ público não tem permissão: a credencial é o token.
   `submitPublicReview` não têm sessão. O que as protege: o token aleatório de 192
   bits, a resposta única, e o fato de não receberem nem devolverem id de salão,
   de cliente ou de comanda. Não há limite de tentativas por IP.
-- **Sem teste em uso.** O preview compilou, mas a extensão do Chrome parou de
-  responder antes da primeira tela. Roteiro, no salão de teste: ativar em
-  Personalizar e trocar o título; faturar uma
-  comanda com serviço → bloco Avaliação na comanda e pedido "Pendente" na lista;
-  comanda só de produto não gera pedido; copiar o link e abrir numa janela sem
-  login → salão, título, data; enviar sem nota (recusado); enviar nota e
-  comentário → agradecimento; reabrir o link (mostra a nota, não deixa responder
-  de novo); link inventado → "inválido"; conferir o painel, os filtros e a nota
-  na comanda; reabrir e faturar de novo (mesmo link); excluir uma avaliação;
-  excluir uma comanda com pedido pendente (o pedido some).
+- **Testada em uso em 17/nov/2026**, no preview da branch, no salão de teste
+  (comandas #26 a #28). Passou:
+  - ativar em Personalizar e trocar o título (o aviso de "desativadas" some);
+  - comanda com serviço faturada → bloco Avaliação com "Copiar link de avaliação"
+    (o aviso "Link de avaliação copiado" aparece) e pedido "Pendente" na lista;
+  - comanda só de produto faturada → sem bloco e sem pedido;
+  - formulário: nome do salão, o título trocado, as boas-vindas padrão e
+    "Atendimento de 17/11/2026" (dia local, com a comanda faturada às 22h33);
+  - enviar sem nota → "Escolha uma nota de 1 a 5"; nota 4 com comentário →
+    agradecimento; reabrir o link → só o agradecimento, sem campo nem botão;
+  - link inventado → "Link de avaliação inválido";
+  - painel: média 4,0, 1 avaliação, taxa 100% (50% com o segundo pedido,
+    pendente), "Menos de 1 h", distribuição e a linha do profissional; filtros de
+    situação, nota e profissional; a nota e o "Ver em Avaliações" na comanda;
+  - reabrir e faturar de novo a comanda avaliada → mesmo link, nota mantida;
+  - excluir a comanda com pedido pendente → o pedido some da lista;
+  - excluir a avaliação respondida → lista zerada e o link passa a "inválido".
+- **Não testado em uso:**
+  - **o link aberto por quem não tem login.** O preview da Vercel exige login da
+    Vercel em qualquer endereço (sem sessão, o link responde 302 para
+    `vercel.com/sso-api`), então só deu para abrir no navegador já logado. O
+    aplicativo não tem middleware que barre `/avaliar`, mas isso só se confirma
+    em produção;
+  - boas-vindas e agradecimento personalizados; os limites de tamanho dos textos;
+  - comanda com dois profissionais (a nota contando para os dois);
+  - a busca por cliente e o período do painel; perfil sem `reviews.access` ou sem
+    `reviews.manage`; o módulo desligado.
+- Dados de teste limpos pela tela: a avaliação excluída, as comandas #26, #27 e
+  #28 reabertas e excluídas (ficam como excluídas, como as anteriores), as
+  avaliações DESATIVADAS de novo e o título em branco. Conferido por leitura: sem
+  linhas em `reviews` no salão de teste.
 
 ## 11. Pendências do dono
 
@@ -2930,5 +2950,5 @@ público não tem permissão: a credencial é o token.
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
-| Reabrir o Chrome com a extensão do Claude conectada, no preview da branch `claude/fase-6-fidelizacao` — ver §10.9 | Teste em uso da fatia 6c |
+| Depois de a fase 6 ir para produção, abrir um link de avaliação numa janela anônima (o preview não deixa testar sem login) — ver §10.9 | Confirmar que o formulário de avaliação é mesmo público |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
