@@ -48,9 +48,9 @@ pacote na conversa do agente NÃO foi testado em uso** — ver §9.10.
 Fase 6 (fidelização): detalhada em §10. Fatia 6a (cashback) feita na branch
 `claude/fase-6-fidelizacao` (sai de `claude/fase-5-pacotes`) e publicada, com a
 migration 054 aplicada em 17/nov/2026, o módulo `cashback` ligado só no salão de
-teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) feita na mesma
-branch — **em commit local, migration 055 NÃO aplicada, módulo `promotions`
-desligado em todos os salões, sem publicar e sem teste em uso** — ver §10.8.
+teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) na mesma
+branch: migration 055 aplicada em 17/nov/2026, módulo `promotions` ligado só no
+salão de teste, publicada e testada em uso — ver §10.8.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2519,7 +2519,7 @@ executar nada; quase toda a regra foi decidida aqui.
 | Fatia | Entrega | Estado |
 |---|---|---|
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
-| 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita em código — **migration 055 não aplicada, sem publicar e sem teste em uso** (§10.8) |
+| 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
 | 6c | Avaliações pós-atendimento: formulário enviado ao cliente (personalizável), painel (média, total, distribuição por nota, por profissional) e lista filtrável; pedido de avaliação pelo agente do WhatsApp | Pendente |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto | Pendente |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
@@ -2607,12 +2607,16 @@ Fatia 6b — promoções e cupons:
     sobre o que o item custa depois do desconto à mão. Fixo: repartido entre os
     itens que valem, na proporção de cada um, com a soma exata. Nunca mais do que
     o item custa. Pacote, assinatura e item "do pacote" não recebem. Total,
-    comissão e cashback continuam lendo um desconto só.
+    comissão e cashback continuam lendo um desconto só — na comissão, vale a
+    configuração "quem arca com o desconto" do salão (fase 3), como para qualquer
+    desconto.
 17. **Situação**: Ativa, Agendada (ainda não começou), Encerrada (a vigência
     acabou) ou Desativada.
-18. **Promoção que já entrou em comanda não se apaga** (mesmo em comanda
-    excluída): desativa-se. Desativar não tira o desconto das comandas já
-    gravadas, mas regravar uma comanda aberta com o cupom desativado é recusado.
+18. **Promoção que está em comanda (aberta ou faturada) não se apaga**:
+    desativa-se. Desativar não tira o desconto das comandas já gravadas, mas
+    regravar uma comanda aberta com o cupom desativado é recusado. A comanda
+    EXCLUÍDA solta a promoção (como solta pacote e assinatura); o desconto que os
+    itens receberam continua gravado neles.
 19. **Não há limite de usos**, nem por cliente.
 20. **Sem o módulo `promotions`, a comanda não aceita cupom.**
 
@@ -2632,8 +2636,8 @@ Perguntas para o dono:
 - (6b) O cupom deve ter limite de usos, ou valer uma vez por cliente?
 - (6b) O cupom pode somar com o desconto dado à mão (regra 16), ou um exclui o
   outro?
-- (6b) Com cupom, a comissão do profissional cai junto (como em qualquer
-  desconto), ou o salão arca com a promoção?
+- (6b) Com cupom, a comissão segue a configuração de desconto do salão (regra
+  16). A promoção deve ter regra própria (ex.: o salão sempre arca)?
 - (6b) A Belasis tem a permissão "Acessar todas ou somente as suas" em Promoções.
   A promoção deve poder ser de um profissional só?
 - (6b) O agente do WhatsApp deve divulgar ou aceitar cupom?
@@ -2758,25 +2762,63 @@ Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver)
 
 ### 10.8 Fatia 6b — estado (17/nov/2026)
 
-- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1174, db 296, mcp-server 400).
-- **Migration 055: NÃO aplicada.** Tem que entrar **antes** de o código ser
-  publicado: acrescenta colunas em `sales` e em `sale_items`, e o INSERT do
-  Drizzle lista todas as colunas — sem ela, salvar QUALQUER comanda falharia.
-- Antes de aplicar: cópia de segurança de `sales` e `sale_items` no schema
-  `backups` (a tabela nova nasce vazia).
-- **O módulo `promotions` está desligado em todos os salões.** Para testar, é
-  preciso ligá-lo no salão de teste (`salons.settings.modules`).
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar, ligar o
-  módulo e publicar: criar uma promoção de 10% só em serviços, para o dia da
-  semana de hoje; comanda com um serviço (com desconto à mão) e um produto →
-  aplicar o cupom, conferir o desconto por item e os totais, salvar e reabrir a
-  tela (o desconto à mão continua separado do cupom); cupom inexistente, de
-  outro dia da semana, fora da vigência e desativado; cupom de valor fixo maior
-  que a comanda; remover o cupom; faturar e conferir "Usos" e o valor descontado
-  na lista; excluir promoção usada (barrado); conferir o cashback e a comissão
-  sobre o valor já com o cupom.
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1174, db 296,
+  mcp-server 400).
+- **Migration 055 aplicada em produção em 17/nov/2026** (registrada como
+  `promotions`), antes de o código ser publicado. Conferido por leitura: a tabela
+  com RLS, as três colunas novas e os CHECKs; `sales` seguiu com 24 linhas e
+  `sale_items` com 29. O advisor de segurança só mostra os avisos de sempre.
+- Cópias de segurança antes da 055: `backups.sales_pre_055_20261117` (24 linhas)
+  e `backups.sale_items_pre_055_20261117` (29 linhas), com RLS ligado e sem
+  acesso para `anon`/`authenticated`.
+- **O módulo `promotions` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele.
+- **Testada em uso** no preview da branch (que usa o banco de produção), no salão
+  de teste, pela tela, com conferência no banco (17/nov/2026 foi terça):
+  - Tela Promoções vazia → "Nenhuma promoção"; item no menu.
+  - Promoção de 10% só em serviços, só às terças, com o cupom digitado em
+    minúsculas → "Promoção criada"; a lista mostra o cupom em maiúsculas, "10%",
+    "Só serviços", "Sem prazo", "Ter", 0 usos, Ativa.
+  - Segunda promoção com o mesmo cupom → "Já existe uma promoção com esse cupom".
+  - Outras três: valor fixo de R$ 500,00; só às quartas; e com vigência até
+    10/11/2026, que a lista mostra como "Encerrada".
+  - Comanda (corte de R$ 170,00 com R$ 20,00 de desconto à mão, 2 shampoos de
+    R$ 30,00). Cupom inexistente → "Cupom não encontrado"; o de quarta → "Este
+    cupom só vale em: quarta"; o vencido → "Este cupom valeu até 10/11/2026".
+  - Cupom de R$ 500,00 → "Cupom … − R$ 210,00" e total R$ 0,00 (não desconta mais
+    do que a comanda custa). "Remover" tira o cupom.
+  - Cupom de 10% em serviços (aplicado com Enter) → o bloco mostra o código, o nome
+    e "10% nos serviços"; corte R$ 135,00, shampoos R$ 60,00; "Descontos
+    − R$ 20,00", "Cupom … − R$ 15,00", total R$ 195,00. Salva como #25: no banco,
+    desconto de R$ 35,00 no corte, dos quais R$ 15,00 do cupom, e nada no produto.
+  - Tela recarregada: o desconto à mão continua R$ 20,00, separado do cupom.
+  - Faturada em PIX: pagamento e lançamento no financeiro de R$ 195,00. A base da
+    comissão ficou em R$ 170,00 porque o salão de teste usa "o salão arca com o
+    desconto".
+  - Excluir a promoção usada → o diálogo já avisa; confirmar mostra "Esta promoção
+    já foi usada em comanda. Desative-a em vez de excluir". Excluir uma nunca
+    usada → "Promoção excluída".
+- **Defeito achado e corrigido no teste:** na lista, "Usos" mostrava 1, mas o
+  valor descontado não aparecia. A subconsulta que soma `coupon_discount` usava a
+  coluna `sales.id` pelo Drizzle, que numa consulta de uma tabela só a escreve
+  sem o nome da tabela — dentro da subconsulta virava o id do item, e a soma
+  dava zero. Corrigido (`"sales"."id"` por extenso), publicado e conferido no
+  preview: "1 · R$ 15,00 em descontos".
+- **Mudança depois do teste, sem teste em uso:** a comanda excluída passou a
+  soltar a promoção (regra 18). No teste, a comanda excluída ainda segurava a
+  promoção, e foi preciso soltar por SQL para limpar.
+- **Não testado em uso:** promoção desativada (a mensagem e a regravação da
+  comanda); vigência com data de início; cupom só de produtos; cupom em comanda
+  com pacote, assinatura ou item do pacote; trocar a data da comanda para um dia
+  em que o cupom não vale; editar uma promoção; cashback junto com cupom (o
+  cashback estava desativado); perfil sem `promotions.access` ou sem
+  `promotions.manage`; o módulo desligado.
+- Dados de teste limpos: a #25 reaberta e excluída pela tela (fica como excluída,
+  como as anteriores); uma promoção excluída pela tela; a ligação da #25 com a
+  promoção e as outras três promoções apagadas por SQL, pelos IDs. Sem
+  promoções, pagamentos, lançamentos, comissões nem movimentos de estoque.
+  **Ficou:** o módulo `promotions` ligado no salão de teste.
 
 ## 11. Pendências do dono
 
@@ -2791,9 +2833,8 @@ Promoções (6b): módulo `promotions` e recurso `promotions` com `access` (ver)
 | Respostas às perguntas da §7.3 (item × percentual geral, liberação parcial, comissão paga, auxiliar, data de corte, conta obrigatória, recibo, padrão de quem arca com o custo, onde editar o custo adicional) | Ajustes na fase 3 antes do piloto |
 | Revisar e mergear o PR #17 (fases 3 e 4, `claude/fase-4-estoque`) | Publicação das fases 3 e 4 |
 | Respostas às perguntas da §8.3 (venda sem saldo, custo médio, campos no cadastro, estoque ideal, edição de compra, rateio de frete, permissão de fornecedores, lote calculado ou escolhido, prazo do aviso de validade, consumo do cadastro ou informado na comanda, o que abate a comissão na 3e) | Ajustes na fase 4 antes do piloto; fatia 3e |
-| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117` e `backups.sales_pre_054_20261117` podem ser apagadas | Limpeza do schema `backups` |
+| Dizer quando as cópias `backups.products_pre_045_20261116`, `backups.products_pre_046_20261116`, `backups.products_pre_048_20261117`, `backups.services_pre_049_20261117`, `backups.commission_settings_pre_049_20261117`, `backups.products_pre_050_20261117`, `backups.sale_items_pre_051_20261117`, `backups.sale_items_pre_052_20261117`, `backups.customer_package_items_pre_052_20261117`, `backups.sale_items_pre_053_20261117`, `backups.sales_pre_054_20261117`, `backups.sales_pre_055_20261117` e `backups.sale_items_pre_055_20261117` podem ser apagadas | Limpeza do schema `backups` |
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp) | Ajustes na fase 6 antes do piloto |
-| Aplicar a migration 055 (ou autorizar a aplicação), ligar o módulo `promotions` no salão de teste e publicar a fatia 6b — ver §10.8 | Teste em uso da fatia 6b |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |

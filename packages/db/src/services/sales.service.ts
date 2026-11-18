@@ -944,6 +944,11 @@ export async function voidSaleService(input: {
           voidedAt: now,
           voidedBy: input.userId,
           voidReason: input.reason,
+          // A comanda excluída solta a promoção, como solta pacote e assinatura:
+          // senão uma promoção criada por engano nunca mais poderia ser apagada.
+          // O desconto que os itens receberam continua gravado neles.
+          promotionId: null,
+          couponCode: null,
           updatedAt: now,
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
