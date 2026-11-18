@@ -51,9 +51,9 @@ migration 054 aplicada em 17/nov/2026, o módulo `cashback` ligado só no salão
 teste, e testada em uso — ver §10.7. Fatia 6b (promoções e cupons) na mesma
 branch: migration 055 aplicada em 17/nov/2026, módulo `promotions` ligado só no
 salão de teste, publicada e testada em uso — ver §10.8. Fatia 6c (avaliações
-pós-atendimento) feita na mesma branch — **em commit local, migration 056 NÃO
-aplicada, módulo `reviews` desligado em todos os salões, sem publicar e sem teste
-em uso** — ver §10.9.
+pós-atendimento) na mesma branch: migration 056 aplicada em 17/nov/2026, módulo
+`reviews` ligado só no salão de teste e publicada — **sem teste em uso** — ver
+§10.9.
 Fases 7 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -2523,7 +2523,7 @@ executar nada; quase toda a regra foi decidida aqui.
 |---|---|---|
 | 6a | Cashback: configuração do salão (ativo, valor padrão, mínimo para resgate), valor por serviço e produto, ganho no faturamento, uso no faturamento, extrato e ajuste na ficha do cliente, lista de clientes com saldo | Feita, migration 054 aplicada, publicada e testada em uso (§10.7) |
 | 6b | Promoções e cupons: nome, cupom, vigência, dias da semana e situação; aplicar o cupom na comanda | Feita, migration 055 aplicada, publicada e testada em uso (§10.8) |
-| 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita em código — **migration 056 não aplicada, sem publicar e sem teste em uso** (§10.9) |
+| 6c | Avaliações pós-atendimento: pedido de avaliação por comanda faturada, formulário público por link (personalizável), painel (média, total, taxa e tempo de resposta, distribuição por nota, por profissional) e lista filtrável | Feita, migration 056 aplicada e publicada — **sem teste em uso** (§10.9) |
 | 6d | Mensagens de cuidados (pré e pós-atendimento) e de retorno por serviço e por produto; envio automático do pedido de avaliação pelo WhatsApp | Pendente |
 | 6e | Metas por mês, com "Copiar metas" | Pendente |
 | 6f | Saldo de cashback para o agente do WhatsApp; relatório "Histórico de cashback" | Pendente |
@@ -2887,20 +2887,24 @@ público não tem permissão: a credencial é o token.
 
 ### 10.9 Fatia 6c — estado (17/nov/2026)
 
-- Na branch `claude/fase-6-fidelizacao`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint dos arquivos alterados e testes
-  passando (web 1199, db 296, mcp-server 400).
-- **Migration 056: NÃO aplicada.** Só cria tabelas novas (não mexe em tabela
-  existente), mas tem que entrar antes de o módulo ser ligado: com ele ligado,
-  faturar uma comanda consulta `review_settings`.
-- **O módulo `reviews` está desligado em todos os salões.** Para testar, é
-  preciso ligá-lo no salão de teste (`salons.settings.modules`).
+- Na branch `claude/fase-6-fidelizacao`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos alterados e testes passando (web 1199, db 296,
+  mcp-server 400).
+- **Migration 056 aplicada em produção em 17/nov/2026** (registrada como
+  `reviews`). Só cria tabelas novas, por isso não houve cópia em `backups`.
+  Conferido por leitura: as duas tabelas com RLS e sem acesso para
+  `anon`/`authenticated`.
+- **O módulo `reviews` foi ligado no salão de teste** (por SQL, em
+  `salons.settings.modules`, em 17/nov/2026). É o único salão com ele. As
+  avaliações continuam DESATIVADAS nas configurações: nenhuma comanda gera pedido
+  até alguém ativar em Personalizar.
 - **Primeira rota pública com dado de salão.** `/avaliar/[token]` e a action
   `submitPublicReview` não têm sessão. O que as protege: o token aleatório de 192
   bits, a resposta única, e o fato de não receberem nem devolverem id de salão,
   de cliente ou de comanda. Não há limite de tentativas por IP.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar, ligar o
-  módulo e publicar: ativar em Personalizar e trocar o título; faturar uma
+- **Sem teste em uso.** O preview compilou, mas a extensão do Chrome parou de
+  responder antes da primeira tela. Roteiro, no salão de teste: ativar em
+  Personalizar e trocar o título; faturar uma
   comanda com serviço → bloco Avaliação na comanda e pedido "Pendente" na lista;
   comanda só de produto não gera pedido; copiar o link e abrir numa janela sem
   login → salão, título, data; enviar sem nota (recusado); enviar nota e
@@ -2926,5 +2930,5 @@ público não tem permissão: a credencial é o token.
 | Respostas às perguntas da §9.3 (tela própria de venda de pacote, edição do pacote vendido, comissão na venda ou no uso, valor da sessão e rateio, pacote vencido, multiunidade, percentual de comissão da sessão; na 5c: o que o assinante leva, fiado, renovação atrasada, mudança de valor do plano, comissão, permissão própria, aviso de vencimento; na 5d: assinatura e uso do pacote na conversa do agente, saldo a entregar e exportação nos relatórios) | Ajustes na fase 5 antes do piloto |
 | Testar o saldo de pacote na conversa do agente, por um WhatsApp de teste do salão de teste, quando o código estiver no ambiente do worker — ver §9.10 | Liberar o módulo de pacotes em salão com agente em produção |
 | Respostas às perguntas da §10.3 (validade do cashback, base do ganho, comissão em comanda paga com cashback, pacote e assinatura, fiado, cashback no financeiro; na 6b: o que o cupom desconta, limite de usos, soma com o desconto à mão, comissão, promoção por profissional, cupom no WhatsApp; na 6c: avaliação por comanda ou por profissional, envio pelo WhatsApp, validade do link, quem vê, resposta do salão) | Ajustes na fase 6 antes do piloto |
-| Aplicar a migration 056 (ou autorizar a aplicação), ligar o módulo `reviews` no salão de teste e publicar a fatia 6c — ver §10.9 | Teste em uso da fatia 6c |
+| Reabrir o Chrome com a extensão do Claude conectada, no preview da branch `claude/fase-6-fidelizacao` — ver §10.9 | Teste em uso da fatia 6c |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
