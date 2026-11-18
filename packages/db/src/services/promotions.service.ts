@@ -108,8 +108,11 @@ export async function listPromotionsService(input: { salonId: string; now: Date 
         sales: sql<number>`count(*) filter (where ${sales.status} <> 'void')::int`,
         invoiced: sql<number>`count(*) filter (where ${sales.status} = 'invoiced')::int`,
         // O desconto do cupom em cada comanda faturada: a soma dos itens dela.
+        // `sales.id` vai por extenso: numa consulta de uma tabela só o Drizzle
+        // escreve a coluna sem o nome da tabela, e dentro da subconsulta "id"
+        // viraria o id do ITEM — a soma daria sempre zero (visto no teste em uso).
         discounted: sql<string>`coalesce(sum((
-          select coalesce(sum(si.coupon_discount), 0) from sale_items si where si.sale_id = ${sales.id}
+          select coalesce(sum(si.coupon_discount), 0) from sale_items si where si.sale_id = "sales"."id"
         )) filter (where ${sales.status} = 'invoiced'), 0)::text`,
       })
       .from(sales)
