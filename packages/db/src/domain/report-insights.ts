@@ -84,9 +84,15 @@ function dropped(key: string, ctx: WalkContext): boolean {
   return ALWAYS_DROPPED.test(key) || CUSTOMER_NAME.test(key) || ctx.dropKeys.has(key)
 }
 
-/** `fooCents: 12345` → `fooReais: 123.45`. Dinheiro em centavos confunde a IA. */
-function renameMoney(key: string, value: Json): [string, Json] {
-  if (/Cents$/.test(key) && typeof value === 'number') return [key.replace(/Cents$/, 'Reais'), round2(value / 100)]
+/**
+ * As unidades como a tela mostra: `fooCents: 12345` → `fooReais: 123.45` e
+ * `fooMinutes: 300` → `fooHoras: 5`. Com centavos e minutos a IA repete o
+ * número cru ("300 minutos em 66.720"), que não bate com o que a pessoa vê.
+ */
+function renameUnits(key: string, value: Json): [string, Json] {
+  if (typeof value !== 'number') return [key, value]
+  if (/Cents$/.test(key)) return [key.replace(/Cents$/, 'Reais'), round2(value / 100)]
+  if (/Minutes$/.test(key)) return [key.replace(/Minutes$/, 'Horas'), Math.round((value / 60) * 10) / 10]
   return [key, value]
 }
 
@@ -110,7 +116,7 @@ function walkObject(value: Record<string, unknown>, depth: number, ctx: WalkCont
     if (dropped(key, ctx)) continue
     const walked = walk(child, depth + 1, ctx)
     if (walked === undefined) continue
-    const [name, renamed] = renameMoney(key, walked)
+    const [name, renamed] = renameUnits(key, walked)
     out[name] = renamed
   }
   return Object.keys(out).length > 0 ? out : undefined

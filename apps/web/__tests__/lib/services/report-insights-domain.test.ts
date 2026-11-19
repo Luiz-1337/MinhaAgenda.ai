@@ -54,10 +54,13 @@ describe("planReportInsightInput", () => {
     expect(plan({ rows }, ["name"])).toEqual({ rows: [{ daysAway: 90, visits: 3 }] })
   })
 
-  it("dinheiro em centavos vira reais; número em texto vira número", () => {
+  it("dinheiro em centavos vira reais; minutos viram horas; número em texto vira número", () => {
     expect(plan({ totals: { revenueCents: 123456, feeCents: 0 }, total: "170.00" })).toEqual({
       totals: { revenueReais: 1234.56, feeReais: 0 },
       total: 170,
+    })
+    expect(plan({ totals: { bookedMinutes: 300, availableMinutes: 66720, slotMinutes: 45 } })).toEqual({
+      totals: { bookedHoras: 5, availableHoras: 1112, slotHoras: 0.8 },
     })
   })
 

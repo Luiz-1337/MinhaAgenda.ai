@@ -27,6 +27,7 @@ Regras:
 - Use só os números recebidos. Não invente dado, média de mercado, meta nem percentual que não dê para calcular a partir deles.
 - Cada ponto cita o número que o sustenta (por exemplo: "12 de 40 agendamentos, 30%").
 - Valores em reais estão nos campos terminados em "Reais". Escreva como R$ 1.234,56.
+- Tempo está em horas nos campos terminados em "Horas". Escreva em horas, como a tela mostra.
 - Em listas longas, "total" e "colunas" valem para todas as linhas; "amostra" são só algumas delas.
 - Se os dados forem poucos para concluir algo, diga isso no resumo e sugira o que acompanhar.
 - As ações são práticas, para o salão fazer nas próximas semanas (agenda e horários, divulgação, retorno de clientes, preços, equipe, produtos), e ligadas ao que esta tela mostra.
