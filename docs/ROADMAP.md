@@ -97,6 +97,8 @@ foi visto com comanda) — ver §13.10.
 Fatia 9f (exportação em planilha) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — **o arquivo não foi aberto em Excel
 nem em Sheets** — ver §13.11.
+Fatia 9g (organização multiunidade): **só o levantamento foi feito**
+(19/nov/2026), sem código — ver §13.12. Falta o dono escolher o desenho.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4121,6 +4123,7 @@ Perguntas para o dono:
 | Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
 | Abrir no Excel um CSV exportado dos relatórios e conferir acentos, colunas, valores como número e datas — ver §13.11 | Confirmar o formato da exportação |
 | Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
+| Escolher o desenho da multiunidade (A, B ou esperar) e responder às perguntas de §13.12 | A fatia 9g |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4143,7 +4146,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
-| 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
+| 9g | Organização: membros com papel e unidades (multiunidade) | Levantamento feito, **sem código** — falta o dono escolher o desenho (§13.12) |
 
 "Todas as notas fiscais" é da fase 10.
 
@@ -4683,3 +4686,84 @@ Perguntas para o dono:
     vendas, origem, criação): a função de cada um só tem o typecheck;
   - usuário sem `customers.view_phones` (a coluna de telefone some).
 - Nenhum dado de teste foi criado.
+
+### 13.12 Fatia 9g — levantamento da multiunidade (19/nov/2026)
+
+Só levantamento: nenhuma linha de código nem de banco foi mexida.
+
+**O que a auditoria mostra na Belasis**
+
+- **Seletor de unidade** no menu: troca entre filiais (a conta auditada tinha
+  "Matriz" e mais uma).
+- **Organização** (`/organization`, só para a conta admin): lista de membros com
+  Nome, E-mail, Papel e **Unidades**, e "Adicionar membro".
+- **"Receita organizacional?" e "Despesa organizacional?"** nos lançamentos do
+  financeiro: um lançamento pode ser da organização, e não de uma unidade.
+- **Filtro por filial** no painel, e o painel de profissionais "por unidade".
+- A auditoria não abriu nenhuma dessas telas por dentro: não se sabe o que é
+  compartilhado entre unidades (clientes? catálogo? estoque?), nem o que os
+  papéis da organização podem.
+
+**O que o MinhaAgenda já tem**
+
+- **"Unidade" já existe, com outro nome: é o salão.** Uma mesma pessoa pode ser
+  dona de mais de um salão, e o menu já tem "Selecionar salão"
+  (`components/dashboard/salon-selector.tsx`, alimentado por `getUserSalons`).
+- **O plano mora no DONO** (`profiles.tier`), não no salão: na prática, o dono
+  já é a "organização". SOLO só cria um salão (`createSalon`); PRO e
+  ENTERPRISE não têm limite no código, embora as telas prometam "até 3".
+- **A mesma pessoa em dois salões** já é reconhecida na agenda
+  (`professionals.person_key`): horário ocupado num salão bloqueia no outro.
+- **Tudo o mais é por salão, isolado**: clientes, catálogo, estoque, comandas,
+  financeiro, comissões, permissões, perfis de acesso e módulos. Cada tabela
+  tem `salon_id`, e toda consulta filtra por ele — é a regra de segurança do
+  sistema.
+- **Não existe**: tela de organização; membro adicionado a várias unidades de
+  uma vez (hoje se cadastra o profissional salão a salão); relatório que some
+  ou compare unidades; lançamento "da organização"; nada compartilhado entre
+  salões.
+
+**O tamanho real do problema hoje (produção, 19/nov/2026)**
+
+- 16 salões de 15 donos. **Um único dono tem mais de um salão** (dois).
+- Dos 15 donos, 12 são SOLO (não podem ter segundo salão), 2 PRO e 1 ENTERPRISE.
+- **Nenhum login trabalha em mais de um salão**, e nenhum `person_key` aparece
+  em dois salões.
+
+**Três caminhos**
+
+- **A — "A organização é o dono" (sem entidade nova).** Uma tela "Organização",
+  só para quem é dono de mais de um salão: as unidades lado a lado com os
+  números principais (faturamento, comandas, clientes, ocupação), e os membros
+  de todas as unidades numa lista só, podendo pôr a mesma pessoa em mais de
+  uma. Sem migration, ou com uma pequena. Cada salão continua isolado; a soma
+  é feita só para o dono. Limites: só o dono enxerga o conjunto (gerente
+  não); nada é compartilhado entre unidades; não há "lançamento da
+  organização".
+- **B — Entidade "organização" de verdade.** Tabelas `organizations` e
+  `organization_members`, e `salons.organization_id`. Permite administrador
+  da organização que não é o dono, papéis por unidade, lançamento
+  organizacional e, mais adiante, cliente e catálogo compartilhados. Custo:
+  migration em `salons` (tabela do caminho crítico), o plano e a cobrança
+  passam a ser da organização, e a regra "toda consulta filtra por salão"
+  ganha exceções — cada uma é um risco de um salão ver dado de outro.
+- **C — Esperar.** Registrar o levantamento e não construir agora: hoje há um
+  dono com dois salões, e a auditoria não mostrou o que a Belasis compartilha.
+
+**Recomendação.** C agora, e A quando houver um cliente de verdade com mais de
+uma unidade. O B só se justifica se a resposta às perguntas abaixo for "sim"
+para administrador que não é o dono ou para dado compartilhado — e aí vale ser
+uma fase própria, não uma fatia dos relatórios.
+
+**Perguntas para o dono**
+
+- Existe hoje, ou está para chegar, um cliente com mais de uma unidade? O que
+  ele precisa primeiro: ver os números juntos, ou gerir a equipe em um lugar só?
+- Alguém que não é o dono precisa enxergar todas as unidades (um gerente
+  regional, um contador)?
+- O cliente de uma unidade deve ser cliente da outra (mesma ficha, mesmo
+  pacote, mesmo cashback)? E o catálogo de serviços e produtos?
+- O que é uma "despesa organizacional" para o salão de vocês: um gasto que não
+  é de nenhuma unidade (marca, contador), ou um gasto rateado entre elas?
+- O plano deve ser cobrado por organização ou por unidade? Hoje é por dono, e
+  PRO e ENTERPRISE não têm o limite de "até 3 salões" que as telas prometem.
