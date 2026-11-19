@@ -55,7 +55,16 @@ function NetResult({ data }: { data: Extract<FinanceReportsData, { view: "servic
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Stat label="Receita" value={money(totals.revenueCents)} hint={`${formatQuantity(totals.quantity)} ${isServices ? "atendimentos" : "unidades"}`} />
+        <Stat label="Receita" value={money(totals.revenueCents)} hint={`${formatQuantity(totals.quantity)} ${
+            isServices
+              ? totals.quantity === 1
+                ? "atendimento"
+                : "atendimentos"
+              : totals.quantity === 1
+                ? "unidade"
+                : "unidades"
+          }`}
+        />
         <Stat label="Taxas" value={money(totals.feeCents)} hint="Das formas de pagamento" />
         <Stat label="Comissão" value={money(totals.commissionCents)} />
         <Stat label="Custo" value={money(totals.costCents)} hint={isServices ? "Custo fixo do serviço" : "Custo de compra de hoje"} />
@@ -189,7 +198,9 @@ function Statement({ data }: { data: Extract<FinanceReportsData, { view: "statem
   if (!statement) {
     return (
       <p className="bg-card border border-border rounded-md p-4 text-sm text-muted-foreground">
-        O salão ainda não tem conta cadastrada no financeiro.
+        {data.accounts.length === 0
+          ? "O salão ainda não tem conta cadastrada no financeiro."
+          : "Conta não encontrada neste salão. Escolha uma conta acima."}
       </p>
     )
   }
@@ -311,9 +322,12 @@ export function FinanceReportsClient({ salonId, data }: { salonId: string; data:
               id="finance-report-account"
               value={data.accountId ?? ""}
               disabled={isPending}
-              onChange={(event) => navigate({ account: event.target.value })}
+              onChange={(event) => {
+                if (event.target.value) navigate({ account: event.target.value })
+              }}
               className={controlClass}
             >
+              {!data.accountId && <option value="">Escolha uma conta…</option>}
               {data.accounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {account.name}

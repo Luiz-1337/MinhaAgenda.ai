@@ -85,8 +85,8 @@ Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
 relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
 `claude/fase-7-cliente-agenda`): migration 064 aplicada em 18/nov/2026,
 publicada e testada em uso em 19/nov/2026 — ver §13.6.
-Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration — **em
-commit local, sem publicar e sem teste em uso** — ver §13.7.
+Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 — ver §13.7.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4105,7 +4105,6 @@ Perguntas para o dono:
 | Aplicar a migration 064 (ou autorizar a aplicação), publicar a fatia 9a e ligar o módulo `reports` no salão de teste — ver §13.6 | Teste em uso da fatia 9a |
 | Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
-| Autorizar publicar a fatia 9b — ver §13.7 | Teste em uso da fatia 9b |
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4124,7 +4123,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | Fatia | O que entra | Estado |
 |---|---|---|
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
-| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.7) |
+| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
@@ -4308,13 +4307,11 @@ Perguntas para o dono:
 
 ### 13.7 Fatia 9b — estado (19/nov/2026)
 
-- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
   alterados) e testes passando (web 1402, db 296, mcp-server 409).
-- **Sem migration.** Só leitura: os três relatórios consultam comandas,
-  comissões, agendamentos e lançamentos que já existem.
-- **As consultas não foram executadas contra o banco.** Os testes cobrem a
-  conta (regra pura); o SQL do serviço só vai ser exercitado no teste em uso.
+- **Sem migration.** Só leitura: os relatórios consultam comandas, comissões,
+  agendamentos e lançamentos que já existem.
 - **Limites desta fatia:**
   - sem exportação (fatia 9f);
   - o custo do produto é o de hoje, não o do dia da venda;
@@ -4324,11 +4321,38 @@ Perguntas para o dono:
     até 5.000 baixas; acima disso a tela avisa e pede um período menor;
   - a projeção não tem gráfico, e não separa por profissional;
   - o extrato é de uma conta por vez.
-- **Sem teste em uso.** Roteiro, no salão de teste: abrir os quatro pela
-  central; resultado líquido sem dados (tudo zero); criar e faturar uma comanda
-  com um serviço e um produto, numa forma de pagamento com taxa, e conferir
-  receita, taxa repartida, comissão, custo e resultado nos dois relatórios;
-  produto sem custo (aviso); projeção com um agendamento futuro e um lançamento
-  a pagar; extrato da conta que recebeu a comanda, com saldo anterior e saldo
-  corrido batendo com o saldo da conta no financeiro; trocar de conta e de
-  período; favoritar um deles; limpar os dados.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste:
+  - os quatro relatórios abrem sem dados, com tudo zerado — as consultas rodam;
+  - com a comanda de teste #33 faturada (um serviço de R$ 170,00 e um produto
+    de R$ 30,00, no crédito com taxa de 2,92% = R$ 5,84, recebendo em 30 dias),
+    conferido contra o banco:
+    - serviços — receita R$ 170,00, taxa R$ 4,96, comissão R$ 0,00, custo
+      R$ 0,00, resultado R$ 165,04, margem 97,1%;
+    - produtos — receita R$ 30,00, taxa R$ 0,88, custo R$ 20,00 (o custo de
+      compra do cadastro), resultado R$ 9,12, margem 30,4%;
+    - as duas taxas somam os R$ 5,84 da comanda;
+    - projeção — R$ 194,16 a receber em 19/12/2026 (o líquido, no dia em que
+      o cartão paga), previsto R$ 194,16;
+  - dada a baixa do recebimento na conta de banco: o extrato mostra saldo
+    anterior R$ 1.000,00, a entrada de R$ 194,16 e saldo final R$ 1.194,16 — o
+    mesmo saldo que o financeiro mostra na conta;
+  - extrato de 20 a 30/nov: saldo anterior já em R$ 1.194,16, sem baixas;
+  - trocar de conta pelo seletor: a outra conta, zerada.
+- **Achados do teste, corrigidos depois (sem novo teste em uso):**
+  - "1 atendimentos" e "1 unidades" nos cartões;
+  - conta desconhecida na URL mostrava "O salão ainda não tem conta
+    cadastrada"; passa a dizer que a conta não foi encontrada.
+- **Não testado em uso:**
+  - **o "agendado" da projeção** com agendamento de verdade (a consulta rodou,
+    sem linhas): preço de tabela, faixa pelo menor valor, "sob avaliação" e a
+    exclusão do que já virou comanda faturada só têm teste de regra na soma;
+  - comissão diferente de zero (o profissional do teste não tem regra de
+    comissão) e serviço com custo fixo;
+  - produto sem custo (o aviso), lançamento a pagar e vencidos na projeção;
+  - comanda com mais de uma forma de pagamento, com desconto, cupom, pacote ou
+    assinatura; transferência no extrato;
+  - os tetos de 5.000 linhas e o período de um ano;
+  - usuário sem `finance.access` e salão sem o módulo `finance`.
+- Dados de teste limpos pela tela: a baixa foi desfeita ao reabrir a comanda
+  #33, que foi excluída (fica como excluída, como as anteriores). Sem
+  lançamentos, pagamentos nem movimento de estoque.
