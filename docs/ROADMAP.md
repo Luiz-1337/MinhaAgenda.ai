@@ -107,8 +107,9 @@ no PR #24, aberto e esperando a mescla — ver §13.14.
 Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
 de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
-`claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — **em commit local,
-migration 065 NÃO aplicada, sem publicar e sem teste em uso** — ver §14.6.
+`claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — migration 065
+aplicada, publicada no preview e **testada em uso** em 19/nov/2026; ainda fora
+da `main` — ver §14.6.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4137,7 +4138,6 @@ Perguntas para o dono:
 | Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
 | Ver a tela Organização com um dono de mais de um salão (hoje só há um em produção, e não é a conta de teste) — ver §13.13 | Confirmar a comparação entre unidades |
 | Confirmar o que é a fase 8 "sem receber dos clientes" e responder às perguntas de §14.4 (prazo para o sinal, sinal da IA, valor por serviço, devolução) | As fatias 8b e 8c |
-| Aplicar a migration 065 (ou autorizar a aplicação) e publicar a fatia 8a — ver §14.6 | Teste em uso da fatia 8a |
 | Responder às perguntas da multiunidade em §13.12 (gerente que vê todas as unidades, dado compartilhado, despesa organizacional, cobrança) | Decidir se o caminho B (entidade "organização") é necessário |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4886,7 +4886,7 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 
 | Fatia | O que entra | Estado |
 |---|---|---|
-| 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita em código — **migration 065 não aplicada, sem publicar e sem teste em uso** (§14.6) |
+| 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
 | 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Pendente |
 | 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento (no painel e por mensagem) e página pública de planos | Pendente |
 
@@ -4979,16 +4979,30 @@ Perguntas para o dono:
 ### 14.6 Fatia 8a — estado (19/nov/2026)
 
 - Na branch `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`, cujo PR
-  #24 ainda não foi mesclado), **em commit local, sem publicar**. Typecheck
-  (db, web e mcp-server), lint (nenhum erro novo nos arquivos alterados) e
-  testes passando (web 1472).
-- **Migration 065: NÃO aplicada.** Só cria uma tabela; não há cópia a fazer.
-  Aplicar ANTES de publicar: sem ela, a linha "Sinal" some do detalhe do
-  agendamento (a leitura falha e a tela esconde a linha), e o agendamento
-  online de salão com sinal é marcado sem registrar o sinal.
-- **O módulo `online_booking` está desligado em todos os salões.** Para testar
-  a página com sinal, é preciso religar no salão de teste.
-- **As consultas não foram executadas contra o banco.**
+  #24 ainda não foi mesclado), publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  novo nos arquivos alterados) e testes passando (web 1472).
+- **Migration 065: aplicada em produção em 19/nov/2026.** Só criou a tabela
+  `appointment_deposits`; não havia cópia a fazer.
+- **O módulo `online_booking` está desligado em todos os salões.** Foi religado
+  no salão de teste só durante o teste e desligado de novo. Motivo: a `main`
+  tem a página de agendamento da 7f, que marca sem pedir sinal; religar em
+  salão com sinal só depois que a 8a estiver na `main`.
+- **Testado em uso no preview (19/nov/2026), no salão de teste, que tem o sinal
+  configurado:**
+  - a página de agendamento avisa o valor do sinal antes de marcar;
+  - depois de marcar, mostra o valor, a chave PIX, "Copiar chave" e o titular;
+  - no banco, o agendamento nasceu com o sinal "aguardando", de origem online;
+  - no detalhe do agendamento, a linha "Sinal" e as ações: marcar como recebido
+    (mostra a data e quem marcou), voltar para aguardando, dispensar e tirar;
+  - "Lançar sinal" num agendamento sem sinal, com o valor configurado sugerido,
+    grava com origem "painel";
+  - cancelar o agendamento não apaga o sinal recebido (regra 8).
+  Os dados do teste foram apagados (o agendamento ficou cancelado).
+- **Não testado em uso:** o botão "Copiar chave" (só vi que aparece); salão sem
+  sinal configurado (a página não deve mostrar nada e o agendamento nasce sem
+  sinal — coberto só pelo teste da regra); usuário que vê a agenda mas não
+  edita (a linha sem as ações); excluir o agendamento apagando o sinal.
 - **Limites desta fatia:**
   - o sinal não é abatido na comanda nem lançado no financeiro (8b);
   - sem cancelamento automático por falta de sinal;
@@ -4996,11 +5010,3 @@ Perguntas para o dono:
   - a agenda não mostra o sinal no cartão do agendamento, só no detalhe; não há
     lista de "aguardando sinal";
   - um valor de sinal por salão.
-- **Sem teste em uso.** Roteiro, com a 065 aplicada e o módulo religado no
-  salão de teste (que tem o sinal configurado): a página avisa o valor antes
-  de marcar; depois de marcar, mostra a chave e o titular; no banco, o sinal
-  "aguardando" de origem online; no detalhe do agendamento, a linha "Sinal" e
-  as ações (receber, voltar para aguardando, dispensar, tirar); "Lançar sinal"
-  num agendamento sem sinal, com o valor sugerido; salão sem sinal ligado: a
-  página não mostra nada e o agendamento nasce sem sinal; limpar os dados e
-  desligar o módulo de novo.
