@@ -615,6 +615,12 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
           if (fake.state.clients.length !== 1) failures.push(`os dois serviços deviam ir para o MESMO cadastro; há ${fake.state.clients.length}`)
           if (fake.state.groups.length !== 2) failures.push(`esperava 2 agendamentos na agenda do salão, achei ${fake.state.groups.length}`)
           if (new Set(fake.state.groups.map((g) => g.client_id)).size > 1) failures.push("os agendamentos foram para cadastros diferentes")
+
+          // O valor combinado fica anotado para a recepção, aqui e na agenda do salão.
+          const notes = booked.map((a) => a.notes ?? "").join(" | ")
+          if (!/730/.test(notes)) failures.push(`as observações dos agendamentos não têm o valor da combinação (R$ 730): "${notes}"`)
+          const observations = fake.state.groups.map((g) => g.observation ?? "").join(" | ")
+          if (!/730/.test(observations)) failures.push(`a observação na agenda do salão não tem o valor da combinação: "${observations}"`)
           return failures
         },
       }
@@ -767,5 +773,60 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
         },
       ],
     }),
+  },
+
+  {
+    item: "combinações (19/nov)",
+    name: "combinacao_agendada_com_observacao",
+    description:
+      'Corte, coloração e progressiva global: "a partir de R$ 1.370"; marca corte e coloração em sequência, manda a progressiva para "Atenção" e anota a combinação, o valor e o que falta nas observações do agendamento',
+    build: (ctx) => {
+      let fake: FakeBelasis
+      let movedAttention = false
+      /** Em algum turno a conversa tem de ir para "Atenção": a progressiva não existe no cadastro. */
+      const watch = (_result: unknown, steps: ResponsesRunnerStep[]) => {
+        if (movedToAttention(steps)) movedAttention = true
+        return null
+      }
+
+      return {
+        name: "combinacao_agendada_com_observacao",
+        description: "Combinação com serviço fora do cadastro: agenda o resto e anota tudo para a recepção",
+        context: { customerName: "Cliente", ...leadDeAnuncio },
+        prepare: () => {
+          fake = resetFakeBelasis(ctx)
+        },
+        turns: [
+          {
+            user: "Quero fazer corte, coloração e progressiva global. Quanto fica?",
+            expect: {
+              text: { mustMatchAll: [valor(1370), /a partir de/i], mustNotMatch: combinacoesExceto(1370) },
+              custom: watch,
+            },
+          },
+          { user: "Sábado às 10h", expect: { custom: watch } },
+          { user: "Maria Aparecida de Souza", expect: { custom: watch } },
+          { user: "Isso, pode marcar", expect: { custom: watch } },
+        ],
+        verify: async (run) => {
+          const failures: string[] = []
+          const booked = await loadActiveAppointments(run.salonId, run.customerId)
+          if (booked.length !== 2) failures.push(`esperava 2 agendamentos (corte e coloração), achei ${booked.length}`)
+          if (!booked.some((a) => a.serviceId === ctx.corteFemininoId)) failures.push("o corte não foi agendado")
+          if (booked.length === 2 && booked[0]!.endTime.getTime() > booked[1]!.date.getTime()) {
+            failures.push("os dois agendamentos se sobrepõem")
+          }
+
+          const notes = booked.map((a) => a.notes ?? "").join(" | ")
+          if (!/1\.?370/.test(notes)) failures.push(`as observações não têm o valor informado (a partir de R$ 1.370): "${notes}"`)
+          if (!/progressiva/i.test(notes)) failures.push(`as observações não dizem que falta encaixar a progressiva: "${notes}"`)
+          const observations = fake.state.groups.map((g) => g.observation ?? "").join(" | ")
+          if (!/progressiva/i.test(observations)) failures.push(`a observação na agenda do salão não fala da progressiva: "${observations}"`)
+
+          if (!movedAttention) failures.push('a conversa não foi para "Atenção" (a progressiva precisa ser encaixada pelo Fabiano)')
+          return failures
+        },
+      }
+    },
   },
 ]
