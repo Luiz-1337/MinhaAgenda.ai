@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import dynamic from "next/dynamic"
-import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck, Receipt, Tag } from "lucide-react"
+import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck, Receipt, Tag, Link2 } from "lucide-react"
 import { DailyScheduler } from "./daily-scheduler"
 import { WeeklyScheduler } from "./weekly-scheduler"
 import { MonthlyScheduler } from "./monthly-scheduler"
@@ -28,6 +28,7 @@ import {
   endOfMonthBrazil
 } from "@/lib/utils/timezone.utils"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
+import { toast } from "sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -300,6 +301,22 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
               <Receipt size={16} />
               <span className="hidden sm:inline">Agrupar em comanda</span>
               <span className="sm:hidden">Agrupar</span>
+            </button>
+          )}
+          {activeSalon?.modules.includes("online_booking") && (
+            <button
+              onClick={() => {
+                // Agendamento online (fase 7, fatia 7f): a página pública do salão, sem login.
+                navigator.clipboard.writeText(`${window.location.origin}/agendar/${salonId}`).then(
+                  () => toast.success("Link de agendamento online copiado"),
+                  () => toast.error("Não foi possível copiar o link")
+                )
+              }}
+              title="Copiar o link da página em que o cliente marca horário sozinho"
+              className="flex-1 sm:flex-initial px-3 py-2 bg-card border border-border text-foreground rounded-lg text-xs sm:text-sm font-medium hover:bg-muted flex items-center justify-center gap-2 transition-colors"
+            >
+              <Link2 size={16} />
+              <span>Link online</span>
             </button>
           )}
           <button

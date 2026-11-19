@@ -176,8 +176,11 @@ export function resolvePermissions(
  * É a chave de piloto: um módulo novo entra desligado para todos e é ligado só no
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
+ *
+ * `online_booking` (fase 7) liga a página PÚBLICA de agendamento do salão
+ * (/agendar/<salonId>): sem ele, a página responde como se o salão não existisse.
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews', 'care_messages', 'goals'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews', 'care_messages', 'goals', 'online_booking'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 

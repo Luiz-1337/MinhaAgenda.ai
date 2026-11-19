@@ -78,6 +78,8 @@ Fatia 7d (anamneses) feita na mesma branch — migration 062 aplicada em
 18/nov/2026, publicada e testada em uso — ver §11.10.
 Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
+Fatia 7f (agendamento online público) feita na mesma branch, sem migration —
+**em commit local, sem publicar e sem teste em uso** — ver §11.12.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3308,7 +3310,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita — migration 062 aplicada, publicada na branch e testada em uso (§11.10) |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Feita — migration 063 aplicada, publicada na branch e testada em uso (§11.11) |
-| 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
+| 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Feita em código, sem migration — **sem publicar e sem teste em uso** (§11.12). O cálculo da IA NÃO foi trocado |
 
 A ordem vai do que só acrescenta ao que mexe no caminho crítico. O agendamento
 online fica por último de propósito: depende de UM cálculo de horários livres, e
@@ -3394,6 +3396,12 @@ contato passa a consultar `customer_documents` (regra 39).
   no sistema), `expires_at`, e a assinatura: `signed_at`, `signer_name`,
   `signature_image` (PNG em data URL, até 200.000 caracteres), `signer_ip` e
   `signer_user_agent`. Um CHECK garante que nome, imagem e data andam juntos.
+
+**Fatia 7f — sem migration.** O agendamento online é o módulo `online_booking`
+em `salons.settings.modules` (como os outros módulos), e o endereço da página
+usa o id do salão. O agendamento criado pela página é uma linha comum de
+`appointments`, com a observação "Agendado pelo cliente na página de
+agendamento online".
 
 ### 11.4 Regras decididas
 
@@ -3525,6 +3533,56 @@ Fatia 7e — documentos com assinatura:
     servidor só aceita data URL de PNG.
 41. **O agente do WhatsApp não vê nem envia documento.**
 
+Fatia 7f — agendamento online público:
+
+42. **Um cálculo de horários livres para a página**
+    (`listProfessionalDaySlotsService`, com a conta em
+    `domain/booking-slots.ts`). Um horário só é oferecido se o atendimento
+    INTEIRO — a duração que a agenda reserva — cabe num período de trabalho do
+    profissional, não encosta em intervalo e não encosta em nada ocupado.
+    "Ocupado" junta: agendamentos da pessoa em qualquer salão, folgas e
+    bloqueios (`schedule_overrides`, lidos aqui pela primeira vez), Google e
+    agenda oficial. Grade de 15 em 15 minutos, ou só os horários próprios do
+    serviço quando ele tem.
+43. **O cálculo da IA do WhatsApp NÃO foi trocado nesta fatia.** Ele está no
+    caminho crítico e só roda no worker, onde não dá para testar em uso daqui.
+    Continuam existindo o `CheckAvailabilityUseCase` (IA) e o
+    `getAvailableSlots` (só o chat de teste do painel). Diferenças conhecidas
+    do cálculo da IA: a grade anda de duração em duração, e um horário que
+    começa antes do intervalo e termina dentro dele é oferecido. Trocar a IA
+    para o cálculo novo é uma fatia própria (§12).
+44. **A página só oferece o que a criação aceita.** Profissional sem expediente
+    cadastrado no dia não aparece com horário — a página NÃO usa o horário de
+    funcionamento do salão no lugar (a criação recusaria).
+45. **Marcar confere de novo.** O horário pedido tem que estar entre os que a
+    página oferece naquele instante; a lista é recalculada no servidor. É isso
+    que impede marcar fora do expediente, em cima do almoço ou além da janela,
+    mesmo com o pedido montado à mão. Quem grava é o
+    `createAppointmentService`, com a trava de conflito e a agenda oficial.
+46. **Opt-in por salão**: módulo `online_booking`, desligado para todos. Sem o
+    módulo, o endereço responde como se o salão não existisse.
+47. **O endereço** é `/agendar/<id do salão>`. O id é um identificador, não um
+    segredo. Endereço curto com o nome do salão fica para depois (o `slug` está
+    aposentado).
+48. **O cliente escolhe** serviço, profissional (quando mais de um faz o
+    serviço), dia e horário, e informa nome e WhatsApp com DDD. Entram os
+    serviços ativos que têm profissional ativo. Aparecem nome, duração
+    reservada, descrição e preço (valor, faixa ou "Sob avaliação").
+49. **Janela**: de hoje a 30 dias, e hoje só com uma hora de antecedência.
+50. **O cadastro** é achado pelo telefone (em qualquer formato) ou criado.
+    Cadastro que já existe NÃO tem o nome trocado: quem digita o telefone de
+    outra pessoa não renomeia o cliente do salão. A página nunca diz se o
+    telefone já era cliente.
+51. **Sem confirmação do telefone.** Não há código por WhatsApp nem SMS. O que
+    segura abuso: no máximo 3 agendamentos futuros por telefone no salão, a
+    antecedência, a janela e um campo-isca para robôs. Não há limite de
+    tentativas por endereço de internet.
+52. **O agendamento entra como os outros** (pendente), com a observação de que
+    veio da página. Segue o que já existe: espelho no Google, agenda oficial,
+    lembrete. **A página não cancela nem remarca**: isso é com o salão.
+53. **Quem vê o link**: botão "Link online" na agenda, para quem está no salão
+    com o módulo ligado. Não há permissão própria.
+
 Perguntas para o dono:
 
 - (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
@@ -3577,6 +3635,24 @@ Perguntas para o dono:
   certo, ou o salão prefere que tudo saia junto, como na anamnese?
 - (7e) O documento deve poder ser pedido automaticamente (por exemplo, antes do
   primeiro atendimento de um serviço)?
+- (7f) O agendamento online deve entrar direto, ou esperar o salão aceitar?
+  Hoje entra direto, como pendente (regra 52).
+- (7f) É preciso confirmar o telefone por código no WhatsApp antes de marcar
+  (regra 51)? Sem isso, qualquer pessoa pode marcar em nome de um telefone — e
+  esse telefone recebe o lembrete do salão.
+- (7f) Uma hora de antecedência e 30 dias de janela estão bons (regra 49)? E o
+  teto de 3 agendamentos futuros por telefone?
+- (7f) O cliente deve poder escolher "qualquer profissional"? E marcar mais de
+  um serviço de uma vez?
+- (7f) Todos os serviços ativos aparecem na página. O salão precisa esconder
+  alguns (por exemplo, os "sob avaliação")?
+- (7f) O cliente deve poder cancelar ou remarcar pelo link?
+- (7f) O salão quer um endereço curto (`/agendar/nome-do-salao`), logo e
+  endereço na página?
+- (7f) O salão deve ser avisado na hora (no painel ou no WhatsApp) quando entra
+  um agendamento pela página?
+- (7f) No plano SOLO a tela do salão marca tudo para o profissional do dono; a
+  página pública lista os profissionais ativos que fazem o serviço. Está certo?
 
 ### 11.5 Telas
 
@@ -3616,6 +3692,14 @@ Perguntas para o dono:
   e texto; o formulário de assinatura (nome, quadro para desenhar com "Limpar",
   "li e concordo"); depois de assinado, a assinatura e a data. Link desconhecido
   ou vencido mostra um aviso.
+- **Página pública de agendamento (7f)** (`/agendar/<id do salão>`, sem
+  login): nome do salão; serviço (com duração e preço); profissional, quando
+  há mais de um; dia (de hoje a 30 dias); os horários livres em botões; nome e
+  WhatsApp; "Marcar para DD/MM/AAAA às HH:mm". Depois: "Horário marcado", com
+  serviço, profissional, dia e hora. Salão sem o módulo, ou id desconhecido:
+  "Agendamento online indisponível".
+- **Agenda (7f)**: botão "Link online", que copia o endereço da página — só
+  com o módulo `online_booking` ligado.
 
 ### 11.6 Onde está o código
 
@@ -3626,6 +3710,7 @@ Perguntas para o dono:
 | Recorrência (7c) | Migration `061_appointment_series.sql`; tabela `appointmentSeries` e `appointments.seriesId`; regra em `domain/appointment-series.ts` (`planAppointmentSeries`, `addCalendarDays`, `describeSeriesOutcome`); I/O em `services/appointment-series.service.ts` (`createAppointmentSeriesService` repete o `createAppointmentService`; `cancelAppointmentSeriesService` repete o `cancelAppointmentService`); actions `createAppointmentSeries` e `cancelAppointmentSeries` em `actions/appointments.ts`, com o portão de criação extraído para `authorizeAppointmentCreation`; telas em `components/scheduler/create-appointment-dialog.tsx` e `appointment-detail-dialog.tsx`; testes em `appointment-series-domain.test.ts` |
 | Anamneses (7d) | Migration `062_anamneses.sql`; tabelas `anamnesisTemplates` e `customerAnamneses`; regra em `domain/anamneses.ts` (`planAnamnesisTemplate`, `planAnamnesisAnswers`, `parseAnamnesisQuestions`, `parseAnamnesisAnswers`, `formatAnamnesisAnswer`); I/O em `services/anamneses.service.ts`; actions em `actions/anamneses.ts` (na guarda de `actions-authz.test.ts`); permissão `customers.anamneses` em `domain/permissions.ts`, com rótulo em `permissions.constants.ts`; telas em `components/contacts/customer-anamneses-card.tsx` e `anamnesis-templates-dialog.tsx`; testes em `anamneses-domain.test.ts` |
 | Documentos com assinatura (7e) | Migration `063_customer_documents.sql`; tabelas `documentTemplates` e `customerDocuments`; regra em `domain/customer-documents.ts` (`planDocumentTemplate`, `renderDocument`, `documentStatus`, `planDocumentSignature`, `isDocumentToken`); I/O em `services/customer-documents.service.ts` (as duas funções públicas no fim do arquivo); actions em `actions/customer-documents.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-documents.ts` (pública, FORA da guarda de propósito); permissão `customers.documents`; telas em `components/contacts/customer-documents-card.tsx` e `document-templates-dialog.tsx`; página pública em `app/assinar/[token]/`; a trava de exclusão em `deleteSalonCustomer` (`actions/customers.ts`); testes em `customer-documents-domain.test.ts` |
+| Agendamento online (7f) | Sem migration; módulo `online_booking` em `domain/permissions.ts`; a conta em `domain/booking-slots.ts` (`computeDaySlots`, a régua de dia em Brasília, `onlineBookingNotBefore`, `planOnlineBookingCustomer`); I/O em `services/online-booking.service.ts` (`listProfessionalDaySlotsService` e as três funções públicas); actions em `actions/public-booking.ts` (públicas, FORA da guarda de `actions-authz.test.ts` de propósito); página em `app/agendar/[salonId]/`; o botão do link em `components/scheduler/scheduler-view.tsx`; testes em `booking-slots-domain.test.ts` |
 
 ### 11.7 Fatia 7a — estado (18/nov/2026)
 
@@ -3890,6 +3975,43 @@ Perguntas para o dono:
     pendentes, texto de 20.000 caracteres) e nome de modelo repetido;
   - se o link foi mesmo para a área de transferência (o aviso apareceu).
 
+### 11.12 Fatia 7f — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1368, db 296, mcp-server 409).
+- **Sem migration.** Publicar não muda nada para nenhum salão: o módulo
+  `online_booking` nasce desligado. Para testar, é preciso ligá-lo no salão de
+  teste (um UPDATE em `salons.settings`, pelo id).
+- **O que esta fatia NÃO mexeu, de propósito:** o cálculo de horários da IA
+  (regra 43), o `createAppointmentService` (continua aceitando marcar dentro do
+  intervalo quando chamado pela tela do salão ou pela IA) e a tela de criar
+  agendamento do salão (continua pedindo a hora digitada).
+- **Terceira rota pública do sistema** (`/avaliar`, `/assinar`, `/agendar`), e
+  a primeira que CRIA agendamento e cadastro de cliente sem login.
+- **Riscos conhecidos, aceitos nesta fatia:**
+  - sem confirmação do telefone, dá para marcar com o telefone de outra
+    pessoa; ela receberia o lembrete do salão. O teto é de 3 por telefone;
+  - sem limite de tentativas por endereço de internet: um robô pode encher a
+    agenda usando telefones diferentes. O módulo é opt-in por isso;
+  - Google e agenda oficial fora do ar: a página mostra o horário, e a criação
+    barra (agenda oficial) ou deixa passar (Google), como já é na IA;
+  - `schedule_overrides` passa a ser lido aqui, mas continua sem tela para
+    criar folga, e a criação continua sem conferi-lo.
+- **Limites desta fatia:** um serviço por agendamento; sem "qualquer
+  profissional"; sem cancelar nem remarcar pelo cliente; sem aviso ao salão
+  além do agendamento aparecer na agenda; sem pagamento de sinal (fase 8); sem
+  logo, endereço nem endereço curto.
+- **Sem teste em uso.** Roteiro, com o módulo ligado no salão de teste: id
+  desconhecido e salão sem o módulo ("indisponível"); a lista de serviços e de
+  profissionais; um dia sem expediente (sem horário); um dia com expediente —
+  conferir que os horários respeitam o intervalo e os agendamentos que já
+  existem; hoje só com uma hora de antecedência; marcar com telefone novo
+  (nasce o cadastro) e com telefone de cliente que já existe (o nome não
+  muda); o horário some da lista depois de marcado; o agendamento aparece na
+  agenda com a observação; o quarto agendamento do mesmo telefone é recusado;
+  o botão "Link online" na agenda; cancelar os agendamentos de teste.
+
 ## 12. Pendências do dono
 
 | Pendência | Trava |
@@ -3921,5 +4043,8 @@ Perguntas para o dono:
 | Responder às perguntas da 7e em §11.4 (força da assinatura, envio pelo WhatsApp, validade do link, PDF, exclusão de contato) | Ajustes na 7e antes do piloto |
 | Marcar "Documentos" nos perfis de acesso de quem deve gerar e ver documentos | Funcionário com perfil usar os documentos |
 | Ter o texto dos termos do salão revisado por quem entende (advogado), antes de usar com clientes | Uso dos documentos no piloto |
+| Autorizar publicar a fatia 7f e ligar o módulo `online_booking` no salão de teste — ver §11.12 | Teste em uso da fatia 7f |
+| Responder às perguntas da 7f em §11.4 (entrar direto ou esperar aceite, confirmar o telefone, janela e teto, esconder serviços, cancelar pelo link) | Ligar o agendamento online num salão de verdade |
+| Decidir quando trocar o cálculo de horários da IA para o cálculo novo (regra 43) — pede teste com o worker e conversa de verdade | Um cálculo só no sistema inteiro |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
