@@ -50,6 +50,8 @@ export const invoiceSaleSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Data de vencimento inválida")
     .nullish(),
   redeemCashback: z.number().finite().min(0, "Valor de cashback inválido").max(1_000_000).optional(),
+  /** A forma de pagamento do sinal a abater (fase 8, fatia 8b). Vazio = não abate. */
+  depositPaymentMethodId: z.string().uuid({ message: "Forma de pagamento do sinal inválida" }).nullish(),
 })
 
 export const receiveSalePaymentSchema = z.object({

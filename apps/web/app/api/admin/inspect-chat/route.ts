@@ -6,11 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, sql } from '@repo/db';
 import { logger } from '@/lib/infra/logger';
-import { requireAdminAuth } from '@/lib/services/admin-auth.service';
+import { requireAdminRequest } from '@/lib/services/admin-auth.service';
 
 export async function GET(request: NextRequest) {
-    const authError = requireAdminAuth(request.headers);
-    if (authError) return authError;
+    const auth = await requireAdminRequest(request.headers);
+    if ('response' in auth) return auth.response;
 
     try {
         const { searchParams } = new URL(request.url);

@@ -19,6 +19,7 @@ const KIND_LABEL: Record<CareMessageDispatchDTO["kind"], string> = {
   post_care: "Cuidados depois",
   return: "Retorno",
   review: "Pedido de avaliação",
+  subscription_due: "Vencimento de assinatura",
 }
 
 const STATUS_LABEL: Record<DispatchStatus, string> = {

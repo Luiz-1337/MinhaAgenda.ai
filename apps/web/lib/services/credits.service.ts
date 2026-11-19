@@ -106,12 +106,19 @@ export async function debitSalonCredits(
     tokensUsed: number,
     model: string,
     /** Parte de `tokensUsed` que veio do cache de prompt da OpenAI — conta 1/10. */
-    cachedTokens: number = 0
-): Promise<void> {
-    if (!tokensUsed || tokensUsed <= 0) return
+    cachedTokens: number = 0,
+    /**
+     * O nome gravado na coluna `model`, quando não é o próprio modelo. Uso de IA
+     * que NÃO vem de mensagem (a análise dos relatórios, por exemplo) precisa de
+     * uma linha própria: o stats-sync reescreve as linhas (dia, modelo) a partir
+     * de `messages` e apagaria esse consumo. O peso continua sendo o de `model`.
+     */
+    ledgerModel?: string
+): Promise<number> {
+    if (!tokensUsed || tokensUsed <= 0) return 0
 
     const credits = calculateCredits(tokensUsed, model, cachedTokens)
-    if (credits <= 0) return
+    if (credits <= 0) return 0
 
     const today = formatBrazilTime(new Date(), "yyyy-MM-dd")
 
@@ -120,7 +127,7 @@ export async function debitSalonCredits(
         .values({
             salonId,
             date: today,
-            model,
+            model: ledgerModel ?? model,
             credits,
         })
         .onConflictDoUpdate({
@@ -130,4 +137,6 @@ export async function debitSalonCredits(
                 updatedAt: sql`now()`,
             },
         })
+
+    return credits
 }

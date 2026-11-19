@@ -16,6 +16,7 @@ import { InvoiceList } from "@/components/billing/invoice-list"
 import { BuyCredits } from "@/components/billing/buy-credits"
 import { PaymentMethods } from "@/components/billing/payment-methods"
 import { CREDIT_PACKS } from "@/lib/stripe"
+import { isSubscriptionLive } from "@/lib/utils/stripe-billing.utils"
 
 const PLAN_INFO: Record<string, { name: string; price: string; features: string[] }> = {
   SOLO: {
@@ -90,7 +91,9 @@ export default async function BillingPage({
 
   const plan = PLAN_INFO[details.tier] ?? PLAN_INFO.SOLO
   const statusInfo = STATUS_LABELS[details.subscriptionStatus] ?? STATUS_LABELS.TRIAL
-  const hasSubscription = !!details.subscription
+  // Assinatura cancelada continua lida do Stripe, mas não conta: o dono precisa
+  // poder assinar de novo.
+  const hasSubscription = !!details.subscription && isSubscriptionLive(details.subscription.status)
   const renewalDate = details.subscription?.currentPeriodEnd
     ? new Date(details.subscription.currentPeriodEnd * 1000).toLocaleDateString('pt-BR')
     : null

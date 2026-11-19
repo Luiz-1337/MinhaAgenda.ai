@@ -228,6 +228,8 @@ export function SaleEditor({
   const [debtDueDate, setDebtDueDate] = useState("")
   // Cashback do cliente usado para pagar parte da comanda (fase 6).
   const [cashbackUse, setCashbackUse] = useState("")
+  // A forma de pagamento do sinal a abater (fase 8, fatia 8b). "" = não abater.
+  const [depositMethodId, setDepositMethodId] = useState("")
   // O cupom aplicado (fase 6) e o que está sendo digitado.
   const [coupon, setCoupon] = useState<SaleCouponDTO | null>(sale?.coupon ?? null)
   const [couponInput, setCouponInput] = useState("")
@@ -342,6 +344,8 @@ export function SaleEditor({
   const cashback = cashbackQueryEnabled ? (cashbackQuery.data ?? null) : null
   const cashbackBalanceCents = cashback?.enabled ? (toCents(cashback.balance) ?? 0) : 0
   const cashbackUsable = cashback?.enabled === true && cashback.status === "available"
+  // Sinal recebido dos agendamentos da comanda, ainda não abatido (fase 8, fatia 8b).
+  const depositAvailableCents = sale && status === "open" ? (toCents(sale.depositAvailable) ?? 0) : 0
 
   // O pedido de avaliação da comanda faturada (fase 6): o link para enviar ao cliente.
   const reviewQueryEnabled = options.reviewsEnabled && status === "invoiced" && saleId !== undefined
@@ -586,9 +590,15 @@ export function SaleEditor({
     setAcceptDebt(false)
     setDebtDueDate("")
     setCashbackUse("")
-    setPayments(
-      totals.total > 0 ? [{ key: nextKey(), methodId: firstMethod, amount: moneyToInput(centsToNumeric(totals.total)) }] : []
-    )
+    // O sinal recebido já entra abatido quando o salão tem uma forma "PIX" e ele
+    // cabe no total; senão, quem fatura escolhe.
+    const depositMethod =
+      depositAvailableCents > 0 && depositAvailableCents <= totals.total
+        ? (options.paymentMethods.find((method) => /pix/i.test(method.name))?.id ?? "")
+        : ""
+    setDepositMethodId(depositMethod)
+    const rest = totals.total - (depositMethod ? depositAvailableCents : 0)
+    setPayments(rest > 0 ? [{ key: nextKey(), methodId: firstMethod, amount: moneyToInput(centsToNumeric(rest)) }] : [])
     setInvoiceOpen(true)
   }
 
@@ -665,7 +675,9 @@ export function SaleEditor({
   // Só no faturamento, e só se o cliente pode resgatar.
   const cashbackCents =
     dialogMode === "invoice" && cashbackUsable ? Math.max(0, toCents(parseBRL(cashbackUse)) ?? 0) : 0
-  const remainingCents = targetCents - paidCents - cashbackCents
+  // O sinal recebido que entra como pagamento (fase 8, fatia 8b).
+  const depositCents = dialogMode === "invoice" && depositMethodId ? depositAvailableCents : 0
+  const remainingCents = targetCents - paidCents - cashbackCents - depositCents
 
   /**
    * Mudar o cashback ajusta o pagamento quando há uma linha só — é o caso comum, e
@@ -676,8 +688,24 @@ export function SaleEditor({
     const use = Math.max(0, toCents(parseBRL(value)) ?? 0)
     setPayments((current) => {
       if (current.length !== 1) return current
-      const rest = totals.total - use
+      const rest = totals.total - use - depositCents
       return rest > 0 ? [{ ...current[0], amount: moneyToInput(centsToNumeric(rest)) }] : []
+    })
+  }
+
+  /** Abater (ou não) o sinal ajusta o pagamento quando há uma linha só, como o cashback. */
+  function changeDepositMethod(value: string) {
+    const wasApplied = depositMethodId !== ""
+    setDepositMethodId(value)
+    if (wasApplied === (value !== "")) return
+    setPayments((current) => {
+      if (current.length > 1) return current
+      const rest = totals.total - cashbackCents - (value ? depositAvailableCents : 0)
+      if (rest <= 0) return []
+      const amount = moneyToInput(centsToNumeric(rest))
+      return current.length === 1
+        ? [{ ...current[0], amount }]
+        : [{ key: nextKey(), methodId: options.paymentMethods[0]?.id ?? "", amount }]
     })
   }
   const leavingDebt = dialogMode === "invoice" && acceptDebt && options.can.invoiceDebt && remainingCents > 0
@@ -732,6 +760,7 @@ export function SaleEditor({
         acceptDebt: leavingDebt,
         debtDueDate: leavingDebt && debtDueDate ? debtDueDate : null,
         redeemCashback: cashbackCents > 0 ? cashbackCents / 100 : undefined,
+        depositPaymentMethodId: depositCents > 0 ? depositMethodId : null,
       })
       if ("error" in result) {
         toast.error(result.error)
@@ -1286,6 +1315,18 @@ export function SaleEditor({
                 <span className="font-mono tabular-nums">− {formatBRL(sale.cashbackRedeemed)}</span>
               </div>
             )}
+            {sale && Number(sale.depositApplied) > 0 && (
+              <div className="flex justify-between text-muted-foreground text-xs">
+                <span>Sinal abatido (está nos pagamentos)</span>
+                <span className="font-mono tabular-nums">{formatBRL(sale.depositApplied)}</span>
+              </div>
+            )}
+            {sale && status === "open" && depositAvailableCents > 0 && (
+              <div className="flex justify-between text-emerald-700 dark:text-emerald-400 text-xs">
+                <span>Sinal recebido, a abater no faturamento</span>
+                <span className="font-mono tabular-nums">{formatBRL(sale.depositAvailable)}</span>
+              </div>
+            )}
             {sale && Number(sale.cashbackEarned) > 0 && (
               <div className="flex justify-between text-emerald-700 dark:text-emerald-400 text-xs">
                 <span>Cashback gerado para o cliente</span>
@@ -1420,6 +1461,37 @@ export function SaleEditor({
                   </div>
                 )}
 
+                {/* Sinal: só aparece quando um agendamento da comanda tem sinal recebido. */}
+                {dialogMode === "invoice" && depositAvailableCents > 0 && (
+                  <div className="space-y-1 border-b border-border pb-4">
+                    <label htmlFor="invoice-deposit" className="text-[11px] font-semibold text-muted-foreground">
+                      Sinal recebido ({formatBRL(centsToNumeric(depositAvailableCents))}) — abater como
+                    </label>
+                    <select
+                      id="invoice-deposit"
+                      value={depositMethodId}
+                      disabled={isPending}
+                      onChange={(event) => changeDepositMethod(event.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">Não abater nesta comanda</option>
+                      {options.paymentMethods.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">
+                      {depositMethodId
+                        ? "O sinal entra como um pagamento nesta forma, com a data de hoje."
+                        : "O sinal continua recebido, sem entrar nesta comanda."}
+                    </p>
+                    {depositCents > targetCents && (
+                      <p className="text-xs text-destructive">O sinal passa do total da comanda.</p>
+                    )}
+                  </div>
+                )}
+
                 {payments.map((payment, index) => {
                   const method = options.paymentMethods.find((m) => m.id === payment.methodId)
                   const amountCents = toCents(parseBRL(payment.amount)) ?? 0
@@ -1474,6 +1546,7 @@ export function SaleEditor({
                             nenhum (fiado inteiro). */}
                         {(payments.length > 1 ||
                           cashbackCents > 0 ||
+                          depositCents > 0 ||
                           (dialogMode === "invoice" && options.can.invoiceDebt)) && (
                           <button
                             onClick={() => setPayments((current) => current.filter((p) => p.key !== payment.key))}

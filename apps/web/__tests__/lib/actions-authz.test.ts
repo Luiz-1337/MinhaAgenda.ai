@@ -48,6 +48,12 @@ const GUARDED_FILES = [
   "customer-documents.ts",
   "reports.ts",
   "finance-reports.ts",
+  "agenda-reports.ts",
+  "sales-reports.ts",
+  "professional-panel.ts",
+  "organization.ts",
+  "appointment-deposits.ts",
+  "report-insights.ts",
 ] as const
 
 /** Nome dos helpers de autorização aceitos em cada arquivo. */

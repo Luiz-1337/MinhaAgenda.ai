@@ -49,6 +49,7 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
                 services={salon.services}
                 firstDay={salon.firstDay}
                 lastDay={salon.lastDay}
+                deposit={salon.deposit}
               />
             )}
           </>

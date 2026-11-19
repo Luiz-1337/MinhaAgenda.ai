@@ -249,13 +249,12 @@ export async function createSalonWithOwner(userId: string, data: CreateSalonSche
         commissionRate: '0',
       })
 
-      // 4. Atualiza role do usuário (se necessário, ex: primeira vez criando salão)
-      await tx
-        .update(profiles)
-        .set({ systemRole: "admin" })
-        .where(eq(profiles.id, userId))
+      // NÃO mexer em `profiles.system_role` aqui. Ser dono vem de
+      // `salons.owner_id` (+ o profissional MANAGER acima); `system_role = 'admin'`
+      // é o super-admin do PRODUTO e abre /z_admin_minhaagendaai. Este passo
+      // promovia todo dono criado por /onboarding a super-admin (19/11/2026).
 
-      // 5. Seed das colunas default do kanban
+      // 4. Seed das colunas default do kanban
       await seedDefaultKanbanColumns(tx, newSalon.id)
 
       console.log("Salão criado com sucesso:", newSalon.id)

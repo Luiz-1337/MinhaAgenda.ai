@@ -77,10 +77,20 @@ describe("resolveReportCatalog", () => {
 
   it("módulo desligado esconde o relatório, mesmo com a permissão", () => {
     const reports = keysOf({ modules: ["reports"], permissions: [...ALL_PERMISSION_KEYS] })
-    // Só o que não depende de módulo (a lista de contatos) abre.
-    expect(reports.filter((report) => report.path).map((report) => report.key)).toEqual(["customers.list"])
+    // Só abre o que não depende de módulo: agenda e clientes.
+    expect(reports.filter((report) => report.path).map((report) => report.key)).toEqual([
+      "appointments.all",
+      "appointments.cancelled",
+      "appointments.origin",
+      "appointments.creation",
+      "customers.list",
+      "customers.birthdays",
+      "customers.inactive",
+      "inventory.catalog",
+      "ranking.referrals",
+    ])
     // O que ainda não existe continua aparecendo, como "em breve".
-    expect(reports.some((report) => report.key === "customers.birthdays")).toBe(true)
+    expect(reports.some((report) => report.key === "tax.all")).toBe(true)
     expect(reports.some((report) => report.key === "finance.results")).toBe(false)
   })
 

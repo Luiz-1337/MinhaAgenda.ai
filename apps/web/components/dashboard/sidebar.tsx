@@ -34,7 +34,10 @@ import {
   HeartHandshake,
   Target,
   BarChart3,
+  ChevronDown,
 } from "lucide-react"
+import { useState } from "react"
+import { SIDEBAR_COLLAPSED_COOKIE, parseCollapsedGroups } from "@/lib/utils/sidebar.utils"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
 import type { SalonListItem } from "@/lib/types/salon"
@@ -92,51 +95,101 @@ function shouldShowItem(href: string, role: ProfessionalRole, isSolo: boolean, s
   return false
 }
 
+/**
+ * Grupos por área de trabalho do salão. O `id` é estável: é ele que fica salvo
+ * no cookie de grupos recolhidos — renomear o `title` não perde a preferência.
+ */
 const menuGroups = [
   {
-    title: 'Visão Geral',
+    id: "overview",
+    title: "Visão geral",
     items: [
       { href: "dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "schedule", label: "Agenda", icon: Calendar },
-      { href: "sales", label: "Comandas", icon: Receipt },
-      { href: "finance", label: "Financeiro", icon: Landmark },
-      { href: "commissions", label: "Comissões", icon: Percent },
-      { href: "inventory", label: "Estoque", icon: Boxes },
-      { href: "packages", label: "Pacotes", icon: Gift },
-      { href: "cashback", label: "Cashback", icon: Coins },
-      { href: "promotions", label: "Promoções", icon: Tag },
-      { href: "reviews", label: "Avaliações", icon: Star },
-      { href: "care-messages", label: "Cuidados e retorno", icon: HeartHandshake },
-      { href: "goals", label: "Metas", icon: Target },
       { href: "reports", label: "Relatórios", icon: BarChart3 },
-    ]
+      { href: "goals", label: "Metas", icon: Target },
+    ],
   },
   {
-    title: 'Operação Intelligence',
+    id: "service",
+    title: "Atendimento",
     items: [
       { href: "chat", label: "Conversas", icon: MessageSquare },
       { href: "kanban", label: "Kanban", icon: Trello },
-      { href: "agents", label: "Agentes AI", icon: Bot },
       { href: "contacts", label: "Contatos", icon: User },
-      { href: "team", label: "Equipe", icon: Briefcase },
-    ]
+      { href: "agents", label: "Agentes AI", icon: Bot },
+    ],
   },
   {
-    title: 'Gestão & Ajustes',
+    id: "money",
+    title: "Vendas e financeiro",
     items: [
-      { href: "billing", label: "Faturamento", icon: CreditCard },
+      { href: "sales", label: "Comandas", icon: Receipt },
+      { href: "finance", label: "Financeiro", icon: Landmark },
+      { href: "commissions", label: "Comissões", icon: Percent },
+    ],
+  },
+  {
+    id: "catalog",
+    title: "Catálogo e estoque",
+    items: [
       { href: "services", label: "Serviços", icon: Zap },
       { href: "products", label: "Produtos", icon: Package },
+      { href: "inventory", label: "Estoque", icon: Boxes },
+      { href: "packages", label: "Pacotes", icon: Gift },
+    ],
+  },
+  {
+    id: "loyalty",
+    title: "Marketing e fidelização",
+    items: [
+      { href: "promotions", label: "Promoções", icon: Tag },
+      { href: "cashback", label: "Cashback", icon: Coins },
+      { href: "reviews", label: "Avaliações", icon: Star },
+      { href: "care-messages", label: "Cuidados e retorno", icon: HeartHandshake },
+    ],
+  },
+  {
+    id: "settings",
+    title: "Configurações",
+    items: [
+      { href: "team", label: "Equipe", icon: Briefcase },
       { href: "integrations", label: "Integrações", icon: Plug },
-    ]
-  }
+      { href: "billing", label: "Faturamento", icon: CreditCard },
+    ],
+  },
 ] as const
 
-export function SidebarNav() {
+function readCollapsedCookie(): string[] | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.split("; ").find((c) => c.startsWith(`${SIDEBAR_COLLAPSED_COOKIE}=`))
+  return parseCollapsedGroups(match?.slice(SIDEBAR_COLLAPSED_COOKIE.length + 1))
+}
+
+function writeCollapsedCookie(ids: Set<string>) {
+  const value = encodeURIComponent([...ids].join(","))
+  document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`
+}
+
+export function SidebarNav({ initialCollapsed = [] }: { initialCollapsed?: string[] }) {
   const pathname = usePathname()
   const router = useRouter()
   const { activeSalon } = useSalon()
   const { role, isSolo } = useSalonAuth()
+
+  // No client o cookie é a fonte da verdade (a sidebar mobile monta depois e
+  // precisa ver o que foi recolhido na desktop). No server, vem do layout.
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(readCollapsedCookie() ?? initialCollapsed)
+  )
+
+  const toggleGroup = (id: string) => {
+    const next = new Set(collapsed)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    writeCollapsedCookie(next)
+    setCollapsed(next)
+  }
 
   const handleCreateSalon = () => {
     router.push("/onboarding")
@@ -176,19 +229,44 @@ export function SidebarNav() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-2 custom-scrollbar">
-        {menuGroups.map((group, groupIndex) => {
+        {menuGroups.map((group) => {
           // Filtra itens baseados na role
           const visibleItems = group.items.filter(item => shouldShowItem(item.href, role, isSolo, activeSalon))
 
           if (visibleItems.length === 0) return null
 
+          const isCollapsed = collapsed.has(group.id)
+          // Recolhido, o grupo ainda mostra a página em que você está — senão
+          // a navegação "some" e fica sem referência de onde se está.
+          const itemsToShow = isCollapsed
+            ? visibleItems.filter((item) => isActive(item.href))
+            : visibleItems
+          const listId = `sidebar-group-${group.id}`
+
           return (
-            <div key={groupIndex} className="mb-5">
-              <h4 className="text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/40 mb-2 px-3">
-                {group.title}
-              </h4>
-              <div className="space-y-0.5">
-                {visibleItems.map((item) => {
+            <div key={group.id} className="mb-3">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.id)}
+                aria-expanded={!isCollapsed}
+                aria-controls={listId}
+                className="group/header w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-md text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/40 hover:text-sidebar-foreground/70 transition-colors"
+              >
+                <span className="truncate">{group.title}</span>
+                <span className="flex items-center gap-1.5">
+                  {isCollapsed && (
+                    <span className="normal-case tracking-normal font-normal tabular-nums">
+                      {visibleItems.length}
+                    </span>
+                  )}
+                  <ChevronDown
+                    size={12}
+                    className={cn("transition-transform duration-150", isCollapsed && "-rotate-90")}
+                  />
+                </span>
+              </button>
+              <div id={listId} className="space-y-0.5 mt-0.5">
+                {itemsToShow.map((item) => {
                   const active = isActive(item.href)
                   const Icon = item.icon
                   return (
@@ -216,7 +294,7 @@ export function SidebarNav() {
   )
 }
 
-export function MobileSidebar() {
+export function MobileSidebar({ initialCollapsed = [] }: { initialCollapsed?: string[] }) {
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -234,7 +312,7 @@ export function MobileSidebar() {
             <Logo size="sm" textClassName="text-sidebar-foreground" />
           </div>
           <div className="flex-1 flex flex-col overflow-hidden">
-            <SidebarNav />
+            <SidebarNav initialCollapsed={initialCollapsed} />
           </div>
         </div>
       </SheetContent>

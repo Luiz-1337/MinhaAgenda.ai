@@ -11,6 +11,9 @@ import {
   FINANCE_REPORT_VIEW_LABELS,
   type FinanceReportView,
 } from "@repo/db/src/domain/finance-reports"
+import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { ReportInsightsPanel } from "@/components/reports/report-insights-panel"
+import { csvDate, csvFileName, csvMoney } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, formatQuantity, labelClass } from "../../inventory/inventory-ui"
 
 const money = (cents: number) => formatBRL(cents / 100)
@@ -278,6 +281,54 @@ export function FinanceReportsClient({ salonId, data }: { salonId: string; data:
     startTransition(() => router.push(`${pathname}?${params.toString()}`))
   }
 
+  /** A planilha do relatório que está na tela (fatia 9f). */
+  function sheet(): CsvSheet {
+    const title = FINANCE_REPORT_VIEW_LABELS[data.view]
+    if (data.view === "projection") {
+      return {
+        fileName: csvFileName(title, data.from, data.to),
+        headers: ["Dia", "Agendamentos", "Sem preço", "Agendado", "A receber", "A pagar", "Previsto"],
+        rows: data.report.days.map((day) => [
+          csvDate(day.day),
+          day.appointments,
+          day.unpriced,
+          csvMoney(day.scheduledCents),
+          csvMoney(day.receivableCents),
+          csvMoney(day.payableCents),
+          csvMoney(day.netCents),
+        ]),
+      }
+    }
+    if (data.view === "statement") {
+      const account = data.accounts.find((item) => item.id === data.accountId)?.name
+      return {
+        fileName: csvFileName(title, account, data.from, data.to),
+        headers: ["Dia da baixa", "Descrição", "Entrada", "Saída", "Saldo"],
+        rows: (data.statement?.rows ?? []).map((row) => [
+          csvDate(row.day),
+          row.description,
+          row.direction === "in" ? csvMoney(row.netCents) : null,
+          row.direction === "out" ? csvMoney(row.netCents) : null,
+          csvMoney(row.balanceCents),
+        ]),
+      }
+    }
+    return {
+      fileName: csvFileName(title, data.from, data.to),
+      headers: [data.view === "services" ? "Serviço" : "Produto", "Quantidade", "Receita", "Taxas", "Comissão", "Custo", "Resultado", "Margem (%)"],
+      rows: data.report.rows.map((row) => [
+        row.name,
+        row.quantity,
+        csvMoney(row.revenueCents),
+        csvMoney(row.feeCents),
+        csvMoney(row.commissionCents),
+        row.costMissing ? null : csvMoney(row.costCents),
+        csvMoney(row.netCents),
+        row.marginPercent,
+      ]),
+    }
+  }
+
   return (
     <div className="flex flex-col h-full gap-6 overflow-y-auto custom-scrollbar pb-8">
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -374,7 +425,10 @@ export function FinanceReportsClient({ salonId, data }: { salonId: string; data:
         <p className="text-xs text-muted-foreground sm:pb-2.5">
           {formatCalendarDate(data.from)} a {formatCalendarDate(data.to)}
         </p>
+        <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
+
+      <ReportInsightsPanel salonId={salonId} screen="finance" />
 
       {data.view === "projection" ? (
         <Projection data={data} />

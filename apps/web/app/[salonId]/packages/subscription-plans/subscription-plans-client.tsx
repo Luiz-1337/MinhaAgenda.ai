@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Pencil, Plus, Repeat, Trash2 } from "lucide-react"
+import { Link2, Pencil, Plus, Repeat, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ConfirmModal } from "@/components/ui/confirm-modal"
 import { deleteSubscriptionPlan, saveSubscriptionPlan } from "@/app/actions/subscriptions"
@@ -129,12 +129,28 @@ export function SubscriptionPlansClient({ salonId, data }: { salonId: string; da
             </p>
           </div>
         </div>
-        {data.can.manage && (
-          <Button onClick={() => setForm(emptyForm())} disabled={isPending}>
-            <Plus size={16} />
-            Novo plano
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            title="Copiar o link da página pública com os planos marcados como visíveis"
+            onClick={() => {
+              const url = `${window.location.origin}/planos/${salonId}`
+              navigator.clipboard.writeText(url).then(
+                () => toast.success("Link da página de planos copiado"),
+                () => toast.error("Não foi possível copiar o link")
+              )
+            }}
+          >
+            <Link2 size={16} />
+            Link dos planos
           </Button>
-        )}
+          {data.can.manage && (
+            <Button onClick={() => setForm(emptyForm())} disabled={isPending}>
+              <Plus size={16} />
+              Novo plano
+            </Button>
+          )}
+        </div>
       </div>
 
       <PackagesNav salonId={salonId} />
@@ -208,8 +224,8 @@ export function SubscriptionPlansClient({ salonId, data }: { salonId: string; da
         )}
         <p className="p-3 border-t border-border text-xs text-muted-foreground">
           A assinatura do cliente copia o nome, o valor e a periodicidade do plano no dia em que é criada: mudar o
-          plano aqui depois não muda quem já assina. “Visível” marca o plano para a página pública de planos, que
-          ainda não existe.
+          plano aqui depois não muda quem já assina. “Visível” põe o plano ativo na página pública de planos (botão
+          “Link dos planos”). A página só mostra: quem quer assinar fala com o salão.
         </p>
       </section>
 

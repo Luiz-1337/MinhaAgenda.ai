@@ -39,6 +39,11 @@ function nullableText(value?: string | null): string | null {
     return trimmed === "" ? null : trimmed
 }
 
+/** Mensagem de um erro capturado (`catch` recebe `unknown`); vazia se não for Error. */
+function messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : ""
+}
+
 /** Início (inclusive) e fim (exclusivo) do mês atual em ISO YYYY-MM-DD. */
 function getCurrentMonthRange(): { start: string; end: string } {
     const now = new Date()
@@ -257,9 +262,9 @@ export async function adminCreateUser(data: z.infer<typeof createUserSchema>) {
 
         revalidatePath("/z_admin_minhaagendaai/users")
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error creating user:", error)
-        return { error: error.message || "Erro interno ao criar usuário" }
+        return { error: messageOf(error) || "Erro interno ao criar usuário" }
     }
 }
 
@@ -360,9 +365,9 @@ export async function updateUserDetails(data: z.infer<typeof updateUserSchema>) 
         revalidatePath(`/z_admin_minhaagendaai/users/${v.id}`)
         revalidatePath("/z_admin_minhaagendaai/users")
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error updating user:", error)
-        return { error: error.message || "Erro ao atualizar usuário" }
+        return { error: messageOf(error) || "Erro ao atualizar usuário" }
     }
 }
 
@@ -400,9 +405,9 @@ export async function adminResetPassword(userId: string, newPassword: string) {
         })
 
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error resetting password:", error)
-        return { error: error.message || "Erro ao resetar senha" }
+        return { error: messageOf(error) || "Erro ao resetar senha" }
     }
 }
 
@@ -424,7 +429,7 @@ export async function updateSalonCreditsLimit(salonId: string, limit: number | n
             return { error: "Salão não encontrado" }
         }
 
-        const currentSettings = (salon.settings as Record<string, any>) || {}
+        const currentSettings = (salon.settings as Record<string, unknown> | null) || {}
         const newSettings = { ...currentSettings }
         const previousLimit = currentSettings.custom_monthly_limit ?? null
 
@@ -447,9 +452,9 @@ export async function updateSalonCreditsLimit(salonId: string, limit: number | n
 
         revalidatePath(`/z_admin_minhaagendaai/users/${salon.ownerId}`)
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error updating credits limit:", error)
-        return { error: error.message || "Erro ao atualizar limite de créditos" }
+        return { error: messageOf(error) || "Erro ao atualizar limite de créditos" }
     }
 }
 
@@ -500,9 +505,9 @@ export async function grantSalonExtraCredits(salonId: string, delta: number) {
 
         revalidatePath(`/z_admin_minhaagendaai/users/${salon.ownerId}`)
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error granting extra credits:", error)
-        return { error: error.message || "Erro ao conceder créditos" }
+        return { error: messageOf(error) || "Erro ao conceder créditos" }
     }
 }
 
@@ -544,9 +549,9 @@ export async function resetSalonMonthlyUsage(salonId: string) {
 
         revalidatePath(`/z_admin_minhaagendaai/users/${salon.ownerId}`)
         return { success: true, rowsDeleted: deleted.length }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error resetting monthly usage:", error)
-        return { error: error.message || "Erro ao zerar consumo" }
+        return { error: messageOf(error) || "Erro ao zerar consumo" }
     }
 }
 
@@ -587,9 +592,9 @@ export async function updateSalonAiRetentionFlag(salonId: string, enabled: boole
 
         revalidatePath(`/z_admin_minhaagendaai/users/${salon.ownerId}`)
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error updating AI retention flag:", error)
-        return { error: error.message || "Erro ao atualizar flag de retenção IA" }
+        return { error: messageOf(error) || "Erro ao atualizar flag de retenção IA" }
     }
 }
 
@@ -688,9 +693,9 @@ export async function adminDeleteUser(userId: string) {
         revalidatePath("/z_admin_minhaagendaai/users")
         revalidatePath("/z_admin_minhaagendaai")
         return { success: true }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error deleting user:", error)
-        return { error: error.message || "Erro ao excluir usuário" }
+        return { error: messageOf(error) || "Erro ao excluir usuário" }
     }
 }
 
@@ -739,9 +744,9 @@ export async function adminBulkDeleteUsers(userIds: string[]) {
         revalidatePath("/z_admin_minhaagendaai/users")
         revalidatePath("/z_admin_minhaagendaai")
         return { success: true, deleted, skipped, errors }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error bulk deleting users:", error)
-        return { error: error.message || "Erro ao excluir usuários" }
+        return { error: messageOf(error) || "Erro ao excluir usuários" }
     }
 }
 
@@ -778,8 +783,8 @@ export async function adminBulkUpdatePlan(
 
         revalidatePath("/z_admin_minhaagendaai/users")
         return { success: true, updated: parsed.data.userIds.length }
-    } catch (error: any) {
+    } catch (error) {
         console.error("Error bulk updating plan:", error)
-        return { error: error.message || "Erro ao atualizar planos" }
+        return { error: messageOf(error) || "Erro ao atualizar planos" }
     }
 }

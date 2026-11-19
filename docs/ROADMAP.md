@@ -80,14 +80,50 @@ Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
 Fatia 7f (agendamento online público) feita na mesma branch, sem migration,
 publicada e testada em uso em 18/nov/2026 — ver §11.12. O cálculo de horários
-da IA não foi trocado. **A fase 7 NÃO está na `main`**: não há PR aberto.
+da IA não foi trocado. **A fase 7 está na `main`** desde 19/nov/2026: entrou inteira pelo PR #21 (o da branch da fase 9, que sai dela).
 Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
 relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
 `claude/fase-7-cliente-agenda`): migration 064 aplicada em 18/nov/2026,
 publicada e testada em uso em 19/nov/2026 — ver §13.6.
 Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.7.
-Fases 8 e 10: planejamento.
+Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
+migration, publicada e testada em uso em 19/nov/2026 — ver §13.8.
+Fatia 9d (relatórios de vendas e rankings) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 — ver §13.9.
+Fatia 9e (painel de profissionais) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 (a ocupação; o valor realizado não
+foi visto com comanda) — ver §13.10.
+Fatia 9f (exportação em planilha) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 — **o arquivo não foi aberto em Excel
+nem em Sheets** — ver §13.11.
+Fatia 9g (organização multiunidade): levantamento em §13.12; o dono escolheu o
+caminho A ("a organização é o dono") em 19/nov/2026. Feita na mesma branch, sem
+migration, publicada e testada em uso com UMA unidade — **a comparação entre
+duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 9
+estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
+mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g também já estão na `main`** (conferido em 19/nov/2026: a
+branch `claude/fase-9-relatorios` não tem commit fora da `main`) — ver §13.14.
+Fatia 9h (análise com IA nas telas de relatório), pedida pelo dono em
+19/nov/2026, feita na branch `claude/relatorios-insights-ia` (sai da `main`),
+sem migration — publicada no preview e **testada em uso nas cinco telas** em
+19/nov/2026; no **PR #30**, aberto em 19/nov/2026 e esperando a mescla — ver §13.15.
+Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
+de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
+8a (sinal do agendamento por PIX direto ao salão) feita na branch
+`claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — migration 065
+aplicada e **testada em uso** em 19/nov/2026; **já na `main`**, pelo PR #26 —
+ver §14.6. **As fatias 8b, 8c e 8d estão no PR #28, aberto em 19/nov/2026 e
+esperando a mescla** — ver §14.10. Fatia 8b (abater o sinal na comanda) feita na mesma
+branch — migration 066 aplicada, publicada no preview e **testada em uso** em
+19/nov/2026; também fora da `main` — ver §14.7. Fatia 8c (aviso de
+vencimento da assinatura no painel e página pública de planos) feita na mesma
+branch, sem migration — publicada no preview e **testada em uso** em
+19/nov/2026; também fora da `main` — ver §14.8. Fatia 8d (aviso de vencimento da assinatura por WhatsApp) feita na mesma
+branch — migration 067 aplicada, publicada no preview e com a configuração
+testada em uso em 19/nov/2026; **o envio de verdade NÃO foi testado** (só roda
+pelo cron de produção); também fora da `main` — ver §14.9.
+Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -3992,7 +4028,9 @@ Perguntas para o dono:
   alterados) e testes passando (web 1368, db 296, mcp-server 409).
 - **Sem migration.** Publicar não muda nada para nenhum salão: o módulo
   `online_booking` nasce desligado. **Está ligado só no salão de teste**
-  (UPDATE em `salons.settings`, pelo id, em 18/nov/2026) — e ficou ligado.
+  (UPDATE em `salons.settings`, pelo id, em 18/nov/2026). **Foi desligado em
+  19/nov/2026**, a pedido do dono, depois que a fase 7 entrou na `main`: hoje
+  nenhum salão tem o módulo.
 - **O que esta fatia NÃO mexeu, de propósito:** o cálculo de horários da IA
   (regra 43), o `createAppointmentService` (continua aceitando marcar dentro do
   intervalo quando chamado pela tela do salão ou pela IA) e a tela de criar
@@ -4106,6 +4144,14 @@ Perguntas para o dono:
 | Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
+| Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
+| Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
+| Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
+| Abrir no Excel um CSV exportado dos relatórios e conferir acentos, colunas, valores como número e datas — ver §13.11 | Confirmar o formato da exportação |
+| Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
+| Ver a tela Organização com um dono de mais de um salão (hoje só há um em produção, e não é a conta de teste) — ver §13.13 | Confirmar a comparação entre unidades |
+| Confirmar o que é a fase 8 "sem receber dos clientes" e responder às perguntas de §14.4 (prazo para o sinal, sinal da IA, valor por serviço, devolução) | As fatias 8b e 8c |
+| Responder às perguntas da multiunidade em §13.12 (gerente que vê todas as unidades, dado compartilhado, despesa organizacional, cobrança) | Decidir se o caminho B (entidade "organização") é necessário |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4124,17 +4170,20 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 |---|---|---|
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
-| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
-| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
-| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
-| 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
-| 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
+| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
+| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
+| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
+| 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
+| 9g | Organização: membros com papel e unidades (multiunidade) | Caminho A feito, sem migration, publicado na branch e testado em uso com uma unidade só — **a comparação entre duas não foi vista** (§13.12 e §13.13) |
+| 9h | Análise com IA em cada tela de relatório: resumo, o que vai bem, pontos de atenção e o que fazer | Feita, sem migration, testada em uso no preview nas cinco telas (§13.15); no PR #30 |
 
 "Todas as notas fiscais" é da fase 10.
 
 ### 13.2 O que o levantamento encontrou (18/nov/2026)
 
-- (Depois da fatia 9b, são 26 dos 38 com tela.)
+- (Depois da fatia 9b, são 26 dos 38 com tela; depois da 9c, 32; depois da
+  9d, 37 — só falta a nota fiscal, da fase 10. O painel de profissionais, que
+  não é um dos 38, fica para a 9e.)
 - **22 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
   a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
   compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
@@ -4219,8 +4268,182 @@ Fatia 9b — relatórios financeiros:
 12. **O relatório e os filtros vivem na URL**: dá para recarregar, mandar o
     link e marcar como favorito na central.
 
+Fatia 9c — relatórios de agendamentos e de clientes:
+
+13. **Todos os agendamentos**, por período, pelo dia do atendimento, de todos
+    os profissionais: a contagem por situação (pendente, confirmado, concluído,
+    falta, cancelado) e a lista com dia e hora, cliente, serviço, profissional e
+    situação. Bloqueios de horário não entram.
+14. **Agendamentos cancelados**, pelo dia em que o atendimento ia acontecer: a
+    lista com quando foi cancelado, por quem e o motivo, e quantos ficaram sem
+    motivo. "Por quem" só existe quando o cancelamento veio de alguém logado no
+    painel.
+15. **Origem dos agendamentos**: quatro linhas — anúncio, orgânico, "veio do
+    Google Calendar" e "não se sabe" — com total, parte do total, concluídos,
+    faltas, cancelados e comparecimento (concluídos ÷ os que já tiveram
+    desfecho). A origem é a que o cliente tinha quando o agendamento foi criado.
+    **O sistema não guarda quem marcou** (IA, painel ou página online): isso
+    pediria uma coluna nova em `appointments`.
+16. **Criação de agendamento**, pelo dia em que foi CRIADO: quantos por dia, a
+    antecedência média e quatro faixas (no mesmo dia, 1 a 2 dias, 3 a 7, mais
+    de 7). Conta todos, qualquer que seja a situação hoje.
+17. **Aniversariantes**: por mês (sem mês, o de hoje), pelo dia, com a idade que
+    a pessoa completa no ano. Só entra quem tem a data de nascimento na ficha
+    (fatia 7a).
+18. **Inativos**: quem já veio (atendimento concluído ou comanda faturada), não
+    vem há N dias ou mais (30, 60, 90, 180 ou 365; padrão 60) e não tem horário
+    marcado. Quem sumiu há menos tempo vem primeiro. Não usa o ciclo médio de
+    cada serviço.
+19. **Quem vê**: agendamentos pedem `schedule.view_all` (mostram a agenda de
+    todos); clientes pedem `customers.access`, e o telefone só aparece — e só
+    sai do banco — para quem tem `customers.view_phones`. Os dois pedem o
+    módulo `reports`.
+
+Fatia 9d — relatórios de vendas e rankings:
+
+20. **Produtos e serviços vendidos**, por período, pelo dia da comanda, só de
+    comandas FATURADAS: uma linha por item (serviço, produto, pacote ou
+    assinatura), com quantidade, em quantas comandas apareceu, valor e parte do
+    total; e o total por tipo. O que mais rendeu vem primeiro. Item usado de um
+    pacote entra com valor zero.
+21. **Ranking de clientes**: quem mais gastou no período — comandas, total,
+    ticket médio (total ÷ comandas) e a última comanda. A lista mostra os 100
+    primeiros; os cartões somam todos. Conta o que foi FATURADO, pago ou não.
+22. **Ranking de vendas**, por profissional: serviços realizados (quantidade e
+    valor) e produtos vendidos (quantidade e valor). Serviço conta para quem
+    executou; produto, para quem vendeu; o auxiliar não entra. Produto sem
+    vendedor fica em "Sem profissional", no fim. Pacote e assinatura não entram.
+23. **Lista de produtos e serviços**: o catálogo como está hoje, ativos e
+    inativos. Serviço: duração, preço (valor, faixa ou "sob avaliação") e custo
+    fixo. Produto: código, preço, custo de compra, preço para profissional e se
+    o estoque é controlado. Não mostra saldo nem comissão por item.
+24. **Indicação de clientes**: o "como conheceu" (fatia 7a) dos clientes
+    CADASTRADOS no período. O campo é texto livre: o relatório junta o que só
+    difere por maiúscula, acento ou espaço, e mostra a grafia mais usada. A
+    parte é calculada sobre quem informou.
+25. **Quem vê**: vendidos e os dois rankings pedem o módulo `sales` e
+    `sales.view_all` (leem todas as comandas). A lista pede `products.access`,
+    e os serviços só entram para quem tem também `services.access`. Indicação
+    pede `customers.access`. Todos pedem o módulo `reports`.
+
+Fatia 9e — painel de profissionais:
+
+26. **Uma linha por profissional**, no período (sem datas, o mês até hoje):
+    clientes únicos, valor realizado, ticket médio, frequência, agendamentos e
+    ocupação. Entra todo profissional ativo, e o inativo que teve venda ou
+    agendamento no período. Quem mais realizou vem primeiro.
+27. **Valor realizado, clientes únicos, ticket e frequência saem das comandas
+    FATURADAS**, pelo dia da comanda: serviço conta para quem executou, produto
+    para quem vendeu; pacote, assinatura e o auxiliar não entram. Ticket médio
+    = valor ÷ comandas. Frequência = comandas ÷ clientes únicos.
+28. **Ocupação** = tempo dos agendamentos não cancelados (falta conta: o
+    horário ficou reservado) ÷ tempo de expediente cadastrado, sem os
+    intervalos, nos dias do período. Bloqueio de horário não é agendamento.
+    Sem expediente cadastrado, a ocupação fica em branco. **Folgas e bloqueios
+    não são descontados do expediente.**
+29. **"BAIXA OCUPAÇÃO"** aparece abaixo de 30%.
+30. **Os cartões são do salão**, não a soma das linhas: o cliente que passou
+    por dois profissionais conta uma vez, e a comanda também.
+31. **Quem vê**: pede os módulos `reports` e `sales`, `sales.view_all` E
+    `schedule.view_all` (mostra as vendas e a agenda de todos).
+
+Fatia 9f — exportação em planilha:
+
+32. **"Exportar" em todos os relatórios da fase 9** (financeiros, agendamentos,
+    clientes, vendas e rankings, painel de profissionais): baixa em CSV **o que
+    a tela está mostrando** — as mesmas linhas, com o mesmo relatório e os
+    mesmos filtros. Os cartões de totais não vão no arquivo.
+33. **Um formato só, para abrir direto no Excel em português**: separador
+    ponto e vírgula, UTF-8 com marca BOM (acentos certos), número com vírgula
+    decimal e sem ponto de milhar (a planilha soma), dinheiro em reais, data
+    como DD/MM/AAAA. O nome do arquivo leva o relatório e o período.
+34. **Texto que começa com `=`, `+`, `-` ou `@` ganha um apóstrofo na
+    frente**: Excel e Sheets leem isso como fórmula, e nome de cliente, motivo
+    de cancelamento e "como conheceu" são digitados por gente de fora.
+35. **A planilha é montada no navegador**, com o que o servidor já entregou
+    para a tela. Não há action nova: a permissão é a de abrir o relatório. O
+    telefone só vai no arquivo se a tela o mostra.
+36. **O teto de linhas é o da tela** (regra de cada relatório): se a tela avisa
+    que o período foi cortado, a planilha sai cortada igual.
+37. **Fora desta fatia**: os relatórios das fases 2 a 6 (resumo do financeiro,
+    estoque, pacotes, cashback, avaliações) continuam sem exportar; a lista de
+    contatos já exportava, no formato antigo (vírgula, sem BOM).
+
+Fatia 9g — organização (caminho A):
+
+38. **A organização é o dono.** As unidades são os salões de que a pessoa
+    logada é DONA (`salons.owner_id`). Gerente e profissional não veem a tela,
+    tenham a permissão que tiverem. Não há entidade nova no banco.
+39. **Unidades lado a lado**, no período: faturamento, parte do total, comandas,
+    ticket médio, clientes que compraram e agendamentos; e, de hoje, clientes
+    cadastrados e profissionais ativos. A que mais faturou vem primeiro, e a
+    última linha soma a organização.
+40. **A soma é simples.** Cada unidade tem o seu cadastro: a mesma pessoa
+    cliente (ou profissional) de duas unidades conta duas vezes.
+41. **Equipe numa lista só**, uma linha por PESSOA: cadastros com o mesmo login,
+    a mesma chave de pessoa (a da agenda) ou o mesmo e-mail são a mesma pessoa.
+    Mostra em que unidades ela está, com o papel em cada uma. Quem está em mais
+    unidades vem primeiro.
+42. **Só leitura.** Para incluir alguém numa unidade ou ver o detalhe, o nome
+    da unidade leva para o salão dela. Nada é compartilhado entre unidades.
+43. **A lista de salões nunca vem do navegador**: o servidor lê os salões do
+    usuário da sessão. É o único serviço que lê mais de um salão de uma vez.
+44. **Quem vê**: o dono, abrindo a tela de um salão DELE que tenha o módulo
+    `reports`. Quem é dono de uma unidade só também abre (com um aviso).
+
+Fatia 9h — análise com IA nas telas de relatório (pedida pelo dono em
+19/nov/2026):
+
+45. **Onde**: um painel "Análise com IA", logo abaixo dos filtros, nas telas de
+    relatórios financeiros, de agendamentos, de clientes, de vendas e no painel
+    de profissionais. A central e a Organização não têm.
+46. **Sob demanda.** Nada é gerado sozinho nem guardado: o botão "Gerar análise"
+    faz uma; "Gerar de novo", outra (e outro consumo). Mudar o relatório ou o
+    período recarrega a tela e o painel volta ao botão.
+47. **Os números são os da própria tela, lidos de novo no servidor.** A tela
+    manda só QUAL tela e os filtros da URL; a análise chama a mesma action que a
+    tela chamou. Assim ela só vê o que a pessoa pode ver, com a permissão da
+    tela, e ninguém consegue mandar número forjado para a IA comentar.
+48. **O que vai para a IA**: números e nomes de serviço, produto e
+    profissional. **Nunca** contato, documento, identificador, texto livre
+    (observação, descrição, motivo — o histórico do financeiro escreve nome de
+    cliente) nem nome de cliente. Lista longa vira resumo por coluna (total;
+    soma, média, mínimo e máximo; os valores mais frequentes; dia da semana e
+    hora) com uma amostra de até 10 linhas. Tudo cabe em 14 mil caracteres; se
+    não couber, pede um período menor. Dinheiro vai em reais e tempo em horas,
+    como as telas mostram.
+49. **O que volta**: um resumo de uma ou duas frases, "O que está indo bem",
+    "Pontos de atenção" e "O que fazer" (com impacto alto, médio ou baixo), até
+    5 itens por lista. O formato é pedido no modo estrito da OpenAI e conferido
+    antes de ir para a tela.
+50. **A IA é instruída** a usar só os números recebidos e citar o número de cada
+    ponto; a não inventar média de mercado nem meta; a dizer quando os dados são
+    poucos; a sugerir ações para as próximas semanas, ligadas ao que a tela
+    mostra; e a ignorar qualquer instrução escrita dentro dos dados.
+51. **Modelo**: o da plataforma (`gpt-6-sol`, o mesmo do WhatsApp), com
+    raciocínio baixo, sem guardar a conversa na OpenAI (`store: false`).
+52. **Custa créditos de IA do salão**, pelo mesmo peso da conversa do WhatsApp.
+    Sem crédito no mês, não gera. **Análise que falha não é cobrada.** O consumo
+    fica numa linha própria de `ai_usage_stats` (`gpt-6-sol:relatorios`): o
+    stats-sync reescreve as linhas por modelo a partir das mensagens e apagaria
+    esse consumo se ele ficasse na linha do modelo.
+53. **Quem gera**: quem tem `reports.access` e a permissão da tela. Sem
+    permissão nova.
+54. **O rodapé** diz a hora, os créditos usados e "A IA pode errar: confira os
+    números da tela antes de decidir".
+
 Perguntas para o dono:
 
+- (9h) A análise deve mesmo custar créditos do salão (regra 52), ou ser
+  gratuita com um limite por mês?
+- (9h) Vale guardar a última análise de cada tela, para não pagar de novo e
+  para comparar meses? Pede migration.
+- (9h) A análise deve comparar com o período anterior? Hoje a IA só vê o
+  período da tela.
+- (9h) Levar a análise também à Organização (comparar unidades) e ao
+  Dashboard?
+- (9h) Quem pode gerar: qualquer um que vê o relatório (regra 53), ou só o
+  dono e o gerente?
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
   já abre?
 - (9a) Os favoritos devem ser de cada pessoa (regra 4) ou do salão?
@@ -4236,6 +4459,38 @@ Perguntas para o dono:
   pelo maior ou pela média (regra 9)?
 - (9b) A projeção deve descontar uma taxa de falta ou de cancelamento?
 - (9b) O extrato deve mostrar também o que está em aberto, como previsão?
+- (9c) Vale guardar QUEM marcou o agendamento (IA, painel, página online)? Sem
+  isso, "origem" só sabe anúncio × orgânico (regra 15). Pede migration.
+- (9c) Os relatórios de agendamentos precisam de filtro por profissional, por
+  serviço e por situação?
+- (9c) "Inativo" deve seguir um prazo fixo (regra 18) ou o tempo de retorno de
+  cada serviço?
+- (9c) Aniversariantes: por mês basta, ou é preciso um período livre e o filtro
+  de ativos e inativos, como na Belasis?
+- (9c) Dos aniversariantes e dos inativos, o dono quer sair direto para uma
+  campanha no WhatsApp?
+- (9d) O ranking de clientes deve contar o que foi faturado (regra 21) ou só
+  o que foi pago?
+- (9d) No ranking de vendas, venda de pacote e de assinatura deve contar para
+  alguém? E o auxiliar?
+- (9d) "Como conheceu" deve virar uma lista de opções (em vez de texto livre),
+  para o relatório de indicação não depender de grafia?
+- (9d) A lista de produtos e serviços deve trazer a comissão de cada item e o
+  saldo de estoque?
+- (9e) O limite de "baixa ocupação" é 30% (regra 29). Qual o número certo?
+- (9e) A ocupação deve descontar folgas, feriados e bloqueios do expediente
+  (regra 28)? Hoje não há tela para cadastrar folga.
+- (9e) "Frequência" é comandas ÷ clientes únicos (regra 27). É isso que o dono
+  entende por frequência, ou é o intervalo médio entre as visitas?
+- (9e) O painel deve mostrar também a comissão e as faltas de cada um?
+- (9f) CSV basta, ou é preciso PDF e impressão? E arquivo `.xlsx` de verdade?
+- (9f) A exportação deve chegar também aos relatórios das fases anteriores
+  (financeiro, estoque, pacotes, cashback, avaliações)?
+- (9f) Exportar deve pedir uma permissão própria? Hoje quem abre o relatório
+  exporta (regra 35) — e a planilha leva nome de cliente e, se a pessoa pode
+  ver, telefone.
+- (9f) A exportação de contatos deve passar para o mesmo formato (ponto e
+  vírgula, com BOM)?
 - (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
   ver? A auditoria não leu a saída de nenhum.
 - (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
@@ -4251,16 +4506,42 @@ Perguntas para o dono:
   seletor de relatório, o período (na projeção, só o "até") e, no extrato, a
   conta. Cada relatório tem os totais em cartões, a tabela e uma nota dizendo o
   que entra e o que não entra na conta.
+- **Relatórios de agendamentos (9c)** (`/[salonId]/reports/appointments?view=…`):
+  seletor de relatório e período; cartões com as contagens; e a tabela de cada
+  um (lista, cancelados, origem, criação).
+- **Relatórios de clientes (9c)** (`/[salonId]/reports/customers?view=…`):
+  aniversariantes (seletor de mês) e inativos (seletor de prazo), com o nome
+  levando à ficha do cliente.
+- **Relatórios de vendas (9d)** (`/[salonId]/reports/sales?view=…`): vendidos,
+  ranking de clientes, ranking de vendas e indicação, com período; e a lista
+  de produtos e serviços, sem período.
+- **Painel de profissionais (9e)** (`/[salonId]/reports/professionals`): o
+  período; quatro cartões do salão (clientes únicos, valor realizado, ticket
+  médio, ocupação); e a tabela por profissional, com a ocupação em porcentagem,
+  em horas ("12h de 40h") e o selo "BAIXA OCUPAÇÃO".
+- **Exportar (9f)**: botão no fim da barra de filtros de cada relatório da
+  fase 9; avisa quantas linhas saíram, ou que não há linhas.
+- **Organização (9g)** (`/[salonId]/organization`, atalho no topo da central
+  de relatórios, só para o dono): o período; a tabela de unidades com a linha
+  de soma; a tabela da equipe; e "Exportar" (as unidades).
+- **Análise com IA (9h)**: painel abaixo da barra de filtros das cinco telas
+  (regra 45), com "Gerar análise", o resumo, as três listas e o rodapé.
 
 | Assunto | Onde está |
 |---|---|
 | Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
 | Relatórios financeiros (9b) | Sem migration; regra em `domain/finance-reports.ts` (`allocateByWeight`, `buildNetResult`, `planProjectionPeriod`, `buildRevenueProjection`, `buildAccountStatement`); I/O em `services/finance-reports.service.ts`; action em `actions/finance-reports.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/finance/`; os quatro destinos no catálogo (`domain/report-catalog.ts`); testes em `finance-reports-domain.test.ts` |
+| Relatórios de agendamentos e de clientes (9c) | Sem migration; regra em `domain/agenda-reports.ts` (`countByStatus`, `appointmentOrigin`, `buildOriginReport`, `buildCreationReport`, `buildBirthdayList`, `buildInactiveList`); I/O em `services/agenda-reports.service.ts`; actions em `actions/agenda-reports.ts` (na guarda de `actions-authz.test.ts`); telas em `app/[salonId]/reports/appointments/` e `reports/customers/`; os seis destinos no catálogo; testes em `agenda-reports-domain.test.ts` |
+| Relatórios de vendas e rankings (9d) | Sem migration; regra em `domain/sales-reports.ts` (`buildSoldItemsReport`, `buildCustomerRanking`, `buildProfessionalRanking`, `buildReferralReport`); I/O em `services/sales-reports.service.ts`; action em `actions/sales-reports.ts` (na guarda de `actions-authz.test.ts`; a permissão depende do relatório); tela em `app/[salonId]/reports/sales/`; os cinco destinos no catálogo; testes em `sales-reports-domain.test.ts` |
+| Painel de profissionais (9e) | Sem migration; regra em `domain/professional-panel.ts` (`countWeekdays`, `weeklyWorkMinutes`, `buildProfessionalPanel`); I/O em `services/professional-panel.service.ts` (reusa `listSoldItemsService`); action em `actions/professional-panel.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/professionals/`; o destino no catálogo; testes em `professional-panel-domain.test.ts` |
+| Exportação em planilha (9f) | Sem migration e sem action nova; o formato em `apps/web/lib/utils/csv.utils.ts` (`toCsv`, `csvMoney`, `csvDate`, `csvFileName`); o botão em `components/reports/export-csv-button.tsx`; a função `sheet()` de cada tela em `app/[salonId]/reports/*/…-client.tsx`; testes em `__tests__/lib/utils/csv.utils.test.ts` |
+| Organização (9g, caminho A) | Sem migration; regra em `domain/organization.ts` (`buildOrganizationUnits`, `groupOrganizationMembers`); I/O em `services/organization.service.ts` (o único que lê mais de um salão; a lista sai de `salons.owner_id`); action em `actions/organization.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/organization/`; o atalho em `reports/reports-client.tsx` (`ownedSalons` em `actions/reports.ts`); testes em `organization-domain.test.ts` |
+| Análise com IA (9h) | Sem migration; regra em `domain/report-insights.ts` (`planReportInsightInput`, `parseReportInsights`, `REPORT_INSIGHTS_JSON_SCHEMA`); a chamada à OpenAI em `apps/web/lib/services/reports/report-insights.service.ts`; action `getReportInsights` em `actions/report-insights.ts` (na guarda de `actions-authz.test.ts`); o débito em `debitSalonCredits` (`lib/services/credits.service.ts`, parâmetro `ledgerModel`); o painel em `components/reports/report-insights-panel.tsx`; testes em `report-insights-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
 - Na branch `claude/fase-9-relatorios` (sai de `claude/fase-7-cliente-agenda`,
-  que não está na `main`), publicada (preview da Vercel — endereço novo, com
+  que na época não estava na `main`), publicada (preview da Vercel — endereço novo, com
   login próprio). Typecheck (db, web e mcp-server), lint (nenhum erro novo nos
   arquivos alterados) e testes passando (web 1383, db 296, mcp-server 409).
 - **Migration 064: aplicada em produção em 18/nov/2026** (registrada como
@@ -4356,3 +4637,774 @@ Perguntas para o dono:
 - Dados de teste limpos pela tela: a baixa foi desfeita ao reabrir a comanda
   #33, que foi excluída (fica como excluída, como as anteriores). Sem
   lançamentos, pagamentos nem movimento de estoque.
+
+### 13.8 Fatia 9c — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando.
+- **Sem migration.** Só leitura.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f);
+  - sem filtro por profissional, serviço ou situação;
+  - "origem" não sabe quem marcou (regra 15);
+  - o relatório de agendamentos lê até 3.000 linhas por período, e as listas de
+    clientes até 1.000; acima disso a tela avisa;
+  - "atendimentos" do inativo conta agendamentos concluídos, não comandas;
+  - sem botão para mandar mensagem aos aniversariantes ou aos inativos.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  cada número conferido contra o banco (período de 01 a 19/nov/2026):
+  - todos os agendamentos — total 4, os 4 cancelados, e a lista com dia e hora
+    de Brasília, cliente, serviço, profissional e situação;
+  - cancelados — 4, sendo 2 sem motivo; "cancelado em", "por quem" e o motivo
+    de cada um;
+  - origem — "Não se sabe" 4 (100%), comparecimento 0%; as outras três linhas
+    zeradas, com "—";
+  - criação — 13 criados (2 em 15/nov e 11 em 18/nov), antecedência média de
+    5,2 dias, 8 na faixa de 1 a 2 dias e 5 em mais de 7 dias;
+  - aniversariantes — com uma data de nascimento posta num cliente de teste
+    (por SQL, pelo id, e tirada depois): aparece no mês certo, no dia 25, com
+    "36 anos" e o telefone; outro mês: "Nenhum cliente com aniversário";
+  - inativos — os 5 clientes com atendimento concluído, de 240 a 300 dias sem
+    vir, quem sumiu há menos tempo primeiro; com o prazo de 365 dias, nenhum;
+  - a central passou a "32 de 39 relatórios disponíveis", com 7 em "Em breve".
+- **Não testado em uso:** situações que o salão de teste não tem (pendente,
+  confirmado, concluído e falta no período; origem de anúncio, orgânica e do
+  Google); cliente inativo com horário marcado (some da lista) e com comanda
+  faturada mais recente que o último atendimento; usuário sem
+  `schedule.view_all`, e sem `customers.view_phones` (o telefone some); os
+  tetos de linhas; trocar de relatório e de filtro pelos seletores (o teste foi
+  pela URL).
+- Dados de teste: a data de nascimento do cliente de teste foi desfeita.
+  Nenhum outro dado foi criado.
+
+### 13.9 Fatia 9d — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1430).
+- **Sem migration.** Só leitura.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f);
+  - os três relatórios de venda leem até 5.000 itens de comanda por período;
+    acima disso a tela avisa;
+  - a lista de produtos e serviços não tem busca, filtro nem paginação;
+  - indicação depende do que foi digitado no "como conheceu".
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  cada número conferido contra o banco:
+  - vendidos sem dados — os cinco cartões zerados e "Nada vendido";
+  - lista de produtos e serviços — os 12 serviços (duração, preço em valor ou
+    em faixa, custo fixo) e os 2 produtos (código, preço, custo de compra,
+    preço para profissional, "Controlado" ou "Sem controle");
+  - indicação — com "como conheceu" posto em três clientes de teste
+    ("Instagram", "instagram" e "Indicação"; por SQL, pelo id, e desfeito
+    depois): 8 cadastrados no período, 3 informaram (37,5%), "instagram" com 2
+    (66,7%) e "Indicação" com 1 (33,3%) — as duas grafias viraram uma linha;
+  - com a comanda de teste #34 faturada (serviço de R$ 170,00 com
+    profissional e produto de R$ 10,00 sem vendedor):
+    - vendidos — total R$ 180,00, serviços R$ 170,00 (94,4%), produtos
+      R$ 10,00 (5,6%);
+    - ranking de clientes — 1 cliente, 1 comanda, total e ticket médio de
+      R$ 180,00, última comanda em 19/11/2026;
+    - ranking de vendas — o profissional com 1 serviço e R$ 170,00, e a linha
+      "Sem profissional" com 1 produto e R$ 10,00, no fim.
+- **Achado do teste:** com duas grafias empatadas ("Instagram" e "instagram",
+  uma vez cada), o relatório de indicação mostra a que vem primeiro na ordem
+  alfabética — saiu a minúscula. É só o rótulo; a contagem está certa.
+- **Não testado em uso:** pacote e assinatura nos vendidos; mais de um cliente
+  e mais de um profissional (a ordem dos rankings só tem teste de regra); a
+  lista dos 100 primeiros; serviço "sob avaliação" e produto ou serviço
+  inativo na lista; usuário sem `sales.view_all`, e com `products.access`
+  sem `services.access`; salão sem o módulo `sales`; trocar de relatório
+  pelo seletor (o teste foi pela URL).
+- Dados de teste limpos: a comanda #34 reaberta e excluída pela tela (fica
+  como excluída, como as anteriores), e o "como conheceu" dos três clientes
+  desfeito.
+
+### 13.10 Fatia 9e — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1439).
+- **Sem migration.** Só leitura.
+- Com esta fatia, o catálogo da central tem tela para tudo menos a nota fiscal
+  (fase 10): a central mostra "38 de 39 relatórios disponíveis".
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f) e sem gráfico;
+  - a ocupação não desconta folga, feriado nem bloqueio, e usa o expediente
+    de HOJE para o período inteiro (não guarda histórico de expediente);
+  - plano SOLO: a tela do salão grava o agendamento no profissional do dono,
+    então a ocupação dos outros só conta o que a IA ou a página online marcou;
+  - lê até 5.000 itens de comanda e 10.000 agendamentos por período.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  o expediente calculado à mão a partir do cadastro e os agendamentos lidos do
+  banco:
+  - de 01 a 19/nov — os dois profissionais ativos, sem venda e sem agendamento
+    não cancelado: expediente de 164h (um trabalha os sete dias) e de 56h (o
+    outro, de quinta a sábado), 220h no salão; ocupação 0% e "BAIXA OCUPAÇÃO"
+    nos dois; ticket e frequência em branco;
+  - de 01/jan a 31/mar — o profissional com os 5 atendimentos concluídos do
+    período: 5 agendamentos, 5h de 312h, ocupação 1,6%; o outro, 0h de 771h; o
+    salão, 5h de 1.083h, 0,5%;
+  - a central passou a "38 de 39", com só "Todas as notas fiscais" em "Em
+    breve".
+- **Não testado em uso:**
+  - **valor realizado, clientes únicos, ticket médio e frequência com comanda
+    faturada** — o salão de teste não tem nenhuma. A leitura dos itens é a
+    mesma do ranking de vendas, testada na 9d; a conta do painel tem teste de
+    regra;
+  - expediente com intervalo (o salão de teste não tem); profissional inativo
+    com movimento; ocupação acima de 30% (sem o selo);
+  - usuário sem `sales.view_all` ou sem `schedule.view_all`; os tetos de
+    linhas.
+- Nenhum dado de teste foi criado.
+
+### 13.11 Fatia 9f — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro nem aviso nos arquivos
+  alterados) e testes passando (web 1447).
+- **Sem migration e sem consulta nova.** O que muda é só no navegador.
+- **Limites desta fatia:** só CSV (sem PDF, sem `.xlsx`, sem impressão); só
+  os relatórios da fase 9; os totais dos cartões não vão no arquivo; o
+  relatório de criação exporta os dias, não as faixas de antecedência; a lista
+  de produtos e serviços sai numa planilha só, com o preço do serviço em texto
+  ("R$ 150,00 a R$ 220,00") e o do produto em número.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste. O
+  arquivo foi capturado na página em vez de baixado para o computador (o
+  clique no link de download foi interceptado), e o conteúdo lido:
+  - agendamentos cancelados — clique no botão "Exportar": arquivo
+    `agendamentos-cancelados_2026-11-01_2026-11-19.csv`, 538 bytes, começando
+    pelos três bytes da marca BOM; título e as 4 linhas da tela, com ponto e
+    vírgula, data em DD/MM/AAAA e o motivo vazio onde não há; aviso "4 linhas
+    exportadas";
+  - painel de profissionais (jan a mar) — `painel-de-profissionais_2026-01-01_2026-03-31.csv`,
+    com "Sim" em Ativo, horas em número (5 e 312), ocupação "1,6" com vírgula
+    e ticket vazio onde a tela mostra "—";
+  - lista de produtos e serviços — `lista-de-produtos-e-servicos.csv`, 14
+    linhas (12 serviços e 2 produtos), com o código do produto e o custo vazio
+    onde não há;
+  - relatório sem linhas (resultado líquido de serviços, sem comanda) — nenhum
+    arquivo e o aviso "Não há linhas para exportar".
+- **Não testado:**
+  - **abrir o arquivo no Excel ou no Sheets** (acentos, colunas, valores como
+    número, datas, e o apóstrofo das células que começam como fórmula) — fica
+    para o dono, nas pendências;
+  - o download de verdade para a pasta do computador;
+  - os outros relatórios (financeiro com linhas, clientes com telefone,
+    vendas, origem, criação): a função de cada um só tem o typecheck;
+  - usuário sem `customers.view_phones` (a coluna de telefone some).
+- Nenhum dado de teste foi criado.
+
+### 13.12 Fatia 9g — levantamento da multiunidade (19/nov/2026)
+
+Só levantamento: nenhuma linha de código nem de banco foi mexida.
+
+**O que a auditoria mostra na Belasis**
+
+- **Seletor de unidade** no menu: troca entre filiais (a conta auditada tinha
+  "Matriz" e mais uma).
+- **Organização** (`/organization`, só para a conta admin): lista de membros com
+  Nome, E-mail, Papel e **Unidades**, e "Adicionar membro".
+- **"Receita organizacional?" e "Despesa organizacional?"** nos lançamentos do
+  financeiro: um lançamento pode ser da organização, e não de uma unidade.
+- **Filtro por filial** no painel, e o painel de profissionais "por unidade".
+- A auditoria não abriu nenhuma dessas telas por dentro: não se sabe o que é
+  compartilhado entre unidades (clientes? catálogo? estoque?), nem o que os
+  papéis da organização podem.
+
+**O que o MinhaAgenda já tem**
+
+- **"Unidade" já existe, com outro nome: é o salão.** Uma mesma pessoa pode ser
+  dona de mais de um salão, e o menu já tem "Selecionar salão"
+  (`components/dashboard/salon-selector.tsx`, alimentado por `getUserSalons`).
+- **O plano mora no DONO** (`profiles.tier`), não no salão: na prática, o dono
+  já é a "organização". SOLO só cria um salão (`createSalon`); PRO e
+  ENTERPRISE não têm limite no código, embora as telas prometam "até 3".
+- **A mesma pessoa em dois salões** já é reconhecida na agenda
+  (`professionals.person_key`): horário ocupado num salão bloqueia no outro.
+- **Tudo o mais é por salão, isolado**: clientes, catálogo, estoque, comandas,
+  financeiro, comissões, permissões, perfis de acesso e módulos. Cada tabela
+  tem `salon_id`, e toda consulta filtra por ele — é a regra de segurança do
+  sistema.
+- **Não existe**: tela de organização; membro adicionado a várias unidades de
+  uma vez (hoje se cadastra o profissional salão a salão); relatório que some
+  ou compare unidades; lançamento "da organização"; nada compartilhado entre
+  salões.
+
+**O tamanho real do problema hoje (produção, 19/nov/2026)**
+
+- 16 salões de 15 donos. **Um único dono tem mais de um salão** (dois).
+- Dos 15 donos, 12 são SOLO (não podem ter segundo salão), 2 PRO e 1 ENTERPRISE.
+- **Nenhum login trabalha em mais de um salão**, e nenhum `person_key` aparece
+  em dois salões.
+
+**Três caminhos**
+
+- **A — "A organização é o dono" (sem entidade nova).** Uma tela "Organização",
+  só para quem é dono de mais de um salão: as unidades lado a lado com os
+  números principais (faturamento, comandas, clientes, ocupação), e os membros
+  de todas as unidades numa lista só, podendo pôr a mesma pessoa em mais de
+  uma. Sem migration, ou com uma pequena. Cada salão continua isolado; a soma
+  é feita só para o dono. Limites: só o dono enxerga o conjunto (gerente
+  não); nada é compartilhado entre unidades; não há "lançamento da
+  organização".
+- **B — Entidade "organização" de verdade.** Tabelas `organizations` e
+  `organization_members`, e `salons.organization_id`. Permite administrador
+  da organização que não é o dono, papéis por unidade, lançamento
+  organizacional e, mais adiante, cliente e catálogo compartilhados. Custo:
+  migration em `salons` (tabela do caminho crítico), o plano e a cobrança
+  passam a ser da organização, e a regra "toda consulta filtra por salão"
+  ganha exceções — cada uma é um risco de um salão ver dado de outro.
+- **C — Esperar.** Registrar o levantamento e não construir agora: hoje há um
+  dono com dois salões, e a auditoria não mostrou o que a Belasis compartilha.
+
+**Recomendação.** C agora, e A quando houver um cliente de verdade com mais de
+uma unidade. O B só se justifica se a resposta às perguntas abaixo for "sim"
+para administrador que não é o dono ou para dado compartilhado — e aí vale ser
+uma fase própria, não uma fatia dos relatórios.
+
+**Perguntas para o dono**
+
+- Existe hoje, ou está para chegar, um cliente com mais de uma unidade? O que
+  ele precisa primeiro: ver os números juntos, ou gerir a equipe em um lugar só?
+- Alguém que não é o dono precisa enxergar todas as unidades (um gerente
+  regional, um contador)?
+- O cliente de uma unidade deve ser cliente da outra (mesma ficha, mesmo
+  pacote, mesmo cashback)? E o catálogo de serviços e produtos?
+- O que é uma "despesa organizacional" para o salão de vocês: um gasto que não
+  é de nenhuma unidade (marca, contador), ou um gasto rateado entre elas?
+- O plano deve ser cobrado por organização ou por unidade? Hoje é por dono, e
+  PRO e ENTERPRISE não têm o limite de "até 3 salões" que as telas prometem.
+
+### 13.13 Fatia 9g — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1457).
+- **Sem migration.** Só leitura.
+- **Limites desta fatia (o que o caminho A não faz):**
+  - só o dono vê; não há administrador da organização que não seja o dono;
+  - não inclui, move nem remove ninguém: a equipe é só leitura;
+  - nada compartilhado entre unidades (cliente, catálogo, estoque, pacote);
+  - sem "receita/despesa organizacional";
+  - sem filtro de unidade nos outros relatórios: cada relatório continua sendo
+    de um salão;
+  - o atalho fica na central de relatórios, não no menu;
+  - a tabela da equipe mostra o e-mail de cada profissional.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste (o
+  dono tem esse salão e nenhum outro), com os números conferidos contra o
+  banco:
+  - o atalho "Organização: a sua unidade" no topo da central;
+  - a tela, de jan a mar/2026 — "Unidades (1)": só o salão do dono, dos 16
+    salões da base; faturamento R$ 0,00, parte e ticket em branco, 0 comandas,
+    5 agendamentos, 16 clientes cadastrados, 2 profissionais; o aviso de
+    unidade única; sem a linha de soma;
+  - "Equipe (2)": o dono "Com login" e o outro profissional "Sem login", cada
+    um com a unidade e o papel;
+  - um id de salão que não existe na URL — o sistema volta para o salão do
+    usuário (é a guarda do layout, anterior a esta tela).
+- **Não testado:**
+  - **duas unidades lado a lado** (a ordem, a parte de cada uma, a linha de
+    soma) e **a mesma pessoa em duas unidades** virando uma linha — só têm
+    teste de regra. A conta de teste é dona de um salão só;
+  - **gerente ou profissional tentando abrir a tela** (a recusa "só para o
+    dono") — o salão de teste só tem o dono com login;
+  - faturamento com comanda faturada; "Exportar" desta tela.
+- Nenhum dado de teste foi criado.
+
+### 13.14 O que está na `main` (19/nov/2026)
+
+- **PR #21** (`claude/fase-9-relatorios` → `main`), mesclado em 19/nov/2026
+  (commit `da0fc56`): levou a **fase 7 inteira** (fatias 7a a 7f, de que a
+  branch da fase 9 sai) e as **fatias 9a e 9b**. As migrations 059 a 064 já
+  estavam aplicadas em produção.
+- **Atualização (19/nov/2026, fim do dia): as fatias 9c a 9g já estão na
+  `main`** — a branch da fase 9 não tem mais commit fora dela. O item abaixo
+  é o registro de antes da mescla.
+- **Faltam na `main`: as fatias 9c, 9d, 9e, 9f e 9g.** Estão no **PR #24**
+  (`claude/fase-9-relatorios` → `main`), aberto em 19/nov/2026, esperando a
+  mescla do dono. A branch mescla sem conflito. Nenhuma tem migration.
+- **O que isso muda em produção:**
+  - os módulos novos continuam desligados para todos os salões, menos o de
+    teste, que tem `reports` ligado;
+  - **a página pública `/agendar/<id>` do salão de teste esteve no ar de
+    verdade** entre a mescla do PR #21 e 19/nov/2026, sem o login da Vercel que
+    protegia o preview. O módulo `online_booking` foi desligado nesse dia, a
+    pedido do dono: a página voltou a responder "Agendamento online
+    indisponível" e o botão "Link online" sumiu da agenda. Nenhum salão tem o
+    módulo ligado;
+  - as páginas `/assinar/<token>` passam a funcionar sem login para qualquer
+    salão que gerar um documento (a ficha do cliente é do produto base, e a
+    permissão `customers.documents` já vale para dono e gerente);
+  - os cartões "Anamneses" e "Documentos" aparecem na ficha do cliente em
+    todos os salões, para quem tem as permissões novas.
+- **Pendências que a entrada em produção destrava** (§12): abrir `/assinar` e
+  `/agendar` num celular sem login no painel.
+
+### 13.15 Fatia 9h — estado (19/nov/2026)
+
+- Na branch `claude/relatorios-insights-ia`, que sai da `main` (`84597e6`),
+  numa pasta de trabalho separada (`B:/MinhaAgenda.ai-insights`), publicada no
+  preview da Vercel; **no PR #30** (`claude/relatorios-insights-ia` → `main`,
+  aberto em 19/nov/2026, mescla limpa), esperando a mescla. Typecheck (db, web e
+  mcp-server), lint (nenhum erro nos arquivos alterados) e testes passando (web
+  1542).
+- **Sem migration.**
+- **Mudança fora da fatia**: `debitSalonCredits` ganhou o parâmetro opcional
+  `ledgerModel` e passou a devolver os créditos debitados. O worker do WhatsApp
+  chama do mesmo jeito e não usa o retorno.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - **Agendamentos** (01/01 a 19/11): a análise citou 10 agendamentos, 5
+    concluídos e 5 cancelados (50%) — os mesmos números dos cartões da tela —,
+    e nenhum nome de cliente, embora a tabela mostre os nomes;
+  - **Financeiro** (resultado líquido, 01/11 a 19/11, sem lançamentos) e
+    **Vendas** (01/01 a 19/11, tudo R$ 0,00): a IA disse que não havia dados
+    para concluir e sugeriu conferir os lançamentos, sem inventar número;
+  - **Clientes inativos**: falou dos 5 clientes da lista (240 a 300 dias sem
+    vir, 1 visita cada) sem citar nenhum nome — conferido contra os nomes da
+    tabela;
+  - **Painel de profissionais** (01/01 a 19/11): os números batiam com a tela,
+    mas vinham em minutos ("300 minutos em 66.720") enquanto a tela mostra
+    horas ("5h de 1112h"). **Corrigido**: minutos agora vão em horas.
+    Gerada de novo depois da correção: "5 horas agendadas em 3.880 horas
+    disponíveis", "Luiz tem 0 horas agendadas em 2.768" — como a tela;
+  - trocar o período recarrega a tela e o painel volta ao botão;
+  - cada análise levou de 8 a 18 segundos.
+- **Créditos**: as cinco primeiras análises somaram 2.961 créditos (de 468 a
+  892 cada) na linha `gpt-6-sol:relatorios` de `ai_usage_stats`. Os planos dão
+  de 1 a 10 milhões de créditos por mês.
+- **Não testado em uso:** salão sem crédito (a mensagem de crédito acabado);
+  tela com dados demais (a mensagem de período menor); quem vê o relatório mas
+  não tem a permissão da tela; análise com muitos dados reais — o salão de
+  teste tem poucos lançamentos.
+- **No dashboard**, o gráfico de créditos por modelo mostra o consumo da análise
+  com o nome cru `gpt-6-sol:relatorios`.
+- **Limites desta fatia:**
+  - nada é guardado (regra 46);
+  - sem comparação com o período anterior;
+  - lista longa vai resumida, não inteira (regra 48);
+  - na tela de clientes vão só contagens e dias, sem nomes;
+  - a Organização e o Dashboard não têm análise.
+
+## 14. Fase 8 — Pagamento, sem receber dos clientes
+
+A fase 8 original era "pagamento online": conta de pagamentos por salão, sinal
+no agendamento online e renovação automática de assinatura. Tudo isso pede um
+provedor de pagamento, que o dono deixou por último (§1). Em 19/nov/2026 ele
+pediu para seguir a fase **sem a parte de receber dos clientes**.
+
+Interpretação (minha, a confirmar): o sistema **não toca no dinheiro**. Faz o
+que dá para fazer com o cliente pagando direto ao salão — o que o salão já faz
+hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
+
+### 14.1 Fatias
+
+| Fatia | O que entra | Estado |
+|---|---|---|
+| 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
+| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
+| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita, sem migration, testada em uso no preview (§14.8); fora da `main` |
+| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Feita, migration 067 aplicada, configuração testada em uso no preview; **envio não testado** (§14.9); fora da `main` |
+
+**Fora da fase, por depender de provedor:** conta de pagamentos por salão,
+cobrança por link ou PIX gerado pelo sistema, confirmação automática do
+pagamento, cobrança automática de assinatura, estorno.
+
+### 14.2 O que o levantamento encontrou (19/nov/2026)
+
+- **O sinal já existia, só para a IA.** `salons.settings.advance_payment`
+  (ligado, valor, chave PIX, nome) é configurado na tela do salão e lido pelo
+  prompt do agente: ele informa a taxa, passa a chave e só agenda depois que o
+  cliente manda o comprovante. A equipe confere depois.
+- **Nada no sistema registrava o sinal.** Não havia como saber, olhando a
+  agenda, quem pagou.
+- **A página de agendamento online (7f) marcava sem pedir sinal**, mesmo em
+  salão com o sinal ligado. Foi o motivo de desligar o módulo no salão de teste.
+- **A tela do salão não tem "confirmar agendamento"**: o agendamento nasce
+  pendente e segue pendente até ser concluído. O sinal não mexe nisso.
+
+### 14.3 Modelo de dados
+
+**Migration 065 (fatia 8a)** — só tabela nova, não mexe em nenhuma existente:
+
+- **`appointment_deposits`** — o sinal de UM agendamento: `appointment_id`
+  (único; CASCADE), `amount`, `status` (`pending`, `received`, `waived`),
+  `source` (`online` ou `panel`), `received_at` (preenchido só quando
+  recebido — CHECK), `settled_by` e `created_by`.
+
+A configuração do sinal continua em `salons.settings.advance_payment`.
+
+**Migration 067 (fatia 8d):**
+
+- **`subscription_reminder_settings`** — por salão: `is_enabled` (nasce
+  desligado), `days_before` (1 a 15, padrão 3) e `message` (NULL = texto
+  padrão).
+- **`care_message_dispatches`** (a fila da fase 6; estava vazia em produção
+  quando a 067 foi aplicada) — ganha `subscription_id` (CASCADE) e `subscription_due`, o tipo
+  `subscription_due` no CHECK de tipo, a assinatura como origem válida e o
+  índice único (assinatura, vencimento). Só alarga: toda linha que existe
+  continua válida.
+
+**Migration 066 (fatia 8b)** — altera `appointment_deposits` (criada na 065,
+sem linhas em produção):
+
+- **`sale_id`** (a comanda em que o sinal foi abatido; SET NULL) e
+  **`applied_at`**. CHECK: só sinal `received` pode ter comanda.
+
+### 14.4 Regras decididas
+
+Fatia 8a — sinal do agendamento:
+
+1. **O sistema não recebe o dinheiro.** O cliente paga por PIX direto ao salão,
+   na chave que o salão configurou. O sistema guarda o pedido de sinal e o que
+   alguém do salão marcou. Não há conferência automática.
+2. **"O salão pede sinal"** quando a configuração está completa: ligada, com
+   valor e com chave PIX — a mesma condição que a IA usa.
+3. **Na página de agendamento online**, salão que pede sinal: avisa o valor
+   antes de marcar; depois de marcar, mostra o valor, a chave PIX (com "Copiar
+   chave"), em nome de quem ela está, e pede o comprovante pelo WhatsApp do
+   salão. O horário fica marcado na hora, com o sinal "aguardando".
+4. **Sem sinal pago, o horário NÃO cai sozinho.** O sistema não cancela o
+   agendamento de quem não pagou: o salão vê "Aguardando sinal" e decide.
+5. **No detalhe do agendamento**, a linha "Sinal": valor, situação (Aguardando
+   sinal, Sinal recebido, Sinal dispensado), de onde veio e, quando recebido, a
+   data e quem marcou. Ações: marcar como recebido, dispensar, voltar para
+   aguardando e tirar o sinal (só o que está aguardando).
+6. **O salão pode lançar sinal em qualquer agendamento** ("Lançar sinal", com o
+   valor configurado já sugerido) — inclusive nos que a IA marcou.
+7. **A IA não foi mexida.** Ela continua pedindo o comprovante antes de agendar,
+   e o agendamento que ela cria NÃO nasce com sinal registrado: o salão lança à
+   mão, se quiser controlar.
+8. **Um sinal por agendamento.** Excluir o agendamento apaga o sinal; cancelar
+   não apaga (o recebido continua lá, para devolver ou não).
+9. **O sinal ainda não é abatido na comanda** nem entra no financeiro — é a 8b.
+10. **Quem vê e quem mexe**: ver é de quem vê a agenda (`schedule.access`);
+    lançar, marcar, dispensar, reabrir e tirar é de quem edita
+    (`schedule.edit`). Sem módulo: a agenda é do produto base.
+
+Fatia 8b — sinal abatido na comanda:
+
+11. **O sinal recebido vira um pagamento da comanda.** Ao faturar a comanda de
+    um agendamento com sinal recebido, o diálogo mostra "Sinal recebido (valor)
+    — abater como" e a forma de pagamento. O servidor soma o sinal dos
+    agendamentos da comanda e grava UM pagamento a mais nessa forma. É um
+    pagamento comum: tem a taxa e o prazo da forma, gera a conta a receber no
+    financeiro e entra na conta da comissão, como qualquer outro.
+12. **Quem fatura escolhe a forma**, porque o sistema não sabe por onde o
+    dinheiro entrou. A tela já sugere a forma cujo nome tem "PIX"; se o salão
+    não tem, começa em "Não abater nesta comanda".
+13. **Não abater é permitido.** O sinal continua "recebido" e livre.
+14. **Tudo ou nada.** Sinal maior que o total da comanda não é abatido: não há
+    troco nem crédito. Fatura-se sem abater.
+15. **O valor vem do banco, não da tela.** A tela manda só a forma de pagamento.
+16. **Só sinal RECEBIDO entra.** O "aguardando" e o "dispensado" não aparecem no
+    faturamento.
+17. **Sinal abatido fica preso à comanda**: não dá para reabrir, dispensar nem
+    tirar. O detalhe do agendamento mostra "Abatido na comanda #N".
+18. **Reabrir a comanda solta o sinal**: os pagamentos somem (como já sumiam) e
+    o sinal volta a "recebido", livre para o próximo faturamento.
+19. **A data do pagamento é a do faturamento**, não a do dia em que o PIX
+    chegou. Entre o recebimento e o atendimento, o sinal não aparece no
+    financeiro.
+20. **Sem módulo próprio.** Com o financeiro desligado, o sinal vira pagamento
+    da comanda e nada mais.
+
+Fatia 8c — assinatura sem cobrança automática:
+
+21. **Nada é cobrado sozinho.** A renovação continua sendo "Renovar", que abre a
+    comanda da cobrança (fase 5, regra 24). A 8c só avisa.
+22. **"Vencendo"** é a assinatura ATIVA que vence em até 7 dias, contando hoje.
+    **"Vencida"** é a que já passou do vencimento (a situação Expirada).
+    Pendente (nunca paga) e Desativada não têm aviso.
+23. **Na tela de Assinaturas**: uma faixa no topo com quantas vencem nos
+    próximos 7 dias e quantas estão vencidas, com atalho para cada lista; o
+    filtro "Vencendo (N)"; e, na coluna Vencimento, "Vence hoje", "Vence
+    amanhã", "Vence em N dias", "Venceu ontem" ou "Venceu há N dias".
+24. **O aviso é só na tela de Assinaturas.** Não há alerta no sino nem no
+    dashboard.
+25. **A página pública de planos** (`/planos/<id do salão>`, sem login) mostra
+    os planos ATIVOS e marcados como "Visível": nome, descrição, valor e
+    periodicidade, do mais barato para o mais caro.
+26. **A página não vende nem cobra.** Diz "Para assinar, fale com o salão" e,
+    quando o salão tem WhatsApp cadastrado, mostra o botão que abre a conversa.
+    Não cria assinatura nem recolhe dado do visitante.
+27. **A página existe para salão com o módulo de pacotes e assinaturas.** Sem o
+    módulo e para endereço desconhecido a resposta é a mesma ("Planos
+    indisponíveis"). Com o módulo e sem plano visível: "Ainda não há planos".
+28. **O link** sai do botão "Link dos planos", na tela de Planos de assinatura.
+29. **O aviso por mensagem ficou fora** (fatia 8d): mexe na fila de mensagens ao
+    cliente, que é do caminho do WhatsApp, e pede migration.
+
+Fatia 8d — aviso de vencimento por WhatsApp:
+
+30. **Nasce desligado.** O salão liga em Assinaturas → "Aviso de vencimento
+    por WhatsApp" → Configurar (quem tem `packages.manage`): ligado ou não,
+    quantos dias antes (1 a 15, padrão 3) e o texto.
+31. **O texto** é opcional; em branco sai o padrão: "Olá, {cliente}! Sua
+    assinatura {item} no {salao} vence em {vencimento}. Fale com a gente para
+    renovar." `{item}` é o nome do plano e `{vencimento}`, dia e mês.
+32. **Usa a fila das mensagens ao cliente** (fase 6): sai das 9h às 20h de
+    Brasília, pelo canal do salão, fica gravado na conversa e aparece em
+    Cuidados e retorno → envios, como "Vencimento de assinatura".
+33. **Quem entra na fila**: assinatura não desativada, com período pago, que
+    vence em até N dias (contando hoje), de salão com o aviso ligado e o módulo
+    de pacotes. **Um aviso por assinatura e por vencimento.**
+34. **Assinatura vencida não é avisada.** O aviso é de antes; depois do
+    vencimento, a cobrança é com o salão (a tela mostra — regra 23).
+35. **Na hora de enviar, confere de novo**: não sai se o cliente pediu para não
+    receber, não tem telefone válido, o módulo ou o aviso foi desligado, a
+    assinatura foi desativada ou excluída, o vencimento mudou (renovou, ou a
+    cobrança foi desfeita) ou o dia já passou.
+36. **Falha não é reenviada** (regra da fila): fica registrada com o motivo. No
+    WhatsApp oficial, fora das 24 horas da última mensagem do cliente, só sai
+    modelo aprovado pela Meta — e não há modelo para este aviso.
+37. **Não depende do módulo `care_messages`**: quem manda é o módulo de
+    pacotes e assinaturas. Mas a tela de envios é a de Cuidados e retorno; sem
+    esse módulo o salão não vê o histórico.
+38. **O aviso não cobra nem renova nada.**
+
+Perguntas para o dono:
+
+- (8d) O aviso deve sair também DEPOIS do vencimento (regra 34), uma vez?
+- (8d) Precisa de modelo aprovado na Meta para o aviso sair no WhatsApp
+  oficial fora das 24 horas (regra 36)?
+- (8d) Salão sem o módulo de mensagens deve ver os avisos enviados em outro
+  lugar (regra 37)?
+- (8c) 7 dias de antecedência para "vencendo" está bom (regra 22)? Deve ser
+  configurável por salão?
+- (8c) O aviso de vencimento deve aparecer também no dashboard ou no sino
+  (regra 24)?
+- (8c) A página de planos deve deixar o visitante pedir a assinatura (nome e
+  WhatsApp), criando uma assinatura pendente para o salão cobrar (regra 26)?
+- (8c) A página de planos deve mostrar também os pacotes à venda?
+- (8b) O sinal deveria entrar no financeiro no dia em que foi recebido, e não
+  no dia do atendimento (regra 19)? Isso pede um lançamento próprio de
+  "adiantamento de cliente".
+- (8b) Sinal maior que a comanda (regra 14): vira crédito do cliente, ou
+  devolve a diferença?
+- (8b) O sinal deve pagar taxa da forma de pagamento como os outros (regra 11)?
+- (fase 8) "Sem a parte de receber dos clientes" é isso mesmo — o sistema só
+  controla, e o dinheiro vai direto para o salão?
+- (8a) Agendamento online sem sinal pago deve cair sozinho depois de um prazo
+  (regra 4)? De quanto tempo?
+- (8a) O agendamento que a IA cria depois do comprovante deve nascer com o
+  sinal "recebido" ou "aguardando conferência" (regra 7)? Isso mexe na criação
+  de agendamento pela IA.
+- (8a) O valor do sinal é um só por salão. Precisa variar por serviço, ou ser
+  uma porcentagem do preço?
+- (8a) Sinal recebido de agendamento cancelado: devolve, vira crédito, ou fica
+  com o salão? Hoje o sistema só mostra.
+- (8a) O cliente deve mandar o comprovante pela própria página (anexo), em vez
+  de pelo WhatsApp?
+
+### 14.5 Telas e código
+
+- **Página de agendamento online (8a)**: o aviso do sinal acima do botão de
+  marcar; e, na confirmação, o bloco com valor, chave PIX, "Copiar chave" e o
+  nome do titular.
+- **Detalhe do agendamento (8a)**: a linha "Sinal", com as ações.
+- **Assinaturas (8c)**: a faixa de aviso, o filtro "Vencendo" e o texto de
+  vencimento em cada linha.
+- **Assinaturas (8d)**: o cartão "Aviso de vencimento por WhatsApp", com
+  "Configurar".
+- **Planos de assinatura (8c)**: o botão "Link dos planos".
+- **Página pública de planos (8c)** (`/planos/[salonId]`): os planos visíveis e
+  o contato do salão.
+- **Faturar comanda (8b)**: o campo "Sinal recebido — abater como"; no resumo
+  da comanda, "Sinal recebido, a abater no faturamento" (aberta) e "Sinal
+  abatido (está nos pagamentos)" (faturada).
+
+| Assunto | Onde está |
+|---|---|
+| Sinal do agendamento (8a) | Migration `065_appointment_deposits.sql`; tabela `appointmentDeposits`; regra em `domain/appointment-deposits.ts` (`parseAdvancePayment`, `planDepositAmount`, `planDepositTransition`); I/O em `services/appointment-deposits.service.ts`; o sinal na criação online em `services/online-booking.service.ts`; actions em `actions/appointment-deposits.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-booking.ts` (pública); telas em `components/scheduler/appointment-deposit-row.tsx` e `app/agendar/[salonId]/booking-form.tsx`; testes em `appointment-deposits-domain.test.ts` |
+| Sinal abatido na comanda (8b) | Migration `066_appointment_deposit_sale.sql`; regra em `domain/appointment-deposits.ts` (`planDepositCredit`, e o bloqueio em `planDepositTransition`); o abatimento em `invoiceSaleService` e a soltura em `reopenSaleService` (`services/sales.service.ts`); `depositAvailable` e `depositApplied` em `getSaleService`; `depositPaymentMethodId` em `actions/sales.ts`; telas em `sales/[saleId]/sale-editor.tsx` e `appointment-deposit-row.tsx` |
+
+### 14.6 Fatia 8a — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`, cujo PR
+  #24 ainda não foi mesclado), publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  novo nos arquivos alterados) e testes passando (web 1472).
+- **Migration 065: aplicada em produção em 19/nov/2026.** Só criou a tabela
+  `appointment_deposits`; não havia cópia a fazer.
+- **O módulo `online_booking` está desligado em todos os salões.** Foi religado
+  no salão de teste só durante o teste e desligado de novo. Motivo: a `main`
+  tem a página de agendamento da 7f, que marca sem pedir sinal; religar em
+  salão com sinal só depois que a 8a estiver na `main`.
+- **Testado em uso no preview (19/nov/2026), no salão de teste, que tem o sinal
+  configurado:**
+  - a página de agendamento avisa o valor do sinal antes de marcar;
+  - depois de marcar, mostra o valor, a chave PIX, "Copiar chave" e o titular;
+  - no banco, o agendamento nasceu com o sinal "aguardando", de origem online;
+  - no detalhe do agendamento, a linha "Sinal" e as ações: marcar como recebido
+    (mostra a data e quem marcou), voltar para aguardando, dispensar e tirar;
+  - "Lançar sinal" num agendamento sem sinal, com o valor configurado sugerido,
+    grava com origem "painel";
+  - cancelar o agendamento não apaga o sinal recebido (regra 8).
+  Os dados do teste foram apagados (o agendamento ficou cancelado).
+- **Não testado em uso:** o botão "Copiar chave" (só vi que aparece); salão sem
+  sinal configurado (a página não deve mostrar nada e o agendamento nasce sem
+  sinal — coberto só pelo teste da regra); usuário que vê a agenda mas não
+  edita (a linha sem as ações); excluir o agendamento apagando o sinal.
+- **Limites desta fatia:**
+  - o sinal não é abatido na comanda nem lançado no financeiro (8b);
+  - sem cancelamento automático por falta de sinal;
+  - a IA não registra sinal;
+  - a agenda não mostra o sinal no cartão do agendamento, só no detalhe; não há
+    lista de "aguardando sinal";
+  - um valor de sinal por salão.
+
+### 14.7 Fatia 8b — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  nos arquivos alterados) e testes passando (web 1477).
+- **Migration 066: aplicada em produção em 19/nov/2026.** A tabela não tinha
+  linhas; não houve cópia. A `main` não lê as colunas novas e segue igual.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - comanda aberta de um agendamento com sinal recebido mostra "Sinal
+    recebido, a abater no faturamento";
+  - o diálogo de faturar já vem com o sinal na forma "Teste PIX" e o restante
+    do total na outra linha; trocar para "Não abater" e voltar refaz o valor;
+  - faturar gravou dois pagamentos (o do sinal e o restante), cada um com a
+    taxa e o prazo da sua forma, e as duas contas no financeiro (a do sinal já
+    recebida, por ser PIX na hora);
+  - a comanda faturada mostra "Sinal abatido (está nos pagamentos)";
+  - o detalhe do agendamento mostra "Abatido na comanda #N", sem ações;
+  - reabrir a comanda apagou os pagamentos e soltou o sinal;
+  - faturar com "Não abater" deixou o sinal recebido e livre, e a comanda com
+    um pagamento só;
+  - faturar antes da hora do agendamento continua barrado, e o sinal não é
+    preso por isso.
+  Os dados do teste foram apagados (a comanda ficou excluída e o agendamento,
+  cancelado).
+- **Não testado em uso:** sinal maior que o total da comanda; comanda com dois
+  agendamentos com sinal; salão sem forma "PIX" (o campo começa em "Não
+  abater"); sinal abatido com cashback na mesma comanda; a comissão da comanda
+  com o sinal abatido; salão com o financeiro desligado.
+- **Achado:** a agenda não deixa criar agendamento em horário que já passou
+  ("A data e hora devem ser no futuro"), então não dá para lançar um
+  atendimento de encaixe depois que ele aconteceu. Não mexi.
+- **Limites desta fatia:**
+  - a data do pagamento do sinal é a do faturamento (regra 19);
+  - sinal maior que o total não é abatido (regra 14);
+  - o pagamento do sinal não tem marca própria na lista de pagamentos da
+    comanda — o resumo mostra só o total abatido;
+  - sinal recebido de agendamento cancelado continua sem destino no sistema.
+
+### 14.8 Fatia 8c — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Sem
+  migration: a coluna `subscription_plans.is_visible` já existia desde a 053.
+  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
+  e testes passando (web 1481).
+- **Onde está:** regra em `domain/subscriptions.ts`
+  (`subscriptionDueInDays`, `subscriptionDueAlert`, `subscriptionDueLabel`,
+  `SUBSCRIPTION_DUE_SOON_DAYS`); `dueInDays` em
+  `listCustomerSubscriptionsService` e `getPublicSubscriptionPlansService`
+  (`services/subscriptions.service.ts`); `totals.dueSoon` em
+  `actions/subscriptions.ts`; telas em
+  `packages/subscriptions/subscriptions-client.tsx`,
+  `packages/subscription-plans/subscription-plans-client.tsx` e
+  `app/planos/[salonId]/page.tsx`; testes em `subscriptions-domain.test.ts`.
+- **A página pública não tem action**: é só leitura, não entra na guarda de
+  `actions-authz.test.ts` e não recebe dado do visitante.
+- **Limites desta fatia:**
+  - os totais e o aviso contam só as assinaturas que a tela carrega (as mais
+    recentes, como já era);
+  - o botão de WhatsApp usa `salons.whatsapp`; salão sem esse número fica só
+    com o texto;
+  - sem aviso por mensagem (8d).
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - `/planos/<id>` sem plano visível: "Ainda não há planos para mostrar";
+    endereço desconhecido: "Planos indisponíveis";
+  - com um plano visível e um não visível, a página mostra só o visível, com
+    descrição, valor e periodicidade, o texto "Para assinar, fale com o salão"
+    e o botão do WhatsApp (o link leva o DDI 55);
+  - "Link dos planos" copia o endereço da página;
+  - assinatura trimestral cobrada com comanda de 22/ago: vencimento em 22/nov,
+    "Vence em 3 dias", contada em "Vencendo (1)" e na faixa do topo;
+  - assinatura mensal cobrada com comanda de 01/out: Expirada, "Venceu há 18
+    dias", contada na faixa como vencida;
+  - "Ver as que vencem" e "Ver as vencidas" filtram a lista;
+  - sem assinatura vencendo nem vencida, a faixa não aparece.
+  Os dados do teste foram apagados pela tela (comandas excluídas, assinaturas
+  e planos excluídos).
+- **Não testado em uso:** salão sem o módulo de pacotes abrindo a página de
+  planos (coberto só pela leitura do código); salão sem WhatsApp cadastrado;
+  "Vence hoje" e "Vence amanhã" (cobertos pelo teste da regra); o clique no
+  botão do WhatsApp; a página aberta sem login na produção (o preview pede o
+  login da Vercel).
+- **Achado:** na comanda, depois de fechar o diálogo de faturar e mudar a
+  data, o primeiro clique em "Faturar" salvou e não abriu o diálogo; o segundo
+  abriu. Aconteceu uma vez em duas. Não investiguei.
+
+### 14.9 Fatia 8d — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  nos arquivos alterados) e testes passando (web 1487).
+- **Migration 067: aplicada em produção em 19/nov/2026.** A fila
+  (`care_message_dispatches`) estava vazia — não houve cópia. Conferido por
+  leitura: os CHECKs alargados, o CHECK novo da assinatura, a tabela de
+  configuração com RLS e sem linhas (desligado em todos os salões). Nenhum
+  alerta de segurança novo.
+- **A `main` continua funcionando com a 067 aplicada**: o código antigo não lê
+  as colunas novas, e o que ele grava na fila passa nos CHECKs alargados.
+- **Onde está:** migration `067_subscription_reminders.sql`; tabela
+  `subscriptionReminderSettings` e as colunas novas de
+  `careMessageDispatches`; regra em `domain/care-messages.ts`
+  (`planSubscriptionReminder`, `formatSubscriptionDueDate`,
+  `DEFAULT_SUBSCRIPTION_DUE_TEXT` e o ramo `subscription_due` de
+  `decideCareDispatch`); I/O em `services/care-messages.service.ts`
+  (`getSubscriptionReminderSettingsService`,
+  `saveSubscriptionReminderSettingsService`,
+  `enqueueDueSubscriptionReminders` e a conferência em
+  `claimDueCareDispatches`); o envio em
+  `lib/services/care-messages/dispatcher.service.ts`; action
+  `saveSubscriptionReminder` em `actions/subscriptions.ts`; o cartão em
+  `packages/subscriptions/subscriptions-client.tsx`; testes em
+  `care-messages-domain.test.ts`.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - o cartão nasce "Desligado: nenhuma mensagem é enviada";
+  - "Configurar" com 20 dias: "Informe de 1 a 15 dias";
+  - ligar com 5 dias e um texto próprio: gravou no banco como digitado, e o
+    cartão passou a "Ligado: … 5 dias antes";
+  - reabrir "Configurar" traz o que foi salvo;
+  - desligar volta o cartão a "Desligado";
+  - a tela de Cuidados e retorno continua abrindo.
+  A linha de configuração do teste foi apagada.
+- **Conferido por consulta de leitura:** a seleção da fila
+  (`enqueueDueSubscriptionReminders`, reescrita em SQL à mão) executa sem erro
+  no banco. Devolveu vazio — não havia assinatura no prazo.
+- **NÃO testado:** o envio. Nenhum aviso entrou na fila nem saiu pelo
+  WhatsApp: quem enfileira e envia é o cron, que só existe em produção, e a
+  produção está no código antigo. Também não foram exercitados com dados: a
+  seleção achando uma assinatura no prazo, o "um aviso por vencimento" e a
+  conferência na hora de enviar (cobertos só pelos testes da regra).
+  **Depois do merge:** ligar o aviso no salão de teste, deixar uma assinatura
+  de um cliente de teste vencendo no prazo e ver a linha em Cuidados e retorno.
+- **Limites desta fatia:**
+  - sem aviso depois do vencimento;
+  - um prazo e um texto por salão, não por plano;
+  - no WhatsApp oficial, fora das 24 horas o envio falha (regra 36);
+  - o histórico fica na tela de Cuidados e retorno (regra 37).
+
+### 14.10 O que está na `main` (19/nov/2026)
+
+Vale mais que os "fora da `main`" escritos em §14.6 a §14.9, que são de antes.
+
+- **Na `main`: a fatia 8a**, pelo PR #26 (mesclado em 19/nov/2026, até o commit
+  `5169439`). O agendamento online segue desligado em todos os salões.
+- **No PR #28** (`claude/fase-8-sinal` → `main`, aberto em 19/nov/2026, 7
+  commits, mescla limpa): **as fatias 8b, 8c e 8d**.
+- **As migrations 065, 066 e 067 já estão aplicadas em produção.** Não há
+  migration a rodar na mescla do PR #28.
+- **Com a 8a na `main` e a 066 aplicada**, a produção segue funcionando: o
+  código da 8a não lê `sale_id` nem `applied_at`.
+- **Depois da mescla do PR #28, falta testar em produção:** o envio do aviso de
+  vencimento por WhatsApp (§14.9) e as páginas públicas sem login
+  (`/planos/<id>` e `/agendar/<id>`), que no preview ficam atrás do login da
+  Vercel.

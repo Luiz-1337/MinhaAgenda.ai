@@ -6,6 +6,10 @@ import {
   planCustomerSubscription,
   planSubscriptionPeriods,
   planSubscriptionPlan,
+  SUBSCRIPTION_DUE_SOON_DAYS,
+  subscriptionDueAlert,
+  subscriptionDueInDays,
+  subscriptionDueLabel,
   subscriptionPlanDeleteBlocker,
   subscriptionReopenBlocker,
   type SubscriptionForRenewal,
@@ -366,5 +370,41 @@ describe("planSaleItems — item de assinatura", () => {
     if (!plan.ok) return
     expect(plan.items.map((item) => item.customerSubscriptionId)).toEqual([null, "sub-1"])
     expect(plan.totalCents).toBe(16000)
+  })
+})
+
+describe("aviso de vencimento (fase 8, fatia 8c)", () => {
+  const today = "2026-11-19"
+
+  it("conta os dias até o vencimento, sem fuso", () => {
+    expect(subscriptionDueInDays({ status: "active", paidUntil: "2026-11-19", today })).toBe(0)
+    expect(subscriptionDueInDays({ status: "active", paidUntil: "2026-11-26", today })).toBe(7)
+    expect(subscriptionDueInDays({ status: "active", paidUntil: "2026-12-19", today })).toBe(30)
+    expect(subscriptionDueInDays({ status: "expired", paidUntil: "2026-11-18", today })).toBe(-1)
+    expect(subscriptionDueInDays({ status: "expired", paidUntil: "2026-10-31", today })).toBe(-19)
+  })
+
+  it("quem nunca pagou ou está desativada não tem vencimento a avisar", () => {
+    expect(subscriptionDueInDays({ status: "pending", paidUntil: null, today })).toBeNull()
+    expect(subscriptionDueInDays({ status: "inactive", paidUntil: "2026-11-20", today })).toBeNull()
+  })
+
+  it("vencendo: até 7 dias, contando hoje; vencida: depois do vencimento", () => {
+    expect(SUBSCRIPTION_DUE_SOON_DAYS).toBe(7)
+    expect(subscriptionDueAlert(0)).toBe("due_soon")
+    expect(subscriptionDueAlert(7)).toBe("due_soon")
+    expect(subscriptionDueAlert(8)).toBeNull()
+    expect(subscriptionDueAlert(-1)).toBe("overdue")
+    expect(subscriptionDueAlert(null)).toBeNull()
+  })
+
+  it("o texto do aviso", () => {
+    expect(subscriptionDueLabel(0)).toBe("Vence hoje")
+    expect(subscriptionDueLabel(1)).toBe("Vence amanhã")
+    expect(subscriptionDueLabel(5)).toBe("Vence em 5 dias")
+    expect(subscriptionDueLabel(-1)).toBe("Venceu ontem")
+    expect(subscriptionDueLabel(-12)).toBe("Venceu há 12 dias")
+    expect(subscriptionDueLabel(30)).toBe("")
+    expect(subscriptionDueLabel(null)).toBe("")
   })
 })

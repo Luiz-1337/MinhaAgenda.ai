@@ -1,10 +1,12 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, lt, lte, ne, notExists, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, notExists, sql } from "drizzle-orm"
 
 import {
   db,
   appointments,
   careMessageDispatches,
   careMessageRules,
+  customerSubscriptionPeriods,
+  customerSubscriptions,
   customers,
   products,
   reviewSettings,
@@ -13,18 +15,23 @@ import {
   sales,
   salons,
   services,
+  subscriptionReminderSettings,
 } from "../index"
 import {
   CARE_OFFSET_LIMITS,
   decideCareDispatch,
   planCareMessageRule,
+  planSubscriptionReminder,
   saleMessageSchedule,
+  SUBSCRIPTION_REMINDER_DAYS,
   toWhatsAppNumber,
   type CareDispatchDecision,
   type CareDispatchKind,
   type CareMessageKind,
   type CareMessageRuleDraft,
+  type SubscriptionReminderDraft,
 } from "../domain/care-messages"
+import { brazilToday } from "../domain/finance"
 import { parseSalonModules } from "../domain/permissions"
 import type { CareDispatchStatus } from "../schema"
 import type { ActionResult } from "./appointments"
@@ -475,6 +482,8 @@ export type ClaimedCareDispatch = {
   ruleMessage: string | null
   /** O pedido de avaliação: o token do link e o texto do salão (NULL = padrão). */
   review: { token: string; whatsappText: string | null } | null
+  /** O aviso de assinatura: o vencimento e o texto do salão (NULL = padrão). */
+  subscription: { due: string; message: string | null } | null
   decision: CareDispatchDecision
 }
 
@@ -579,14 +588,51 @@ export async function claimDueCareDispatches(now: Date, limit: number): Promise<
       hasUpcoming = upcoming !== undefined
     }
 
+    // O aviso de assinatura confere a assinatura como ela está AGORA.
+    let subscription: { deactivated: boolean; paidUntil: string | null; enabled: boolean; message: string | null } | null =
+      null
+    if (row.kind === "subscription_due" && row.subscriptionId) {
+      const [[current], [lastPeriod], [reminder]] = await Promise.all([
+        db
+          .select({ deactivatedAt: customerSubscriptions.deactivatedAt })
+          .from(customerSubscriptions)
+          .where(and(eq(customerSubscriptions.id, row.subscriptionId), eq(customerSubscriptions.salonId, row.salonId)))
+          .limit(1),
+        db
+          .select({ periodEnd: customerSubscriptionPeriods.periodEnd })
+          .from(customerSubscriptionPeriods)
+          .where(eq(customerSubscriptionPeriods.subscriptionId, row.subscriptionId))
+          .orderBy(desc(customerSubscriptionPeriods.periodEnd))
+          .limit(1),
+        db
+          .select({
+            isEnabled: subscriptionReminderSettings.isEnabled,
+            message: subscriptionReminderSettings.message,
+          })
+          .from(subscriptionReminderSettings)
+          .where(eq(subscriptionReminderSettings.salonId, row.salonId))
+          .limit(1),
+      ])
+      if (current) {
+        subscription = {
+          deactivated: current.deactivatedAt !== null,
+          paidUntil: lastPeriod?.periodEnd ?? null,
+          enabled: reminder?.isEnabled === true,
+          message: reminder?.message ?? null,
+        }
+      }
+    }
+
     const modules = parseSalonModules(salon?.settings)
     const phone = toWhatsAppNumber(customer?.phone)
+    const dispatchModule =
+      row.kind === "review" ? "reviews" : row.kind === "subscription_due" ? "packages" : "care_messages"
 
     const decision = decideCareDispatch({
       kind: row.kind,
       scheduledFor: row.scheduledFor,
       now,
-      moduleEnabled: modules.includes(row.kind === "review" ? "reviews" : "care_messages"),
+      moduleEnabled: modules.includes(dispatchModule),
       customerHasPhone: phone !== null,
       customerOptedOut: customer?.optedOutAt != null,
       rule: rule ? { isActive: rule.isActive } : null,
@@ -596,6 +642,16 @@ export async function claimDueCareDispatches(now: Date, limit: number): Promise<
         ? { answered: review.rating !== null, settingsEnabled: review.isEnabled === true && review.sendWhatsapp === true }
         : null,
       customerHasUpcomingAppointment: hasUpcoming,
+      subscription:
+        subscription && row.subscriptionDue
+          ? {
+              settingsEnabled: subscription.enabled,
+              deactivated: subscription.deactivated,
+              paidUntil: subscription.paidUntil,
+              due: row.subscriptionDue,
+              today: brazilToday(now),
+            }
+          : null,
     })
 
     result.push({
@@ -608,6 +664,8 @@ export async function claimDueCareDispatches(now: Date, limit: number): Promise<
       itemName: row.itemName,
       ruleMessage: rule?.message ?? null,
       review: review ? { token: review.token, whatsappText: review.whatsappText } : null,
+      subscription:
+        subscription && row.subscriptionDue ? { due: row.subscriptionDue, message: subscription.message } : null,
       decision,
     })
   }
@@ -638,4 +696,128 @@ export async function finishCareDispatch(
     .update(careMessageDispatches)
     .set({ ...set, updatedAt: outcome.now })
     .where(and(eq(careMessageDispatches.id, dispatchId), eq(careMessageDispatches.status, "sending")))
+}
+
+// ============================================================================
+// Aviso de vencimento da assinatura (fase 8, fatia 8d)
+// ============================================================================
+
+export type SubscriptionReminderSettings = { isEnabled: boolean; daysBefore: number; message: string | null }
+
+/** A configuração do aviso no salão. Sem linha = desligado, com o prazo padrão. */
+export async function getSubscriptionReminderSettingsService(salonId: string): Promise<SubscriptionReminderSettings> {
+  const [row] = await db
+    .select({
+      isEnabled: subscriptionReminderSettings.isEnabled,
+      daysBefore: subscriptionReminderSettings.daysBefore,
+      message: subscriptionReminderSettings.message,
+    })
+    .from(subscriptionReminderSettings)
+    .where(eq(subscriptionReminderSettings.salonId, salonId))
+    .limit(1)
+  return row ?? { isEnabled: false, daysBefore: SUBSCRIPTION_REMINDER_DAYS.default, message: null }
+}
+
+export async function saveSubscriptionReminderSettingsService(input: {
+  salonId: string
+  draft: SubscriptionReminderDraft
+}): Promise<ActionResult<void>> {
+  try {
+    const plan = planSubscriptionReminder(input.draft)
+    if (!plan.ok) return { success: false, error: plan.error }
+
+    await db
+      .insert(subscriptionReminderSettings)
+      .values({ ...plan.settings, salonId: input.salonId })
+      .onConflictDoUpdate({
+        target: subscriptionReminderSettings.salonId,
+        set: { ...plan.settings, updatedAt: new Date() },
+      })
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    return toFailure(error, "Não foi possível salvar o aviso de vencimento")
+  }
+}
+
+/**
+ * Põe na fila o aviso das assinaturas que entraram na janela (vencem em até N
+ * dias, N do salão), de todos os salões com o aviso ligado e o módulo de pacotes.
+ * O índice único (assinatura, vencimento) garante um aviso por vencimento.
+ * Devolve quantos entraram.
+ *
+ * Assinatura que nunca foi paga não tem vencimento, e a vencida não é avisada
+ * por aqui: o aviso é de ANTES do vencimento.
+ */
+export async function enqueueDueSubscriptionReminders(now: Date, limit = 200): Promise<number> {
+  const today = brazilToday(now)
+
+  const lastPeriod = db
+    .select({
+      subscriptionId: customerSubscriptionPeriods.subscriptionId,
+      paidUntil: sql<string>`to_char(max(${customerSubscriptionPeriods.periodEnd}), 'YYYY-MM-DD')`.as("paid_until"),
+    })
+    .from(customerSubscriptionPeriods)
+    .groupBy(customerSubscriptionPeriods.subscriptionId)
+    .as("last_period")
+
+  const due = await db
+    .select({
+      subscriptionId: customerSubscriptions.id,
+      salonId: customerSubscriptions.salonId,
+      customerId: customerSubscriptions.customerId,
+      name: customerSubscriptions.name,
+      paidUntil: lastPeriod.paidUntil,
+    })
+    .from(customerSubscriptions)
+    .innerJoin(
+      subscriptionReminderSettings,
+      and(
+        eq(subscriptionReminderSettings.salonId, customerSubscriptions.salonId),
+        eq(subscriptionReminderSettings.isEnabled, true)
+      )
+    )
+    .innerJoin(salons, eq(salons.id, customerSubscriptions.salonId))
+    .innerJoin(lastPeriod, eq(lastPeriod.subscriptionId, customerSubscriptions.id))
+    .where(
+      and(
+        isNull(customerSubscriptions.deactivatedAt),
+        sql`jsonb_exists(${salons.settings}->'modules', 'packages')`,
+        sql`${lastPeriod.paidUntil}::date >= ${today}::date`,
+        sql`${lastPeriod.paidUntil}::date <= ${today}::date + ${subscriptionReminderSettings.daysBefore}`,
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(careMessageDispatches)
+            .where(
+              and(
+                eq(careMessageDispatches.subscriptionId, customerSubscriptions.id),
+                sql`${careMessageDispatches.subscriptionDue} = ${lastPeriod.paidUntil}::date`
+              )
+            )
+        )
+      )
+    )
+    .orderBy(asc(lastPeriod.paidUntil))
+    .limit(limit)
+
+  if (due.length === 0) return 0
+
+  const inserted = await db
+    .insert(careMessageDispatches)
+    .values(
+      due.map((row) => ({
+        salonId: row.salonId,
+        customerId: row.customerId,
+        kind: "subscription_due" as const,
+        subscriptionId: row.subscriptionId,
+        subscriptionDue: row.paidUntil,
+        itemName: row.name,
+        scheduledFor: now,
+      }))
+    )
+    .onConflictDoNothing()
+    .returning({ id: careMessageDispatches.id })
+
+  return inserted.length
 }
