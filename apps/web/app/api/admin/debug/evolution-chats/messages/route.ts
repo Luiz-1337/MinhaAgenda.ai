@@ -6,10 +6,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getInstanceMessages } from '@/lib/services/evolution/evolution-instance.service';
 import { logger } from '@/lib/infra/logger';
+import { requireAdminRequest } from '@/lib/services/admin-auth.service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireAdminRequest(request.headers);
+  if ('response' in auth) return auth.response;
+
   const instanceName = request.nextUrl.searchParams.get('instanceName');
   const remoteJid = request.nextUrl.searchParams.get('remoteJid');
   const limitParam = request.nextUrl.searchParams.get('limit');

@@ -1,5 +1,5 @@
 import { db, adminAuditLogs } from "@repo/db"
-import type { AdminContext } from "@/app/actions/admin/_guard"
+import type { AdminContext } from "./admin-auth.service"
 
 export type AdminAuditAction =
     | "user.create"
@@ -13,6 +13,10 @@ export type AdminAuditAction =
     | "credits.grant"
     | "credits.reset_usage"
     | "salon.ai_retention"
+    | "queue.clear"
+    | "lid_mapping.set"
+    | "lid_mapping.remove"
+    | "whatsapp.test_send"
 
 interface LogAdminActionParams {
     admin: AdminContext

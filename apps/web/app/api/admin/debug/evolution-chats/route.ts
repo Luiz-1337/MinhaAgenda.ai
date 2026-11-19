@@ -1,13 +1,14 @@
 /**
  * API de teste: sincroniza todos os chats da Evolution API.
- * Uso: GET /api/test/evolution-chats
- * Não exposto no portal — apenas por URL.
+ * Uso: GET /api/admin/debug/evolution-chats (sessão de admin ou x-admin-key)
+ * Usada pela tela z_admin_minhaagendaai/debug/evolution-chats.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db, salons, isNotNull } from "@repo/db";
 import { type EvolutionChat, getInstanceChats } from "@/lib/services/evolution/evolution-instance.service";
 import { logger } from "@/lib/infra/logger";
+import { requireAdminRequest } from "@/lib/services/admin-auth.service";
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -27,7 +28,10 @@ export interface EvolutionChatsResponse {
   syncedAt: string;
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireAdminRequest(request.headers);
+  if ("response" in auth) return auth.response;
+
   try {
     const salonsWithEvolution = await db.query.salons.findMany({
       where: isNotNull(salons.evolutionInstanceName),

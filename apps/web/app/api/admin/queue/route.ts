@@ -8,11 +8,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMessageQueue, getQueueStats } from '@/lib/queues/message-queue';
 import { logger } from '@/lib/infra/logger';
-import { requireAdminAuth } from '@/lib/services/admin-auth.service';
+import { requireAdminRequest } from '@/lib/services/admin-auth.service';
+import { logAdminAction } from '@/lib/services/admin-audit.service';
 
 export async function GET(request: NextRequest) {
-    const authError = requireAdminAuth(request.headers);
-    if (authError) return authError;
+    const auth = await requireAdminRequest(request.headers);
+    if ('response' in auth) return auth.response;
     try {
         const stats = await getQueueStats();
         const queue = getMessageQueue();
@@ -48,8 +49,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-    const authError = requireAdminAuth(request.headers);
-    if (authError) return authError;
+    const auth = await requireAdminRequest(request.headers);
+    if ('response' in auth) return auth.response;
     try {
         const queue = getMessageQueue();
 
@@ -70,6 +71,7 @@ export async function DELETE(request: NextRequest) {
         }
 
         logger.info({ cleared }, 'Queue jobs cleared');
+        await logAdminAction({ admin: auth.admin, action: 'queue.clear', details: { cleared } });
 
         return NextResponse.json({
             success: true,
