@@ -114,7 +114,9 @@ branch — migration 066 aplicada, publicada no preview e **testada em uso** em
 19/nov/2026; também fora da `main` — ver §14.7. Fatia 8c (aviso de
 vencimento da assinatura no painel e página pública de planos) feita na mesma
 branch, sem migration — publicada no preview e **testada em uso** em
-19/nov/2026; também fora da `main` — ver §14.8. O aviso de vencimento por mensagem virou a fatia 8d, pendente.
+19/nov/2026; também fora da `main` — ver §14.8. Fatia 8d (aviso de vencimento da assinatura por WhatsApp) feita na mesma
+branch — **em commit local, migration 067 NÃO aplicada, sem publicar e sem
+teste em uso** — ver §14.9.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4894,7 +4896,7 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 | 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
 | 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
 | 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita, sem migration, testada em uso no preview (§14.8); fora da `main` |
-| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Pendente |
+| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Feita em código — **migration 067 não aplicada, sem publicar e sem teste em uso** (§14.9) |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
 cobrança por link ou PIX gerado pelo sistema, confirmação automática do
@@ -4923,6 +4925,17 @@ pagamento, cobrança automática de assinatura, estorno.
   recebido — CHECK), `settled_by` e `created_by`.
 
 A configuração do sinal continua em `salons.settings.advance_payment`.
+
+**Migration 067 (fatia 8d):**
+
+- **`subscription_reminder_settings`** — por salão: `is_enabled` (nasce
+  desligado), `days_before` (1 a 15, padrão 3) e `message` (NULL = texto
+  padrão).
+- **`care_message_dispatches`** (a fila da fase 6, que TEM linhas em
+  produção) — ganha `subscription_id` (CASCADE) e `subscription_due`, o tipo
+  `subscription_due` no CHECK de tipo, a assinatura como origem válida e o
+  índice único (assinatura, vencimento). Só alarga: toda linha que existe
+  continua válida.
 
 **Migration 066 (fatia 8b)** — altera `appointment_deposits` (criada na 065,
 sem linhas em produção):
@@ -5014,8 +5027,41 @@ Fatia 8c — assinatura sem cobrança automática:
 29. **O aviso por mensagem ficou fora** (fatia 8d): mexe na fila de mensagens ao
     cliente, que é do caminho do WhatsApp, e pede migration.
 
+Fatia 8d — aviso de vencimento por WhatsApp:
+
+30. **Nasce desligado.** O salão liga em Assinaturas → "Aviso de vencimento
+    por WhatsApp" → Configurar (quem tem `packages.manage`): ligado ou não,
+    quantos dias antes (1 a 15, padrão 3) e o texto.
+31. **O texto** é opcional; em branco sai o padrão: "Olá, {cliente}! Sua
+    assinatura {item} no {salao} vence em {vencimento}. Fale com a gente para
+    renovar." `{item}` é o nome do plano e `{vencimento}`, dia e mês.
+32. **Usa a fila das mensagens ao cliente** (fase 6): sai das 9h às 20h de
+    Brasília, pelo canal do salão, fica gravado na conversa e aparece em
+    Cuidados e retorno → envios, como "Vencimento de assinatura".
+33. **Quem entra na fila**: assinatura não desativada, com período pago, que
+    vence em até N dias (contando hoje), de salão com o aviso ligado e o módulo
+    de pacotes. **Um aviso por assinatura e por vencimento.**
+34. **Assinatura vencida não é avisada.** O aviso é de antes; depois do
+    vencimento, a cobrança é com o salão (a tela mostra — regra 23).
+35. **Na hora de enviar, confere de novo**: não sai se o cliente pediu para não
+    receber, não tem telefone válido, o módulo ou o aviso foi desligado, a
+    assinatura foi desativada ou excluída, o vencimento mudou (renovou, ou a
+    cobrança foi desfeita) ou o dia já passou.
+36. **Falha não é reenviada** (regra da fila): fica registrada com o motivo. No
+    WhatsApp oficial, fora das 24 horas da última mensagem do cliente, só sai
+    modelo aprovado pela Meta — e não há modelo para este aviso.
+37. **Não depende do módulo `care_messages`**: quem manda é o módulo de
+    pacotes e assinaturas. Mas a tela de envios é a de Cuidados e retorno; sem
+    esse módulo o salão não vê o histórico.
+38. **O aviso não cobra nem renova nada.**
+
 Perguntas para o dono:
 
+- (8d) O aviso deve sair também DEPOIS do vencimento (regra 34), uma vez?
+- (8d) Precisa de modelo aprovado na Meta para o aviso sair no WhatsApp
+  oficial fora das 24 horas (regra 36)?
+- (8d) Salão sem o módulo de mensagens deve ver os avisos enviados em outro
+  lugar (regra 37)?
 - (8c) 7 dias de antecedência para "vencendo" está bom (regra 22)? Deve ser
   configurável por salão?
 - (8c) O aviso de vencimento deve aparecer também no dashboard ou no sino
@@ -5051,6 +5097,8 @@ Perguntas para o dono:
 - **Detalhe do agendamento (8a)**: a linha "Sinal", com as ações.
 - **Assinaturas (8c)**: a faixa de aviso, o filtro "Vencendo" e o texto de
   vencimento em cada linha.
+- **Assinaturas (8d)**: o cartão "Aviso de vencimento por WhatsApp", com
+  "Configurar".
 - **Planos de assinatura (8c)**: o botão "Link dos planos".
 - **Página pública de planos (8c)** (`/planos/[salonId]`): os planos visíveis e
   o contato do salão.
@@ -5183,3 +5231,42 @@ Perguntas para o dono:
 - **Achado:** na comanda, depois de fechar o diálogo de faturar e mudar a
   data, o primeiro clique em "Faturar" salvou e não abriu o diálogo; o segundo
   abriu. Aconteceu uma vez em duas. Não investiguei.
+
+### 14.9 Fatia 8d — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
+  e testes passando (web 1487).
+- **Migration 067: NÃO aplicada.** Altera `care_message_dispatches`, que tem
+  linhas em produção: **copiar a tabela para `backups` antes**. Aplicar ANTES
+  de publicar: sem ela a tela de Assinaturas falha (lê a configuração nova) e,
+  em produção, a fila de mensagens inteira falharia ao ler as colunas novas.
+- **A `main` continua funcionando com a 067 aplicada**: o código antigo não lê
+  as colunas novas, e o que ele grava na fila passa nos CHECKs alargados.
+- **Onde está:** migration `067_subscription_reminders.sql`; tabela
+  `subscriptionReminderSettings` e as colunas novas de
+  `careMessageDispatches`; regra em `domain/care-messages.ts`
+  (`planSubscriptionReminder`, `formatSubscriptionDueDate`,
+  `DEFAULT_SUBSCRIPTION_DUE_TEXT` e o ramo `subscription_due` de
+  `decideCareDispatch`); I/O em `services/care-messages.service.ts`
+  (`getSubscriptionReminderSettingsService`,
+  `saveSubscriptionReminderSettingsService`,
+  `enqueueDueSubscriptionReminders` e a conferência em
+  `claimDueCareDispatches`); o envio em
+  `lib/services/care-messages/dispatcher.service.ts`; action
+  `saveSubscriptionReminder` em `actions/subscriptions.ts`; o cartão em
+  `packages/subscriptions/subscriptions-client.tsx`; testes em
+  `care-messages-domain.test.ts`.
+- **As consultas não foram executadas contra o banco.**
+- **Limites desta fatia:**
+  - sem aviso depois do vencimento;
+  - um prazo e um texto por salão, não por plano;
+  - no WhatsApp oficial, fora das 24 horas o envio falha (regra 36);
+  - o histórico fica na tela de Cuidados e retorno (regra 37).
+- **Sem teste em uso.** O que dá para testar no preview: o cartão e o
+  "Configurar" (ligar, dias, texto, validação) e, por consulta de leitura, que
+  a seleção da fila acha a assinatura que vence no prazo. **O envio de verdade
+  só roda pelo cron, que existe só em produção** — o preview não tem cron, e a
+  rota pede o segredo do cron. Fica para depois do merge: ligar o aviso no
+  salão de teste, deixar uma assinatura de um cliente de teste vencendo no
+  prazo e ver a linha em Cuidados e retorno.

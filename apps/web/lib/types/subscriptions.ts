@@ -38,11 +38,28 @@ export interface CustomerSubscriptionsDTO {
   }
   /** Planos ativos, para criar uma assinatura. */
   plans: { id: string; name: string; price: string; intervalMonths: number }[]
+  /** O aviso de vencimento por WhatsApp (fase 8, fatia 8d). */
+  reminder: {
+    isEnabled: boolean
+    daysBefore: number
+    /** NULL = usa o texto padrão. */
+    message: string | null
+    defaultMessage: string
+    limits: { min: number; max: number }
+  }
   can: {
     manage: boolean
     /** Renovar abre uma comanda: precisa do módulo de comandas e de `sales.create`. */
     charge: boolean
   }
+}
+
+export interface SaveSubscriptionReminderInput {
+  salonId: string
+  isEnabled: boolean
+  daysBefore: number
+  /** Vazio = usa o texto padrão. */
+  message?: string | null
 }
 
 export interface SubscriptionCustomerOption {

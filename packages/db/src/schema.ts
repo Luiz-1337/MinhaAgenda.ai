@@ -2115,7 +2115,7 @@ export const reviews = pgTable(
 // envios (que também leva o pedido de avaliação). Regra em domain/care-messages.ts.
 
 export type CareMessageKindColumn = 'pre_care' | 'post_care' | 'return'
-export type CareDispatchKindColumn = CareMessageKindColumn | 'review'
+export type CareDispatchKindColumn = CareMessageKindColumn | 'review' | 'subscription_due'
 export type CareDispatchStatus = 'pending' | 'sending' | 'sent' | 'failed' | 'skipped'
 
 export const careMessageRules = pgTable(
@@ -2157,6 +2157,10 @@ export const careMessageDispatches = pgTable(
     saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
     appointmentId: uuid('appointment_id').references(() => appointments.id, { onDelete: 'cascade' }),
     reviewId: uuid('review_id').references(() => reviews.id, { onDelete: 'cascade' }),
+    // O aviso de vencimento da assinatura (migration 067): a assinatura e o
+    // vencimento que o aviso anuncia. Um aviso por par (índice único parcial).
+    subscriptionId: uuid('subscription_id').references(() => customerSubscriptions.id, { onDelete: 'cascade' }),
+    subscriptionDue: date('subscription_due'),
     itemName: text('item_name'),
     scheduledFor: timestamp('scheduled_for').notNull(),
     status: text('status').$type<CareDispatchStatus>().default('pending').notNull(),
@@ -2176,11 +2180,27 @@ export const careMessageDispatches = pgTable(
       .on(table.appointmentId, table.ruleId)
       .where(sql`appointment_id IS NOT NULL AND rule_id IS NOT NULL`),
     uniqueIndex('care_message_dispatches_review_unique').on(table.reviewId).where(sql`review_id IS NOT NULL`),
+    uniqueIndex('care_message_dispatches_subscription_due_unique')
+      .on(table.subscriptionId, table.subscriptionDue)
+      .where(sql`subscription_id IS NOT NULL`),
     index('care_message_dispatches_due_idx').on(table.scheduledFor).where(sql`status = 'pending'`),
     index('care_message_dispatches_salon_idx').on(table.salonId, table.scheduledFor.desc()),
     index('care_message_dispatches_customer_idx').on(table.customerId)
   ]
 )
+
+// O aviso de vencimento da assinatura por WhatsApp, por salão (migration 067).
+// Sem linha = desligado. Regra em domain/care-messages.ts.
+export const subscriptionReminderSettings = pgTable('subscription_reminder_settings', {
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).primaryKey().notNull(),
+  isEnabled: boolean('is_enabled').default(false).notNull(),
+  // Com quantos dias de antecedência o aviso sai (1 a 15).
+  daysBefore: integer('days_before').default(3).notNull(),
+  // NULL = usa o texto padrão do sistema.
+  message: text('message'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
 
 // ============================================================================
 // TABLES - Metas por mês (migration 058)

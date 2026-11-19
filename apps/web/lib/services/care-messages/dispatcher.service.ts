@@ -5,9 +5,12 @@ import {
   eq,
   inArray,
   DEFAULT_REVIEW_WHATSAPP_TEXT,
+  DEFAULT_SUBSCRIPTION_DUE_TEXT,
   claimDueCareDispatches,
   enqueueDuePreCareMessages,
+  enqueueDueSubscriptionReminders,
   finishCareDispatch,
+  formatSubscriptionDueDate,
   isWithinCareSendHours,
   renderCareMessage,
   type ClaimedCareDispatch,
@@ -19,7 +22,8 @@ import { logger } from "../../infra/logger"
 
 /**
  * A fila de mensagens ao cliente (docs/ROADMAP.md, fase 6, fatia 6d): cuidados de
- * antes e de depois, retorno e o pedido de avaliação.
+ * antes e de depois, retorno, o pedido de avaliação e o aviso de vencimento da
+ * assinatura (fase 8, fatia 8d).
  *
  * O cron chama `runCareMessageDispatcher` a cada meia hora. A regra (o que enviar,
  * o que pular, o que esperar) é do `@repo/db`; aqui só se monta o texto, se envia
@@ -37,6 +41,8 @@ export interface CareMessageDispatcherResult {
   /** Fora do horário de envio: nada foi feito. */
   outsideHours: boolean
   preCareQueued: number
+  /** Avisos de vencimento de assinatura que entraram na fila nesta execução. */
+  subscriptionQueued: number
   sent: number
   failed: number
   skipped: number
@@ -55,6 +61,16 @@ function buildBody(dispatch: ClaimedCareDispatch): string | null {
       customerName: dispatch.customerName,
       salonName: dispatch.salonName,
       link: `${appBaseUrl()}/avaliar/${dispatch.review.token}`,
+    })
+  }
+
+  if (dispatch.kind === "subscription_due") {
+    if (!dispatch.subscription) return null
+    return renderCareMessage(dispatch.subscription.message ?? DEFAULT_SUBSCRIPTION_DUE_TEXT, {
+      customerName: dispatch.customerName,
+      salonName: dispatch.salonName,
+      itemName: dispatch.itemName,
+      dueDate: formatSubscriptionDueDate(dispatch.subscription.due),
     })
   }
 
@@ -95,6 +111,7 @@ export async function runCareMessageDispatcher(now: Date = new Date()): Promise<
   const result: CareMessageDispatcherResult = {
     outsideHours: false,
     preCareQueued: 0,
+    subscriptionQueued: 0,
     sent: 0,
     failed: 0,
     skipped: 0,
@@ -107,6 +124,13 @@ export async function runCareMessageDispatcher(now: Date = new Date()): Promise<
   }
 
   result.preCareQueued = await enqueueDuePreCareMessages(now)
+
+  // Uma falha aqui não pode segurar as outras mensagens da fila.
+  try {
+    result.subscriptionQueued = await enqueueDueSubscriptionReminders(now)
+  } catch (error) {
+    logger.error({ err: error }, "Falha ao pôr na fila os avisos de vencimento de assinatura")
+  }
 
   const dispatches = await claimDueCareDispatches(now, BATCH_SIZE)
 

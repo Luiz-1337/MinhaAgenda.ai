@@ -6,7 +6,8 @@
  *   - cuidados ANTES do atendimento (só serviço), N dias antes do agendamento;
  *   - cuidados DEPOIS, N dias depois da comanda faturada;
  *   - RETORNO, N dias depois da comanda, chamando o cliente de volta.
- * A mesma fila manda o pedido de avaliação (fatia 6c) pelo WhatsApp.
+ * A mesma fila manda o pedido de avaliação (fatia 6c) pelo WhatsApp, e o aviso
+ * de vencimento da assinatura (fase 8, fatia 8d).
  *
  * Mesmo desenho dos outros módulos: o serviço busca os dados, estas funções
  * decidem, o serviço grava e quem envia é o app.
@@ -19,8 +20,8 @@
 export const CARE_MESSAGE_KINDS = ['pre_care', 'post_care', 'return'] as const
 export type CareMessageKind = (typeof CARE_MESSAGE_KINDS)[number]
 
-/** O que a fila manda: as três mensagens e o pedido de avaliação. */
-export type CareDispatchKind = CareMessageKind | 'review'
+/** O que a fila manda: as três mensagens, o pedido de avaliação e o aviso de assinatura. */
+export type CareDispatchKind = CareMessageKind | 'review' | 'subscription_due'
 
 export const MAX_CARE_MESSAGE_LENGTH = 1000
 
@@ -113,15 +114,23 @@ export function customerFirstName(name: string | null | undefined): string {
  */
 export function renderCareMessage(
   template: string,
-  vars: { customerName: string | null; salonName: string; itemName?: string | null; link?: string | null }
+  vars: {
+    customerName: string | null
+    salonName: string
+    itemName?: string | null
+    link?: string | null
+    /** O vencimento da assinatura, já escrito ("22/11"). */
+    dueDate?: string | null
+  }
 ): string {
   const values: Record<string, string | null | undefined> = {
     cliente: customerFirstName(vars.customerName),
     salao: vars.salonName,
     item: vars.itemName,
     link: vars.link,
+    vencimento: vars.dueDate,
   }
-  return template.replace(/\{(cliente|salao|item|link)\}/g, (whole, key: string) => values[key] ?? whole)
+  return template.replace(/\{(cliente|salao|item|link|vencimento)\}/g, (whole, key: string) => values[key] ?? whole)
 }
 
 // ============================================================================
@@ -191,6 +200,21 @@ export type CareDispatchContext = {
   review: { answered: boolean; settingsEnabled: boolean } | null
   /** O cliente já tem agendamento futuro (o retorno perde o sentido). */
   customerHasUpcomingAppointment: boolean
+  /**
+   * A assinatura do aviso de vencimento (fatia 8d). NULL = foi excluída. Só no
+   * tipo `subscription_due`.
+   */
+  subscription?: {
+    /** O salão ainda está com o aviso ligado. */
+    settingsEnabled: boolean
+    deactivated: boolean
+    /** O vencimento de HOJE da assinatura. NULL = sem período pago. */
+    paidUntil: string | null
+    /** O vencimento que este aviso anuncia. */
+    due: string
+    /** Hoje em Brasília. */
+    today: string
+  } | null
 }
 
 export type CareDispatchDecision =
@@ -211,6 +235,19 @@ export function decideCareDispatch(ctx: CareDispatchContext): CareDispatchDecisi
   if (!ctx.moduleEnabled) return { action: 'skip', reason: 'O módulo foi desligado no salão' }
   if (ctx.customerOptedOut) return { action: 'skip', reason: 'O cliente pediu para não receber mensagens' }
   if (!ctx.customerHasPhone) return { action: 'skip', reason: 'O cliente não tem telefone válido' }
+
+  if (ctx.kind === 'subscription_due') {
+    const subscription = ctx.subscription
+    if (!subscription) return { action: 'skip', reason: 'A assinatura foi excluída' }
+    if (!subscription.settingsEnabled) return { action: 'skip', reason: 'O aviso de vencimento foi desativado' }
+    if (subscription.deactivated) return { action: 'skip', reason: 'A assinatura foi desativada' }
+    // Renovou (ou a cobrança foi desfeita): o vencimento anunciado não vale mais.
+    if (subscription.paidUntil !== subscription.due) {
+      return { action: 'skip', reason: 'O vencimento da assinatura mudou' }
+    }
+    if (subscription.today > subscription.due) return { action: 'skip', reason: 'O vencimento já passou' }
+    return { action: 'send' }
+  }
 
   if (ctx.kind === 'review') {
     if (!ctx.review) return { action: 'skip', reason: 'O pedido de avaliação foi excluído' }
@@ -259,4 +296,41 @@ export function toWhatsAppNumber(phone: string | null | undefined): string | nul
   if (digits.length >= 12 && digits.length <= 15) return `+${digits}`
   if (digits.length === 10 || digits.length === 11) return `+55${digits}`
   return null
+}
+
+// ============================================================================
+// Aviso de vencimento da assinatura (fase 8, fatia 8d)
+// ============================================================================
+
+/** O aviso que sai quando o salão não escreveu o seu. */
+export const DEFAULT_SUBSCRIPTION_DUE_TEXT =
+  'Olá, {cliente}! Sua assinatura {item} no {salao} vence em {vencimento}. Fale com a gente para renovar.'
+
+/** Com quantos dias de antecedência o aviso pode sair. O mesmo do CHECK do banco. */
+export const SUBSCRIPTION_REMINDER_DAYS = { min: 1, max: 15, default: 3 } as const
+
+export type SubscriptionReminderDraft = { isEnabled: unknown; daysBefore: unknown; message?: unknown }
+
+export type SubscriptionReminderPlan =
+  | { ok: true; settings: { isEnabled: boolean; daysBefore: number; message: string | null } }
+  | { ok: false; error: string }
+
+/** Valida a configuração do aviso. Texto vazio = usa o padrão do sistema. */
+export function planSubscriptionReminder(draft: SubscriptionReminderDraft): SubscriptionReminderPlan {
+  const { min, max } = SUBSCRIPTION_REMINDER_DAYS
+  const daysBefore = typeof draft.daysBefore === 'number' ? draft.daysBefore : Number.NaN
+  if (!Number.isInteger(daysBefore) || daysBefore < min || daysBefore > max) {
+    return { ok: false, error: `Informe de ${min} a ${max} dias` }
+  }
+
+  const message = typeof draft.message === 'string' ? draft.message.trim() : ''
+  if (message.length > MAX_CARE_MESSAGE_LENGTH) return { ok: false, error: 'Mensagem muito longa' }
+
+  return { ok: true, settings: { isEnabled: draft.isEnabled === true, daysBefore, message: message || null } }
+}
+
+/** "2026-11-22" → "22/11", como o vencimento aparece na mensagem. */
+export function formatSubscriptionDueDate(date: string): string {
+  const [, month, day] = date.split('-')
+  return `${day}/${month}`
 }

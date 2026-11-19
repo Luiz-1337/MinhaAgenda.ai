@@ -11,6 +11,7 @@ import {
   createCustomerSubscription,
   deleteCustomerSubscription,
   renewCustomerSubscription,
+  saveSubscriptionReminder,
   searchSubscriptionCustomers,
   setCustomerSubscriptionActive,
 } from "@/app/actions/subscriptions"
@@ -214,6 +215,8 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
           </div>
         </div>
       )}
+
+      <ReminderCard salonId={salonId} reminder={data.reminder} canManage={data.can.manage} />
 
       <section className="bg-card border border-border rounded-md">
         <div className="p-3 border-b border-border bg-muted/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -552,5 +555,142 @@ function CustomerPicker({
         </div>
       )}
     </div>
+  )
+}
+
+// ============================================================================
+// Aviso de vencimento por WhatsApp (fase 8, fatia 8d)
+// ============================================================================
+
+function ReminderCard({
+  salonId,
+  reminder,
+  canManage,
+}: {
+  salonId: string
+  reminder: CustomerSubscriptionsDTO["reminder"]
+  canManage: boolean
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [editing, setEditing] = useState(false)
+  const [isEnabled, setIsEnabled] = useState(reminder.isEnabled)
+  const [daysBefore, setDaysBefore] = useState(String(reminder.daysBefore))
+  const [message, setMessage] = useState(reminder.message ?? "")
+
+  function open() {
+    setIsEnabled(reminder.isEnabled)
+    setDaysBefore(String(reminder.daysBefore))
+    setMessage(reminder.message ?? "")
+    setEditing(true)
+  }
+
+  function submit() {
+    const days = Number(daysBefore)
+    if (!Number.isInteger(days) || days < reminder.limits.min || days > reminder.limits.max) {
+      toast.error(`Informe de ${reminder.limits.min} a ${reminder.limits.max} dias`)
+      return
+    }
+    startTransition(async () => {
+      const result = await saveSubscriptionReminder({ salonId, isEnabled, daysBefore: days, message })
+      if ("error" in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(isEnabled ? "Aviso de vencimento ligado" : "Aviso de vencimento desligado")
+      setEditing(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <section className="bg-card border border-border rounded-md p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Aviso de vencimento por WhatsApp
+        </h3>
+        <p className="mt-1 text-sm text-foreground">
+          {reminder.isEnabled
+            ? `Ligado: o cliente recebe uma mensagem ${reminder.daysBefore} ${
+                reminder.daysBefore === 1 ? "dia" : "dias"
+              } antes de a assinatura vencer.`
+            : "Desligado: nenhuma mensagem é enviada."}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Sai das 9h às 20h, uma vez por vencimento, e não vai para quem pediu para não receber mensagens. O que
+          saiu aparece em{" "}
+          <Link href={`/${salonId}/care-messages`} className="font-semibold text-accent hover:underline">
+            Cuidados e retorno
+          </Link>
+          .
+        </p>
+      </div>
+      {canManage && (
+        <Button variant="outline" onClick={open} disabled={isPending}>
+          Configurar
+        </Button>
+      )}
+
+      {editing && (
+        <Modal title="Aviso de vencimento por WhatsApp" onClose={() => setEditing(false)} disabled={isPending}>
+          <div className="p-4 flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={isEnabled}
+                disabled={isPending}
+                onChange={(event) => setIsEnabled(event.target.checked)}
+              />
+              Avisar o cliente antes de a assinatura vencer
+            </label>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reminder-days" className={labelClass}>
+                Dias antes do vencimento ({reminder.limits.min} a {reminder.limits.max})
+              </label>
+              <input
+                id="reminder-days"
+                type="number"
+                min={reminder.limits.min}
+                max={reminder.limits.max}
+                value={daysBefore}
+                disabled={isPending}
+                onChange={(event) => setDaysBefore(event.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reminder-message" className={labelClass}>
+                Mensagem (opcional)
+              </label>
+              <textarea
+                id="reminder-message"
+                rows={4}
+                maxLength={1000}
+                value={message}
+                disabled={isPending}
+                placeholder={reminder.defaultMessage}
+                onChange={(event) => setMessage(event.target.value)}
+                className={inputClass}
+              />
+              <p className="text-xs text-muted-foreground">
+                Em branco, sai o texto acima. Variáveis: {"{cliente}"}, {"{salao}"}, {"{item}"} (o plano) e{" "}
+                {"{vencimento}"} (dia e mês).
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              O aviso não cobra nada: a renovação continua sendo feita pelo salão, em “Renovar”.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-border">
+            <Button variant="ghost" onClick={() => setEditing(false)} disabled={isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={submit} disabled={isPending}>
+              Salvar
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </section>
   )
 }
