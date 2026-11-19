@@ -298,7 +298,7 @@ export async function loadActiveAppointments(salonId: string, customerId: string
       eq(appointments.clientId, customerId),
       ne(appointments.status, "cancelled")
     ),
-    columns: { id: true, serviceId: true, date: true, endTime: true, leadSource: true },
+    columns: { id: true, serviceId: true, date: true, endTime: true, leadSource: true, notes: true },
     orderBy: (table, { asc }) => [asc(table.date)],
   })
 }
