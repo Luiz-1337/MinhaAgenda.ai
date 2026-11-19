@@ -94,8 +94,9 @@ publicada e testada em uso em 19/nov/2026 — ver §13.9.
 Fatia 9e (painel de profissionais) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 (a ocupação; o valor realizado não
 foi visto com comanda) — ver §13.10.
-Fatia 9f (exportação em planilha) feita na mesma branch, sem migration — **em
-commit local, sem publicar e sem teste em uso** — ver §13.11.
+Fatia 9f (exportação em planilha) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 — **o arquivo não foi aberto em Excel
+nem em Sheets** — ver §13.11.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4118,7 +4119,7 @@ Perguntas para o dono:
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
 | Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
 | Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
-| Autorizar publicar a fatia 9f — ver §13.11 | Teste em uso da fatia 9f |
+| Abrir no Excel um CSV exportado dos relatórios e conferir acentos, colunas, valores como número e datas — ver §13.11 | Confirmar o formato da exportação |
 | Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4141,7 +4142,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
-| 9f | Exportação (planilha) nos relatórios, num formato só | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.11) |
+| 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
 
 "Todas as notas fiscais" é da fase 10.
@@ -4648,20 +4649,37 @@ Perguntas para o dono:
 
 ### 13.11 Fatia 9f — estado (19/nov/2026)
 
-- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro nem aviso nos arquivos
   alterados) e testes passando (web 1447).
 - **Sem migration e sem consulta nova.** O que muda é só no navegador.
-- **O arquivo não foi aberto em Excel nem em Sheets.** Os testes conferem o
-  texto do CSV (separador, vírgula decimal, aspas, BOM, apóstrofo); se a
-  planilha abre como esperado só se vê abrindo.
 - **Limites desta fatia:** só CSV (sem PDF, sem `.xlsx`, sem impressão); só
   os relatórios da fase 9; os totais dos cartões não vão no arquivo; o
   relatório de criação exporta os dias, não as faixas de antecedência; a lista
   de produtos e serviços sai numa planilha só, com o preço do serviço em texto
-  quando é faixa ou "sob avaliação".
-- **Sem teste em uso.** Roteiro, no salão de teste: clicar em "Exportar" em
-  cada um dos relatórios; relatório sem linhas avisa "Não há linhas para
-  exportar"; conferir o nome do arquivo; abrir pelo menos um no Excel e
-  conferir acentos, colunas, valores como número e datas; conferir que uma
-  célula começando com "=" abre como texto.
+  ("R$ 150,00 a R$ 220,00") e o do produto em número.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste. O
+  arquivo foi capturado na página em vez de baixado para o computador (o
+  clique no link de download foi interceptado), e o conteúdo lido:
+  - agendamentos cancelados — clique no botão "Exportar": arquivo
+    `agendamentos-cancelados_2026-11-01_2026-11-19.csv`, 538 bytes, começando
+    pelos três bytes da marca BOM; título e as 4 linhas da tela, com ponto e
+    vírgula, data em DD/MM/AAAA e o motivo vazio onde não há; aviso "4 linhas
+    exportadas";
+  - painel de profissionais (jan a mar) — `painel-de-profissionais_2026-01-01_2026-03-31.csv`,
+    com "Sim" em Ativo, horas em número (5 e 312), ocupação "1,6" com vírgula
+    e ticket vazio onde a tela mostra "—";
+  - lista de produtos e serviços — `lista-de-produtos-e-servicos.csv`, 14
+    linhas (12 serviços e 2 produtos), com o código do produto e o custo vazio
+    onde não há;
+  - relatório sem linhas (resultado líquido de serviços, sem comanda) — nenhum
+    arquivo e o aviso "Não há linhas para exportar".
+- **Não testado:**
+  - **abrir o arquivo no Excel ou no Sheets** (acentos, colunas, valores como
+    número, datas, e o apóstrofo das células que começam como fórmula) — fica
+    para o dono, nas pendências;
+  - o download de verdade para a pasta do computador;
+  - os outros relatórios (financeiro com linhas, clientes com telefone,
+    vendas, origem, criação): a função de cada um só tem o typecheck;
+  - usuário sem `customers.view_phones` (a coluna de telefone some).
+- Nenhum dado de teste foi criado.
