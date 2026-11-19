@@ -8,6 +8,7 @@ import { formatBRL } from "@/lib/utils/money.utils"
 import type { ProfessionalPanelData } from "@/app/actions/professional-panel"
 import { LOW_OCCUPANCY_PERCENT } from "@repo/db/src/domain/professional-panel"
 import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { ReportInsightsPanel } from "@/components/reports/report-insights-panel"
 import { csvFileName, csvMoney } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, labelClass } from "../../inventory/inventory-ui"
 
@@ -135,6 +136,8 @@ export function ProfessionalPanelClient({ salonId, data }: { salonId: string; da
         </p>
         <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
+
+      <ReportInsightsPanel salonId={salonId} screen="professionals" />
 
       {data.truncated && (
         <p role="status" className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 text-xs text-foreground">

@@ -104,6 +104,10 @@ duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 
 estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
 mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g também já estão na `main`** (conferido em 19/nov/2026: a
 branch `claude/fase-9-relatorios` não tem commit fora da `main`) — ver §13.14.
+Fatia 9h (análise com IA nas telas de relatório), pedida pelo dono em
+19/nov/2026, feita na branch `claude/relatorios-insights-ia` (sai da `main`),
+sem migration — publicada no preview e **testada em uso nas cinco telas** em
+19/nov/2026; no **PR #30**, aberto em 19/nov/2026 e esperando a mescla — ver §13.15.
 Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
 de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
@@ -4171,6 +4175,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Caminho A feito, sem migration, publicado na branch e testado em uso com uma unidade só — **a comparação entre duas não foi vista** (§13.12 e §13.13) |
+| 9h | Análise com IA em cada tela de relatório: resumo, o que vai bem, pontos de atenção e o que fazer | Feita, sem migration, testada em uso no preview nas cinco telas (§13.15); no PR #30 |
 
 "Todas as notas fiscais" é da fase 10.
 
@@ -4386,8 +4391,59 @@ Fatia 9g — organização (caminho A):
 44. **Quem vê**: o dono, abrindo a tela de um salão DELE que tenha o módulo
     `reports`. Quem é dono de uma unidade só também abre (com um aviso).
 
+Fatia 9h — análise com IA nas telas de relatório (pedida pelo dono em
+19/nov/2026):
+
+45. **Onde**: um painel "Análise com IA", logo abaixo dos filtros, nas telas de
+    relatórios financeiros, de agendamentos, de clientes, de vendas e no painel
+    de profissionais. A central e a Organização não têm.
+46. **Sob demanda.** Nada é gerado sozinho nem guardado: o botão "Gerar análise"
+    faz uma; "Gerar de novo", outra (e outro consumo). Mudar o relatório ou o
+    período recarrega a tela e o painel volta ao botão.
+47. **Os números são os da própria tela, lidos de novo no servidor.** A tela
+    manda só QUAL tela e os filtros da URL; a análise chama a mesma action que a
+    tela chamou. Assim ela só vê o que a pessoa pode ver, com a permissão da
+    tela, e ninguém consegue mandar número forjado para a IA comentar.
+48. **O que vai para a IA**: números e nomes de serviço, produto e
+    profissional. **Nunca** contato, documento, identificador, texto livre
+    (observação, descrição, motivo — o histórico do financeiro escreve nome de
+    cliente) nem nome de cliente. Lista longa vira resumo por coluna (total;
+    soma, média, mínimo e máximo; os valores mais frequentes; dia da semana e
+    hora) com uma amostra de até 10 linhas. Tudo cabe em 14 mil caracteres; se
+    não couber, pede um período menor. Dinheiro vai em reais e tempo em horas,
+    como as telas mostram.
+49. **O que volta**: um resumo de uma ou duas frases, "O que está indo bem",
+    "Pontos de atenção" e "O que fazer" (com impacto alto, médio ou baixo), até
+    5 itens por lista. O formato é pedido no modo estrito da OpenAI e conferido
+    antes de ir para a tela.
+50. **A IA é instruída** a usar só os números recebidos e citar o número de cada
+    ponto; a não inventar média de mercado nem meta; a dizer quando os dados são
+    poucos; a sugerir ações para as próximas semanas, ligadas ao que a tela
+    mostra; e a ignorar qualquer instrução escrita dentro dos dados.
+51. **Modelo**: o da plataforma (`gpt-6-sol`, o mesmo do WhatsApp), com
+    raciocínio baixo, sem guardar a conversa na OpenAI (`store: false`).
+52. **Custa créditos de IA do salão**, pelo mesmo peso da conversa do WhatsApp.
+    Sem crédito no mês, não gera. **Análise que falha não é cobrada.** O consumo
+    fica numa linha própria de `ai_usage_stats` (`gpt-6-sol:relatorios`): o
+    stats-sync reescreve as linhas por modelo a partir das mensagens e apagaria
+    esse consumo se ele ficasse na linha do modelo.
+53. **Quem gera**: quem tem `reports.access` e a permissão da tela. Sem
+    permissão nova.
+54. **O rodapé** diz a hora, os créditos usados e "A IA pode errar: confira os
+    números da tela antes de decidir".
+
 Perguntas para o dono:
 
+- (9h) A análise deve mesmo custar créditos do salão (regra 52), ou ser
+  gratuita com um limite por mês?
+- (9h) Vale guardar a última análise de cada tela, para não pagar de novo e
+  para comparar meses? Pede migration.
+- (9h) A análise deve comparar com o período anterior? Hoje a IA só vê o
+  período da tela.
+- (9h) Levar a análise também à Organização (comparar unidades) e ao
+  Dashboard?
+- (9h) Quem pode gerar: qualquer um que vê o relatório (regra 53), ou só o
+  dono e o gerente?
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
   já abre?
 - (9a) Os favoritos devem ser de cada pessoa (regra 4) ou do salão?
@@ -4468,6 +4524,8 @@ Perguntas para o dono:
 - **Organização (9g)** (`/[salonId]/organization`, atalho no topo da central
   de relatórios, só para o dono): o período; a tabela de unidades com a linha
   de soma; a tabela da equipe; e "Exportar" (as unidades).
+- **Análise com IA (9h)**: painel abaixo da barra de filtros das cinco telas
+  (regra 45), com "Gerar análise", o resumo, as três listas e o rodapé.
 
 | Assunto | Onde está |
 |---|---|
@@ -4478,6 +4536,7 @@ Perguntas para o dono:
 | Painel de profissionais (9e) | Sem migration; regra em `domain/professional-panel.ts` (`countWeekdays`, `weeklyWorkMinutes`, `buildProfessionalPanel`); I/O em `services/professional-panel.service.ts` (reusa `listSoldItemsService`); action em `actions/professional-panel.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/professionals/`; o destino no catálogo; testes em `professional-panel-domain.test.ts` |
 | Exportação em planilha (9f) | Sem migration e sem action nova; o formato em `apps/web/lib/utils/csv.utils.ts` (`toCsv`, `csvMoney`, `csvDate`, `csvFileName`); o botão em `components/reports/export-csv-button.tsx`; a função `sheet()` de cada tela em `app/[salonId]/reports/*/…-client.tsx`; testes em `__tests__/lib/utils/csv.utils.test.ts` |
 | Organização (9g, caminho A) | Sem migration; regra em `domain/organization.ts` (`buildOrganizationUnits`, `groupOrganizationMembers`); I/O em `services/organization.service.ts` (o único que lê mais de um salão; a lista sai de `salons.owner_id`); action em `actions/organization.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/organization/`; o atalho em `reports/reports-client.tsx` (`ownedSalons` em `actions/reports.ts`); testes em `organization-domain.test.ts` |
+| Análise com IA (9h) | Sem migration; regra em `domain/report-insights.ts` (`planReportInsightInput`, `parseReportInsights`, `REPORT_INSIGHTS_JSON_SCHEMA`); a chamada à OpenAI em `apps/web/lib/services/reports/report-insights.service.ts`; action `getReportInsights` em `actions/report-insights.ts` (na guarda de `actions-authz.test.ts`); o débito em `debitSalonCredits` (`lib/services/credits.service.ts`, parâmetro `ledgerModel`); o painel em `components/reports/report-insights-panel.tsx`; testes em `report-insights-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4882,6 +4941,51 @@ uma fase própria, não uma fatia dos relatórios.
     todos os salões, para quem tem as permissões novas.
 - **Pendências que a entrada em produção destrava** (§12): abrir `/assinar` e
   `/agendar` num celular sem login no painel.
+
+### 13.15 Fatia 9h — estado (19/nov/2026)
+
+- Na branch `claude/relatorios-insights-ia`, que sai da `main` (`84597e6`),
+  numa pasta de trabalho separada (`B:/MinhaAgenda.ai-insights`), publicada no
+  preview da Vercel; **no PR #30** (`claude/relatorios-insights-ia` → `main`,
+  aberto em 19/nov/2026, mescla limpa), esperando a mescla. Typecheck (db, web e
+  mcp-server), lint (nenhum erro nos arquivos alterados) e testes passando (web
+  1542).
+- **Sem migration.**
+- **Mudança fora da fatia**: `debitSalonCredits` ganhou o parâmetro opcional
+  `ledgerModel` e passou a devolver os créditos debitados. O worker do WhatsApp
+  chama do mesmo jeito e não usa o retorno.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - **Agendamentos** (01/01 a 19/11): a análise citou 10 agendamentos, 5
+    concluídos e 5 cancelados (50%) — os mesmos números dos cartões da tela —,
+    e nenhum nome de cliente, embora a tabela mostre os nomes;
+  - **Financeiro** (resultado líquido, 01/11 a 19/11, sem lançamentos) e
+    **Vendas** (01/01 a 19/11, tudo R$ 0,00): a IA disse que não havia dados
+    para concluir e sugeriu conferir os lançamentos, sem inventar número;
+  - **Clientes inativos**: falou dos 5 clientes da lista (240 a 300 dias sem
+    vir, 1 visita cada) sem citar nenhum nome — conferido contra os nomes da
+    tabela;
+  - **Painel de profissionais** (01/01 a 19/11): os números batiam com a tela,
+    mas vinham em minutos ("300 minutos em 66.720") enquanto a tela mostra
+    horas ("5h de 1112h"). **Corrigido**: minutos agora vão em horas.
+    Gerada de novo depois da correção: "5 horas agendadas em 3.880 horas
+    disponíveis", "Luiz tem 0 horas agendadas em 2.768" — como a tela;
+  - trocar o período recarrega a tela e o painel volta ao botão;
+  - cada análise levou de 8 a 18 segundos.
+- **Créditos**: as cinco primeiras análises somaram 2.961 créditos (de 468 a
+  892 cada) na linha `gpt-6-sol:relatorios` de `ai_usage_stats`. Os planos dão
+  de 1 a 10 milhões de créditos por mês.
+- **Não testado em uso:** salão sem crédito (a mensagem de crédito acabado);
+  tela com dados demais (a mensagem de período menor); quem vê o relatório mas
+  não tem a permissão da tela; análise com muitos dados reais — o salão de
+  teste tem poucos lançamentos.
+- **No dashboard**, o gráfico de créditos por modelo mostra o consumo da análise
+  com o nome cru `gpt-6-sol:relatorios`.
+- **Limites desta fatia:**
+  - nada é guardado (regra 46);
+  - sem comparação com o período anterior;
+  - lista longa vai resumida, não inteira (regra 48);
+  - na tela de clientes vão só contagens e dias, sem nomes;
+  - a Organização e o Dashboard não têm análise.
 
 ## 14. Fase 8 — Pagamento, sem receber dos clientes
 
