@@ -2348,6 +2348,27 @@ export const customerDocuments = pgTable(
 )
 
 // ============================================================================
+// TABLES - Favoritos de relatórios (migration 064)
+// ============================================================================
+// Os relatórios que UMA pessoa marcou com estrela, num salão. A chave é a do
+// catálogo em código (domain/report-catalog.ts).
+
+export const reportFavorites = pgTable(
+  'report_favorites',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+    reportKey: text('report_key').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('report_favorites_user_key_unique').on(table.salonId, table.userId, table.reportKey),
+    index('report_favorites_user_idx').on(table.userId)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(

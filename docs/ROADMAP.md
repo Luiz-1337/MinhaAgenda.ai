@@ -80,8 +80,12 @@ Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
 Fatia 7f (agendamento online público) feita na mesma branch, sem migration,
 publicada e testada em uso em 18/nov/2026 — ver §11.12. O cálculo de horários
-da IA não foi trocado.
-Fases 8 em diante: planejamento.
+da IA não foi trocado. **A fase 7 NÃO está na `main`**: não há PR aberto.
+Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
+relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
+`claude/fase-7-cliente-agenda`) — **em commit local, migration 064 NÃO
+aplicada, sem publicar e sem teste em uso** — ver §13.6.
+Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -4096,5 +4100,125 @@ Perguntas para o dono:
 | Abrir `/agendar/<id>` num celular sem login no painel, depois que a fase 7 estiver em produção, e marcar um horário | Confirmar a página pública de agendamento |
 | Responder às perguntas da 7f em §11.4 (entrar direto ou esperar aceite, confirmar o telefone, janela e teto, esconder serviços, cancelar pelo link) | Ligar o agendamento online num salão de verdade |
 | Decidir quando trocar o cálculo de horários da IA para o cálculo novo (regra 43) — pede teste com o worker e conversa de verdade | Um cálculo só no sistema inteiro |
+| Aplicar a migration 064 (ou autorizar a aplicação), publicar a fatia 9a e ligar o módulo `reports` no salão de teste — ver §13.6 | Teste em uso da fatia 9a |
+| Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
+| Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
+
+## 13. Fase 9 — Relatórios e multiunidade
+
+Responde: onde o dono olha os números. A auditoria lista 38 sub-relatórios em
+oito categorias, um painel de profissionais, os favoritos e a organização com
+unidades — mas **nenhum relatório teve as colunas de saída lidas** (a auditoria
+só viu os filtros). Colunas e totais são decididos aqui, fatia a fatia.
+
+A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
+
+### 13.1 Fatias
+
+| Fatia | O que entra | Estado |
+|---|---|---|
+| 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita em código — **migration 064 não aplicada, sem publicar e sem teste em uso** (§13.6) |
+| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, fluxo de caixa, extrato de contas | Pendente |
+| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
+| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
+| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
+| 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
+| 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
+
+"Todas as notas fiscais" é da fase 10.
+
+### 13.2 O que o levantamento encontrou (18/nov/2026)
+
+- **21 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
+  a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
+  compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
+  retorno, comandas e contatos. Faltam 16, mais a nota fiscal (fase 10) e o
+  painel de profissionais.
+- **"Já tem tela" não quer dizer "igual à Belasis"**: a tela responde à
+  pergunta do relatório, com os filtros que a fase dela entregou. Vários
+  relatórios caem na mesma tela (por exemplo, Recebimentos, Despesas e Extrato
+  de movimentações caem nos lançamentos do financeiro).
+- **Não havia tela de relatórios**, e a permissão `reports.access` já existia
+  no catálogo sem proteger nada.
+- **Só a lista de contatos exporta** (CSV). Os outros relatórios não exportam.
+- **Não existe "unidade"**: cada salão é uma conta isolada (`salons`). A
+  organização multiunidade da auditoria (membros com papel e unidades) não tem
+  nada pronto; `professionals.person_key` só une a agenda da mesma pessoa
+  entre salões.
+
+### 13.3 Modelo de dados
+
+**Migration 064 (fatia 9a)** — só tabela nova, não mexe em nenhuma existente:
+
+- **`report_favorites`** — o relatório que UMA pessoa marcou, num salão:
+  `salon_id`, `user_id` (os dois com CASCADE) e `report_key` (a chave do
+  catálogo em código). Único por pessoa, salão e relatório.
+
+### 13.4 Regras decididas
+
+Fatia 9a — central de relatórios:
+
+1. **O catálogo vive em código** (`domain/report-catalog.ts`): os 38
+   sub-relatórios da auditoria e o painel de profissionais, cada um com a
+   categoria, um resumo e — quando já existe — a tela que responde, com o
+   módulo e a permissão dela.
+2. **A central não calcula nada.** Ela aponta para a tela de destino, que
+   continua conferindo o próprio módulo e a própria permissão.
+3. **Cada pessoa vê o que abriria**: relatório com tela só aparece se o salão
+   tem o módulo da tela ligado e a pessoa tem a permissão dela. O que ainda não
+   existe aparece para todos como "Em breve", com a fatia prevista.
+4. **Favoritos são da pessoa, no salão** (não do salão): até 20, na ordem em
+   que foram marcados. Só o que já tem tela pode ser favorito. Favorito de uma
+   tela que a pessoa deixou de abrir fica guardado, mas não aparece.
+5. **Módulo `reports`**, desligado para todos, e permissão `reports.access`
+   (que já existia). Dono e gerente sem perfil têm; funcionário sem perfil não.
+6. **Não há permissão por categoria** (a Belasis tem "acessar por relatório"):
+   quem decide o que cada um vê é a permissão de cada tela de destino.
+
+Perguntas para o dono:
+
+- (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
+  já abre?
+- (9a) Os favoritos devem ser de cada pessoa (regra 4) ou do salão?
+- (9a) Faz falta a permissão por categoria de relatório, como na Belasis, ou a
+  permissão de cada tela basta (regra 6)?
+- (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
+  ver? A auditoria não leu a saída de nenhum.
+- (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
+- (9g) O dono tem mais de uma unidade? Como ele quer ver os números: por
+  unidade, somados, ou os dois?
+
+### 13.5 Telas e código
+
+- **Central de relatórios (9a)** (`/[salonId]/reports`, item "Relatórios" no
+  menu): "N de M relatórios disponíveis"; o bloco "Favoritos"; e um bloco por
+  categoria, com o nome e o resumo de cada relatório, a estrela e "Abrir".
+
+| Assunto | Onde está |
+|---|---|
+| Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
+
+### 13.6 Fatia 9a — estado (18/nov/2026)
+
+- Na branch `claude/fase-9-relatorios` (sai de `claude/fase-7-cliente-agenda`,
+  que não está na `main`), **em commit local, sem publicar**. Typecheck (db,
+  web e mcp-server), lint (nenhum erro novo nos arquivos alterados) e testes
+  passando (web 1383, db 296, mcp-server 409).
+- **Migration 064: NÃO aplicada.** Só cria uma tabela; não há cópia a fazer.
+  Publicar o código antes dela não quebra nada fora da central (ela fica atrás
+  do módulo, desligado), mas a central falharia ao carregar.
+- **O módulo `reports` nasce desligado.** Para testar, ligar no salão de teste.
+- **Os destinos não foram conferidos tela a tela nesta fatia.** O catálogo
+  aponta cada relatório para a tela que, pelo que as fases 2 a 6 registraram
+  neste documento, responde a ele. O teste em uso tem que abrir cada um.
+- **Limites desta fatia:** nenhum relatório novo; sem exportação; a central
+  não leva filtro nem período para a tela de destino; relatórios que caem na
+  mesma tela abrem a mesma tela.
+- **Sem teste em uso.** Roteiro, com a 064 aplicada e o módulo ligado no salão
+  de teste: o item "Relatórios" no menu; a contagem "N de M"; abrir CADA
+  relatório disponível e conferir que a tela responde ao que o nome promete;
+  marcar e desmarcar favoritos, recarregar e conferir a ordem; conferir que
+  "Em breve" não tem estrela nem "Abrir"; desligar um módulo (ou usar um perfil
+  sem a permissão) e ver o relatório sumir.
