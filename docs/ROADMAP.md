@@ -104,7 +104,12 @@ duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 
 estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
 mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g ainda não**: estão
 no PR #24, aberto e esperando a mescla — ver §13.14.
-Fases 8 e 10: planejamento.
+Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
+de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
+8a (sinal do agendamento por PIX direto ao salão) feita na branch
+`claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — **em commit local,
+migration 065 NÃO aplicada, sem publicar e sem teste em uso** — ver §14.6.
+Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -4131,6 +4136,8 @@ Perguntas para o dono:
 | Abrir no Excel um CSV exportado dos relatórios e conferir acentos, colunas, valores como número e datas — ver §13.11 | Confirmar o formato da exportação |
 | Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
 | Ver a tela Organização com um dono de mais de um salão (hoje só há um em produção, e não é a conta de teste) — ver §13.13 | Confirmar a comparação entre unidades |
+| Confirmar o que é a fase 8 "sem receber dos clientes" e responder às perguntas de §14.4 (prazo para o sinal, sinal da IA, valor por serviço, devolução) | As fatias 8b e 8c |
+| Aplicar a migration 065 (ou autorizar a aplicação) e publicar a fatia 8a — ver §14.6 | Teste em uso da fatia 8a |
 | Responder às perguntas da multiunidade em §13.12 (gerente que vê todas as unidades, dado compartilhado, despesa organizacional, cobrança) | Decidir se o caminho B (entidade "organização") é necessário |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4863,3 +4870,137 @@ uma fase própria, não uma fatia dos relatórios.
     todos os salões, para quem tem as permissões novas.
 - **Pendências que a entrada em produção destrava** (§12): abrir `/assinar` e
   `/agendar` num celular sem login no painel.
+
+## 14. Fase 8 — Pagamento, sem receber dos clientes
+
+A fase 8 original era "pagamento online": conta de pagamentos por salão, sinal
+no agendamento online e renovação automática de assinatura. Tudo isso pede um
+provedor de pagamento, que o dono deixou por último (§1). Em 19/nov/2026 ele
+pediu para seguir a fase **sem a parte de receber dos clientes**.
+
+Interpretação (minha, a confirmar): o sistema **não toca no dinheiro**. Faz o
+que dá para fazer com o cliente pagando direto ao salão — o que o salão já faz
+hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
+
+### 14.1 Fatias
+
+| Fatia | O que entra | Estado |
+|---|---|---|
+| 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita em código — **migration 065 não aplicada, sem publicar e sem teste em uso** (§14.6) |
+| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Pendente |
+| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento (no painel e por mensagem) e página pública de planos | Pendente |
+
+**Fora da fase, por depender de provedor:** conta de pagamentos por salão,
+cobrança por link ou PIX gerado pelo sistema, confirmação automática do
+pagamento, cobrança automática de assinatura, estorno.
+
+### 14.2 O que o levantamento encontrou (19/nov/2026)
+
+- **O sinal já existia, só para a IA.** `salons.settings.advance_payment`
+  (ligado, valor, chave PIX, nome) é configurado na tela do salão e lido pelo
+  prompt do agente: ele informa a taxa, passa a chave e só agenda depois que o
+  cliente manda o comprovante. A equipe confere depois.
+- **Nada no sistema registrava o sinal.** Não havia como saber, olhando a
+  agenda, quem pagou.
+- **A página de agendamento online (7f) marcava sem pedir sinal**, mesmo em
+  salão com o sinal ligado. Foi o motivo de desligar o módulo no salão de teste.
+- **A tela do salão não tem "confirmar agendamento"**: o agendamento nasce
+  pendente e segue pendente até ser concluído. O sinal não mexe nisso.
+
+### 14.3 Modelo de dados
+
+**Migration 065 (fatia 8a)** — só tabela nova, não mexe em nenhuma existente:
+
+- **`appointment_deposits`** — o sinal de UM agendamento: `appointment_id`
+  (único; CASCADE), `amount`, `status` (`pending`, `received`, `waived`),
+  `source` (`online` ou `panel`), `received_at` (preenchido só quando
+  recebido — CHECK), `settled_by` e `created_by`.
+
+A configuração do sinal continua em `salons.settings.advance_payment`.
+
+### 14.4 Regras decididas
+
+Fatia 8a — sinal do agendamento:
+
+1. **O sistema não recebe o dinheiro.** O cliente paga por PIX direto ao salão,
+   na chave que o salão configurou. O sistema guarda o pedido de sinal e o que
+   alguém do salão marcou. Não há conferência automática.
+2. **"O salão pede sinal"** quando a configuração está completa: ligada, com
+   valor e com chave PIX — a mesma condição que a IA usa.
+3. **Na página de agendamento online**, salão que pede sinal: avisa o valor
+   antes de marcar; depois de marcar, mostra o valor, a chave PIX (com "Copiar
+   chave"), em nome de quem ela está, e pede o comprovante pelo WhatsApp do
+   salão. O horário fica marcado na hora, com o sinal "aguardando".
+4. **Sem sinal pago, o horário NÃO cai sozinho.** O sistema não cancela o
+   agendamento de quem não pagou: o salão vê "Aguardando sinal" e decide.
+5. **No detalhe do agendamento**, a linha "Sinal": valor, situação (Aguardando
+   sinal, Sinal recebido, Sinal dispensado), de onde veio e, quando recebido, a
+   data e quem marcou. Ações: marcar como recebido, dispensar, voltar para
+   aguardando e tirar o sinal (só o que está aguardando).
+6. **O salão pode lançar sinal em qualquer agendamento** ("Lançar sinal", com o
+   valor configurado já sugerido) — inclusive nos que a IA marcou.
+7. **A IA não foi mexida.** Ela continua pedindo o comprovante antes de agendar,
+   e o agendamento que ela cria NÃO nasce com sinal registrado: o salão lança à
+   mão, se quiser controlar.
+8. **Um sinal por agendamento.** Excluir o agendamento apaga o sinal; cancelar
+   não apaga (o recebido continua lá, para devolver ou não).
+9. **O sinal ainda não é abatido na comanda** nem entra no financeiro — é a 8b.
+10. **Quem vê e quem mexe**: ver é de quem vê a agenda (`schedule.access`);
+    lançar, marcar, dispensar, reabrir e tirar é de quem edita
+    (`schedule.edit`). Sem módulo: a agenda é do produto base.
+
+Perguntas para o dono:
+
+- (fase 8) "Sem a parte de receber dos clientes" é isso mesmo — o sistema só
+  controla, e o dinheiro vai direto para o salão?
+- (8a) Agendamento online sem sinal pago deve cair sozinho depois de um prazo
+  (regra 4)? De quanto tempo?
+- (8a) O agendamento que a IA cria depois do comprovante deve nascer com o
+  sinal "recebido" ou "aguardando conferência" (regra 7)? Isso mexe na criação
+  de agendamento pela IA.
+- (8a) O valor do sinal é um só por salão. Precisa variar por serviço, ou ser
+  uma porcentagem do preço?
+- (8a) Sinal recebido de agendamento cancelado: devolve, vira crédito, ou fica
+  com o salão? Hoje o sistema só mostra.
+- (8a) O cliente deve mandar o comprovante pela própria página (anexo), em vez
+  de pelo WhatsApp?
+
+### 14.5 Telas e código
+
+- **Página de agendamento online (8a)**: o aviso do sinal acima do botão de
+  marcar; e, na confirmação, o bloco com valor, chave PIX, "Copiar chave" e o
+  nome do titular.
+- **Detalhe do agendamento (8a)**: a linha "Sinal", com as ações.
+
+| Assunto | Onde está |
+|---|---|
+| Sinal do agendamento (8a) | Migration `065_appointment_deposits.sql`; tabela `appointmentDeposits`; regra em `domain/appointment-deposits.ts` (`parseAdvancePayment`, `planDepositAmount`, `planDepositTransition`); I/O em `services/appointment-deposits.service.ts`; o sinal na criação online em `services/online-booking.service.ts`; actions em `actions/appointment-deposits.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-booking.ts` (pública); telas em `components/scheduler/appointment-deposit-row.tsx` e `app/agendar/[salonId]/booking-form.tsx`; testes em `appointment-deposits-domain.test.ts` |
+
+### 14.6 Fatia 8a — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`, cujo PR
+  #24 ainda não foi mesclado), **em commit local, sem publicar**. Typecheck
+  (db, web e mcp-server), lint (nenhum erro novo nos arquivos alterados) e
+  testes passando (web 1472).
+- **Migration 065: NÃO aplicada.** Só cria uma tabela; não há cópia a fazer.
+  Aplicar ANTES de publicar: sem ela, a linha "Sinal" some do detalhe do
+  agendamento (a leitura falha e a tela esconde a linha), e o agendamento
+  online de salão com sinal é marcado sem registrar o sinal.
+- **O módulo `online_booking` está desligado em todos os salões.** Para testar
+  a página com sinal, é preciso religar no salão de teste.
+- **As consultas não foram executadas contra o banco.**
+- **Limites desta fatia:**
+  - o sinal não é abatido na comanda nem lançado no financeiro (8b);
+  - sem cancelamento automático por falta de sinal;
+  - a IA não registra sinal;
+  - a agenda não mostra o sinal no cartão do agendamento, só no detalhe; não há
+    lista de "aguardando sinal";
+  - um valor de sinal por salão.
+- **Sem teste em uso.** Roteiro, com a 065 aplicada e o módulo religado no
+  salão de teste (que tem o sinal configurado): a página avisa o valor antes
+  de marcar; depois de marcar, mostra a chave e o titular; no banco, o sinal
+  "aguardando" de origem online; no detalhe do agendamento, a linha "Sinal" e
+  as ações (receber, voltar para aguardando, dispensar, tirar); "Lançar sinal"
+  num agendamento sem sinal, com o valor sugerido; salão sem sinal ligado: a
+  página não mostra nada e o agendamento nasce sem sinal; limpar os dados e
+  desligar o módulo de novo.

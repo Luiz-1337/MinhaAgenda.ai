@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { createPublicBooking, getPublicBookingSlots } from "@/app/actions/public-booking"
-import type { OnlineBookingService } from "@repo/db"
+import type { AdvancePaymentConfig, OnlineBookingService } from "@repo/db"
 
 const fieldClass =
   "w-full bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring transition-all disabled:opacity-60"
 const labelClass = "text-xs font-semibold text-muted-foreground"
+
+const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
 
 function formatDay(day: string): string {
   const [year, month, date] = day.split("-")
@@ -32,11 +34,14 @@ export function BookingForm({
   services,
   firstDay,
   lastDay,
+  deposit,
 }: {
   salonId: string
   services: OnlineBookingService[]
   firstDay: string
   lastDay: string
+  /** O sinal que o salão pede. O cliente paga por PIX direto ao salão. */
+  deposit: AdvancePaymentConfig | null
 }) {
   const [isPending, startTransition] = useTransition()
 
@@ -48,7 +53,8 @@ export function BookingForm({
   const [phone, setPhone] = useState("")
   const [website, setWebsite] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ day: string; time: string } | null>(null)
+  const [done, setDone] = useState<{ day: string; time: string; deposit: AdvancePaymentConfig | null } | null>(null)
+  const [copied, setCopied] = useState(false)
   const [loaded, setLoaded] = useState<SlotsState | null>(null)
   const [reload, setReload] = useState(0)
 
@@ -114,7 +120,7 @@ export function BookingForm({
         setReload((value) => value + 1)
         return
       }
-      setDone({ day: result.day, time: result.time })
+      setDone({ day: result.day, time: result.time, deposit: result.deposit })
     })
   }
 
@@ -127,6 +133,37 @@ export function BookingForm({
           <br />
           {formatDay(done.day)} às {done.time}
         </p>
+        {done.deposit && (
+          <div className="space-y-2 rounded-md border border-border bg-muted/40 p-3 text-left">
+            <p className="text-sm font-semibold text-foreground">
+              Falta o sinal de {money.format(done.deposit.amountCents / 100)} para garantir o horário
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Pague por PIX direto ao salão e envie o comprovante para o WhatsApp dele. O valor é abatido no dia do
+              atendimento. O salão confirma o recebimento.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 break-all rounded bg-card px-2 py-1.5 text-sm text-foreground">
+                {done.deposit.pixKey}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(done.deposit?.pixKey ?? "").then(
+                    () => setCopied(true),
+                    () => setCopied(false)
+                  )
+                }}
+                className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+              >
+                {copied ? "Copiada" : "Copiar chave"}
+              </button>
+            </div>
+            {done.deposit.pixName && (
+              <p className="text-xs text-muted-foreground">Chave PIX em nome de {done.deposit.pixName}.</p>
+            )}
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           Se precisar remarcar ou cancelar, fale com o salão. Você pode fechar esta página.
         </p>
@@ -294,6 +331,13 @@ export function BookingForm({
             O salão usa o seu nome e o seu WhatsApp para registrar o horário e falar com você sobre ele.
           </p>
         </>
+      )}
+
+      {deposit && (
+        <p role="note" className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+          Este salão pede um sinal de <strong className="text-foreground">{money.format(deposit.amountCents / 100)}</strong>{" "}
+          por PIX para garantir o horário. A chave aparece depois que você marcar, e o valor é abatido no dia.
+        </p>
       )}
 
       {error && (

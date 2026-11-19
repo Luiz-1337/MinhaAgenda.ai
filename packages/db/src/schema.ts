@@ -2369,6 +2369,36 @@ export const reportFavorites = pgTable(
 )
 
 // ============================================================================
+// TABLES - Sinal do agendamento (migration 065)
+// ============================================================================
+// O sinal pedido para um agendamento e se foi recebido. O sistema não recebe o
+// dinheiro: o cliente paga por PIX ao salão, e alguém marca aqui. Regra em
+// domain/appointment-deposits.ts.
+
+export const appointmentDeposits = pgTable(
+  'appointment_deposits',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    appointmentId: uuid('appointment_id').references(() => appointments.id, { onDelete: 'cascade' }).notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    // 'pending' | 'received' | 'waived' (CHECK no banco)
+    status: text('status').default('pending').notNull(),
+    // 'online' | 'panel'
+    source: text('source').notNull(),
+    receivedAt: timestamp('received_at'),
+    settledBy: uuid('settled_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('appointment_deposits_appointment_unique').on(table.appointmentId),
+    index('appointment_deposits_salon_status_idx').on(table.salonId, table.status)
+  ]
+)
+
+// ============================================================================
 // TABLES - Dashboard Statistics
 // ============================================================================
 export const aiUsageStats = pgTable(

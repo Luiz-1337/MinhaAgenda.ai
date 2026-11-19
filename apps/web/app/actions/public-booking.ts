@@ -1,7 +1,7 @@
 "use server"
 
 import { z } from "zod"
-import { createOnlineBookingService, listOnlineBookingSlotsService } from "@repo/db"
+import { createOnlineBookingService, listOnlineBookingSlotsService, type AdvancePaymentConfig } from "@repo/db"
 import { formatZodError } from "@/lib/services/validation.service"
 
 /**
@@ -16,7 +16,9 @@ import { formatZodError } from "@/lib/services/validation.service"
  *     é no serviço, a cada chamada);
  *   - `getPublicBookingSlots` só devolve horários livres ("HH:mm");
  *   - `createPublicBooking` só cria UM agendamento, num horário que a página está
- *     oferecendo agora, e devolve só o dia e a hora marcados;
+ *     oferecendo agora, e devolve só o dia e a hora marcados — e, se o salão pede
+ *     sinal, o valor e a chave PIX que ele mesmo configurou para mostrar ao
+ *     cliente (fase 8). O pagamento NÃO passa por aqui;
  *   - nenhuma devolve dado de cliente, nem diz se um telefone já é cadastrado.
  *
  * Não há limite de tentativas por endereço (como em /avaliar e /assinar). O que
@@ -55,12 +57,12 @@ export async function getPublicBookingSlots(
 
 export async function createPublicBooking(
   input: z.infer<typeof bookingSchema>
-): Promise<{ success: true; day: string; time: string } | { error: string }> {
+): Promise<{ success: true; day: string; time: string; deposit: AdvancePaymentConfig | null } | { error: string }> {
   const parsed = bookingSchema.safeParse(input)
   if (!parsed.success) return { error: formatZodError(parsed.error) }
 
   // Robô que preencheu o campo-isca recebe "deu certo" e nada é gravado.
-  if (parsed.data.website) return { success: true, day: parsed.data.day, time: parsed.data.time }
+  if (parsed.data.website) return { success: true, day: parsed.data.day, time: parsed.data.time, deposit: null }
 
   try {
     const result = await createOnlineBookingService({ ...parsed.data, now: new Date() })
