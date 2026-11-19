@@ -31,11 +31,19 @@ export function VerificationModal({
   const [resendCooldown, setResendCooldown] = useState(0)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Foca no primeiro input quando abre
-  useEffect(() => {
+  // Limpa o código a cada abertura (ajuste durante o render, sem effect)
+  const [wasOpen, setWasOpen] = useState(false)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (open) {
       setCode(["", "", "", "", "", ""])
       setLocalError(null)
+    }
+  }
+
+  // Foca no primeiro input quando abre
+  useEffect(() => {
+    if (open) {
       setTimeout(() => {
         inputRefs.current[0]?.focus()
       }, 100)

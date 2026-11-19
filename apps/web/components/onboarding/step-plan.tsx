@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Check, ArrowRight, ArrowLeft } from "lucide-react"
 import { useOnboardingStore } from "@/lib/stores/onboarding-store"
 import { PLANS } from "@/components/landing/constants"
@@ -13,9 +13,12 @@ interface StepPlanProps {
 
 export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
   const { data, setData } = useOnboardingStore()
-  const [selectedPlan, setSelectedPlan] = useState<'SOLO' | 'PRO' | 'ENTERPRISE' | null>(
-    (data.plan || initialPlan) as 'SOLO' | 'PRO' | 'ENTERPRISE' | null
+  // Escolha feita nesta tela; enquanto não houver, vale o plano da URL
+  // (o register já grava esse plano no store).
+  const [pickedPlan, setSelectedPlan] = useState<'SOLO' | 'PRO' | 'ENTERPRISE' | null>(
+    (data.plan || null) as 'SOLO' | 'PRO' | 'ENTERPRISE' | null
   )
+  const selectedPlan = pickedPlan ?? initialPlan ?? null
 
   // Mapeia os nomes dos planos da constante para os valores esperados
   const planMap: Record<string, 'SOLO' | 'PRO' | 'ENTERPRISE'> = {
@@ -23,13 +26,6 @@ export function StepPlan({ onNext, onBack, initialPlan }: StepPlanProps) {
     'Pro': 'PRO',
     'Enterprise': 'ENTERPRISE'
   }
-
-  useEffect(() => {
-    if (initialPlan && !selectedPlan) {
-      setSelectedPlan(initialPlan)
-      setData({ plan: initialPlan })
-    }
-  }, [initialPlan])
 
   const handlePlanSelect = (planName: string) => {
     const planValue = planMap[planName] || planName.toUpperCase() as 'SOLO' | 'PRO' | 'ENTERPRISE'

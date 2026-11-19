@@ -164,7 +164,7 @@ export async function updateSalonAvailability(
     await db
       .update(salons)
       .set({
-        workHours: workHours as any,
+        workHours,
         updatedAt: new Date(),
       })
       .where(eq(salons.id, salonId))

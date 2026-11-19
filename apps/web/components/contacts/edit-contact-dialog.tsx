@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition } from "react"
 import { toast } from "sonner"
 import { X, User, Phone, Mail, Tag, Save, Loader2 } from "lucide-react"
 import { updateSalonCustomer, type UpdateSalonCustomerInput } from "@/app/actions/customers"
@@ -35,8 +35,11 @@ export function EditContactDialog({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
-  // Preenche o formulário quando o customer muda
-  useEffect(() => {
+  // Preenche o formulário quando o customer muda (ajuste durante o render,
+  // sem effect: https://react.dev/learn/you-might-not-need-an-effect)
+  const [syncedCustomer, setSyncedCustomer] = useState<CustomerRow | null | undefined>(undefined)
+  if (customer !== syncedCustomer) {
+    setSyncedCustomer(customer)
     if (customer) {
       setName(customer.name || "")
       setPhone(formatPhoneBR(customer.phone))
@@ -46,7 +49,7 @@ export function EditContactDialog({
       setPreferences(prefs?.notes || "")
       setSelectedTagIds((customer.tags ?? []).map((t) => t.id))
     }
-  }, [customer])
+  }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

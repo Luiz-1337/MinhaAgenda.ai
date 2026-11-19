@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
 
     // Redireciona para Google
     return NextResponse.redirect(authUrl)
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro ao gerar URL de autenticação Google:', error)
     return NextResponse.json(
       { error: 'Erro ao iniciar autenticação com Google' },

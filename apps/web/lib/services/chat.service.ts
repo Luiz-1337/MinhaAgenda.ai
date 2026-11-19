@@ -204,7 +204,7 @@ export async function findOrCreateChat(
   })
 
   // Se chat existente e agentId fornecido, atualiza vinculo do agente
-  if (chat && agentId && (chat as any).agentId !== agentId) {
+  if (chat && agentId && chat.agentId !== agentId) {
     await db.update(chats).set({ agentId, updatedAt: new Date() }).where(eq(chats.id, chat.id))
   }
 

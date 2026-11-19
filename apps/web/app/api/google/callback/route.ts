@@ -5,6 +5,15 @@ import { createClient } from '@/lib/supabase/server'
 import { db, salonIntegrations, salons, and, eq } from '@repo/db'
 import { setupWatchChannelsForSalon } from '@repo/db/services/google-calendar-sync'
 
+// Forma dos erros do Supabase/googleapis que logamos (campos podem faltar).
+type ErrorLike = {
+  message?: string
+  code?: unknown
+  name?: string
+  stack?: string
+  response?: { data?: unknown }
+}
+
 /**
  * Obtém a URL base da aplicação
  */
@@ -94,7 +103,8 @@ export async function GET(req: NextRequest) {
         const retryResult = await supabase.auth.getUser()
         user = retryResult.data.user
       }
-    } catch (authError: any) {
+    } catch (caught) {
+      const authError = caught as ErrorLike
       console.error('❌ Erro ao verificar autenticação:', {
         message: authError.message,
         code: authError.code,
@@ -172,7 +182,8 @@ export async function GET(req: NextRequest) {
           dataKeys: userInfo.data ? Object.keys(userInfo.data) : [],
         })
       }
-    } catch (emailError: any) {
+    } catch (caught) {
+      const emailError = caught as ErrorLike
       // Não é crítico se falhar - podemos continuar sem o email
       console.error('❌ Erro ao obter email do usuário Google:', {
         message: emailError.message,
@@ -332,7 +343,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(
       new URL('/dashboard?success=' + encodeURIComponent('Google Calendar conectado com sucesso!'), baseUrl)
     )
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as ErrorLike
     console.error('❌ Erro no callback Google OAuth:', {
       message: error.message,
       stack: error.stack,

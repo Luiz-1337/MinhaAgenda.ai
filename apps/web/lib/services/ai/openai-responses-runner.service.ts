@@ -2,6 +2,12 @@ import * as z3 from "zod/v3"
 import * as z4 from "zod/v4"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import type { ReasoningEffort } from "openai/resources/shared"
+import type {
+  FunctionTool,
+  Response,
+  ResponseFunctionToolCall,
+  ResponseInput,
+} from "openai/resources/responses/responses"
 import type { ToolSetDefinition } from "./tools/tool-definition"
 import { getOpenAIClient } from "./openai-client"
 import { describeSchemaValidationError } from "./assistant-output-guards"
@@ -132,7 +138,7 @@ function toResponseInput(messages: ResponsesRunnerInputMessage[]) {
   }))
 }
 
-function extractResponseText(response: any): string {
+function extractResponseText(response: Response): string {
   if (typeof response?.output_text === "string" && response.output_text.trim()) {
     return response.output_text.trim()
   }
@@ -223,15 +229,17 @@ export async function runOpenAIResponses(
   }
   const steps: ResponsesRunnerStep[] = []
 
+  // `strict` fica de fora de propósito (não muda o payload enviado à OpenAI).
   const responseTools = Object.entries(tools).map(([name, toolDef]) => ({
     type: "function" as const,
     name,
     description: toolDef.description,
     parameters: schemaToJsonSchema(toolDef.inputSchema, name),
-  }))
+  })) as FunctionTool[]
 
   let previousResponseId: string | undefined
-  let currentInput: unknown = toResponseInput(params.input)
+  // O conteúdo multimodal já vem no formato de input da Responses API.
+  let currentInput: ResponseInput = toResponseInput(params.input) as ResponseInput
   let rounds = 0
 
   // Reasoning effort: default "medium" para reasoning models (gpt-5*, gpt-6*, o-series).
@@ -260,9 +268,9 @@ export async function runOpenAIResponses(
       // markdown". Foi assim que a Liz mandou tabela Markdown com preco cheio e
       // duracao, numa conversa limpa, em 23/09/2026.
       instructions: instructions ?? null,
-      input: currentInput as any,
+      input: currentInput,
       previous_response_id: previousResponseId,
-      tools: responseTools as any,
+      tools: responseTools,
       // parallel_tool_calls=true: a IA pode invocar multiplas tools no mesmo round.
       // Nosso runner ja executa tools em paralelo via Promise.allSettled (linhas ~315-320),
       // entao isto reduz o numero de roundtrips OpenAI quando a IA precisa de varios dados.
@@ -292,8 +300,10 @@ export async function runOpenAIResponses(
     }
 
     const text = extractResponseText(response)
-    const outputItems: any[] = Array.isArray((response as any).output) ? (response as any).output : []
-    const functionCalls = outputItems.filter((item) => item?.type === "function_call")
+    const outputItems = Array.isArray(response.output) ? response.output : []
+    const functionCalls = outputItems.filter(
+      (item): item is ResponseFunctionToolCall => item?.type === "function_call"
+    )
 
     if (functionCalls.length === 0) {
       steps.push({
@@ -406,8 +416,8 @@ export async function runOpenAIResponses(
     model,
     instructions: instructions ?? null,
     previous_response_id: previousResponseId,
-    input: currentInput as any,
-    tools: responseTools as any,
+    input: currentInput,
+    tools: responseTools,
     tool_choice: "none",
   })
 

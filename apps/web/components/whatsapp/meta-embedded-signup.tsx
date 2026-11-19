@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useCallback, useRef, useState } from "react"
+import { useIsMounted } from "@/lib/hooks/use-is-mounted"
 import { Loader2, MessageCircle, AlertCircle, ExternalLink, QrCode } from "lucide-react"
 import { toast } from "sonner"
 
@@ -156,11 +157,16 @@ export function MetaEmbeddedSignup({
   disabled = false,
 }: MetaEmbeddedSignupProps) {
   const [loadingFlow, setLoadingFlow] = useState<SignupFlow | null>(null)
-  const [sdkLoaded, setSdkLoaded] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
   // IDs de configuração do Meta
   const appId = process.env.NEXT_PUBLIC_META_APP_ID
+
+  const mounted = useIsMounted()
+  const [sdkInitialized, setSdkInitialized] = useState(false)
+  // SDK pronto: inicializado por esta montagem ou já presente na página
+  // (montagem anterior). Sem appId o SDK nunca é carregado.
+  const sdkLoaded = sdkInitialized || (mounted && !!appId && !!window.FB)
+  // appId é inlinado no build (NEXT_PUBLIC_*), então o erro inicial é igual no SSR e no cliente.
+  const [error, setError] = useState<string | null>(appId ? null : "META_APP_ID não configurado")
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID
   // Config dedicada ao fluxo de Coexistência. SEM fallback para o config padrão:
   // a Coexistência exige uma configuração do Embedded Signup preparada para
@@ -231,16 +237,11 @@ export function MetaEmbeddedSignup({
 
   // Carrega o Facebook SDK (uma única vez por montagem)
   useEffect(() => {
-    if (!appId) {
-      setError("META_APP_ID não configurado")
-      return
-    }
+    // Sem appId o erro já vem do estado inicial.
+    if (!appId) return
 
-    // Verifica se já foi carregado
-    if (window.FB) {
-      setSdkLoaded(true)
-      return
-    }
+    // Já carregado: sdkLoaded deriva de window.FB.
+    if (window.FB) return
 
     // Define o callback de inicialização
     window.fbAsyncInit = function () {
@@ -250,7 +251,7 @@ export function MetaEmbeddedSignup({
         xfbml: true,
         version: "v22.0",
       })
-      setSdkLoaded(true)
+      setSdkInitialized(true)
     }
 
     // Carrega o SDK

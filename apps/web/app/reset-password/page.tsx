@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useIsMounted } from '@/lib/hooks/use-is-mounted';
 import Image from 'next/image';
 import { ArrowRight, Sun, Moon, Lock, Loader2, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
@@ -33,8 +34,7 @@ function SubmitButton({ isLoading }: { isLoading: boolean }) {
 
 export default function ResetPasswordPage() {
   const { theme, setTheme, resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  const [isDark, setIsDark] = useState(false)
+  const mounted = useIsMounted()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const router = useRouter()
@@ -56,10 +56,7 @@ export default function ResetPasswordPage() {
     []
   )
 
-  useEffect(() => {
-    setMounted(true)
-    setIsDark(resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
-  }, [theme, resolvedTheme])
+  const isDark = mounted && (resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
 
   useEffect(() => {
     const resolveReady = () => {
@@ -78,6 +75,9 @@ export default function ResetPasswordPage() {
     if (hasError) {
       resolvedRef.current = true
       const desc = hashParams.get('error_description') || queryParams.get('error_description')
+      // O erro só existe na URL do navegador (hash não chega ao servidor), então é
+      // lido no mount; ler no render quebraria a hidratação do SSR.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza com window.location
       setLinkError(
         errorCode === 'otp_expired'
           ? 'O link de recuperação expirou ou já foi usado. Solicite um novo abaixo.'
@@ -119,7 +119,6 @@ export default function ResetPasswordPage() {
   const toggleTheme = () => {
     const newTheme = isDark ? 'light' : 'dark'
     setTheme(newTheme)
-    setIsDark(!isDark)
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {

@@ -15,6 +15,12 @@ import { BaseAuthenticatedAction } from "@/lib/services/actions/base-authenticat
 import { MarketingUseCase, type RecoveryFlowData, type CampaignData } from "@/lib/services/marketing/marketing-usecase.service"
 import { MarketingRepository } from "@/lib/services/marketing/marketing.repository"
 
+type RecoveryFlow = Awaited<ReturnType<typeof MarketingUseCase.getRecoveryFlow>>
+type CampaignList = Awaited<ReturnType<typeof MarketingRepository.findCampaignsBySalonId>>
+type Campaign = NonNullable<Awaited<ReturnType<typeof MarketingRepository.findCampaignById>>>
+type CampaignStats = Pick<Campaign, "sentCount" | "totalRecipients" | "status">
+type SendCampaignResult = Awaited<ReturnType<typeof MarketingUseCase.sendCampaign>>
+
 // ============================================================================
 // Server Actions
 // ============================================================================
@@ -22,7 +28,7 @@ import { MarketingRepository } from "@/lib/services/marketing/marketing.reposito
 /**
  * Obtém o fluxo de recuperação ativo de um salão
  */
-export async function getRecoveryFlow(salonId: string): Promise<ActionResult<any>> {
+export async function getRecoveryFlow(salonId: string): Promise<ActionResult<RecoveryFlow>> {
   try {
     BaseAuthenticatedAction.validateSalonId(salonId)
 
@@ -137,7 +143,7 @@ export async function listSegmentedLeads(
 /**
  * Lista todas as campanhas de um salão
  */
-export async function getCampaigns(salonId: string): Promise<ActionResult<any[]>> {
+export async function getCampaigns(salonId: string): Promise<ActionResult<CampaignList>> {
   try {
     BaseAuthenticatedAction.validateSalonId(salonId)
 
@@ -158,7 +164,7 @@ export async function getCampaigns(salonId: string): Promise<ActionResult<any[]>
 /**
  * Obtém detalhes de uma campanha
  */
-export async function getCampaignById(campaignId: string, salonId: string): Promise<ActionResult<any>> {
+export async function getCampaignById(campaignId: string, salonId: string): Promise<ActionResult<Campaign>> {
   try {
     const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
     if ("error" in authResult) {
@@ -215,7 +221,7 @@ export async function createBroadcastCampaign(
 export async function sendBroadcastCampaign(
   campaignId: string,
   salonId: string
-): Promise<ActionResult<any>> {
+): Promise<ActionResult<SendCampaignResult>> {
   try {
     const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
     if ("error" in authResult) {
@@ -236,7 +242,7 @@ export async function sendBroadcastCampaign(
 /**
  * Obtém estatísticas de uma campanha
  */
-export async function getCampaignStats(campaignId: string, salonId: string): Promise<ActionResult<any>> {
+export async function getCampaignStats(campaignId: string, salonId: string): Promise<ActionResult<CampaignStats>> {
   try {
     const authResult = await BaseAuthenticatedAction.authenticateAndAuthorize(salonId)
     if ("error" in authResult) {

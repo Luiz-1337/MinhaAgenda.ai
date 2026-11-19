@@ -1,6 +1,7 @@
 "use client"
 
 import { useTransition, useEffect, useRef, useState } from "react"
+import { useIsMounted } from "@/lib/hooks/use-is-mounted"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -23,14 +24,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 const FIXED_MODEL: AgentSchema["model"] = AI_MODEL_CONSTANTS.DEFAULT_MODEL
 function ToneTooltip() {
   const [isVisible, setIsVisible] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsMounted()
   const iconRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ top: 0, left: 0 })
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (isVisible && iconRef.current) {

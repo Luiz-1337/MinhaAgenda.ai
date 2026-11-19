@@ -20,6 +20,11 @@ import {
   MessagesUpdateDataSchema,
   MessageAckStatus,
   normalizeAckStatus,
+  type MessagesUpsertEvent,
+  type MessagesUpdateEvent,
+  type ConnectionUpdateEvent,
+  type QRCodeUpdatedEvent,
+  type EvolutionWebhookData,
 } from '@/lib/schemas/evolution';
 import { logger, createContextLogger, hashPhone, createRequestContext, getDuration, getReplicaId } from '@/lib/infra/logger';
 import { StageTimer } from '@/lib/infra/stage-timer';
@@ -46,6 +51,25 @@ const REDIS_TIMEOUT = 2000; // 2 segundos
 // Token secreto para validar payloads (opcional mas recomendado)
 const WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_TOKEN || '';
 
+// messages.upsert com os fallbacks de nível de evento que o handler também lê.
+type MessagesUpsertWebhook = MessagesUpsertEvent & { senderPn?: string; participant_pn?: string; remoteJidAlt?: string };
+type AgentUpdate = Partial<typeof agents.$inferInsert>;
+
+/**
+ * O EvolutionWebhookSchema só valida o envelope (event/instance/data como objeto);
+ * o formato de `data` é o contrato da Evolution para cada evento.
+ */
+function asEvent<T extends { event: string }>(data: EvolutionWebhookData): T {
+  return data as unknown as T;
+}
+
+/** `event` do payload cru, para log/alerta quando a validação falha. */
+function rawEventOf(rawPayload: unknown): unknown {
+  return typeof rawPayload === 'object' && rawPayload !== null
+    ? (rawPayload as { event?: unknown }).event
+    : undefined;
+}
+
 function ensureJid(value: string): string {
   return value.includes('@') ? value : `${value}@s.whatsapp.net`;
 }
@@ -55,7 +79,7 @@ function ensureJid(value: string): string {
  */
 export async function POST(req: NextRequest) {
   const ctx = createRequestContext();
-  let reqLogger = createContextLogger({ requestId: ctx.requestId });
+  const reqLogger = createContextLogger({ requestId: ctx.requestId });
 
   // Registra métrica de recebimento
   WebhookMetrics.received();
@@ -88,7 +112,7 @@ export async function POST(req: NextRequest) {
         const validationResult = EvolutionWebhookSchema.safeParse(rawPayload);
         if (!validationResult.success) {
           reqLogger.error(
-            { errors: validationResult.error.issues, rawEvent: (rawPayload as any)?.event },
+            { errors: validationResult.error.issues, rawEvent: rawEventOf(rawPayload) },
             'Schema validation failed'
           );
           WebhookMetrics.error('schema_validation');
@@ -99,7 +123,7 @@ export async function POST(req: NextRequest) {
             type: 'webhook_schema_validation',
             severity: 'warning',
             title: 'Payload do webhook falhou na validação de schema',
-            detail: { rawEvent: (rawPayload as any)?.event },
+            detail: { rawEvent: rawEventOf(rawPayload) },
           });
           continue;
         }
@@ -113,16 +137,16 @@ export async function POST(req: NextRequest) {
 
         switch (data.event) {
           case 'messages.upsert':
-            await handleMessageUpsert(data as any, payloadLogger, ctx);
+            await handleMessageUpsert(asEvent<MessagesUpsertWebhook>(data), payloadLogger, ctx);
             break;
           case 'messages.update':
-            await handleMessageUpdate(data as any, payloadLogger, ctx);
+            await handleMessageUpdate(asEvent<MessagesUpdateEvent>(data), payloadLogger, ctx);
             break;
           case 'connection.update':
-            await handleConnectionUpdate(data as any, payloadLogger, ctx);
+            await handleConnectionUpdate(asEvent<ConnectionUpdateEvent>(data), payloadLogger, ctx);
             break;
           case 'qrcode.updated':
-            await handleQRCodeUpdate(data as any, payloadLogger, ctx);
+            await handleQRCodeUpdate(asEvent<QRCodeUpdatedEvent>(data), payloadLogger, ctx);
             break;
           default:
             payloadLogger.debug({ event: data.event }, 'Ignoring unknown event');
@@ -132,13 +156,13 @@ export async function POST(req: NextRequest) {
         // evento. NÃO engolir com 200 — re-lança para o catch externo retornar 500
         // e a Evolution RE-TENTAR. A idempotência (jobId=messageId + dedup) garante
         // que o reprocessamento não duplica.
-        reqLogger.error({ err: payloadError, rawEvent: (rawPayload as any)?.event }, 'Transient error processing webhook payload — will signal retry');
+        reqLogger.error({ err: payloadError, rawEvent: rawEventOf(rawPayload) }, 'Transient error processing webhook payload — will signal retry');
         void recordAlert({
           scope: 'global',
           type: 'webhook_processing_error',
           severity: 'critical',
           title: 'Erro transitório ao processar evento do webhook (sinalizando retry)',
-          detail: { rawEvent: (rawPayload as any)?.event, error: payloadError instanceof Error ? payloadError.message : String(payloadError) },
+          detail: { rawEvent: rawEventOf(rawPayload), error: payloadError instanceof Error ? payloadError.message : String(payloadError) },
         });
         throw payloadError;
       }
@@ -160,7 +184,7 @@ export async function POST(req: NextRequest) {
     reqLogger.error(
       {
         err: wrappedError,
-        code: (wrappedError as any).code,
+        code: wrappedError.code,
         duration,
       },
       'Error processing webhook'
@@ -175,7 +199,7 @@ export async function POST(req: NextRequest) {
  * Handler para evento messages.upsert (mensagem recebida)
  */
 async function handleMessageUpsert(
-  data: any,
+  data: MessagesUpsertWebhook,
   reqLogger: ReturnType<typeof createContextLogger>,
   ctx: ReturnType<typeof createRequestContext>
 ) {
@@ -237,7 +261,7 @@ async function handleMessageUpsert(
     const lid = lidJid.split('@')[0];
     const senderPn = messageData.senderPn || data.senderPn;
     const participant = messageData.key.participant || messageData.participant;
-    const participantPn = (messageData as any).participant_pn || (data as any).participant_pn;
+    const participantPn = messageData.participant_pn || data.participant_pn;
 
     const cachedPhone = await resolveLidToPhone(lid, instanceName);
 
@@ -310,7 +334,7 @@ async function handleMessageUpsert(
   } catch (error) {
     if (error instanceof RateLimitError) {
       reqLogger.warn(
-        { resetIn: (error as any).resetIn },
+        { resetIn: error.resetIn },
         'Rate limit exceeded at webhook level'
       );
       WebhookMetrics.rateLimited({ phone: hashPhone(clientPhone) });
@@ -497,7 +521,7 @@ async function handleMessageUpsert(
       mediaType: mediaType ?? undefined,
       mediaUrl: mediaUrl ?? undefined,
       receivedAt: new Date(messageData.messageTimestamp * 1000).toISOString(),
-      profileName: messageData.pushName,
+      profileName: messageData.pushName ?? undefined,
       // isNewCustomer agora e calculado no worker (era 100-500ms de IA dentro do webhook)
       customerName: customer.name,
     }),
@@ -539,7 +563,7 @@ async function handleMessageUpsert(
  * O webhook só valida e enfileira (maxDuration 10s); a escala roda no worker.
  */
 async function handleMessageUpdate(
-  data: any,
+  data: MessagesUpdateEvent,
   reqLogger: ReturnType<typeof createContextLogger>,
   ctx: ReturnType<typeof createRequestContext>
 ) {
@@ -632,7 +656,7 @@ async function handleMessageUpdate(
  * Handler para evento connection.update (mudança de status de conexão)
  */
 async function handleConnectionUpdate(
-  data: any,
+  data: ConnectionUpdateEvent,
   reqLogger: ReturnType<typeof createContextLogger>,
   ctx: ReturnType<typeof createRequestContext>
 ) {
@@ -672,7 +696,7 @@ async function handleConnectionUpdate(
 
     if (agentByInstance) {
       // Agent-level instance (PRO/Enterprise) - update only this agent
-      const agentUpdatePayload: Record<string, unknown> = {
+      const agentUpdatePayload: AgentUpdate = {
         evolutionConnectionStatus: status,
         updatedAt: new Date(),
       };
@@ -696,7 +720,7 @@ async function handleConnectionUpdate(
       await withTimeout(
         db
           .update(agents)
-          .set(agentUpdatePayload as any)
+          .set(agentUpdatePayload)
           .where(eq(agents.id, agentByInstance.id)),
         DB_TIMEOUT,
         'updateAgentConnectionStatus'
@@ -734,7 +758,7 @@ async function handleConnectionUpdate(
             reqLogger.warn({ err }, 'Could not fetch connected phone number');
           }
 
-          const updatePayload: Record<string, unknown> = {
+          const updatePayload: AgentUpdate = {
             whatsappStatus: 'verified',
             whatsappVerifiedAt: new Date(),
             whatsappConnectedAt: new Date(),
@@ -747,7 +771,7 @@ async function handleConnectionUpdate(
           await withTimeout(
             db
               .update(agents)
-              .set(updatePayload as any)
+              .set(updatePayload)
               .where(eq(agents.salonId, salon.id)),
             DB_TIMEOUT,
             'updateAgentsStatus'
@@ -769,7 +793,7 @@ async function handleConnectionUpdate(
  * Handler para evento qrcode.updated (QR code atualizado)
  */
 async function handleQRCodeUpdate(
-  data: any,
+  data: QRCodeUpdatedEvent,
   reqLogger: ReturnType<typeof createContextLogger>,
   ctx: ReturnType<typeof createRequestContext>
 ) {

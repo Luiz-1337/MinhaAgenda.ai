@@ -39,16 +39,18 @@ export abstract class BaseAuthenticatedAction {
       return authResult
     }
 
-    const hasAccess = await hasSalonPermission(salonId, authResult.data?.userId!)
+    // authenticate() sempre devolve data no sucesso; sem userId, nega acesso.
+    const userId = authResult.data?.userId
+    const hasAccess = userId ? await hasSalonPermission(salonId, userId) : false
 
-    if (!hasAccess) {
+    if (!userId || !hasAccess) {
       return { error: "Acesso negado a este salão" }
     }
 
     return {
       success: true,
       data: {
-        userId: authResult.data!.userId,
+        userId,
         hasAccess: true,
       },
     }

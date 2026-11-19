@@ -20,6 +20,8 @@ const DAYS_OF_WEEK = [
   { value: "6", label: "Sábado" },
 ] as const
 
+type WorkHours = NonNullable<CreateSalonSchema["workHours"]>
+
 export default function OnboardingPage() {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -218,8 +220,7 @@ export default function OnboardingPage() {
               </h3>
               <div className="space-y-2">
                 {DAYS_OF_WEEK.map((day) => {
-                  const workHours = form.watch("workHours") || {}
-                  // @ts-ignore
+                  const workHours: Partial<WorkHours> = form.watch("workHours") || {}
                   const dayHours = workHours[day.value]
                   const isActive = !!dayHours
                   const startTime = dayHours?.start || "09:00"
@@ -259,7 +260,7 @@ export default function OnboardingPage() {
                           onClick={(e) => {
                             e.stopPropagation()
                             const rawWorkHours = form.getValues("workHours") || {}
-                            const updatedWorkHours = { ...rawWorkHours } as Record<string, any>
+                            const updatedWorkHours: Partial<WorkHours> = { ...rawWorkHours }
                             if (isActive) {
                               delete updatedWorkHours[day.value]
                             } else {
@@ -268,7 +269,7 @@ export default function OnboardingPage() {
                             const valueToSet = Object.keys(updatedWorkHours).length > 0
                               ? updatedWorkHours
                               : undefined
-                            form.setValue("workHours", valueToSet as any, {
+                            form.setValue("workHours", valueToSet, {
                               shouldDirty: true,
                               shouldTouch: true,
                               shouldValidate: true,

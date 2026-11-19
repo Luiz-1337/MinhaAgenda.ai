@@ -40,7 +40,12 @@ export async function register() {
         const { createAgendaSyncWorker } = await import("./workers/agenda-sync.worker");
 
         // Evita criar múltiplos workers durante hot reload
-        const globalAny = global as any;
+        const globalAny = global as typeof globalThis & {
+            _messageWorker?: unknown;
+            _trinksProfileWorker?: unknown;
+            _deliveryRetryWorker?: unknown;
+            _agendaSyncWorker?: unknown;
+        };
         if (!globalAny._messageWorker) {
             logger.info("Starting message worker from instrumentation...");
             globalAny._messageWorker = createMessageWorker();

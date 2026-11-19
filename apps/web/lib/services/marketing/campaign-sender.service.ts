@@ -87,7 +87,7 @@ export class CampaignSenderService {
         }
 
         // Substitui variáveis na mensagem
-        let finalMessage = VariableReplacerService.replaceVariables(
+        const finalMessage = VariableReplacerService.replaceVariables(
           campaign.messageTemplate,
           variables
         )

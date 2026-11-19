@@ -59,23 +59,32 @@ import { acquireLock, releaseLock, getRedisClient, isReplied } from "@/lib/infra
 import { db, domainServices } from "@repo/db"
 import { getSalonRemainingCredits, debitSalonCredits } from "@/lib/services/credits.service"
 
+// Os mocks só preenchem os campos que o worker lê; os tipos reais vêm das assinaturas.
+type ProcessMessageJob = Parameters<typeof processMessage>[0]
+type RedisClient = ReturnType<typeof getRedisClient>
+type ChatRow = Awaited<ReturnType<typeof db.query.chats.findFirst>>
+type SalonRow = Awaited<ReturnType<typeof db.query.salons.findFirst>>
+type AIResponse = Awaited<ReturnType<typeof generateAIResponse>>
+
+const asJob = (job: ReturnType<typeof makeFakeJob>) => job as unknown as ProcessMessageJob
+
 describe("processMessage", () => {
   beforeEach(() => {
     // Reset redis mock para cenário padrão
     const mockRedis = { get: vi.fn().mockResolvedValue(null), set: vi.fn() }
-    vi.mocked(getRedisClient).mockReturnValue(mockRedis as any)
+    vi.mocked(getRedisClient).mockReturnValue(mockRedis as unknown as RedisClient)
 
     // Lock adquirido com sucesso
     vi.mocked(acquireLock).mockResolvedValue("lock-id-123")
 
     // Chat não está em modo manual
-    vi.mocked(db.query.chats.findFirst).mockResolvedValue({ isManual: false } as any)
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({ isManual: false } as unknown as ChatRow)
 
     // Salon ativo
     vi.mocked(db.query.salons.findFirst).mockResolvedValue({
       subscriptionStatus: "ACTIVE",
       subscriptionStatusChangedAt: null,
-    } as any)
+    } as unknown as SalonRow)
 
     // Credits disponíveis
     vi.mocked(getSalonRemainingCredits).mockResolvedValue({
@@ -89,7 +98,7 @@ describe("processMessage", () => {
       text: "Claro! Posso ajudar com seu agendamento.",
       usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
       model: "gpt-4o-mini",
-    } as any)
+    } as unknown as AIResponse)
 
     // domainServices
     vi.mocked(domainServices.analyzeMessageRequiresResponse).mockReturnValue(false)
@@ -98,7 +107,7 @@ describe("processMessage", () => {
   it("happy path: processa mensagem com sucesso", async () => {
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("success")
     expect(result.chatId).toBe(IDS.chatId)
@@ -123,9 +132,9 @@ describe("processMessage", () => {
       usage: { inputTokens: 100, cachedInputTokens: 80, outputTokens: 50, totalTokens: 150 },
       model: "gpt-6-sol",
       ragTrace,
-    } as any)
+    } as unknown as AIResponse)
 
-    await processMessage(makeFakeJob() as any)
+    await processMessage(asJob(makeFakeJob()))
 
     expect(debitSalonCredits).toHaveBeenCalledWith(IDS.salonId, 150, "gpt-6-sol", 80)
     expect(saveMessage).toHaveBeenCalledWith(
@@ -141,7 +150,7 @@ describe("processMessage", () => {
     vi.mocked(acquireLock).mockResolvedValue(null)
     const job = makeFakeJob()
 
-    await expect(processMessage(job as any)).rejects.toThrow("DelayedError")
+    await expect(processMessage(asJob(job))).rejects.toThrow("DelayedError")
     expect(job.moveToDelayed).toHaveBeenCalled()
   })
 
@@ -150,11 +159,11 @@ describe("processMessage", () => {
     // que o receivedAt do job e messageId diferente -> dispara coalescing pre-lock.
     const newerTs = Date.now() + 60_000
     const mockRedis = { get: vi.fn().mockResolvedValue(`${newerTs}:newer-msg-id`), set: vi.fn() }
-    vi.mocked(getRedisClient).mockReturnValue(mockRedis as any)
+    vi.mocked(getRedisClient).mockReturnValue(mockRedis as unknown as RedisClient)
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("coalesced")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -165,7 +174,7 @@ describe("processMessage", () => {
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("success")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -173,11 +182,11 @@ describe("processMessage", () => {
   })
 
   it("manual mode: não processa AI quando chat está em modo manual", async () => {
-    vi.mocked(db.query.chats.findFirst).mockResolvedValue({ isManual: true } as any)
+    vi.mocked(db.query.chats.findFirst).mockResolvedValue({ isManual: true } as unknown as ChatRow)
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("manual_mode")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -187,11 +196,11 @@ describe("processMessage", () => {
     vi.mocked(db.query.salons.findFirst).mockResolvedValue({
       subscriptionStatus: "CANCELED",
       subscriptionStatusChangedAt: null,
-    } as any)
+    } as unknown as SalonRow)
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("manual_mode")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -208,11 +217,11 @@ describe("processMessage", () => {
     vi.mocked(db.query.salons.findFirst).mockResolvedValue({
       subscriptionStatus: "PAST_DUE",
       subscriptionStatusChangedAt: oldDate.toISOString(),
-    } as any)
+    } as unknown as SalonRow)
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("manual_mode")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -223,11 +232,11 @@ describe("processMessage", () => {
     vi.mocked(db.query.salons.findFirst).mockResolvedValue({
       subscriptionStatus: "PAST_DUE",
       subscriptionStatusChangedAt: recentDate.toISOString(),
-    } as any)
+    } as unknown as SalonRow)
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("success")
   })
@@ -241,7 +250,7 @@ describe("processMessage", () => {
 
     const job = makeFakeJob()
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("out_of_credits")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -259,7 +268,7 @@ describe("processMessage", () => {
     // attemptsMade=2 -> currentAttempt=3 == maxAttempts(3) => esgotado
     const job = makeFakeJob({}, { attemptsMade: 2 })
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("error")
     // Em vez de throw silencioso, manda algo ao cliente
@@ -274,7 +283,7 @@ describe("processMessage", () => {
       mediaType: "document",
     })
 
-    const result = await processMessage(job as any)
+    const result = await processMessage(asJob(job))
 
     expect(result.status).toBe("media_handled")
     expect(generateAIResponse).not.toHaveBeenCalled()
@@ -288,7 +297,7 @@ describe("processMessage", () => {
 
   it("always releases lock in finally block", async () => {
     const job = makeFakeJob()
-    await processMessage(job as any)
+    await processMessage(asJob(job))
 
     expect(releaseLock).toHaveBeenCalledWith(`chat:${IDS.chatId}`, "lock-id-123")
   })
@@ -298,7 +307,7 @@ describe("processMessage", () => {
 
     const job = makeFakeJob()
 
-    await expect(processMessage(job as any)).rejects.toThrow("AI explodiu")
+    await expect(processMessage(asJob(job))).rejects.toThrow("AI explodiu")
     expect(releaseLock).toHaveBeenCalledWith(`chat:${IDS.chatId}`, "lock-id-123")
   })
 
@@ -307,10 +316,10 @@ describe("processMessage", () => {
       text: "Resposta",
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       model: "gpt-4o-mini",
-    } as any)
+    } as unknown as AIResponse)
 
     const job = makeFakeJob()
-    await processMessage(job as any)
+    await processMessage(asJob(job))
 
     expect(debitSalonCredits).not.toHaveBeenCalled()
   })

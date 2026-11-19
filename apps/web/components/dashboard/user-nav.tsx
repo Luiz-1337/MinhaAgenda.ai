@@ -1,7 +1,7 @@
 "use client"
 
 import { createBrowserClient } from "@supabase/ssr"
-import { useState, useEffect } from "react"
+import { useIsMounted } from "@/lib/hooks/use-is-mounted"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,13 +20,9 @@ export function UserNav({ userName }: { userName: string }) {
   const { theme, setTheme, resolvedTheme } = useTheme()
   const { activeSalon } = useSalon()
   const { isManager } = useSalonAuth()
-  const [mounted, setMounted] = useState(false)
-  const [isDark, setIsDark] = useState(false)
+  const mounted = useIsMounted()
 
-  useEffect(() => {
-    setMounted(true)
-    setIsDark(resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
-  }, [theme, resolvedTheme])
+  const isDark = mounted && (resolvedTheme === 'dark' || (resolvedTheme === 'system' && theme === 'dark'))
 
   async function handleLogout() {
     const supabase = createBrowserClient(
@@ -46,7 +42,6 @@ export function UserNav({ userName }: { userName: string }) {
   const toggleTheme = () => {
     const newTheme = isDark ? 'light' : 'dark'
     setTheme(newTheme)
-    setIsDark(!isDark)
   }
 
   if (!mounted) {
