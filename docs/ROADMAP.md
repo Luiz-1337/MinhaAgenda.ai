@@ -76,8 +76,8 @@ Fatia 7c (recorrência de agendamento) na mesma branch: migration 061 aplicada e
 18/nov/2026, publicada e testada em uso — ver §11.9.
 Fatia 7d (anamneses) feita na mesma branch — migration 062 aplicada em
 18/nov/2026, publicada e testada em uso — ver §11.10.
-Fatia 7e (documentos com assinatura) feita na mesma branch — **em commit local,
-migration 063 NÃO aplicada, sem publicar e sem teste em uso** — ver §11.11.
+Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
+aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3307,7 +3307,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
 | 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita — migration 062 aplicada, publicada na branch e testada em uso (§11.10) |
-| 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Feita em código — **migration 063 não aplicada, sem publicar e sem teste em uso** (§11.11) |
+| 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Feita — migration 063 aplicada, publicada na branch e testada em uso (§11.11) |
 | 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Pendente |
 
 A ordem vai do que só acrescenta ao que mexe no caminho crítico. O agendamento
@@ -3829,12 +3829,15 @@ Perguntas para o dono:
 
 ### 11.11 Fatia 7e — estado (18/nov/2026)
 
-- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
   alterados) e testes passando (web 1351, db 296, mcp-server 409).
-- **Migration 063: NÃO aplicada.** Só cria duas tabelas, então não há cópia a
-  fazer antes. **Aplicar ANTES de publicar**: sem ela, excluir contato falha
-  ("Falha ao remover contato"), porque a exclusão consulta a tabela nova.
+- **Migration 063: aplicada em produção em 18/nov/2026** (registrada como
+  `customer_documents`), ANTES de publicar o código — sem ela, excluir contato
+  falharia, porque a exclusão consulta a tabela nova. Só cria duas tabelas,
+  então não houve cópia antes. Conferido depois: RLS ligado, policy `deny_all`,
+  sem privilégio para anon/authenticated, e nenhum aviso novo nos advisors de
+  segurança.
 - **Sem módulo.** O cartão aparece em todos os salões assim que o código for
   publicado, para quem tem a permissão nova (regra 38).
 - **Segunda rota pública do sistema** (a primeira é `/avaliar`). Como lá, não
@@ -3850,15 +3853,42 @@ Perguntas para o dono:
   - a trava de exclusão vale para `deleteSalonCustomer`; outro caminho que
     apague cliente direto no banco leva os documentos junto (CASCADE);
   - os modelos só se abrem por dentro da ficha de um cliente.
-- **Sem teste em uso.** Roteiro, no salão de teste, depois de aplicar a 063 e
-  publicar: cartão "Documentos" sem modelo; criar um modelo com os três campos
-  (e tentar um campo que não existe — recusa); gerar para um cliente e conferir
-  o link copiado; abrir o link sem login: texto com os campos preenchidos;
-  tentar assinar sem nome, sem desenho e sem o "li e concordo" (três recusas);
-  assinar; a página passa a mostrar a assinatura; na ficha, "Assinado", e o
-  ver mostra assinatura, data, IP e navegador; alterar o modelo e conferir que
-  o documento não mudou; tentar excluir o contato (recusa, com o aviso); abrir
-  um link inventado ("Link inválido"); excluir o documento e o modelo.
+- **Teste em uso (18/nov/2026)**, no preview da branch, no salão de teste, na
+  ficha de um cliente, com o usuário dono:
+  - cartão "Documentos" sem modelo, e a janela "Modelos" vazia — ok;
+  - modelo com `{{cpf}}` — recusa: "O campo {{cpf}} não existe. Os campos
+    são: …"; com os três campos válidos — criado;
+  - "Gerar" — o documento aparece como "Aguardando assinatura", com quem gerou
+    e "vale até" 30 dias depois; aviso de link copiado;
+  - link inventado — "Link inválido";
+  - o link do documento — nome do salão, título e o texto com cliente, salão e
+    data preenchidos, e o SHA-256;
+  - assinar sem nome, sem desenho e sem o "li e concordo" — três recusas, cada
+    uma com o seu aviso; o quadro desenha com o mouse;
+  - assinar — a página passa a mostrar a assinatura, o nome e a data;
+  - na ficha — "Assinado em … por …"; o ver mostra o texto, a imagem da
+    assinatura (PNG 600×200, cerca de 8 mil caracteres), o IP, o navegador e o
+    SHA-256, que confere com o recalculado no banco;
+  - modelo alterado e desativado — o documento assinado não mudou; o cartão
+    deixa de oferecer "Gerar"; a lista de modelos mostra "Inativo" e "1
+    documento gerado";
+  - excluir o contato — recusa: "Este contato tem documento assinado. Exclua os
+    documentos na ficha dele antes de remover o contato"; o contato continua;
+  - documento assinado excluído pela tela (o dono tem as duas permissões); o
+    link dele passa a dizer "Link inválido"; modelo excluído. As duas tabelas
+    ficaram vazias.
+- **Não testado:**
+  - **o link sem login de verdade**: o preview fica atrás do login da Vercel, e
+    o navegador do teste estava logado no painel. Em produção a rota é pública
+    como `/avaliar`; falta abrir num aparelho sem sessão;
+  - assinar com o dedo, no celular;
+  - a segunda assinatura no mesmo link (recusa no servidor; só há teste de
+    regra) e o link vencido (só existe com o tempo);
+  - usuário sem a permissão, funcionário com perfil de acesso, e excluir
+    documento assinado sem `customers.delete`;
+  - a lista de escolha com mais de um modelo ativo, os limites (30 modelos, 10
+    pendentes, texto de 20.000 caracteres) e nome de modelo repetido;
+  - se o link foi mesmo para a área de transferência (o aviso apareceu).
 
 ## 12. Pendências do dono
 
@@ -3887,7 +3917,7 @@ Perguntas para o dono:
 | Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
 | Responder às perguntas da 7d em §11.4 (quem vê anamnese, corrigir ficha, link para o cliente e assinatura, tipos de pergunta, IA, excluir cliente) | Ajustes na 7d antes do piloto |
 | Marcar "Anamneses" nos perfis de acesso de quem deve ver e preencher | Funcionário com perfil usar as anamneses |
-| Aplicar a migration 063 (ou autorizar a aplicação) e publicar a fatia 7e — ver §11.11 | Teste em uso da fatia 7e |
+| Abrir um link de `/assinar` num celular sem login no painel, depois que a fase 7 estiver em produção, e assinar com o dedo | Confirmar a página pública de assinatura |
 | Responder às perguntas da 7e em §11.4 (força da assinatura, envio pelo WhatsApp, validade do link, PDF, exclusão de contato) | Ajustes na 7e antes do piloto |
 | Marcar "Documentos" nos perfis de acesso de quem deve gerar e ver documentos | Funcionário com perfil usar os documentos |
 | Ter o texto dos termos do salão revisado por quem entende (advogado), antes de usar com clientes | Uso dos documentos no piloto |
