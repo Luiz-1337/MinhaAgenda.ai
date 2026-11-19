@@ -110,8 +110,8 @@ de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fat
 `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — migration 065
 aplicada, publicada no preview e **testada em uso** em 19/nov/2026; ainda fora
 da `main` — ver §14.6. Fatia 8b (abater o sinal na comanda) feita na mesma
-branch — **em commit local, migration 066 NÃO aplicada, sem publicar e sem
-teste em uso** — ver §14.7.
+branch — migration 066 aplicada, publicada no preview e **testada em uso** em
+19/nov/2026; também fora da `main` — ver §14.7.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4889,7 +4889,7 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 | Fatia | O que entra | Estado |
 |---|---|---|
 | 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
-| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita em código — **migration 066 não aplicada, sem publicar e sem teste em uso** (§14.7) |
+| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
 | 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento (no painel e por mensagem) e página pública de planos | Pendente |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
@@ -5058,25 +5058,38 @@ Perguntas para o dono:
 
 ### 14.7 Fatia 8b — estado (19/nov/2026)
 
-- Na branch `claude/fase-8-sinal`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
-  e testes passando (web 1477).
-- **Migration 066: NÃO aplicada.** Altera `appointment_deposits`, que não tem
-  linhas em produção: não há cópia a fazer. Aplicar ANTES de publicar: sem
-  ela, abrir comanda com agendamento e o detalhe de qualquer agendamento falham (as
-  consultas passam a ler `sale_id`).
-- **As consultas não foram executadas contra o banco.**
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  nos arquivos alterados) e testes passando (web 1477).
+- **Migration 066: aplicada em produção em 19/nov/2026.** A tabela não tinha
+  linhas; não houve cópia. A `main` não lê as colunas novas e segue igual.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - comanda aberta de um agendamento com sinal recebido mostra "Sinal
+    recebido, a abater no faturamento";
+  - o diálogo de faturar já vem com o sinal na forma "Teste PIX" e o restante
+    do total na outra linha; trocar para "Não abater" e voltar refaz o valor;
+  - faturar gravou dois pagamentos (o do sinal e o restante), cada um com a
+    taxa e o prazo da sua forma, e as duas contas no financeiro (a do sinal já
+    recebida, por ser PIX na hora);
+  - a comanda faturada mostra "Sinal abatido (está nos pagamentos)";
+  - o detalhe do agendamento mostra "Abatido na comanda #N", sem ações;
+  - reabrir a comanda apagou os pagamentos e soltou o sinal;
+  - faturar com "Não abater" deixou o sinal recebido e livre, e a comanda com
+    um pagamento só;
+  - faturar antes da hora do agendamento continua barrado, e o sinal não é
+    preso por isso.
+  Os dados do teste foram apagados (a comanda ficou excluída e o agendamento,
+  cancelado).
+- **Não testado em uso:** sinal maior que o total da comanda; comanda com dois
+  agendamentos com sinal; salão sem forma "PIX" (o campo começa em "Não
+  abater"); sinal abatido com cashback na mesma comanda; a comissão da comanda
+  com o sinal abatido; salão com o financeiro desligado.
+- **Achado:** a agenda não deixa criar agendamento em horário que já passou
+  ("A data e hora devem ser no futuro"), então não dá para lançar um
+  atendimento de encaixe depois que ele aconteceu. Não mexi.
 - **Limites desta fatia:**
   - a data do pagamento do sinal é a do faturamento (regra 19);
   - sinal maior que o total não é abatido (regra 14);
   - o pagamento do sinal não tem marca própria na lista de pagamentos da
     comanda — o resumo mostra só o total abatido;
   - sinal recebido de agendamento cancelado continua sem destino no sistema.
-- **Sem teste em uso.** Roteiro, com a 066 aplicada, no salão de teste (que
-  tem financeiro ligado e uma forma "Teste PIX"): lançar sinal num agendamento
-  já iniciado e marcar como recebido; criar a comanda dele — o resumo mostra o
-  sinal a abater; faturar — o diálogo já vem com o sinal em "Teste PIX" e o
-  restante na outra linha; conferir os dois pagamentos e o "Sinal abatido"; no
-  detalhe do agendamento, "Abatido na comanda #N" sem ações; no financeiro, a
-  conta a receber do sinal; reabrir a comanda — o sinal volta a livre; faturar
-  com "Não abater" — o sinal continua recebido; limpar os dados.
