@@ -171,6 +171,28 @@ const soOQueFoiPerguntado =
       ? `citou ${countPrices(result.text)} valores de uma vez; a pergunta pedia no máximo ${max}`
       : null)
 
+/** Minúsculas, sem pontuação nem emoji, espaços simples: para comparar frases. */
+const normalizar = (texto: string) =>
+  texto
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}$ ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+/**
+ * A frase com o valor (`numero`) que a resposta anterior já trazia voltou igual na
+ * resposta atual? Só olha frases de 6 palavras ou mais, para não pegar "R$ 560" sozinho.
+ */
+function repetiuAFrase(anterior: string, atual: string, numero: number): string | null {
+  const atualNormalizada = normalizar(atual)
+  const frases = anterior.split(/(?<=[.!?;])\s+/).filter((frase) => valor(numero).test(frase))
+  const copiada = frases.find((frase) => {
+    const normalizada = normalizar(frase)
+    return normalizada.split(" ").length >= 6 && atualNormalizada.includes(normalizada)
+  })
+  return copiada ? `repetiu a frase da mensagem anterior: "${copiada.trim()}"` : null
+}
+
 // ----------------------------------------------------------------------------
 // Cenários
 // ----------------------------------------------------------------------------
@@ -826,6 +848,63 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
           if (!movedAttention) failures.push('a conversa não foi para "Atenção" (a progressiva precisa ser encaixada pelo Fabiano)')
           return failures
         },
+      }
+    },
+  },
+
+  {
+    item: "ajustes de 19/nov",
+    name: "preco_repetido_e_achou_caro",
+    description:
+      'Conversa de 19/nov (lead de anúncio): "Qual e o preço" logo depois de ela já ter dado o valor não recebe a mesma frase de novo, e sim uma confirmação curta com oferta de horário; "Para mim e muito. Caro. Obrigada" vira a regra de desconto (o Fabiano fala com ela, conversa em "Atenção"), sem o convite do Instagram',
+    build: (ctx) => {
+      const PROIBIDO = [/desculp/i, /n[ãa]o (vou|posso|consigo) (prometer|garantir)/i]
+      let primeiraResposta = ""
+
+      return {
+        name: "preco_repetido_e_achou_caro",
+        description: "Pergunta repetida não recebe mensagem repetida; achar caro não encerra a conversa",
+        context: { customerName: "Cliente", ...leadDeAnuncio },
+        prepare: () => void resetFakeBelasis(ctx),
+        turns: [
+          {
+            user: "Olá! Posso ter mais informações sobre isso?",
+            expect: {
+              text: { mustMatchAll: [/Judite/], mustNotMatch: [CORTE_PRECO_ANTIGO, ...QUALQUER_COMBINACAO] },
+              custom: (result) => {
+                primeiraResposta = result.text
+                return null
+              },
+            },
+          },
+          {
+            user: "Qual e o preço",
+            expect: {
+              text: { mustMatchAll: [valor(CORTE_FEMININO)], mustNotMatch: [CORTE_PRECO_ANTIGO, ...QUALQUER_COMBINACAO] },
+              // Só vale se a primeira resposta já tinha dado o valor: aí a pergunta é repetida.
+              custom: (result, steps) => {
+                const transferiu = semTransferencia(result, steps)
+                if (transferiu) return transferiu
+                if (!valor(CORTE_FEMININO).test(primeiraResposta)) return null
+                return (
+                  repetiuAFrase(primeiraResposta, result.text, CORTE_FEMININO) ??
+                  (/hor[aá]rio|agend|marcar/i.test(result.text)
+                    ? null
+                    : "confirmou o valor de novo sem oferecer horário (o próximo passo)")
+                )
+              },
+            },
+          },
+          {
+            user: "Para mim e muito. Caro. Obrigada",
+            expect: {
+              text: { maxSentences: 2, mustMatchAll: [/Fabiano/], mustNotMatch: [/@fabianoeber/i, /Instagram/i, ...PROIBIDO] },
+              tools: { forbidden: ["addAppointment"] },
+              custom: (_result, steps) =>
+                movedToAttention(steps) ? null : 'achou caro e a conversa não foi para "Atenção" (o Fabiano precisa saber)',
+            },
+          },
+        ],
       }
     },
   },

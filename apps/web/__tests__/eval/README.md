@@ -107,7 +107,7 @@ verdade num salão de teste, com a **Belasis simulada** (`judite/fake-belasis.ts
 - `JUDITE_EVAL_SALON_ID=<uuid>` no `.env`. Sem ela, a suíte se pula.
 
 ```bash
-pnpm --filter web eval -- judite                       # os 15 cenários
+pnpm --filter web eval -- judite                       # os 16 cenários
 pnpm --filter web eval -- judite -t pedido_de_desconto  # um só
 ```
 
