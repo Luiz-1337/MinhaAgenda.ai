@@ -37,8 +37,16 @@ jobs:
         run: pnpm turbo run check-types
 
       # Next faz type-check no build; cobre apps/web.
+      # A coleta de páginas carrega os módulos do servidor, e @repo/db e o client do
+      # Supabase exigem estas vars já no import. São placeholders, NÃO segredos:
+      # nenhuma conexão é aberta no build. --env-mode=loose porque o Turbo 2 (strict)
+      # não repassa ao Next vars que não estão declaradas no turbo.json.
       - name: Build
-        run: pnpm turbo run build
+        run: pnpm turbo run build --env-mode=loose
+        env:
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
 
   # TODO (drift-guard completo): subir um Postgres efêmero a partir do snapshot canônico
   # e rodar `drizzle-kit check` (ou comparar schema.ts × information_schema) para FALHAR
