@@ -83,8 +83,8 @@ publicada e testada em uso em 18/nov/2026 — ver §11.12. O cálculo de horári
 da IA não foi trocado. **A fase 7 NÃO está na `main`**: não há PR aberto.
 Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
 relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
-`claude/fase-7-cliente-agenda`) — **em commit local, migration 064 NÃO
-aplicada, sem publicar e sem teste em uso** — ver §13.6.
+`claude/fase-7-cliente-agenda`): migration 064 aplicada em 18/nov/2026,
+publicada e testada em uso em 19/nov/2026 — ver §13.6.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4119,8 +4119,8 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 
 | Fatia | O que entra | Estado |
 |---|---|---|
-| 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita em código — **migration 064 não aplicada, sem publicar e sem teste em uso** (§13.6) |
-| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, fluxo de caixa, extrato de contas | Pendente |
+| 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
+| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Pendente |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
@@ -4131,11 +4131,12 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 
 ### 13.2 O que o levantamento encontrou (18/nov/2026)
 
-- **21 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
+- **22 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
   a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
   compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
-  retorno, comandas e contatos. Faltam 16, mais a nota fiscal (fase 10) e o
-  painel de profissionais.
+  retorno, comandas e contatos. Faltam 15, mais a nota fiscal (fase 10) e o
+  painel de profissionais. (O levantamento contou 21; o teste em uso mostrou
+  que o fluxo de caixa por dia já está no resumo do financeiro.)
 - **"Já tem tela" não quer dizer "igual à Belasis"**: a tela responde à
   pergunta do relatório, com os filtros que a fase dela entregou. Vários
   relatórios caem na mesma tela (por exemplo, Recebimentos, Despesas e Extrato
@@ -4200,25 +4201,50 @@ Perguntas para o dono:
 |---|---|
 | Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
 
-### 13.6 Fatia 9a — estado (18/nov/2026)
+### 13.6 Fatia 9a — estado (19/nov/2026)
 
 - Na branch `claude/fase-9-relatorios` (sai de `claude/fase-7-cliente-agenda`,
-  que não está na `main`), **em commit local, sem publicar**. Typecheck (db,
-  web e mcp-server), lint (nenhum erro novo nos arquivos alterados) e testes
-  passando (web 1383, db 296, mcp-server 409).
-- **Migration 064: NÃO aplicada.** Só cria uma tabela; não há cópia a fazer.
-  Publicar o código antes dela não quebra nada fora da central (ela fica atrás
-  do módulo, desligado), mas a central falharia ao carregar.
-- **O módulo `reports` nasce desligado.** Para testar, ligar no salão de teste.
-- **Os destinos não foram conferidos tela a tela nesta fatia.** O catálogo
-  aponta cada relatório para a tela que, pelo que as fases 2 a 6 registraram
-  neste documento, responde a ele. O teste em uso tem que abrir cada um.
+  que não está na `main`), publicada (preview da Vercel — endereço novo, com
+  login próprio). Typecheck (db, web e mcp-server), lint (nenhum erro novo nos
+  arquivos alterados) e testes passando (web 1383, db 296, mcp-server 409).
+- **Migration 064: aplicada em produção em 18/nov/2026** (registrada como
+  `report_favorites`). Só cria uma tabela; não houve cópia antes. Conferido
+  depois: RLS ligado, policy `deny_all`, sem privilégio para
+  anon/authenticated, e nenhum aviso novo nos advisors de segurança.
+- **O módulo `reports` está ligado só no salão de teste** (UPDATE em
+  `salons.settings`, pelo id) — e ficou ligado.
 - **Limites desta fatia:** nenhum relatório novo; sem exportação; a central
   não leva filtro nem período para a tela de destino; relatórios que caem na
   mesma tela abrem a mesma tela.
-- **Sem teste em uso.** Roteiro, com a 064 aplicada e o módulo ligado no salão
-  de teste: o item "Relatórios" no menu; a contagem "N de M"; abrir CADA
-  relatório disponível e conferir que a tela responde ao que o nome promete;
-  marcar e desmarcar favoritos, recarregar e conferir a ordem; conferir que
-  "Em breve" não tem estrela nem "Abrir"; desligar um módulo (ou usar um perfil
-  sem a permissão) e ver o relatório sumir.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  o usuário dono (todos os módulos ligados):
+  - o item "Relatórios" no menu e "21 de 39 relatórios disponíveis";
+  - o que ainda não existe aparece como "Em breve · fatia 9x", sem estrela
+    ativa e sem "Abrir";
+  - **as 12 telas de destino foram abertas, uma a uma**, e respondem ao que os
+    relatórios prometem: resumo do financeiro (recebido, pago, resultado, a
+    receber, a pagar, fiado, por categoria, por forma de pagamento e fluxo de
+    caixa por dia); lançamentos (filtros de tipo, situação, conta e
+    vencimento); caixa (caixas fechados, com esperado, contado e diferença);
+    cuidados e retorno (mensagens e envios, com filtro de situação); comandas
+    (filtros de situação e período); relatórios de pacotes; histórico de
+    cashback; avaliações; estoque (saldo, mínimo e "Comprar"); relatórios de
+    estoque; compras; e contatos (com "Exportar");
+  - favoritos — marcar dois, recarregar: os dois aparecem em "Favoritos", na
+    ordem em que foram marcados, com "Abrir"; desmarcar os dois: "Nenhum
+    favorito ainda", e a tabela ficou vazia.
+- **Achados do teste:**
+  - o **fluxo de caixa por dia já existe** no resumo do financeiro: o catálogo
+    foi corrigido depois do teste (22 disponíveis, e a 9b perdeu esse item). A
+    correção tem teste de unidade, mas não foi vista em uso;
+  - **"Cuidados para hoje" e "Retornos para hoje" são aproximações**: a tela
+    de cuidados e retorno lista os envios com filtro de situação, mas não tem
+    filtro "hoje" nem separa cuidado de retorno;
+  - "Extrato de contas" continua em falta: os lançamentos filtram por conta,
+    mas não mostram saldo corrido;
+  - o resumo do financeiro mostra o total de fiado; a lista de quem deve está
+    nas comandas, no filtro "Com valor em aberto".
+- **Não testado:** usuário sem `reports.access`, funcionário com perfil de
+  acesso (para ver relatórios sumirem por permissão), salão com módulo
+  desligado, e o teto de 20 favoritos. Há teste de regra para os três
+  primeiros.

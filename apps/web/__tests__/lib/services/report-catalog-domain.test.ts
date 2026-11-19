@@ -80,7 +80,7 @@ describe("resolveReportCatalog", () => {
     // Só o que não depende de módulo (a lista de contatos) abre.
     expect(reports.filter((report) => report.path).map((report) => report.key)).toEqual(["customers.list"])
     // O que ainda não existe continua aparecendo, como "em breve".
-    expect(reports.some((report) => report.key === "finance.cash_flow")).toBe(true)
+    expect(reports.some((report) => report.key === "finance.projection")).toBe(true)
     expect(reports.some((report) => report.key === "finance.results")).toBe(false)
   })
 
