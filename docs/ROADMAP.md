@@ -80,7 +80,7 @@ Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
 Fatia 7f (agendamento online público) feita na mesma branch, sem migration,
 publicada e testada em uso em 18/nov/2026 — ver §11.12. O cálculo de horários
-da IA não foi trocado. **A fase 7 NÃO está na `main`**: não há PR aberto.
+da IA não foi trocado. **A fase 7 está na `main`** desde 19/nov/2026: entrou inteira pelo PR #21 (o da branch da fase 9, que sai dela).
 Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
 relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
 `claude/fase-7-cliente-agenda`): migration 064 aplicada em 18/nov/2026,
@@ -101,7 +101,9 @@ Fatia 9g (organização multiunidade): levantamento em §13.12; o dono escolheu 
 caminho A ("a organização é o dono") em 19/nov/2026. Feita na mesma branch, sem
 migration, publicada e testada em uso com UMA unidade — **a comparação entre
 duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 9
-estão escritas. **A fase 9 NÃO está na `main`** (nem a fase 7, de que ela sai).
+estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
+mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g ainda não**: vão
+num PR novo da mesma branch — ver §13.14.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4462,7 +4464,7 @@ Perguntas para o dono:
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
 - Na branch `claude/fase-9-relatorios` (sai de `claude/fase-7-cliente-agenda`,
-  que não está na `main`), publicada (preview da Vercel — endereço novo, com
+  que na época não estava na `main`), publicada (preview da Vercel — endereço novo, com
   login próprio). Typecheck (db, web e mcp-server), lint (nenhum erro novo nos
   arquivos alterados) e testes passando (web 1383, db 296, mcp-server 409).
 - **Migration 064: aplicada em produção em 18/nov/2026** (registrada como
@@ -4833,3 +4835,25 @@ uma fase própria, não uma fatia dos relatórios.
     dono") — o salão de teste só tem o dono com login;
   - faturamento com comanda faturada; "Exportar" desta tela.
 - Nenhum dado de teste foi criado.
+
+### 13.14 O que está na `main` (19/nov/2026)
+
+- **PR #21** (`claude/fase-9-relatorios` → `main`), mesclado em 19/nov/2026
+  (commit `da0fc56`): levou a **fase 7 inteira** (fatias 7a a 7f, de que a
+  branch da fase 9 sai) e as **fatias 9a e 9b**. As migrations 059 a 064 já
+  estavam aplicadas em produção.
+- **Faltam na `main`: as fatias 9c, 9d, 9e, 9f e 9g** (11 commits). A branch
+  mescla sem conflito. Nenhuma tem migration.
+- **O que isso muda em produção:**
+  - os módulos novos continuam desligados para todos os salões, menos o de
+    teste, que tem `online_booking` e `reports` ligados;
+  - **a página pública `/agendar/<id>` do salão de teste está no ar de
+    verdade**, sem o login da Vercel que protegia o preview. Qualquer pessoa
+    com o endereço marca horário lá;
+  - as páginas `/assinar/<token>` passam a funcionar sem login para qualquer
+    salão que gerar um documento (a ficha do cliente é do produto base, e a
+    permissão `customers.documents` já vale para dono e gerente);
+  - os cartões "Anamneses" e "Documentos" aparecem na ficha do cliente em
+    todos os salões, para quem tem as permissões novas.
+- **Pendências que a entrada em produção destrava** (§12): abrir `/assinar` e
+  `/agendar` num celular sem login no painel.
