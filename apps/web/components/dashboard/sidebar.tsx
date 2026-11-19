@@ -33,6 +33,7 @@ import {
   Star,
   HeartHandshake,
   Target,
+  BarChart3,
 } from "lucide-react"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
 import type { ProfessionalRole } from "@/lib/types/professional"
@@ -61,6 +62,7 @@ const MODULE_ITEMS: Record<string, (salon: SalonListItem) => boolean> = {
   "care-messages": (salon) =>
     salon.modules.includes("care_messages") && salon.permissions.includes("care_messages.access"),
   goals: (salon) => salon.modules.includes("goals") && salon.permissions.includes("goals.access"),
+  reports: (salon) => salon.modules.includes("reports") && salon.permissions.includes("reports.access"),
 }
 
 // Helper para verificar permissões de visualização
@@ -106,6 +108,7 @@ const menuGroups = [
       { href: "reviews", label: "Avaliações", icon: Star },
       { href: "care-messages", label: "Cuidados e retorno", icon: HeartHandshake },
       { href: "goals", label: "Metas", icon: Target },
+      { href: "reports", label: "Relatórios", icon: BarChart3 },
     ]
   },
   {

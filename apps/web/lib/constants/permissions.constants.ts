@@ -45,6 +45,8 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   view_all: "Ver de todos",
   view_phones: "Ver telefones",
   notes: "Anotações",
+  anamneses: "Anamneses",
+  documents: "Documentos",
   manage: "Gerenciar",
   view_invoiced: "Ver faturadas",
   invoice: "Faturar",
@@ -64,6 +66,8 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
 /** Explicação curta ao lado do recurso, quando a ação sozinha não diz o bastante. */
 export const PERMISSION_RESOURCE_HINTS: Partial<Record<PermissionResource, string>> = {
   schedule: "“Ver de todos” libera a agenda dos outros profissionais.",
+  customers:
+    "“Anamneses” libera ver e preencher as fichas de anamnese dos clientes e gerenciar os modelos. “Documentos” libera ver os documentos dos clientes, gerar documento para assinar e gerenciar os modelos.",
   access_profiles: "Quem gerencia perfis define o que os outros podem.",
   sales: "Sem “Ver de todos”, a pessoa vê só as comandas com item dela.",
   cash: "Sem “Ver de todos”, a pessoa vê só o histórico dos caixas que abriu.",

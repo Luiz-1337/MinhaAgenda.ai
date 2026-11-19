@@ -369,6 +369,11 @@ export const appointments = pgTable(
     syncStatus: syncStatusEnum('sync_status').default('pending').notNull(),
     syncSource: syncSourceEnum('sync_source'),
     notes: text('notes'),
+    // A etiqueta do agendamento (migration 060). No máximo uma; excluir a
+    // etiqueta deixa NULL.
+    labelId: uuid('label_id').references((): AnyPgColumn => appointmentLabels.id, { onDelete: 'set null' }),
+    // A série de que o agendamento faz parte (migration 061). NULL = avulso.
+    seriesId: uuid('series_id').references((): AnyPgColumn => appointmentSeries.id, { onDelete: 'set null' }),
     reminderSentAt: timestamp('reminder_sent_at'),
     // --- Desfecho do atendimento (migration 027) ---------------------------
     // O fato "atendimento realizado, com valor". Sem estas colunas não existe
@@ -689,11 +694,28 @@ export const customers = pgTable(
     // anúncio (messages.ad_referral); 'organic' = o resto do canal oficial; NULL =
     // canal que não entrega a origem. Só sobe de 'organic' para 'paid_traffic'.
     leadSource: text('lead_source').$type<LeadSource>(),
+    // Dados cadastrais (migration 059), todos opcionais. Regra em
+    // domain/customer-profile.ts. CPF e CEP só com dígitos; UF em maiúsculas.
+    birthDate: date('birth_date'),
+    cpf: text('cpf'),
+    // 'female' | 'male' | 'other'
+    gender: text('gender'),
+    zipCode: text('zip_code'),
+    addressStreet: text('address_street'),
+    addressNumber: text('address_number'),
+    addressComplement: text('address_complement'),
+    addressDistrict: text('address_district'),
+    addressCity: text('address_city'),
+    addressState: text('address_state'),
+    // Como o cliente conheceu o salão (texto curto, livre).
+    referralSource: text('referral_source'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
     uniqueIndex('customers_salon_phone_unique').on(table.salonId, table.phone),
+    // Um CPF por salão (migration 059).
+    uniqueIndex('customers_salon_cpf_unique').on(table.salonId, table.cpf).where(sql`cpf IS NOT NULL`),
     index('customers_salon_idx').on(table.salonId),
     index('customers_phone_idx').on(table.phone),
     // Reflete índice parcial existente só no banco (reconciliação 21/jun — DRIFT-1)
@@ -2190,6 +2212,159 @@ export const goals = pgTable(
     uniqueIndex('goals_professional_unique')
       .on(table.salonId, table.month, table.professionalId, table.metric)
       .where(sql`professional_id IS NOT NULL`)
+  ]
+)
+
+// ============================================================================
+// TABLES - Etiquetas na agenda (migration 060)
+// ============================================================================
+// Um rótulo com cor por agendamento (appointments.label_id). Regra em
+// domain/appointment-labels.ts.
+
+export const appointmentLabels = pgTable(
+  'appointment_labels',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // "#rrggbb"
+    color: text('color').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('appointment_labels_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+// ============================================================================
+// TABLES - Recorrência de agendamento (migration 061)
+// ============================================================================
+// Amarra os agendamentos criados de uma vez "a cada N semanas"
+// (appointments.series_id). Não gera horários: cada agendamento é comum.
+// Regra em domain/appointment-series.ts.
+
+export const appointmentSeries = pgTable('appointment_series', {
+  id: uuid('id').defaultRandom().primaryKey().notNull(),
+  salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+  intervalWeeks: integer('interval_weeks').notNull(),
+  // Quantas vezes foi pedido, contando a primeira.
+  occurrences: integer('occurrences').notNull(),
+  createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull()
+})
+
+// ============================================================================
+// TABLES - Anamneses (migration 062)
+// ============================================================================
+// Modelos de ficha com perguntas e as fichas respondidas na ficha do cliente.
+// A ficha respondida é um retrato: guarda o nome do modelo e o texto de cada
+// pergunta como estavam no dia. Regra em domain/anamneses.ts.
+
+export const anamnesisTemplates = pgTable(
+  'anamnesis_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    // [{ id, label, type, required, options }]
+    questions: jsonb('questions').default(sql`'[]'::jsonb`).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('anamnesis_templates_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const customerAnamneses = pgTable(
+  'customer_anamneses',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // CASCADE: excluir o cliente apaga as fichas dele (dado de saúde não fica órfão).
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    templateId: uuid('template_id').references(() => anamnesisTemplates.id, { onDelete: 'set null' }),
+    templateName: text('template_name').notNull(),
+    // [{ questionId, label, type, value }]
+    answers: jsonb('answers').notNull(),
+    filledBy: uuid('filled_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    index('customer_anamneses_customer_idx').on(table.customerId, table.createdAt.desc()),
+    index('customer_anamneses_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Documentos com assinatura (migration 063)
+// ============================================================================
+// Modelos de termo e os documentos gerados para um cliente, assinados por link
+// público (/assinar/<token>). O documento é um retrato: guarda título e texto do
+// dia em que foi gerado. Regra em domain/customer-documents.ts.
+
+export const documentTemplates = pgTable(
+  'document_templates',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    name: text('name').notNull(),
+    body: text('body').notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull()
+  },
+  (table) => [uniqueIndex('document_templates_salon_name_unique').on(table.salonId, sql`lower(${table.name})`)]
+)
+
+export const customerDocuments = pgTable(
+  'customer_documents',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    // CASCADE no banco; a aplicação recusa excluir cliente com documento ASSINADO.
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'cascade' }).notNull(),
+    templateId: uuid('template_id').references(() => documentTemplates.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    // SHA-256 (hex) de título + texto.
+    bodyHash: text('body_hash').notNull(),
+    // A credencial do link público: aleatório, único no sistema inteiro.
+    token: text('token').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    // NULL = ainda não assinado. Nome, imagem e data andam juntos (CHECK).
+    signedAt: timestamp('signed_at'),
+    signerName: text('signer_name'),
+    // data:image/png;base64,...
+    signatureImage: text('signature_image'),
+    signerIp: text('signer_ip'),
+    signerUserAgent: text('signer_user_agent'),
+    createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('customer_documents_token_unique').on(table.token),
+    index('customer_documents_customer_idx').on(table.customerId, table.createdAt.desc()),
+    index('customer_documents_salon_idx').on(table.salonId)
+  ]
+)
+
+// ============================================================================
+// TABLES - Favoritos de relatórios (migration 064)
+// ============================================================================
+// Os relatórios que UMA pessoa marcou com estrela, num salão. A chave é a do
+// catálogo em código (domain/report-catalog.ts).
+
+export const reportFavorites = pgTable(
+  'report_favorites',
+  {
+    id: uuid('id').defaultRandom().primaryKey().notNull(),
+    salonId: uuid('salon_id').references(() => salons.id, { onDelete: 'cascade' }).notNull(),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }).notNull(),
+    reportKey: text('report_key').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull()
+  },
+  (table) => [
+    uniqueIndex('report_favorites_user_key_unique').on(table.salonId, table.userId, table.reportKey),
+    index('report_favorites_user_idx').on(table.userId)
   ]
 )
 

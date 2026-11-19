@@ -5,14 +5,18 @@ import Link from "next/link"
 import { toast } from "sonner"
 import {
   Calendar, Clock, User, Scissors, X, FileText, Loader2,
-  CheckCircle2, UserX, CalendarX, BadgeDollarSign, Receipt,
+  CheckCircle2, UserX, CalendarX, BadgeDollarSign, Receipt, CalendarClock, Tag, Repeat,
 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
   cancelAppointment,
+  cancelAppointmentSeries,
   completeAppointment,
   markAppointmentNoShow,
+  rescheduleAppointment,
 } from "@/app/actions/appointments"
+import { getAppointmentLabels, setAppointmentLabel } from "@/app/actions/appointment-labels"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { appointmentStatusLabel, availableOutcomes } from "@/lib/utils/appointment-status"
@@ -20,7 +24,7 @@ import { formatBRL, parseBRL, suggestedPriceFromService } from "@/lib/utils/mone
 import { useSalon } from "@/contexts/salon-context"
 
 /** Qual desfecho está em confirmação. `null` = nenhum (estado normal do rodapé). */
-type PendingAction = null | "complete" | "no_show" | "cancel"
+type PendingAction = null | "complete" | "no_show" | "cancel" | "reschedule"
 
 interface AppointmentDetailDialogProps {
   appointment: DailyAppointment | null
@@ -43,6 +47,29 @@ export function AppointmentDetailDialog({
   const [isCourtesy, setIsCourtesy] = useState(false)
   const [reason, setReason] = useState("")
   const [isPending, startTransition] = useTransition()
+
+  // Série (fase 7): cancelar só este, ou este e os próximos.
+  const [cancelFollowing, setCancelFollowing] = useState(false)
+
+  // Remarcar (fase 7): a nova data e hora, em horário de Brasília.
+  const [newDate, setNewDate] = useState("")
+  const [newTime, setNewTime] = useState("")
+
+  // Etiqueta (fase 7). O estado é local porque o `appointment` que chega é a
+  // fotografia de quando o diálogo abriu; o pai remonta o diálogo a cada
+  // agendamento (key), então o valor inicial é sempre o do agendamento certo.
+  const [labelId, setLabelId] = useState(appointment?.labelId ?? "")
+  const labelsQuery = useQuery({
+    queryKey: ["appointment-labels", salonId],
+    queryFn: async () => {
+      const result = await getAppointmentLabels(salonId)
+      if ("error" in result) throw new Error(result.error)
+      return result
+    },
+    enabled: open,
+  })
+  const labels = labelsQuery.data?.labels ?? []
+  const canEditLabel = labelsQuery.data?.can.manage ?? false
 
   // Comandas (docs/ROADMAP.md, fase 1): só no salão com o módulo ligado e para quem
   // pode criar comanda. É cortesia de tela — a página e as actions conferem de novo.
@@ -116,6 +143,62 @@ export function AppointmentDetailDialog({
     })
   }
 
+  function changeLabel(next: string) {
+    const previous = labelId
+    setLabelId(next)
+    startTransition(async () => {
+      const result = await setAppointmentLabel({
+        salonId,
+        appointmentId: appointment!.id,
+        labelId: next || null,
+      })
+      if ("error" in result) {
+        setLabelId(previous)
+        toast.error(result.error)
+        return
+      }
+      toast.success(next ? "Etiqueta aplicada" : "Etiqueta removida")
+      // Não fecha o diálogo: quem etiqueta costuma continuar olhando o agendamento.
+      onChanged()
+    })
+  }
+
+  function openReschedule() {
+    setNewDate(formatBrazilTime(appointment!.startTime, "yyyy-MM-dd"))
+    setNewTime(formatBrazilTime(appointment!.startTime, "HH:mm"))
+    setPendingAction("reschedule")
+  }
+
+  function handleReschedule() {
+    if (!newDate || !newTime) {
+      toast.error("Informe a nova data e a nova hora")
+      return
+    }
+    const date = `${newDate}T${newTime}`
+
+    startTransition(async () => {
+      const submit = (allowServiceRuleOverride: boolean) =>
+        rescheduleAppointment({ appointmentId: appointment!.id, salonId, date, allowServiceRuleOverride })
+
+      let result = await submit(false)
+
+      // Mesma saída do criar: a equipe pode furar a regra de dia/horário do
+      // serviço, depois de confirmar. Conflito de agenda segue bloqueado.
+      if ("error" in result && result.code === "service_rule_violation") {
+        if (!window.confirm(`${result.error}\n\nDeseja remarcar mesmo assim para este horário?`)) return
+        result = await submit(true)
+      }
+
+      if ("error" in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Agendamento remarcado")
+      onOpenChange(false)
+      onChanged()
+    })
+  }
+
   function handleComplete() {
     const parsed = isCourtesy ? 0 : parseBRL(priceInput)
     if (parsed === null) {
@@ -160,6 +243,53 @@ export function AppointmentDetailDialog({
           <DetailRow icon={<Clock size={15} />} label="Horário" value={timeLabel} />
           {appointment.notes && (
             <DetailRow icon={<FileText size={15} />} label="Observações" value={appointment.notes} />
+          )}
+          {appointment.seriesId && (
+            <DetailRow
+              icon={<Repeat size={15} />}
+              label="Recorrência"
+              value={
+                appointment.seriesIntervalWeeks
+                  ? `Faz parte de uma série, a cada ${
+                      appointment.seriesIntervalWeeks === 1 ? "semana" : `${appointment.seriesIntervalWeeks} semanas`
+                    }`
+                  : "Faz parte de uma série"
+              }
+            />
+          )}
+          {/* Etiqueta: só aparece quando o salão tem etiquetas (ou o agendamento já tem uma). */}
+          {(labels.length > 0 || appointment.labelName) && (
+            <div className="flex items-start gap-3">
+              <span className="text-muted-foreground mt-0.5 flex-shrink-0">
+                <Tag size={15} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <label
+                  htmlFor="appointment-label"
+                  className="block text-[11px] uppercase font-semibold tracking-wider text-muted-foreground"
+                >
+                  Etiqueta
+                </label>
+                {canEditLabel ? (
+                  <select
+                    id="appointment-label"
+                    value={labelId}
+                    disabled={isPending}
+                    onChange={(e) => changeLabel(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 bg-background border border-border rounded-xl text-sm text-foreground disabled:opacity-50"
+                  >
+                    <option value="">Sem etiqueta</option>
+                    {labels.map((label) => (
+                      <option key={label.id} value={label.id}>
+                        {label.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-foreground break-words">{appointment.labelName ?? "Sem etiqueta"}</p>
+                )}
+              </div>
+            </div>
           )}
           {/* Desfecho já registrado: mostra o fato, não oferece ação. */}
           {appointment.status === "completed" && (
@@ -225,10 +355,20 @@ export function AppointmentDetailDialog({
                     Não compareceu
                   </button>
                 )}
+                {/* Remarcar: outro dia ou outra hora, mesmo serviço e profissional. */}
+                <button
+                  type="button"
+                  onClick={openReschedule}
+                  disabled={isPending}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-transparent border border-border hover:bg-muted text-foreground rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CalendarClock size={16} />
+                  Remarcar
+                </button>
               </div>
               <button
                 type="button"
-                onClick={() => { setReason(""); setPendingAction("cancel") }}
+                onClick={() => { setReason(""); setCancelFollowing(false); setPendingAction("cancel") }}
                 disabled={isPending}
                 className="flex items-center gap-2 px-4 py-2.5 text-destructive hover:bg-destructive/10 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -274,6 +414,48 @@ export function AppointmentDetailDialog({
                 tone="positive"
               />
             </div>
+          ) : pendingAction === "reschedule" ? (
+            <div className="space-y-3">
+              <p className="text-sm text-foreground font-medium">Remarcar para quando?</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">
+                    Nova data
+                  </span>
+                  <input
+                    type="date"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    disabled={isPending}
+                    className="mt-1 w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground disabled:opacity-50"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] uppercase font-semibold tracking-wider text-muted-foreground">
+                    Nova hora
+                  </span>
+                  <input
+                    type="time"
+                    value={newTime}
+                    onChange={(e) => setNewTime(e.target.value)}
+                    disabled={isPending}
+                    className="mt-1 w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground disabled:opacity-50"
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Mesmo serviço e profissional. O horário novo passa pelas mesmas conferências de um agendamento novo.
+              </p>
+              <ConfirmRow
+                isPending={isPending}
+                onBack={() => setPendingAction(null)}
+                onConfirm={handleReschedule}
+                confirmLabel="Remarcar"
+                pendingLabel="Remarcando..."
+                icon={<CalendarClock size={16} />}
+                tone="positive"
+              />
+            </div>
           ) : pendingAction === "no_show" ? (
             <div className="space-y-3">
               <p className="text-sm text-foreground font-medium">
@@ -314,13 +496,29 @@ export function AppointmentDetailDialog({
                   className="mt-1 w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground disabled:opacity-50"
                 />
               </label>
+              {appointment.seriesId && (
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={cancelFollowing}
+                    onChange={(e) => setCancelFollowing(e.target.checked)}
+                    disabled={isPending}
+                    className="rounded border-border"
+                  />
+                  Cancelar também os próximos desta série
+                </label>
+              )}
               <ConfirmRow
                 isPending={isPending}
                 onBack={() => setPendingAction(null)}
                 onConfirm={() =>
-                  run("Agendamento cancelado", () =>
-                    cancelAppointment(appointment.id, salonId, reason)
-                  )
+                  cancelFollowing
+                    ? run("Série cancelada daqui em diante", () =>
+                        cancelAppointmentSeries(appointment.id, salonId, reason)
+                      )
+                    : run("Agendamento cancelado", () =>
+                        cancelAppointment(appointment.id, salonId, reason)
+                      )
                 }
                 confirmLabel="Sim, cancelar"
                 pendingLabel="Cancelando..."

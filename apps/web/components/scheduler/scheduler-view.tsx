@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import dynamic from "next/dynamic"
-import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck, Receipt } from "lucide-react"
+import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck, Receipt, Tag, Link2 } from "lucide-react"
 import { DailyScheduler } from "./daily-scheduler"
 import { WeeklyScheduler } from "./weekly-scheduler"
 import { MonthlyScheduler } from "./monthly-scheduler"
@@ -15,6 +15,7 @@ const CreateAppointmentDialog = dynamic(
 import { getAppointments, getSchedulerHours, getPendingOutcomeCount } from "@/app/actions/appointments"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { AppointmentDetailDialog } from "./appointment-detail-dialog"
+import { AppointmentLabelsDialog } from "./appointment-labels-dialog"
 import { GroupAppointmentsDialog } from "./group-appointments-dialog"
 import { format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns"
 import { ptBR } from "date-fns/locale/pt-BR"
@@ -27,6 +28,7 @@ import {
   endOfMonthBrazil
 } from "@/lib/utils/timezone.utils"
 import { useSalon, useSalonAuth } from "@/contexts/salon-context"
+import { toast } from "sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,6 +72,7 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
   const [selectedProId, setSelectedProId] = useState<string | null>(null)
   const [isProDropdownOpen, setIsProDropdownOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isLabelsDialogOpen, setIsLabelsDialogOpen] = useState(false)
   const [selectedAppointment, setSelectedAppointment] = useState<DailyAppointment | null>(null)
   const queryClient = useQueryClient()
 
@@ -300,6 +303,30 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
               <span className="sm:hidden">Agrupar</span>
             </button>
           )}
+          {activeSalon?.modules.includes("online_booking") && (
+            <button
+              onClick={() => {
+                // Agendamento online (fase 7, fatia 7f): a página pública do salão, sem login.
+                navigator.clipboard.writeText(`${window.location.origin}/agendar/${salonId}`).then(
+                  () => toast.success("Link de agendamento online copiado"),
+                  () => toast.error("Não foi possível copiar o link")
+                )
+              }}
+              title="Copiar o link da página em que o cliente marca horário sozinho"
+              className="flex-1 sm:flex-initial px-3 py-2 bg-card border border-border text-foreground rounded-lg text-xs sm:text-sm font-medium hover:bg-muted flex items-center justify-center gap-2 transition-colors"
+            >
+              <Link2 size={16} />
+              <span>Link online</span>
+            </button>
+          )}
+          <button
+            onClick={() => setIsLabelsDialogOpen(true)}
+            title="Etiquetas da agenda: marcadores com cor para os agendamentos"
+            className="flex-1 sm:flex-initial px-3 py-2 bg-card border border-border text-foreground rounded-lg text-xs sm:text-sm font-medium hover:bg-muted flex items-center justify-center gap-2 transition-colors"
+          >
+            <Tag size={16} />
+            <span>Etiquetas</span>
+          </button>
           <button
             onClick={() => setIsCreateDialogOpen(true)}
             className="flex-1 sm:flex-initial px-3 py-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg text-xs sm:text-sm font-medium  flex items-center justify-center gap-2 transition-colors"
@@ -446,7 +473,18 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
       )}
 
       {/* Appointment Detail / Delete Dialog */}
+      {/* Etiquetas da agenda (fase 7). */}
+      <AppointmentLabelsDialog
+        open={isLabelsDialogOpen}
+        onOpenChange={setIsLabelsDialogOpen}
+        salonId={salonId}
+        onChanged={handleAppointmentChanged}
+      />
+
       <AppointmentDetailDialog
+        // Remonta a cada agendamento: o estado do diálogo (etiqueta, nova data)
+        // começa do agendamento certo, sem efeito para sincronizar.
+        key={selectedAppointment?.id ?? "none"}
         appointment={selectedAppointment}
         open={!!selectedAppointment}
         onOpenChange={(o) => { if (!o) setSelectedAppointment(null) }}

@@ -76,6 +76,8 @@ export interface CustomerTrinksSnapshot {
   syncedAt: string | null
 }
 
+import type { CustomerProfile } from "@repo/db"
+
 export interface CustomerDetail {
   id: string
   salonId: string
@@ -102,4 +104,11 @@ export interface CustomerDetail {
    * contatos sem DDI que nunca batem. A Onda 2 (chats.customer_id) resolve.
    */
   chatId: string | null
+  /**
+   * Dados cadastrais (fase 7): nascimento, CPF, gênero, endereço e "como conheceu".
+   * Para quem não pode editar a ficha, o CPF vem MASCARADO ("•••.•••.•••-09").
+   */
+  profile: CustomerProfile
+  /** Cortesia de tela — a trava é no servidor (`customers.edit`). */
+  canEditProfile: boolean
 }

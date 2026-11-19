@@ -67,7 +67,27 @@ uso — **a tool do agente NÃO foi testada em uso** (só roda no worker) — ve
 **As fases 3 a 6 estão na `main`**: fases 3 e 4 pelo PR #17, fase 5 pelo PR #18 e
 fase 6 pelo PR #19, mesclado em 18/nov/2026 (commit `a3d74f4`) — ver §10.13. Os
 módulos continuam ligados só no salão de teste.
-Fases 7 em diante: planejamento.
+Fase 7 (cliente e agenda): detalhada em §11. Fatia 7a (ficha do cliente completa)
+feita na branch `claude/fase-7-cliente-agenda` (sai da `main` com a fase 6):
+migration 059 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.7.
+Fatia 7b (etiquetas na agenda e remarcar pela tela) na mesma branch: migration
+060 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.8.
+Fatia 7c (recorrência de agendamento) na mesma branch: migration 061 aplicada em
+18/nov/2026, publicada e testada em uso — ver §11.9.
+Fatia 7d (anamneses) feita na mesma branch — migration 062 aplicada em
+18/nov/2026, publicada e testada em uso — ver §11.10.
+Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
+aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
+Fatia 7f (agendamento online público) feita na mesma branch, sem migration,
+publicada e testada em uso em 18/nov/2026 — ver §11.12. O cálculo de horários
+da IA não foi trocado. **A fase 7 NÃO está na `main`**: não há PR aberto.
+Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
+relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
+`claude/fase-7-cliente-agenda`): migration 064 aplicada em 18/nov/2026,
+publicada e testada em uso em 19/nov/2026 — ver §13.6.
+Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 — ver §13.7.
+Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
 > nenhum executado). Só a fórmula de comissão foi confirmada por cálculo. Em cada
@@ -3278,10 +3298,777 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
   - o agente passa a consultar os módulos do salão para liberar as tools de
     saldo de pacote e de cashback (o worker precisa estar com esta versão).
 - **Os testes que dependiam de produção deixaram de estar travados** (lista em
-  §11): o link de avaliação sem login, o envio de verdade das mensagens da 6d e
+  §12): o link de avaliação sem login, o envio de verdade das mensagens da 6d e
   as duas tools do agente.
 
-## 11. Pendências do dono
+## 11. Fase 7 — Cliente e agenda
+
+Responde: quem é o cliente, e como ele chega à agenda. Parte da ficha do cliente
+e da agenda que já existem. A auditoria lista as telas da Belasis (ficha completa,
+anamneses, documentos com assinatura, recorrência e etiquetas na agenda,
+agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
+
+### 11.1 Fatias
+
+| Fatia | O que entra | Estado |
+|---|---|---|
+| 7a | Ficha do cliente completa: nascimento, CPF, gênero, endereço e "como conheceu", editáveis na própria ficha | Feita, migration 059 aplicada, publicada e testada em uso (§11.7) |
+| 7b | Etiquetas na agenda (rótulo com cor no agendamento) e remarcar pela tela — antes só a IA remarcava | Feita, migration 060 aplicada, publicada e testada em uso (§11.8) |
+| 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
+| 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita — migration 062 aplicada, publicada na branch e testada em uso (§11.10) |
+| 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Feita — migration 063 aplicada, publicada na branch e testada em uso (§11.11) |
+| 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Feita, sem migration, publicada na branch e testada em uso (§11.12). O cálculo da IA NÃO foi trocado |
+
+A ordem vai do que só acrescenta ao que mexe no caminho crítico. O agendamento
+online fica por último de propósito: depende de UM cálculo de horários livres, e
+hoje há dois que divergem (§11.2).
+
+### 11.2 O que o levantamento encontrou (18/nov/2026)
+
+Vale para a fase inteira; cada item volta na fatia que o toca.
+
+- **Dois cálculos de horários livres.** `getAvailableSlots`
+  (`packages/db/src/services/availability.ts`) ignora intervalos (almoço),
+  Google e agenda oficial; o `CheckAvailabilityUseCase` do mcp-server considera
+  os três. Uma página pública em cima do primeiro ofereceria horário de almoço e
+  horário já vendido na Belasis, que falhariam ao confirmar. **Trava a 7f.**
+- **`schedule_overrides` (folgas e bloqueios pontuais) não é lido por ninguém**:
+  nem pelos dois cálculos, nem pelo `createAppointmentService`, e não há tela
+  para criar. Quem está de férias aparece como livre.
+- **`createAppointmentService` aceita marcar dentro do intervalo** (`is_break`) e
+  **não confere se o cliente é do salão** (só a FK segura).
+- **A tela não remarca nem edita agendamento**: só cria, cancela, conclui e marca
+  falta. `updateAppointmentService` existe, mas só a IA chama. O formulário de
+  criar pede a hora digitada, sem mostrar horários livres.
+- **A trava de horário duplo é só na aplicação** (`pg_advisory_xact_lock` +
+  consulta de sobreposição dentro do serviço). Não há constraint no banco: quem
+  inserir por fora do serviço não é barrado.
+- **`salons.slug` está aposentado** desde a migration 023 (nullable, o app não
+  gera nem lê). A página pública vai precisar de um endereço próprio.
+- **`salons` não tem logo nem endereço estruturado.**
+- **Não há middleware**: quem exige login é o layout de `app/[salonId]`. Rota
+  pública nova precisa de um primeiro segmento fixo (como `/avaliar`).
+- **Excluir cliente é exclusão de verdade** (`deleteSalonCustomer`). Com anamnese
+  e documento assinado ligados ao cliente, isso precisa de decisão (7d e 7e).
+- **O único storage é o do WhatsApp** (`lib/supabase/storage.ts`, bucket
+  `whatsapp-media`, com `chatId` e `messageId` no caminho). Documento assinado
+  vai precisar de bucket e caminho próprios.
+
+### 11.3 Modelo de dados
+
+**Migration 059 (fatia 7a)** — MEXE em `customers` (onze colunas novas, sem
+DEFAULT, todas opcionais); tem que ser aplicada antes de publicar o código:
+
+- **`customers`** ganha `birth_date`, `cpf` (11 dígitos), `gender` (`female`,
+  `male`, `other`), `zip_code` (8 dígitos), `address_street`, `address_number`,
+  `address_complement`, `address_district`, `address_city`, `address_state` (UF)
+  e `referral_source`. Índice único `(salon_id, cpf)` e índice de aniversário
+  (mês e dia).
+
+**Migration 060 (fatia 7b)** — MEXE em `appointments` (uma coluna nova, sem
+DEFAULT); tem que ser aplicada antes de publicar o código:
+
+- **`appointment_labels`** — as etiquetas do salão: `name` (até 30 caracteres,
+  único no salão sem diferença de maiúscula) e `color` (`#RRGGBB`).
+- **`appointments.label_id`** — a etiqueta do agendamento, no máximo uma. Excluir
+  a etiqueta deixa NULL (`ON DELETE SET NULL`).
+
+**Migration 061 (fatia 7c)** — MEXE em `appointments` (uma coluna nova, sem
+DEFAULT); tem que ser aplicada antes de publicar o código:
+
+- **`appointment_series`** — a série: `interval_weeks` (1 a 8), `occurrences`
+  (2 a 12, o que foi PEDIDO) e `created_by`. Não guarda regra para o futuro: só
+  amarra os agendamentos criados de uma vez.
+- **`appointments.series_id`** — a série do agendamento. NULL = avulso.
+
+**Migration 062 (fatia 7d)** — só tabelas novas, não mexe em nenhuma existente:
+
+- **`anamnesis_templates`** — os modelos do salão: `name` (único no salão, sem
+  diferença de maiúscula), `questions` (jsonb: `id`, `label`, `type`,
+  `required`, `options`) e `is_active`.
+- **`customer_anamneses`** — cada ficha respondida: `customer_id` (CASCADE),
+  `template_id` (SET NULL), `template_name` e `answers` (jsonb: `questionId`,
+  `label`, `type`, `value`) como RETRATO do dia, e `filled_by`.
+
+**Migration 063 (fatia 7e)** — só tabelas novas, não mexe em nenhuma existente.
+Mesmo assim **tem que ser aplicada antes de publicar o código**: a exclusão de
+contato passa a consultar `customer_documents` (regra 39).
+
+- **`document_templates`** — os modelos do salão: `name` (único no salão, sem
+  diferença de maiúscula; é o título do documento), `body` (até 20.000
+  caracteres) e `is_active`.
+- **`customer_documents`** — cada documento gerado: `customer_id` (CASCADE),
+  `template_id` (SET NULL), `title` e `body` como RETRATO do dia (com os
+  campos preenchidos), `body_hash` (SHA-256 de título + texto), `token` (único
+  no sistema), `expires_at`, e a assinatura: `signed_at`, `signer_name`,
+  `signature_image` (PNG em data URL, até 200.000 caracteres), `signer_ip` e
+  `signer_user_agent`. Um CHECK garante que nome, imagem e data andam juntos.
+
+**Fatia 7f — sem migration.** O agendamento online é o módulo `online_booking`
+em `salons.settings.modules` (como os outros módulos), e o endereço da página
+usa o id do salão. O agendamento criado pela página é uma linha comum de
+`appointments`, com a observação "Agendado pelo cliente na página de
+agendamento online".
+
+### 11.4 Regras decididas
+
+Fatia 7a — ficha do cliente:
+
+1. **Tudo é opcional.** O cadastro que nasce do WhatsApp continua só com nome e
+   telefone; a ficha é completada no salão.
+2. **CPF**: só entra o que tem os dígitos verificadores certos; sequência
+   repetida ("111.111.111-11") é recusada. **Um CPF por salão**: o segundo
+   cadastro com o mesmo CPF é recusado com aviso.
+3. **Nascimento**: não pode ser no futuro nem antes de 1900 (o "futuro" é
+   conferido no código; o banco só barra antes de 1900). A ficha mostra a
+   idade e avisa quando é o aniversário (quem nasceu em 29/fev comemora em 28/fev
+   fora de ano bissexto).
+4. **Endereço**: CEP com 8 dígitos e UF da lista; o resto é texto. Não há busca
+   de endereço pelo CEP.
+5. **"Como conheceu"** é texto curto e livre (até 80 caracteres), separado da
+   origem do lead (anúncio × orgânico), que é automática.
+6. **Quem edita**: quem tem `customers.edit`. **Quem só lê a ficha vê o CPF
+   mascarado** ("•••.•••.•••-09"), e a máscara é feita no servidor. Endereço e
+   nascimento aparecem para quem lê a ficha.
+7. **Nome, telefone, e-mail e etiquetas** continuam sendo editados na lista de
+   contatos, como antes.
+8. **O agente do WhatsApp não recebe estes dados.** Nenhuma tool nova, e o
+   contexto que a IA lê do cliente não foi mexido.
+
+Fatia 7b — etiquetas na agenda e remarcar:
+
+9. **A etiqueta é um marcador de tela**: nome e cor, uma por agendamento. Não
+   muda horário, status, cobrança nem comissão, e o agente do WhatsApp não a vê.
+10. **O salão cria as suas** (até 30), escolhendo entre nove cores. O texto sobre
+    a cor é preto ou branco, o que der mais contraste.
+11. **Pôr ou tirar a etiqueta** é no detalhe do agendamento, inclusive nos já
+    concluídos. Ainda não dá para escolher a etiqueta ao CRIAR o agendamento.
+12. **Excluir a etiqueta** tira a marca dos agendamentos que a usavam; eles
+    continuam como estão.
+13. **Quem mexe**: ver as etiquetas é de quem tem `schedule.access`; criar,
+    alterar, excluir e etiquetar é de quem tem `schedule.edit`.
+14. **Remarcar pela tela** muda só a data e a hora — mesmo cliente, serviço e
+    profissional. Só o que está pendente ou confirmado é remarcado.
+15. **O horário novo passa pelas mesmas conferências de um agendamento novo**
+    (o mesmo serviço que a IA usa): expediente, regra de dia e horário do
+    serviço, conflito com outro agendamento, agenda oficial e Google. A equipe
+    pode furar a regra de dia e horário do serviço depois de confirmar, como no
+    criar; conflito não se fura.
+16. **Quem remarca** é quem já podia concluir ou cancelar aquele agendamento:
+    dono, gerente, ou o profissional do próprio atendimento.
+
+Fatia 7c — recorrência:
+
+17. **Repetir é criar vários agendamentos de uma vez**: o mesmo cliente, serviço
+    e profissional, no mesmo dia da semana e na mesma hora, a cada 1 a 8 semanas,
+    de 2 a 12 vezes contando o primeiro. Não existe série "sem fim".
+18. **Cada data é conferida como um agendamento avulso** (expediente, regra do
+    serviço, conflito, agenda oficial, Google). **A primeira precisa caber**: se
+    ela falha, nada é criado. As seguintes que não couberem são puladas e
+    listadas num aviso que fica na tela, com o motivo de cada uma.
+19. **Furar a regra de dia e horário do serviço**, depois de confirmar, vale para
+    a série inteira. Conflito não se fura.
+20. **Cada agendamento da série é comum**: pode ser remarcado, etiquetado,
+    concluído ou cancelado sozinho. Remarcar um não move os outros.
+21. **Cancelar "este e os próximos"** cancela, daquela data em diante, os que
+    ainda estão pendentes ou confirmados. Os anteriores e os já concluídos ficam.
+    Não há "cancelar a série inteira" nem "remarcar a série".
+22. **Se só uma data coube**, o agendamento fica avulso: um sozinho não é série.
+23. **Quem cria a série** é quem já podia criar agendamento (dono ou profissional
+    ativo; no plano SOLO, sempre para o profissional do dono).
+
+Fatia 7d — anamneses:
+
+24. **O salão monta modelos**: um nome e de 1 a 40 perguntas, em ordem. Tipos de
+    pergunta: resposta curta (até 200 caracteres), resposta longa (até 2.000),
+    sim ou não, uma opção e várias opções (de 2 a 20 opções). Cada pergunta pode
+    ser obrigatória. Até 30 modelos por salão.
+25. **Responder é na ficha do cliente**, por quem atende — não há link para o
+    cliente responder sozinho (isso é parente da 7e). Pergunta obrigatória não
+    passa em branco, e "Não" conta como resposta. Ficha toda em branco não é
+    gravada.
+26. **A ficha respondida é um retrato**: guarda o nome do modelo e o texto de
+    cada pergunta como estavam no dia. Alterar, desativar ou excluir o modelo não
+    muda o que já foi respondido.
+27. **A ficha respondida não se edita.** Responder de novo cria outra; o
+    histórico é a lista, da mais recente para a mais antiga, com data e quem
+    preencheu.
+28. **Modelo inativo** não aparece para responder; continua na lista de modelos.
+29. **Anamnese é dado de saúde, com permissão própria** (`customers.anamneses`,
+    "Anamneses" em Clientes): ver, responder e gerenciar os modelos. Ter acesso
+    aos contatos NÃO basta. Dono e gerente sem perfil têm; funcionário sem
+    perfil não tem; perfil de acesso existente não tem até alguém marcar.
+30. **Excluir uma ficha respondida** pede, além dessa permissão, a de excluir
+    clientes (`customers.delete`).
+31. **Excluir o cliente apaga as anamneses dele**, sem aviso a mais na tela de
+    exclusão.
+
+Fatia 7e — documentos com assinatura:
+
+32. **O salão escreve modelos de documento**: um nome (que é o título que o
+    cliente vê) e o texto, até 20.000 caracteres, sem formatação além das quebras
+    de linha. Até 30 modelos. O texto aceita três campos, preenchidos na hora de
+    gerar: `{{cliente}}`, `{{salao}}` e `{{data}}` (o dia, em Brasília).
+    Campo que não existe (`{{cpf}}`) é recusado ao salvar o modelo.
+33. **Gerar é na ficha do cliente**, a partir de um modelo ativo. O documento é
+    um retrato: guarda título e texto do dia, já com os campos preenchidos, e o
+    SHA-256 desse texto. Alterar, desativar ou excluir o modelo não muda o
+    documento, assinado ou não.
+34. **O cliente assina por um link sem login** (`/assinar/<token>`). A única
+    credencial é o token (192 bits aleatórios). **O sistema não envia o link**:
+    gerar copia o link, e quem atende manda pelo canal que quiser.
+35. **Assinar** é: ler o texto, escrever o nome completo, desenhar a assinatura
+    (dedo, caneta ou mouse) e marcar "li e concordo". Ficam gravados o nome, a
+    imagem da assinatura, a data e a hora, o endereço de internet (IP) e o
+    navegador. **Não há conferência de identidade**: assina quem tem o link.
+    Não é assinatura com certificado digital (ICP-Brasil).
+36. **Assina-se uma vez só.** Depois de assinado, o documento não muda, e o
+    mesmo link passa a mostrar o documento com a assinatura — é a via do
+    cliente. O link nunca mostra IP, telefone nem outro dado do cadastro.
+37. **O link vale 30 dias.** Vencido sem assinatura, não aceita mais; o salão
+    gera outro. Até 10 documentos esperando assinatura por cliente.
+38. **Permissão própria** (`customers.documents`, "Documentos" em Clientes):
+    ver os documentos, gerar, copiar o link e gerenciar os modelos. Ter acesso
+    aos contatos NÃO basta. Dono e gerente sem perfil têm; funcionário sem
+    perfil não tem; perfil de acesso existente não tem até alguém marcar.
+39. **Excluir documento**: o que ainda não foi assinado sai com a permissão
+    acima; o ASSINADO pede também `customers.delete`. **Contato com documento
+    assinado não é excluído**: a tela avisa para excluir os documentos antes.
+    (Diferente da anamnese, regra 31: o documento assinado é registro do salão.)
+40. **A imagem da assinatura fica no banco**, na linha do documento, e não em
+    storage: é um PNG pequeno, e assim fica atrás do mesmo RLS do resto. O
+    servidor só aceita data URL de PNG.
+41. **O agente do WhatsApp não vê nem envia documento.**
+
+Fatia 7f — agendamento online público:
+
+42. **Um cálculo de horários livres para a página**
+    (`listProfessionalDaySlotsService`, com a conta em
+    `domain/booking-slots.ts`). Um horário só é oferecido se o atendimento
+    INTEIRO — a duração que a agenda reserva — cabe num período de trabalho do
+    profissional, não encosta em intervalo e não encosta em nada ocupado.
+    "Ocupado" junta: agendamentos da pessoa em qualquer salão, folgas e
+    bloqueios (`schedule_overrides`, lidos aqui pela primeira vez), Google e
+    agenda oficial. Grade de 15 em 15 minutos, ou só os horários próprios do
+    serviço quando ele tem.
+43. **O cálculo da IA do WhatsApp NÃO foi trocado nesta fatia.** Ele está no
+    caminho crítico e só roda no worker, onde não dá para testar em uso daqui.
+    Continuam existindo o `CheckAvailabilityUseCase` (IA) e o
+    `getAvailableSlots` (só o chat de teste do painel). Diferenças conhecidas
+    do cálculo da IA: a grade anda de duração em duração, e um horário que
+    começa antes do intervalo e termina dentro dele é oferecido. Trocar a IA
+    para o cálculo novo é uma fatia própria (§12).
+44. **A página só oferece o que a criação aceita.** Profissional sem expediente
+    cadastrado no dia não aparece com horário — a página NÃO usa o horário de
+    funcionamento do salão no lugar (a criação recusaria).
+45. **Marcar confere de novo.** O horário pedido tem que estar entre os que a
+    página oferece naquele instante; a lista é recalculada no servidor. É isso
+    que impede marcar fora do expediente, em cima do almoço ou além da janela,
+    mesmo com o pedido montado à mão. Quem grava é o
+    `createAppointmentService`, com a trava de conflito e a agenda oficial.
+46. **Opt-in por salão**: módulo `online_booking`, desligado para todos. Sem o
+    módulo, o endereço responde como se o salão não existisse.
+47. **O endereço** é `/agendar/<id do salão>`. O id é um identificador, não um
+    segredo. Endereço curto com o nome do salão fica para depois (o `slug` está
+    aposentado).
+48. **O cliente escolhe** serviço, profissional (quando mais de um faz o
+    serviço), dia e horário, e informa nome e WhatsApp com DDD. Entram os
+    serviços ativos que têm profissional ativo. Aparecem nome, duração
+    reservada, descrição e preço (valor, faixa ou "Sob avaliação").
+49. **Janela**: de hoje a 30 dias, e hoje só com uma hora de antecedência.
+50. **O cadastro** é achado pelo telefone (em qualquer formato) ou criado.
+    Cadastro que já existe NÃO tem o nome trocado: quem digita o telefone de
+    outra pessoa não renomeia o cliente do salão. A página nunca diz se o
+    telefone já era cliente.
+51. **Sem confirmação do telefone.** Não há código por WhatsApp nem SMS. O que
+    segura abuso: no máximo 3 agendamentos futuros por telefone no salão, a
+    antecedência, a janela e um campo-isca para robôs. Não há limite de
+    tentativas por endereço de internet.
+52. **O agendamento entra como os outros** (pendente), com a observação de que
+    veio da página. Segue o que já existe: espelho no Google, agenda oficial,
+    lembrete. **A página não cancela nem remarca**: isso é com o salão.
+53. **Quem vê o link**: botão "Link online" na agenda, para quem está no salão
+    com o módulo ligado. Não há permissão própria.
+
+Perguntas para o dono:
+
+- (7a) Algum destes campos deve ser obrigatório? Para quem (todo cliente, ou só
+  para assinar documento)?
+- (7a) Faltam campos da ficha da Belasis: RG, profissão, estado civil, e-mail
+  secundário, foto, "indicado por" ligando a outro cliente?
+- (7a) O CPF mascarado para quem só lê (regra 6) é o que o salão quer? E o
+  endereço?
+- (7a) Lista de aniversariantes do mês e mensagem de parabéns pelo WhatsApp entram
+  nesta fase?
+- (7a) A IA deve poder perguntar e gravar a data de nascimento na conversa?
+- (7b) Uma etiqueta por agendamento basta, ou a Belasis deixa várias?
+- (7b) A etiqueta deve mudar a cor do cartão inteiro na agenda? Hoje a cor do
+  cartão é só para diferenciar um do outro, e a etiqueta entra como um selo.
+- (7b) Remarcar deve também trocar o profissional e o serviço? Hoje só data e
+  hora.
+- (7b) O cliente deve ser avisado pelo WhatsApp quando o salão remarca?
+- (7c) Os limites servem (até 8 semanas de intervalo, até 12 vezes)? Precisa de
+  repetição mensal por data ("todo dia 10") ou a cada N dias?
+- (7c) Quando uma data da série não cabe, pular e avisar (regra 18) é o certo, ou
+  o sistema deve procurar outro horário próximo?
+- (7c) A IA deve poder marcar e cancelar séries pelo WhatsApp? Hoje ela só vê
+  cada agendamento isolado.
+- (7c) O lembrete de 24 horas de cada agendamento da série basta, ou o cliente
+  recebe um resumo com todas as datas ao marcar?
+- (7d) Quem pode ver anamnese? Hoje é uma permissão só (ver, responder e
+  gerenciar modelos — regra 29). Precisa separar "ver" de "gerenciar modelos"?
+- (7d) A ficha respondida deve poder ser corrigida, ou só refeita (regra 27)?
+- (7d) O cliente deve responder sozinho, por um link no WhatsApp, antes do
+  atendimento? E a anamnese precisa de assinatura (liga com a 7e)?
+- (7d) Faz falta pergunta "Sim → qual?" (um campo que só abre quando a resposta
+  é sim), data, ou foto? Hoje o salão resolve com uma pergunta de texto em
+  seguida.
+- (7d) A IA deve saber o que está na anamnese (por exemplo, alergia) ao
+  conversar com o cliente? Hoje ela não lê.
+- (7d) Ao excluir um cliente com anamnese, a tela deve avisar que as fichas vão
+  junto (regra 31), ou impedir?
+- (7e) O desenho da assinatura na tela basta para o que o salão precisa, ou é
+  preciso assinatura com validade jurídica mais forte (confirmação por código no
+  WhatsApp, CPF, ou certificado digital por um serviço de terceiros)?
+- (7e) O sistema deve mandar o link pelo WhatsApp do salão, em vez de só copiar?
+  Na API oficial isso pede um modelo de mensagem aprovado.
+- (7e) 30 dias de validade do link está bom? O salão deve poder escolher?
+- (7e) O salão precisa assinar também (duas assinaturas no mesmo documento)?
+- (7e) Faz falta imprimir ou baixar o documento assinado em PDF? Hoje se vê na
+  tela (do salão e do cliente).
+- (7e) Faz falta formatação no texto (negrito, títulos), outros campos (CPF,
+  serviço, profissional) ou anexar a anamnese ao termo?
+- (7e) Bloquear a exclusão do contato com documento assinado (regra 39) é o
+  certo, ou o salão prefere que tudo saia junto, como na anamnese?
+- (7e) O documento deve poder ser pedido automaticamente (por exemplo, antes do
+  primeiro atendimento de um serviço)?
+- (7f) **Salão que cobra sinal antecipado**: a página pública deve pedir o
+  sinal (e como, sem pagamento online — fase 8), marcar como "aguardando
+  sinal", ou simplesmente não existir para esse salão? Hoje marca sem sinal.
+- (7f) O agendamento online deve entrar direto, ou esperar o salão aceitar?
+  Hoje entra direto, como pendente (regra 52).
+- (7f) É preciso confirmar o telefone por código no WhatsApp antes de marcar
+  (regra 51)? Sem isso, qualquer pessoa pode marcar em nome de um telefone — e
+  esse telefone recebe o lembrete do salão.
+- (7f) Uma hora de antecedência e 30 dias de janela estão bons (regra 49)? E o
+  teto de 3 agendamentos futuros por telefone?
+- (7f) O cliente deve poder escolher "qualquer profissional"? E marcar mais de
+  um serviço de uma vez?
+- (7f) Todos os serviços ativos aparecem na página. O salão precisa esconder
+  alguns (por exemplo, os "sob avaliação")?
+- (7f) O cliente deve poder cancelar ou remarcar pelo link?
+- (7f) O salão quer um endereço curto (`/agendar/nome-do-salao`), logo e
+  endereço na página?
+- (7f) O salão deve ser avisado na hora (no painel ou no WhatsApp) quando entra
+  um agendamento pela página?
+- (7f) No plano SOLO a tela do salão marca tudo para o profissional do dono; a
+  página pública lista os profissionais ativos que fazem o serviço. Está certo?
+
+### 11.5 Telas
+
+- **Ficha do cliente (7a)**: cartão "Dados cadastrais", acima de Vendas —
+  nascimento (com idade e "Aniversário hoje"), CPF, gênero, endereço numa linha e
+  "como conheceu"; ficha vazia mostra um aviso. "Editar" troca o cartão pelo
+  formulário (onze campos) no lugar.
+- **Agenda (7b)**: botão "Etiquetas" no cabeçalho abre o diálogo das etiquetas do
+  salão (lista com quantos agendamentos usam cada uma, criar, alterar a cor e o
+  nome, excluir). Os cartões do dia e da semana mostram a etiqueta como um selo
+  colorido embaixo do nome do cliente.
+- **Detalhe do agendamento (7b)**: campo "Etiqueta" (aparece quando o salão tem
+  etiquetas) e botão "Remarcar", que pede a nova data e a nova hora.
+- **Novo agendamento (7c)**: caixa "Repetir este agendamento", que abre "A cada
+  [1 a 8 semanas]" e "Quantas vezes [2 a 12]". Ao criar, o aviso diz quantos
+  entraram e, se alguma data não coube, lista as datas e fica na tela até ser
+  fechado.
+- **Detalhe do agendamento (7c)**: linha "Recorrência — faz parte de uma série, a
+  cada N semanas"; ao cancelar, a caixa "Cancelar também os próximos desta
+  série".
+- **Ficha do cliente (7d)**: cartão "Anamneses", logo abaixo dos dados
+  cadastrais, só para quem tem a permissão. Mostra o que dá para responder (um
+  botão quando há um modelo; uma lista quando há mais), o formulário do modelo
+  escolhido e o histórico — cada ficha abre para mostrar pergunta e resposta.
+- **Modelos de anamnese (7d)**: janela aberta por "Modelos" no cartão. Lista os
+  modelos (perguntas, fichas respondidas, "Inativo") e edita: nome, ativo, e as
+  perguntas com texto, tipo, obrigatória, opções (uma por linha) e ordem.
+- **Ficha do cliente (7e)**: cartão "Documentos", abaixo das anamneses, só para
+  quem tem a permissão. "Gerar" (com a lista de modelos quando há mais de um)
+  cria o documento e copia o link. Cada documento mostra a situação (Aguardando
+  assinatura, Assinado, Link vencido), "Copiar link" enquanto dá para assinar,
+  ver e excluir. Ver abre o texto e, se assinado, a assinatura, o nome, a data,
+  o IP e o navegador, além do SHA-256.
+- **Modelos de documento (7e)**: janela aberta por "Modelos" no cartão: nome,
+  ativo e o texto, com a lista dos campos aceitos.
+- **Página pública (7e)** (`/assinar/<token>`, sem login): nome do salão, título
+  e texto; o formulário de assinatura (nome, quadro para desenhar com "Limpar",
+  "li e concordo"); depois de assinado, a assinatura e a data. Link desconhecido
+  ou vencido mostra um aviso.
+- **Página pública de agendamento (7f)** (`/agendar/<id do salão>`, sem
+  login): nome do salão; serviço (com duração e preço); profissional, quando
+  há mais de um; dia (de hoje a 30 dias); os horários livres em botões; nome e
+  WhatsApp; "Marcar para DD/MM/AAAA às HH:mm". Depois: "Horário marcado", com
+  serviço, profissional, dia e hora. Salão sem o módulo, ou id desconhecido:
+  "Agendamento online indisponível".
+- **Agenda (7f)**: botão "Link online", que copia o endereço da página — só
+  com o módulo `online_booking` ligado.
+
+### 11.6 Onde está o código
+
+| Parte | Arquivos |
+|---|---|
+| Ficha do cliente (7a) | Migration `059_customer_profile.sql`; colunas em `customers` (`schema.ts`); regra em `domain/customer-profile.ts` (`planCustomerProfile`, `isValidCpf`, `maskCpf`, `customerAge`, `isBirthday`, `formatCustomerAddress`); I/O em `services/customer-profile.service.ts`; action em `actions/customer-profile.ts`; `getCustomerDetail` (`actions/customers.ts`) devolve `profile` e `canEditProfile`; cartão em `components/contacts/customer-profile-card.tsx`; testes em `customer-profile-domain.test.ts` |
+| Etiquetas e remarcar (7b) | Migration `060_appointment_labels.sql`; tabela `appointmentLabels` e `appointments.labelId`; regra em `domain/appointment-labels.ts` (`planAppointmentLabel`, `labelTextColor`); I/O em `services/appointment-labels.service.ts`; actions em `actions/appointment-labels.ts`; `rescheduleAppointment` em `actions/appointments.ts` (chama `updateAppointmentService`); a consulta da grade (`lib/repositories/appointment.repository.ts`) traz a etiqueta; telas em `components/scheduler/` (`appointment-labels-dialog.tsx`, `appointment-detail-dialog.tsx`, `scheduler-view.tsx`, `daily-scheduler.tsx`, `weekly-scheduler.tsx`); testes em `appointment-labels-domain.test.ts` |
+| Recorrência (7c) | Migration `061_appointment_series.sql`; tabela `appointmentSeries` e `appointments.seriesId`; regra em `domain/appointment-series.ts` (`planAppointmentSeries`, `addCalendarDays`, `describeSeriesOutcome`); I/O em `services/appointment-series.service.ts` (`createAppointmentSeriesService` repete o `createAppointmentService`; `cancelAppointmentSeriesService` repete o `cancelAppointmentService`); actions `createAppointmentSeries` e `cancelAppointmentSeries` em `actions/appointments.ts`, com o portão de criação extraído para `authorizeAppointmentCreation`; telas em `components/scheduler/create-appointment-dialog.tsx` e `appointment-detail-dialog.tsx`; testes em `appointment-series-domain.test.ts` |
+| Anamneses (7d) | Migration `062_anamneses.sql`; tabelas `anamnesisTemplates` e `customerAnamneses`; regra em `domain/anamneses.ts` (`planAnamnesisTemplate`, `planAnamnesisAnswers`, `parseAnamnesisQuestions`, `parseAnamnesisAnswers`, `formatAnamnesisAnswer`); I/O em `services/anamneses.service.ts`; actions em `actions/anamneses.ts` (na guarda de `actions-authz.test.ts`); permissão `customers.anamneses` em `domain/permissions.ts`, com rótulo em `permissions.constants.ts`; telas em `components/contacts/customer-anamneses-card.tsx` e `anamnesis-templates-dialog.tsx`; testes em `anamneses-domain.test.ts` |
+| Documentos com assinatura (7e) | Migration `063_customer_documents.sql`; tabelas `documentTemplates` e `customerDocuments`; regra em `domain/customer-documents.ts` (`planDocumentTemplate`, `renderDocument`, `documentStatus`, `planDocumentSignature`, `isDocumentToken`); I/O em `services/customer-documents.service.ts` (as duas funções públicas no fim do arquivo); actions em `actions/customer-documents.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-documents.ts` (pública, FORA da guarda de propósito); permissão `customers.documents`; telas em `components/contacts/customer-documents-card.tsx` e `document-templates-dialog.tsx`; página pública em `app/assinar/[token]/`; a trava de exclusão em `deleteSalonCustomer` (`actions/customers.ts`); testes em `customer-documents-domain.test.ts` |
+| Agendamento online (7f) | Sem migration; módulo `online_booking` em `domain/permissions.ts`; a conta em `domain/booking-slots.ts` (`computeDaySlots`, a régua de dia em Brasília, `onlineBookingNotBefore`, `planOnlineBookingCustomer`); I/O em `services/online-booking.service.ts` (`listProfessionalDaySlotsService` e as três funções públicas); actions em `actions/public-booking.ts` (públicas, FORA da guarda de `actions-authz.test.ts` de propósito); página em `app/agendar/[salonId]/`; o botão do link em `components/scheduler/scheduler-view.tsx`; testes em `booking-slots-domain.test.ts` |
+
+### 11.7 Fatia 7a — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, publicada. Typecheck (db, web e
+  mcp-server), lint dos arquivos novos e testes passando (web 1278, db 296,
+  mcp-server 409).
+- **Migration 059 aplicada em produção em 18/nov/2026** (registrada como
+  `customer_profile`). Cópia antes: `backups.customers_pre_059_20261118` (1.796
+  linhas). Conferido por leitura: as onze colunas, os 1.796 clientes e o índice
+  de CPF. Antes de aplicar, saiu do CHECK do banco o "nascimento não pode ser no
+  futuro": dependia da data do dia, e a regra já está no código.
+- **Endereço do preview:** o nome da branch é longo e a Vercel encurta o alias
+  com um código (`…-git-claude-fase-7-clie-57d368-…`); o endereço montado à mão
+  não existe.
+- **Sem módulo.** A ficha do cliente é do produto base: o cartão aparece em todos
+  os salões assim que o código for publicado.
+- **Correção junto, em código antigo — e o que o teste mostrou:** o servidor
+  (`updateSalonCustomer`) apagava o `preferences` INTEIRO quando a observação
+  chegava vazia, inclusive o que a IA tinha aprendido. **Pela tela isso não
+  acontecia**: o diálogo de edição mandava "nada mudou" quando o campo ficava
+  vazio, então o defeito visível era outro — não dava para apagar uma observação
+  nem um e-mail. Ficou assim: o diálogo manda o campo vazio quando ele tinha
+  valor, e o servidor apaga só aquele dado. Vale para todos os salões.
+- **`actions/customer-profile.ts` entrou na guarda de autorização**;
+  `actions/customers.ts` (antigo) continua fora dela, com o padrão anterior.
+- **Testada em uso em 18/nov/2026**, no preview da branch, no salão de teste.
+  Passou:
+  - a ficha abre com o cartão vazio e o aviso;
+  - CPF com dígito verificador errado → "CPF inválido"; nascimento no futuro →
+    recusado;
+  - gravar nascimento, CPF, gênero, CEP, endereço, cidade, UF e "como conheceu" →
+    o cartão mostra a data com a idade (36 anos) e "Aniversário hoje", o CPF
+    formatado e o endereço numa linha, com os espaços dobrados enxugados;
+  - o mesmo CPF em outro cliente → "Já existe outro cliente com esse CPF neste
+    salão";
+  - apagar todos os campos e gravar → cartão vazio de novo;
+  - na lista, esvaziar a observação de um contato que tinha observação e mais
+    uma chave no `preferences` → sai só a observação, a outra chave fica, e os
+    dados cadastrais não são tocados.
+- **Não testado em uso:** o CPF mascarado e a falta do "Editar" para quem não tem
+  `customers.edit` (só há o usuário dono no salão de teste); criar cliente pela
+  lista e pelo WhatsApp depois da migration (nenhum cliente novo foi criado no
+  teste — a criação só foi exercitada pelo typecheck); apagar o e-mail pelo
+  diálogo; complemento e bairro; a ficha de um cliente de outro salão.
+- Dados de teste limpos: os dados cadastrais apagados pela própria ficha; a
+  chave de teste posta no `preferences` por SQL, e tirada por SQL, pelo ID da
+  cliente. Conferido por leitura: nenhum cliente com dado cadastral, e os
+  clientes do salão de teste idênticos à cópia de antes.
+
+### 11.8 Fatia 7b — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, publicada. Typecheck (db, web e
+  mcp-server), lint (nenhum erro novo nos arquivos alterados) e testes passando
+  (web 1293, db 296, mcp-server 409).
+- **Migration 060 aplicada em produção em 18/nov/2026** (registrada como
+  `appointment_labels`). Cópia antes: `backups.appointments_pre_060_20261118`
+  (181 linhas). Conferido por leitura: os 181 agendamentos, a tabela nova com RLS
+  e sem acesso para `anon`/`authenticated`.
+- **O worker da IA também grava em `appointments`.** Ele roda outra cópia do
+  código; com a migration aplicada, tanto a versão antiga (que não conhece a
+  coluna) quanto a nova funcionam.
+- **Sem módulo.** A agenda é do produto base: o botão "Etiquetas", o campo no
+  detalhe e o "Remarcar" aparecem em todos os salões assim que o código for
+  publicado.
+- **Remarcar não tem código novo de regra**: a action só confere quem pode e o
+  status, e chama o `updateAppointmentService` que a IA já usa. Os achados da
+  §11.2 valem aqui também — ele aceita marcar dentro do intervalo de almoço e não
+  lê folgas.
+- **Limites desta fatia:** não se escolhe a etiqueta ao criar o agendamento; a
+  visão mensal não mostra a etiqueta; não há filtro por etiqueta; remarcar não
+  troca profissional nem serviço e não avisa o cliente; o formulário de remarcar
+  pede a hora digitada, sem mostrar horários livres (como o de criar).
+- **Testada em uso em 18/nov/2026**, no preview da branch, no salão de teste.
+  Passou:
+  - o botão "Etiquetas" abre o diálogo vazio; criar duas etiquetas (amarela e
+    azul); o mesmo nome com outra caixa não entra (conferido por leitura: só as
+    duas no banco — o texto do aviso não foi capturado); trocar a cor de uma;
+  - criar agendamento pela tela DEPOIS da migration funciona (dois criados, os
+    dois espelhados no Google);
+  - no detalhe, pôr a etiqueta → "Etiqueta aplicada" e o selo aparece no cartão
+    da semana; a lista de etiquetas passa a mostrar "1 agendamento";
+  - remarcar para o passado → "Não é possível reagendar para um horário que já
+    passou"; remarcar de quinta 14h para sexta 15h → o cartão muda de lugar e a
+    etiqueta continua nele;
+  - remarcar para cima de outro agendamento do mesmo profissional → recusado (o
+    diálogo fica aberto e o horário não muda — o texto do aviso não foi
+    capturado);
+  - excluir a etiqueta em uso → o agendamento fica sem etiqueta e continua de
+    pé; sem nenhuma etiqueta no salão, o campo "Etiqueta" some do detalhe.
+- **Não testado em uso:** tirar a etiqueta pelo campo ("Sem etiqueta"); o selo na
+  visão do dia (só a semana foi olhada); o limite de 30 etiquetas; furar a regra
+  de dia e horário do serviço ao remarcar; "Remarcar" ausente em agendamento
+  concluído; remarcar por um profissional que não é dono (só há o usuário dono);
+  remarcar com agenda oficial — **o salão de teste não tem Belasis**, só o Google
+  Calendar; e a IA criando agendamento depois da migration (o worker).
+- Dados de teste limpos pela tela: as duas etiquetas excluídas e os dois
+  agendamentos cancelados (ficam no histórico da cliente de teste como
+  cancelados, e saíram do Google). Conferido por leitura: nenhuma etiqueta,
+  nenhum agendamento etiquetado, e os 181 agendamentos de antes iguais à cópia.
+
+### 11.9 Fatia 7c — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel; não
+  está na `main`). Typecheck (db, web e mcp-server), lint (nenhum erro novo nos
+  arquivos alterados) e testes passando (web 1304, db 296, mcp-server 409).
+- **Migration 061: aplicada em produção em 18/nov/2026** (registrada como
+  `appointment_series`), ANTES de publicar o código. Cópia anterior em
+  `backups.appointments_pre_061_20261118` (183 linhas); depois de aplicar, os
+  agendamentos conferem com a cópia e nenhum tem série. Ela acrescenta
+  `series_id` a `appointments`: quem publicar este código em outro banco
+  precisa aplicar a 061 antes, ou a criação de agendamento quebra.
+- **Mexe no caminho de criar agendamento pela tela, para todos os salões:** o
+  trecho que confere quem pode criar (dono ou profissional ativo, e a troca de
+  profissional no plano SOLO) saiu de dentro do `createAppointment` para a
+  função `authorizeAppointmentCreation`, sem mudar a regra, para a série passar
+  pelo mesmo portão. O agendamento avulso continua chamando o mesmo serviço.
+- **Sem módulo.** A caixa "Repetir" aparece em todos os salões assim que o código
+  for publicado.
+- **Sem regra de agenda nova**: a série só repete o `createAppointmentService` e
+  o `cancelAppointmentService`. Os achados da §11.2 valem para cada data.
+- **Limites desta fatia:**
+  - as datas são criadas uma depois da outra, cada uma com as suas conferências
+    (e a gravação na agenda oficial, onde houver). Doze datas num salão com
+    Belasis podem demorar; não medi;
+  - se a tela cair no meio, ficam criados os que já tinham entrado, avulsos (a
+    série só é amarrada no fim);
+  - a grade não marca visualmente o agendamento de série; só o detalhe mostra;
+  - a IA não conhece séries: vê e mexe em cada agendamento isolado.
+- **Testada em uso em 18/nov/2026**, no preview, no salão de teste:
+  - agendamento avulso continua sendo criado depois da 061;
+  - série a cada 1 semana, 3 vezes → três agendamentos, no mesmo dia da semana e
+    hora, amarrados na mesma série, com quem criou gravado;
+  - série que esbarra num horário ocupado → aviso "2 agendamentos criados. Não
+    coube: 26/11/2026 (…)", que fica na tela; os dois que couberam viram série;
+  - série cuja primeira data não cabe → nada é criado, o formulário fica aberto
+    com o erro;
+  - detalhe mostra "Recorrência — faz parte de uma série, a cada semana"; o
+    avulso não mostra, nem oferece "cancelar os próximos";
+  - remarcar um da série muda só ele;
+  - cancelar o segundo com "também os próximos" → o primeiro fica, o segundo e o
+    terceiro são cancelados, a outra série não é tocada.
+- **O que o teste mostrou e não é desta fatia:**
+  - o salão de teste está no plano SOLO: o formulário deixa escolher outro
+    profissional, e o agendamento é gravado para o profissional do dono, sem
+    aviso (regra antiga; a série segue a mesma troca);
+  - o motivo de conflito que apareceu foi "conflito com Google Calendar", porque
+    o agendamento que ocupava o horário já tinha ido para o Google do salão;
+  - o formulário lembra o "Quantas vezes" da série anterior enquanto a tela não
+    é recarregada.
+- **Não testado em uso:** salão com agenda oficial (Belasis), série longa (tempo
+  de 12 datas), furar a regra de dia e horário do serviço numa série, usuário
+  que não é o dono, e a IA criando agendamento depois da 061.
+- **Ficou no salão de teste:** seis agendamentos cancelados com observação
+  "TESTE 7c…" e duas séries (histórico, como os da 7b).
+
+### 11.10 Fatia 7d — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1324, db 296, mcp-server 409).
+- **Migration 062: aplicada em produção em 18/nov/2026** (registrada como
+  `anamneses`). Só cria duas tabelas; não mexe em nenhuma existente, então não
+  houve cópia antes. Conferido depois: RLS ligado, policy `deny_all`, sem
+  privilégio para anon/authenticated, e nenhum aviso novo nos advisors de
+  segurança.
+- **Sem módulo.** O cartão aparece em todos os salões assim que o código for
+  publicado, para quem tem a permissão nova (regra 29).
+- **Permissão nova no catálogo** (`customers.anamneses`): aparece na tela de
+  perfis de acesso, desmarcada nos perfis que já existem.
+- **Limites desta fatia:**
+  - só quem atende responde; não há link para o cliente, nem assinatura;
+  - sem pergunta condicional, data ou foto;
+  - a ficha respondida não se edita, e não há impressão nem exportação;
+  - a IA não lê anamnese;
+  - a tela de excluir cliente não avisa que as anamneses vão junto;
+  - os modelos só se abrem por dentro da ficha de um cliente.
+- **Teste em uso (18/nov/2026)**, no preview da branch, no salão de teste, na
+  ficha de um cliente, com o usuário dono:
+  - cartão "Anamneses" sem modelo, e a janela "Modelos" vazia — ok;
+  - modelo criado com os cinco tipos de pergunta e uma obrigatória — ok;
+  - responder deixando a obrigatória em branco — recusa, com o aviso
+    'Responda: "…"'; responder completo (com "Não" na obrigatória) — salva;
+  - a ficha abre no histórico com as cinco respostas, as várias opções na ordem
+    do modelo e a resposta longa com quebra de linha — ok;
+  - texto de uma pergunta alterado no modelo — a ficha antiga continua com o
+    texto do dia; o formulário novo mostra o texto novo — ok;
+  - responder de novo — duas fichas, a mais recente em cima; o modelo mostra
+    "2 fichas respondidas" — ok;
+  - modelo desativado — some do "responder", aparece "Inativo" na lista de
+    modelos, histórico fica — ok;
+  - modelo excluído — histórico fica, com o nome do modelo — ok;
+  - fichas de teste excluídas pela tela. As duas tabelas ficaram vazias.
+- **Achado do teste:** com modelo cadastrado mas inativo, o cartão diz "Use
+  Modelos para criar o primeiro" — o texto serve para "nenhum modelo", não para
+  "nenhum ativo". Ajuste de texto, não feito.
+- **Não testado:** usuário sem a permissão (o cartão some; só o dono existe no
+  salão de teste), funcionário com perfil de acesso, a lista de escolha com
+  mais de um modelo ativo, os limites (40 perguntas, 30 modelos), nome de
+  modelo repetido, mudar a ordem das perguntas, e excluir um cliente com
+  anamnese.
+
+### 11.11 Fatia 7e — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1351, db 296, mcp-server 409).
+- **Migration 063: aplicada em produção em 18/nov/2026** (registrada como
+  `customer_documents`), ANTES de publicar o código — sem ela, excluir contato
+  falharia, porque a exclusão consulta a tabela nova. Só cria duas tabelas,
+  então não houve cópia antes. Conferido depois: RLS ligado, policy `deny_all`,
+  sem privilégio para anon/authenticated, e nenhum aviso novo nos advisors de
+  segurança.
+- **Sem módulo.** O cartão aparece em todos os salões assim que o código for
+  publicado, para quem tem a permissão nova (regra 38).
+- **Segunda rota pública do sistema** (a primeira é `/avaliar`). Como lá, não
+  há limite de tentativas por endereço: a proteção é o tamanho do token.
+- **Limites desta fatia:**
+  - o sistema não envia o link; quem atende copia e manda;
+  - sem conferência de identidade de quem assina, e sem certificado digital;
+  - só o cliente assina; o salão não assina;
+  - texto sem formatação, três campos, sem anexo;
+  - sem PDF, impressão dedicada nem exportação;
+  - documento não é pedido automaticamente, e não aparece na agenda nem na
+    comanda;
+  - a trava de exclusão vale para `deleteSalonCustomer`; outro caminho que
+    apague cliente direto no banco leva os documentos junto (CASCADE);
+  - os modelos só se abrem por dentro da ficha de um cliente.
+- **Teste em uso (18/nov/2026)**, no preview da branch, no salão de teste, na
+  ficha de um cliente, com o usuário dono:
+  - cartão "Documentos" sem modelo, e a janela "Modelos" vazia — ok;
+  - modelo com `{{cpf}}` — recusa: "O campo {{cpf}} não existe. Os campos
+    são: …"; com os três campos válidos — criado;
+  - "Gerar" — o documento aparece como "Aguardando assinatura", com quem gerou
+    e "vale até" 30 dias depois; aviso de link copiado;
+  - link inventado — "Link inválido";
+  - o link do documento — nome do salão, título e o texto com cliente, salão e
+    data preenchidos, e o SHA-256;
+  - assinar sem nome, sem desenho e sem o "li e concordo" — três recusas, cada
+    uma com o seu aviso; o quadro desenha com o mouse;
+  - assinar — a página passa a mostrar a assinatura, o nome e a data;
+  - na ficha — "Assinado em … por …"; o ver mostra o texto, a imagem da
+    assinatura (PNG 600×200, cerca de 8 mil caracteres), o IP, o navegador e o
+    SHA-256, que confere com o recalculado no banco;
+  - modelo alterado e desativado — o documento assinado não mudou; o cartão
+    deixa de oferecer "Gerar"; a lista de modelos mostra "Inativo" e "1
+    documento gerado";
+  - excluir o contato — recusa: "Este contato tem documento assinado. Exclua os
+    documentos na ficha dele antes de remover o contato"; o contato continua;
+  - documento assinado excluído pela tela (o dono tem as duas permissões); o
+    link dele passa a dizer "Link inválido"; modelo excluído. As duas tabelas
+    ficaram vazias.
+- **Não testado:**
+  - **o link sem login de verdade**: o preview fica atrás do login da Vercel, e
+    o navegador do teste estava logado no painel. Em produção a rota é pública
+    como `/avaliar`; falta abrir num aparelho sem sessão;
+  - assinar com o dedo, no celular;
+  - a segunda assinatura no mesmo link (recusa no servidor; só há teste de
+    regra) e o link vencido (só existe com o tempo);
+  - usuário sem a permissão, funcionário com perfil de acesso, e excluir
+    documento assinado sem `customers.delete`;
+  - a lista de escolha com mais de um modelo ativo, os limites (30 modelos, 10
+    pendentes, texto de 20.000 caracteres) e nome de modelo repetido;
+  - se o link foi mesmo para a área de transferência (o aviso apareceu).
+
+### 11.12 Fatia 7f — estado (18/nov/2026)
+
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1368, db 296, mcp-server 409).
+- **Sem migration.** Publicar não muda nada para nenhum salão: o módulo
+  `online_booking` nasce desligado. **Está ligado só no salão de teste**
+  (UPDATE em `salons.settings`, pelo id, em 18/nov/2026) — e ficou ligado.
+- **O que esta fatia NÃO mexeu, de propósito:** o cálculo de horários da IA
+  (regra 43), o `createAppointmentService` (continua aceitando marcar dentro do
+  intervalo quando chamado pela tela do salão ou pela IA) e a tela de criar
+  agendamento do salão (continua pedindo a hora digitada).
+- **Terceira rota pública do sistema** (`/avaliar`, `/assinar`, `/agendar`), e
+  a primeira que CRIA agendamento e cadastro de cliente sem login.
+- **Riscos conhecidos, aceitos nesta fatia:**
+  - sem confirmação do telefone, dá para marcar com o telefone de outra
+    pessoa; ela receberia o lembrete do salão. O teto é de 3 por telefone;
+  - sem limite de tentativas por endereço de internet: um robô pode encher a
+    agenda usando telefones diferentes. O módulo é opt-in por isso;
+  - Google e agenda oficial fora do ar: a página mostra o horário, e a criação
+    barra (agenda oficial) ou deixa passar (Google), como já é na IA;
+  - `schedule_overrides` passa a ser lido aqui, mas continua sem tela para
+    criar folga, e a criação continua sem conferi-lo.
+- **Limites desta fatia:** um serviço por agendamento; sem "qualquer
+  profissional"; sem cancelar nem remarcar pelo cliente; sem aviso ao salão
+  além do agendamento aparecer na agenda; sem pagamento de sinal (fase 8); sem
+  logo, endereço nem endereço curto.
+- **Teste em uso (18/nov/2026)**, no preview da branch, no salão de teste:
+  - id desconhecido — "Agendamento online indisponível";
+  - a página do salão — 12 serviços, com duração e preço (valor ou faixa);
+  - serviço com um profissional só — a página não pergunta o profissional e
+    mostra "Dia · com <nome>"; o campo de dia vai de hoje a 30 dias;
+  - sexta, expediente das 10h às 18h, serviço de 1h, com um bloqueio de teste
+    em `schedule_overrides` das 12h às 13h — horários de 10:00 a 11:00 e de
+    13:00 a 17:00, de 15 em 15 minutos: nada encosta no bloqueio e o último
+    cabe no expediente;
+  - telefone inválido (dígitos repetidos) — recusa do servidor, com o aviso;
+  - marcar às 14:00 com telefone novo — "Horário marcado"; no banco, o
+    agendamento certo (14:00 de Brasília, pendente, com a observação) e o
+    cadastro novo, com o telefone no formato do WhatsApp;
+  - recarregar — 13:15 a 14:45 saíram da lista;
+  - marcar às 10:00 com o MESMO telefone em outro formato e outro nome — um
+    cadastro só, e o nome dele não mudou;
+  - na agenda do salão — os dois agendamentos, com a observação no detalhe, e
+    o botão "Link online"; os dois foram espelhados no Google;
+  - os dois cancelados pela tela.
+- **Achados do teste:**
+  - **o sinal antecipado do salão não é cobrado pela página.** O salão de
+    teste tem `advance_payment` ligado (a IA pede o PIX antes de marcar); a
+    página pública marca sem ele. Salão que exige sinal não deve ligar o
+    módulo até isso ser decidido (§11.4);
+  - serviço com preço simbólico (R$ 0,01, usado como "a combinar") aparece
+    com esse valor na página;
+  - o bloqueio de `schedule_overrides` tira o horário da página, mas não
+    aparece na agenda do salão (não há tela para ele);
+  - depois de um erro de nome ou de telefone, a página fazia o cliente
+    escolher o horário de novo — corrigido depois do teste.
+- **Não testado:**
+  - **a página sem login de verdade** (o preview fica atrás do login da
+    Vercel) e no celular;
+  - intervalo (almoço) cadastrado — o salão de teste não tem; há teste de
+    regra;
+  - serviço com mais de um profissional, com dias ou horários próprios, e dia
+    sem expediente;
+  - hoje com uma hora de antecedência (o teste foi à noite);
+  - dois pedidos para o mesmo horário ao mesmo tempo, e o campo-isca;
+  - salão com agenda oficial (Belasis) e o que ela recusa;
+  - se o link foi mesmo para a área de transferência.
+- **Teto de 3 agendamentos por telefone — coberto depois (18/nov/2026):** a
+  comparação saiu do serviço para `onlineBookingLimitError`
+  (`domain/booking-slots.ts`), com teste da fronteira (2 passa, 3 recusa,
+  contagem inválida recusa). Em uso, no preview: com dois agendamentos futuros
+  do cliente de teste (inseridos por SQL, pelo id), o terceiro entrou pela
+  página e o quarto foi recusado com "Este telefone já tem 3 horários
+  marcados. Fale com o salão para marcar mais"; no banco ficaram exatamente
+  três. No mesmo teste, a correção do formulário foi conferida: depois de um
+  erro de telefone, o horário escolhido e os campos continuaram.
+- **Achado:** `/schedule?date=` não leva a agenda para a semana pedida; ela
+  abre na semana de hoje.
+- **Ficou no salão de teste:** o cadastro "Cliente Teste Sete F" com três
+  agendamentos cancelados. O bloqueio de teste e os dois agendamentos
+  inseridos por SQL foram apagados.
+
+## 12. Pendências do dono
 
 | Pendência | Trava |
 |---|---|
@@ -3303,4 +4090,269 @@ salão e de todos os profissionais) e `manage` (definir e copiar metas).
 | Responder às perguntas da 6d em §10.3 (prazos e horário, retorno para quem já remarcou, abas na ficha, modelos da Meta, convívio com a retenção por IA) | Ajustes na 6d antes do piloto |
 | Responder às perguntas da 6e em §10.3 (indicadores, vendido ou recebido, quem vê a meta, meta e comissão) | Ajustes na 6e antes do piloto |
 | Testar pelo WhatsApp do salão de teste as duas tools do agente: saldo de pacote (fase 5) e saldo de cashback (6f) — ver §10.12 | Saber se a IA responde certo sobre pacote e cashback |
+| Responder às perguntas da 7a em §11.4 (campos obrigatórios, campos que faltam, CPF mascarado, aniversariantes, IA e nascimento) | Ajustes na 7a antes do piloto |
+| Responder às perguntas da 7b em §11.4 (uma ou várias etiquetas, cor do cartão, trocar profissional ao remarcar, avisar o cliente) | Ajustes na 7b antes do piloto |
+| Responder às perguntas da 7c em §11.4 (limites da repetição, o que fazer com data que não cabe, séries pela IA, aviso ao cliente) | Ajustes na 7c antes do piloto |
+| Responder às perguntas da 7d em §11.4 (quem vê anamnese, corrigir ficha, link para o cliente e assinatura, tipos de pergunta, IA, excluir cliente) | Ajustes na 7d antes do piloto |
+| Marcar "Anamneses" nos perfis de acesso de quem deve ver e preencher | Funcionário com perfil usar as anamneses |
+| Abrir um link de `/assinar` num celular sem login no painel, depois que a fase 7 estiver em produção, e assinar com o dedo | Confirmar a página pública de assinatura |
+| Responder às perguntas da 7e em §11.4 (força da assinatura, envio pelo WhatsApp, validade do link, PDF, exclusão de contato) | Ajustes na 7e antes do piloto |
+| Marcar "Documentos" nos perfis de acesso de quem deve gerar e ver documentos | Funcionário com perfil usar os documentos |
+| Ter o texto dos termos do salão revisado por quem entende (advogado), antes de usar com clientes | Uso dos documentos no piloto |
+| Abrir `/agendar/<id>` num celular sem login no painel, depois que a fase 7 estiver em produção, e marcar um horário | Confirmar a página pública de agendamento |
+| Responder às perguntas da 7f em §11.4 (entrar direto ou esperar aceite, confirmar o telefone, janela e teto, esconder serviços, cancelar pelo link) | Ligar o agendamento online num salão de verdade |
+| Decidir quando trocar o cálculo de horários da IA para o cálculo novo (regra 43) — pede teste com o worker e conversa de verdade | Um cálculo só no sistema inteiro |
+| Aplicar a migration 064 (ou autorizar a aplicação), publicar a fatia 9a e ligar o módulo `reports` no salão de teste — ver §13.6 | Teste em uso da fatia 9a |
+| Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
+| Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
+| Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
+| Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
+
+## 13. Fase 9 — Relatórios e multiunidade
+
+Responde: onde o dono olha os números. A auditoria lista 38 sub-relatórios em
+oito categorias, um painel de profissionais, os favoritos e a organização com
+unidades — mas **nenhum relatório teve as colunas de saída lidas** (a auditoria
+só viu os filtros). Colunas e totais são decididos aqui, fatia a fatia.
+
+A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
+
+### 13.1 Fatias
+
+| Fatia | O que entra | Estado |
+|---|---|---|
+| 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
+| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
+| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
+| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
+| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
+| 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
+| 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
+
+"Todas as notas fiscais" é da fase 10.
+
+### 13.2 O que o levantamento encontrou (18/nov/2026)
+
+- (Depois da fatia 9b, são 26 dos 38 com tela.)
+- **22 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
+  a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
+  compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
+  retorno, comandas e contatos. Faltam 15, mais a nota fiscal (fase 10) e o
+  painel de profissionais. (O levantamento contou 21; o teste em uso mostrou
+  que o fluxo de caixa por dia já está no resumo do financeiro.)
+- **"Já tem tela" não quer dizer "igual à Belasis"**: a tela responde à
+  pergunta do relatório, com os filtros que a fase dela entregou. Vários
+  relatórios caem na mesma tela (por exemplo, Recebimentos, Despesas e Extrato
+  de movimentações caem nos lançamentos do financeiro).
+- **Não havia tela de relatórios**, e a permissão `reports.access` já existia
+  no catálogo sem proteger nada.
+- **Só a lista de contatos exporta** (CSV). Os outros relatórios não exportam.
+- **Não existe "unidade"**: cada salão é uma conta isolada (`salons`). A
+  organização multiunidade da auditoria (membros com papel e unidades) não tem
+  nada pronto; `professionals.person_key` só une a agenda da mesma pessoa
+  entre salões.
+
+### 13.3 Modelo de dados
+
+**Migration 064 (fatia 9a)** — só tabela nova, não mexe em nenhuma existente:
+
+- **`report_favorites`** — o relatório que UMA pessoa marcou, num salão:
+  `salon_id`, `user_id` (os dois com CASCADE) e `report_key` (a chave do
+  catálogo em código). Único por pessoa, salão e relatório.
+
+### 13.4 Regras decididas
+
+Fatia 9a — central de relatórios:
+
+1. **O catálogo vive em código** (`domain/report-catalog.ts`): os 38
+   sub-relatórios da auditoria e o painel de profissionais, cada um com a
+   categoria, um resumo e — quando já existe — a tela que responde, com o
+   módulo e a permissão dela.
+2. **A central não calcula nada.** Ela aponta para a tela de destino, que
+   continua conferindo o próprio módulo e a própria permissão.
+3. **Cada pessoa vê o que abriria**: relatório com tela só aparece se o salão
+   tem o módulo da tela ligado e a pessoa tem a permissão dela. O que ainda não
+   existe aparece para todos como "Em breve", com a fatia prevista.
+4. **Favoritos são da pessoa, no salão** (não do salão): até 20, na ordem em
+   que foram marcados. Só o que já tem tela pode ser favorito. Favorito de uma
+   tela que a pessoa deixou de abrir fica guardado, mas não aparece.
+5. **Módulo `reports`**, desligado para todos, e permissão `reports.access`
+   (que já existia). Dono e gerente sem perfil têm; funcionário sem perfil não.
+6. **Não há permissão por categoria** (a Belasis tem "acessar por relatório"):
+   quem decide o que cada um vê é a permissão de cada tela de destino.
+
+Fatia 9b — relatórios financeiros:
+
+7. **Resultado líquido de serviços e de produtos**, por período, pelo dia da
+   comanda, só de comandas FATURADAS. Uma linha por serviço (ou produto):
+   quantidade, receita, taxas, comissão, custo, resultado e margem. Quem mais
+   rendeu vem primeiro.
+   - **Receita**: o total do item, já com desconto e cupom.
+   - **Taxas**: a taxa das formas de pagamento da comanda, repartida entre
+     TODOS os itens dela (inclusive pacote e assinatura), na proporção do total
+     de cada um, sem perder centavo.
+   - **Comissão**: a que o item gerou (profissional e auxiliar).
+   - **Custo**: no serviço, o custo fixo cadastrado nele; no produto, o custo
+     de compra que ele tem HOJE × a quantidade. Produto sem custo entra com
+     custo zero e o relatório avisa.
+   - **Resultado** = receita − taxas − comissão − custo.
+8. **O que o resultado líquido NÃO desconta**: o produto consumido no
+   atendimento (consumo por serviço), despesas do salão (aluguel, salário) e o
+   cashback. Item "do pacote" entra com receita zero e a comissão que gerou.
+9. **Projeção de faturamento**, de hoje a 30 dias (até 120): por dia, quantos
+   agendamentos, o valor agendado, o que vence a receber e a pagar, e o
+   previsto (agendado + a receber − a pagar).
+   - **Agendado**: o preço de tabela dos agendamentos pendentes e confirmados
+     que ainda não viraram comanda faturada. Serviço com faixa entra pelo menor
+     valor; "sob avaliação" não soma (aparece como "sem preço").
+   - **A receber e a pagar**: os lançamentos em aberto, pelo vencimento, pelo
+     valor líquido. O que já venceu fica fora dos dias, num aviso à parte.
+   - Não conta desconto, falta, cancelamento nem o que ainda vai ser agendado.
+10. **Extrato de contas**: uma conta por vez (a primeira ativa, se nenhuma for
+    escolhida). Saldo anterior, as baixas do período pelo dia da baixa (a mais
+    antiga primeiro), entrada ou saída pelo valor líquido, saldo corrido e saldo
+    final. Transferências entram. O que está em aberto não aparece.
+11. **Quem vê**: são números do financeiro — pedem o módulo `finance` e
+    `finance.access`, além do módulo `reports`. `reports.access` sozinho abre
+    a central, não estes relatórios.
+12. **O relatório e os filtros vivem na URL**: dá para recarregar, mandar o
+    link e marcar como favorito na central.
+
+Perguntas para o dono:
+
+- (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
+  já abre?
+- (9a) Os favoritos devem ser de cada pessoa (regra 4) ou do salão?
+- (9a) Faz falta a permissão por categoria de relatório, como na Belasis, ou a
+  permissão de cada tela basta (regra 6)?
+- (9b) O custo do produto deve ser o do dia da venda, e não o de hoje
+  (regra 7)? Hoje o sistema não guarda o custo no item da comanda.
+- (9b) O resultado líquido de serviços deve descontar o produto consumido no
+  atendimento (regra 8)?
+- (9b) A taxa da forma de pagamento deve ser repartida entre os itens (regra
+  7), ou ficar fora do resultado por item?
+- (9b) Na projeção, serviço com faixa de preço deve entrar pelo menor valor,
+  pelo maior ou pela média (regra 9)?
+- (9b) A projeção deve descontar uma taxa de falta ou de cancelamento?
+- (9b) O extrato deve mostrar também o que está em aberto, como previsão?
+- (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
+  ver? A auditoria não leu a saída de nenhum.
+- (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
+- (9g) O dono tem mais de uma unidade? Como ele quer ver os números: por
+  unidade, somados, ou os dois?
+
+### 13.5 Telas e código
+
+- **Central de relatórios (9a)** (`/[salonId]/reports`, item "Relatórios" no
+  menu): "N de M relatórios disponíveis"; o bloco "Favoritos"; e um bloco por
+  categoria, com o nome e o resumo de cada relatório, a estrela e "Abrir".
+- **Relatórios financeiros (9b)** (`/[salonId]/reports/finance?view=…`): o
+  seletor de relatório, o período (na projeção, só o "até") e, no extrato, a
+  conta. Cada relatório tem os totais em cartões, a tabela e uma nota dizendo o
+  que entra e o que não entra na conta.
+
+| Assunto | Onde está |
+|---|---|
+| Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
+| Relatórios financeiros (9b) | Sem migration; regra em `domain/finance-reports.ts` (`allocateByWeight`, `buildNetResult`, `planProjectionPeriod`, `buildRevenueProjection`, `buildAccountStatement`); I/O em `services/finance-reports.service.ts`; action em `actions/finance-reports.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/finance/`; os quatro destinos no catálogo (`domain/report-catalog.ts`); testes em `finance-reports-domain.test.ts` |
+
+### 13.6 Fatia 9a — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios` (sai de `claude/fase-7-cliente-agenda`,
+  que não está na `main`), publicada (preview da Vercel — endereço novo, com
+  login próprio). Typecheck (db, web e mcp-server), lint (nenhum erro novo nos
+  arquivos alterados) e testes passando (web 1383, db 296, mcp-server 409).
+- **Migration 064: aplicada em produção em 18/nov/2026** (registrada como
+  `report_favorites`). Só cria uma tabela; não houve cópia antes. Conferido
+  depois: RLS ligado, policy `deny_all`, sem privilégio para
+  anon/authenticated, e nenhum aviso novo nos advisors de segurança.
+- **O módulo `reports` está ligado só no salão de teste** (UPDATE em
+  `salons.settings`, pelo id) — e ficou ligado.
+- **Limites desta fatia:** nenhum relatório novo; sem exportação; a central
+  não leva filtro nem período para a tela de destino; relatórios que caem na
+  mesma tela abrem a mesma tela.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  o usuário dono (todos os módulos ligados):
+  - o item "Relatórios" no menu e "21 de 39 relatórios disponíveis";
+  - o que ainda não existe aparece como "Em breve · fatia 9x", sem estrela
+    ativa e sem "Abrir";
+  - **as 12 telas de destino foram abertas, uma a uma**, e respondem ao que os
+    relatórios prometem: resumo do financeiro (recebido, pago, resultado, a
+    receber, a pagar, fiado, por categoria, por forma de pagamento e fluxo de
+    caixa por dia); lançamentos (filtros de tipo, situação, conta e
+    vencimento); caixa (caixas fechados, com esperado, contado e diferença);
+    cuidados e retorno (mensagens e envios, com filtro de situação); comandas
+    (filtros de situação e período); relatórios de pacotes; histórico de
+    cashback; avaliações; estoque (saldo, mínimo e "Comprar"); relatórios de
+    estoque; compras; e contatos (com "Exportar");
+  - favoritos — marcar dois, recarregar: os dois aparecem em "Favoritos", na
+    ordem em que foram marcados, com "Abrir"; desmarcar os dois: "Nenhum
+    favorito ainda", e a tabela ficou vazia.
+- **Achados do teste:**
+  - o **fluxo de caixa por dia já existe** no resumo do financeiro: o catálogo
+    foi corrigido depois do teste (22 disponíveis, e a 9b perdeu esse item). A
+    correção tem teste de unidade, mas não foi vista em uso;
+  - **"Cuidados para hoje" e "Retornos para hoje" são aproximações**: a tela
+    de cuidados e retorno lista os envios com filtro de situação, mas não tem
+    filtro "hoje" nem separa cuidado de retorno;
+  - "Extrato de contas" continua em falta: os lançamentos filtram por conta,
+    mas não mostram saldo corrido;
+  - o resumo do financeiro mostra o total de fiado; a lista de quem deve está
+    nas comandas, no filtro "Com valor em aberto".
+- **Não testado:** usuário sem `reports.access`, funcionário com perfil de
+  acesso (para ver relatórios sumirem por permissão), salão com módulo
+  desligado, e o teto de 20 favoritos. Há teste de regra para os três
+  primeiros.
+
+### 13.7 Fatia 9b — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1402, db 296, mcp-server 409).
+- **Sem migration.** Só leitura: os relatórios consultam comandas, comissões,
+  agendamentos e lançamentos que já existem.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f);
+  - o custo do produto é o de hoje, não o do dia da venda;
+  - o resultado líquido não desconta consumo de produto no atendimento,
+    despesas do salão nem cashback;
+  - o resultado líquido lê até 5.000 itens de comanda por período, e o extrato
+    até 5.000 baixas; acima disso a tela avisa e pede um período menor;
+  - a projeção não tem gráfico, e não separa por profissional;
+  - o extrato é de uma conta por vez.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste:
+  - os quatro relatórios abrem sem dados, com tudo zerado — as consultas rodam;
+  - com a comanda de teste #33 faturada (um serviço de R$ 170,00 e um produto
+    de R$ 30,00, no crédito com taxa de 2,92% = R$ 5,84, recebendo em 30 dias),
+    conferido contra o banco:
+    - serviços — receita R$ 170,00, taxa R$ 4,96, comissão R$ 0,00, custo
+      R$ 0,00, resultado R$ 165,04, margem 97,1%;
+    - produtos — receita R$ 30,00, taxa R$ 0,88, custo R$ 20,00 (o custo de
+      compra do cadastro), resultado R$ 9,12, margem 30,4%;
+    - as duas taxas somam os R$ 5,84 da comanda;
+    - projeção — R$ 194,16 a receber em 19/12/2026 (o líquido, no dia em que
+      o cartão paga), previsto R$ 194,16;
+  - dada a baixa do recebimento na conta de banco: o extrato mostra saldo
+    anterior R$ 1.000,00, a entrada de R$ 194,16 e saldo final R$ 1.194,16 — o
+    mesmo saldo que o financeiro mostra na conta;
+  - extrato de 20 a 30/nov: saldo anterior já em R$ 1.194,16, sem baixas;
+  - trocar de conta pelo seletor: a outra conta, zerada.
+- **Achados do teste, corrigidos depois (sem novo teste em uso):**
+  - "1 atendimentos" e "1 unidades" nos cartões;
+  - conta desconhecida na URL mostrava "O salão ainda não tem conta
+    cadastrada"; passa a dizer que a conta não foi encontrada.
+- **Não testado em uso:**
+  - **o "agendado" da projeção** com agendamento de verdade (a consulta rodou,
+    sem linhas): preço de tabela, faixa pelo menor valor, "sob avaliação" e a
+    exclusão do que já virou comanda faturada só têm teste de regra na soma;
+  - comissão diferente de zero (o profissional do teste não tem regra de
+    comissão) e serviço com custo fixo;
+  - produto sem custo (o aviso), lançamento a pagar e vencidos na projeção;
+  - comanda com mais de uma forma de pagamento, com desconto, cupom, pacote ou
+    assinatura; transferência no extrato;
+  - os tetos de 5.000 linhas e o período de um ano;
+  - usuário sem `finance.access` e salão sem o módulo `finance`.
+- Dados de teste limpos pela tela: a baixa foi desfeita ao reabrir a comanda
+  #33, que foi excluída (fica como excluída, como as anteriores). Sem
+  lançamentos, pagamentos nem movimento de estoque.

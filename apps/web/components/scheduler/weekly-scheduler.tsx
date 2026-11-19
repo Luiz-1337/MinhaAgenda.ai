@@ -7,6 +7,7 @@ import { formatBrazilTime, startOfWeekBrazil, endOfWeekBrazil, startOfDayBrazil,
 import { Clock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { DailyAppointment, ProfessionalInfo } from "@/lib/types/appointments"
+import { labelTextColor } from "@repo/db/src/domain/appointment-labels"
 
 interface WeeklySchedulerProps {
   salonId: string
@@ -219,6 +220,16 @@ export function WeeklyScheduler({
                               title={`${appointment.clientName || "Cliente"} - ${appointment.serviceName} (${formatBrazilTime(appointment.startTime, "HH:mm")} - ${formatBrazilTime(appointment.endTime, "HH:mm")})`}
                             >
                               <p className="font-bold truncate">{appointment.clientName || "Cliente"}</p>
+                              {appointment.labelName && appointment.labelColor && (
+                                <p className="truncate">
+                                  <span
+                                    className="inline-block max-w-full truncate px-1.5 rounded text-[10px] font-semibold align-middle"
+                                    style={{ backgroundColor: appointment.labelColor, color: labelTextColor(appointment.labelColor) }}
+                                  >
+                                    {appointment.labelName}
+                                  </span>
+                                </p>
+                              )}
                               <p className="opacity-80 truncate">{appointment.serviceName}</p>
                               <p className="opacity-80 mt-1 flex items-center gap-1">
                                 <Clock size={10} /> {formatBrazilTime(appointment.startTime, "HH:mm")}

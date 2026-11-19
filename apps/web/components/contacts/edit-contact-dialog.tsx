@@ -75,14 +75,19 @@ export function EditContactDialog({
     // Preserva o telefone original (com DDI) quando o campo não foi alterado,
     // evitando que abrir+salvar o contato apague o "55" do número do WhatsApp.
     const phoneUnchanged = phone === formatPhoneBR(customer.phone)
+    const hadNotes = Boolean((customer.preferences as { notes?: string } | null)?.notes)
 
     const input: UpdateSalonCustomerInput = {
       customerId: customer.id,
       salonId,
       name: name.trim(),
       phone: phoneUnchanged ? customer.phone ?? "" : phone.trim(),
-      email: email.trim() || undefined,
-      preferences: preferences.trim() || undefined,
+      // Campo esvaziado que TINHA valor vai como "" (o servidor apaga só aquele
+      // dado); campo que já era vazio vai como undefined (nada muda). Antes os dois
+      // casos viravam undefined, e não havia como apagar um e-mail ou uma
+      // observação pela tela.
+      email: email.trim() || (customer.email ? "" : undefined),
+      preferences: preferences.trim() || (hadNotes ? "" : undefined),
     }
 
     const originalTagIds = (customer.tags ?? []).map((t) => t.id)

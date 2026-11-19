@@ -1,4 +1,4 @@
-import { appointments, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, ne, desc, inArray } from "@repo/db"
+import { appointments, appointmentLabels, appointmentSeries, db, professionals, profiles, services, customers, and, asc, eq, gte, lte, ne, desc, inArray } from "@repo/db"
 import { ProfessionalService } from "@/lib/services/professional.service"
 import type { AppointmentStatus } from "@/lib/utils/appointment-status"
 
@@ -37,6 +37,14 @@ export interface AppointmentDTO {
   completedAt: Date | null
   noShowAt: Date | null
   cancelledAt: Date | null
+  /** A etiqueta do agendamento (fase 7). NULL = sem etiqueta. */
+  labelId: string | null
+  labelName: string | null
+  labelColor: string | null
+  /** A série de que o agendamento faz parte (fase 7). NULL = avulso. */
+  seriesId: string | null
+  /** De quantas em quantas semanas a série se repete. */
+  seriesIntervalWeeks: number | null
 }
 
 export interface ProfessionalDTO {
@@ -159,8 +167,15 @@ export async function getAppointmentsByRange({
         completedAt: appointments.completedAt,
         noShowAt: appointments.noShowAt,
         cancelledAt: appointments.cancelledAt,
+        labelId: appointments.labelId,
+        labelName: appointmentLabels.name,
+        labelColor: appointmentLabels.color,
+        seriesId: appointments.seriesId,
+        seriesIntervalWeeks: appointmentSeries.intervalWeeks,
       })
       .from(appointments)
+      .leftJoin(appointmentLabels, eq(appointments.labelId, appointmentLabels.id))
+      .leftJoin(appointmentSeries, eq(appointments.seriesId, appointmentSeries.id))
       .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
       .innerJoin(customers, eq(appointments.clientId, customers.id))
       .innerJoin(services, eq(appointments.serviceId, services.id))

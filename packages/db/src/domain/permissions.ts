@@ -14,7 +14,11 @@
  */
 export const PERMISSION_CATALOG = {
   schedule: ['access', 'create', 'edit', 'delete', 'view_all'],
-  customers: ['access', 'create', 'edit', 'delete', 'view_phones', 'notes'],
+  // `anamneses` (fase 7) = ver e preencher as anamneses dos clientes e gerenciar
+  // os modelos. É dado de saúde: não vem junto com `customers.access`.
+  // `documents` (fase 7) = ver os documentos dos clientes, gerar documento para
+  // assinar e gerenciar os modelos. Também não vem junto com `customers.access`.
+  customers: ['access', 'create', 'edit', 'delete', 'view_phones', 'notes', 'anamneses', 'documents'],
   services: ['access', 'create', 'edit', 'delete'],
   products: ['access', 'create', 'edit', 'delete'],
   team: ['access', 'create', 'edit', 'delete'],
@@ -172,8 +176,14 @@ export function resolvePermissions(
  * É a chave de piloto: um módulo novo entra desligado para todos e é ligado só no
  * salão que vai testá-lo. Liberação comercial por PLANO é outra camada
  * (apps/web/lib/services/plan-features.service.ts).
+ *
+ * `online_booking` (fase 7) liga a página PÚBLICA de agendamento do salão
+ * (/agendar/<salonId>): sem ele, a página responde como se o salão não existisse.
+ *
+ * `reports` (fase 9) liga a central de relatórios (/[salonId]/reports). Cada
+ * relatório continua pedindo o módulo e a permissão da tela que o responde.
  */
-export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews', 'care_messages', 'goals'] as const
+export const SALON_MODULES = ['access_profiles', 'sales', 'finance', 'commissions', 'inventory', 'packages', 'cashback', 'promotions', 'reviews', 'care_messages', 'goals', 'online_booking', 'reports'] as const
 
 export type SalonModule = (typeof SALON_MODULES)[number]
 
