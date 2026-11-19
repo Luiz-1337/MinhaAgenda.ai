@@ -19,7 +19,7 @@ import {
   isBookingDay,
   minutesToClock,
   MINUTES_PER_DAY,
-  ONLINE_BOOKING_LIMITS,
+  onlineBookingLimitError,
   onlineBookingNotBefore,
   onlineBookingWindow,
   planOnlineBookingCustomer,
@@ -377,12 +377,8 @@ export async function createOnlineBookingService(input: {
           gt(appointments.date, input.now)
         )
       )
-    if ((future?.value ?? 0) >= ONLINE_BOOKING_LIMITS.futurePerCustomer) {
-      return {
-        success: false,
-        error: `Este telefone já tem ${ONLINE_BOOKING_LIMITS.futurePerCustomer} horários marcados. Fale com o salão para marcar mais`,
-      }
-    }
+    const limitError = onlineBookingLimitError(Number(future?.value ?? 0))
+    if (limitError) return { success: false, error: limitError }
   } else {
     try {
       const [created] = await db

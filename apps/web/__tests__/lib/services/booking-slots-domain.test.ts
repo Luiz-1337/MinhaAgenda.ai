@@ -8,6 +8,7 @@ import {
   computeDaySlots,
   isBookingDay,
   minutesToClock,
+  onlineBookingLimitError,
   onlineBookingNotBefore,
   onlineBookingWindow,
   planOnlineBookingCustomer,
@@ -177,6 +178,16 @@ describe("o que a página pública aceita", () => {
     expect(onlineBookingNotBefore("2026-11-17", now)).toBeNull()
     // 23:30 em Brasília: hoje não cabe mais nada.
     expect(onlineBookingNotBefore("2026-11-18", new Date("2026-11-19T02:30:00Z"))).toBeNull()
+  })
+
+  it("teto de agendamentos futuros por telefone: o terceiro entra, o quarto não", () => {
+    const refusal = "Este telefone já tem 3 horários marcados. Fale com o salão para marcar mais"
+    expect(onlineBookingLimitError(0)).toBeNull()
+    expect(onlineBookingLimitError(2)).toBeNull()
+    expect(onlineBookingLimitError(3)).toBe(refusal)
+    expect(onlineBookingLimitError(10)).toBe(refusal)
+    // Contagem que não é número não libera.
+    expect(onlineBookingLimitError(Number.NaN)).toBe(refusal)
   })
 
   it("nome e WhatsApp com DDD", () => {

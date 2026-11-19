@@ -178,6 +178,19 @@ export function onlineBookingNotBefore(day: string, now: Date): number | null {
   return Math.max(0, minutes)
 }
 
+/**
+ * O teto de agendamentos futuros por telefone: é a principal trava contra abuso
+ * da página (não há confirmação do telefone). Recebe quantos agendamentos
+ * futuros, pendentes ou confirmados, o cadastro JÁ tem no salão; devolve a recusa
+ * ou NULL quando ainda cabe mais um.
+ */
+export function onlineBookingLimitError(futureAppointments: number): string | null {
+  const limit = ONLINE_BOOKING_LIMITS.futurePerCustomer
+  // Contagem que não é número não libera: na dúvida, recusa.
+  if (Number.isFinite(futureAppointments) && futureAppointments < limit) return null
+  return `Este telefone já tem ${limit} horários marcados. Fale com o salão para marcar mais`
+}
+
 export type OnlineBookingCustomerPlan =
   | { ok: true; name: string; phoneDigits: string }
   | { ok: false; error: string }
