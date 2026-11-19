@@ -91,8 +91,9 @@ Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
 migration, publicada e testada em uso em 19/nov/2026 — ver §13.8.
 Fatia 9d (relatórios de vendas e rankings) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.9.
-Fatia 9e (painel de profissionais) feita na mesma branch, sem migration — **em
-commit local, sem publicar e sem teste em uso** — ver §13.10.
+Fatia 9e (painel de profissionais) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 (a ocupação; o valor realizado não
+foi visto com comanda) — ver §13.10.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4114,7 +4115,6 @@ Perguntas para o dono:
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
 | Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
-| Autorizar publicar a fatia 9e — ver §13.10 | Teste em uso da fatia 9e |
 | Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4136,7 +4136,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
-| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.10) |
+| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
 
@@ -4573,23 +4573,38 @@ Perguntas para o dono:
 
 ### 13.10 Fatia 9e — estado (19/nov/2026)
 
-- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
   alterados) e testes passando (web 1439).
 - **Sem migration.** Só leitura.
-- **As consultas não foram executadas contra o banco.** Os testes cobrem a
-  conta (regra pura); o SQL só vai ser exercitado no teste em uso.
 - Com esta fatia, o catálogo da central tem tela para tudo menos a nota fiscal
-  (fase 10): 38 de 39.
+  (fase 10): a central mostra "38 de 39 relatórios disponíveis".
 - **Limites desta fatia:**
   - sem exportação (fatia 9f) e sem gráfico;
   - a ocupação não desconta folga, feriado nem bloqueio, e usa o expediente
     de HOJE para o período inteiro (não guarda histórico de expediente);
-  - plano SOLO: a agenda grava tudo no profissional do dono, então a ocupação
-    dos outros fica zerada;
+  - plano SOLO: a tela do salão grava o agendamento no profissional do dono,
+    então a ocupação dos outros só conta o que a IA ou a página online marcou;
   - lê até 5.000 itens de comanda e 10.000 agendamentos por período.
-- **Sem teste em uso.** Roteiro, no salão de teste: abrir pela central; sem
-  dados, os dois profissionais com valor zero e a ocupação pelo expediente;
-  conferir o tempo de expediente do período contra o cadastro; faturar uma
-  comanda de teste e marcar um agendamento, e conferir valor, cliente único,
-  ticket, frequência e ocupação; limpar os dados.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  o expediente calculado à mão a partir do cadastro e os agendamentos lidos do
+  banco:
+  - de 01 a 19/nov — os dois profissionais ativos, sem venda e sem agendamento
+    não cancelado: expediente de 164h (um trabalha os sete dias) e de 56h (o
+    outro, de quinta a sábado), 220h no salão; ocupação 0% e "BAIXA OCUPAÇÃO"
+    nos dois; ticket e frequência em branco;
+  - de 01/jan a 31/mar — o profissional com os 5 atendimentos concluídos do
+    período: 5 agendamentos, 5h de 312h, ocupação 1,6%; o outro, 0h de 771h; o
+    salão, 5h de 1.083h, 0,5%;
+  - a central passou a "38 de 39", com só "Todas as notas fiscais" em "Em
+    breve".
+- **Não testado em uso:**
+  - **valor realizado, clientes únicos, ticket médio e frequência com comanda
+    faturada** — o salão de teste não tem nenhuma. A leitura dos itens é a
+    mesma do ranking de vendas, testada na 9d; a conta do painel tem teste de
+    regra;
+  - expediente com intervalo (o salão de teste não tem); profissional inativo
+    com movimento; ocupação acima de 30% (sem o selo);
+  - usuário sem `sales.view_all` ou sem `schedule.view_all`; os tetos de
+    linhas.
+- Nenhum dado de teste foi criado.
