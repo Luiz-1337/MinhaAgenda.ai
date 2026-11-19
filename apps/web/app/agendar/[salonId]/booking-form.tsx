@@ -108,8 +108,9 @@ export function BookingForm({
       })
       if ("error" in result) {
         setError(result.error)
-        // O horário pode ter sido ocupado: busca a lista de novo.
-        setTime("")
+        // O horário pode ter sido ocupado: busca a lista de novo. A escolha só cai
+        // se o horário sumiu da lista (ver `chosenTime`) — erro de nome ou de
+        // telefone não faz o cliente escolher tudo outra vez.
         setReload((value) => value + 1)
         return
       }

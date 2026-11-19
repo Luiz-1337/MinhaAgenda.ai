@@ -78,8 +78,9 @@ Fatia 7d (anamneses) feita na mesma branch — migration 062 aplicada em
 18/nov/2026, publicada e testada em uso — ver §11.10.
 Fatia 7e (documentos com assinatura) feita na mesma branch — migration 063
 aplicada em 18/nov/2026, publicada e testada em uso — ver §11.11.
-Fatia 7f (agendamento online público) feita na mesma branch, sem migration —
-**em commit local, sem publicar e sem teste em uso** — ver §11.12.
+Fatia 7f (agendamento online público) feita na mesma branch, sem migration,
+publicada e testada em uso em 18/nov/2026 — ver §11.12. O cálculo de horários
+da IA não foi trocado.
 Fases 8 em diante: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -3310,7 +3311,7 @@ agendamento online), sem os campos nem as regras; quase tudo é decidido aqui.
 | 7c | Recorrência de agendamento: repetir a cada N semanas, por X vezes, e cancelar "este e os próximos" | Feita, migration 061 aplicada, publicada na branch e testada em uso (§11.9) |
 | 7d | Anamneses: modelos de ficha com perguntas, respondidas na ficha do cliente, com histórico | Feita — migration 062 aplicada, publicada na branch e testada em uso (§11.10) |
 | 7e | Documentos com assinatura: termo do salão assinado pelo cliente por link | Feita — migration 063 aplicada, publicada na branch e testada em uso (§11.11) |
-| 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Feita em código, sem migration — **sem publicar e sem teste em uso** (§11.12). O cálculo da IA NÃO foi trocado |
+| 7f | Agendamento online público: página do salão, sem login, em que o cliente marca horário | Feita, sem migration, publicada na branch e testada em uso (§11.12). O cálculo da IA NÃO foi trocado |
 
 A ordem vai do que só acrescenta ao que mexe no caminho crítico. O agendamento
 online fica por último de propósito: depende de UM cálculo de horários livres, e
@@ -3635,6 +3636,9 @@ Perguntas para o dono:
   certo, ou o salão prefere que tudo saia junto, como na anamnese?
 - (7e) O documento deve poder ser pedido automaticamente (por exemplo, antes do
   primeiro atendimento de um serviço)?
+- (7f) **Salão que cobra sinal antecipado**: a página pública deve pedir o
+  sinal (e como, sem pagamento online — fase 8), marcar como "aguardando
+  sinal", ou simplesmente não existir para esse salão? Hoje marca sem sinal.
 - (7f) O agendamento online deve entrar direto, ou esperar o salão aceitar?
   Hoje entra direto, como pendente (regra 52).
 - (7f) É preciso confirmar o telefone por código no WhatsApp antes de marcar
@@ -3977,12 +3981,12 @@ Perguntas para o dono:
 
 ### 11.12 Fatia 7f — estado (18/nov/2026)
 
-- Na branch `claude/fase-7-cliente-agenda`, **em commit local, sem publicar**.
+- Na branch `claude/fase-7-cliente-agenda`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
   alterados) e testes passando (web 1368, db 296, mcp-server 409).
 - **Sem migration.** Publicar não muda nada para nenhum salão: o módulo
-  `online_booking` nasce desligado. Para testar, é preciso ligá-lo no salão de
-  teste (um UPDATE em `salons.settings`, pelo id).
+  `online_booking` nasce desligado. **Está ligado só no salão de teste**
+  (UPDATE em `salons.settings`, pelo id, em 18/nov/2026) — e ficou ligado.
 - **O que esta fatia NÃO mexeu, de propósito:** o cálculo de horários da IA
   (regra 43), o `createAppointmentService` (continua aceitando marcar dentro do
   intervalo quando chamado pela tela do salão ou pela IA) e a tela de criar
@@ -4002,15 +4006,52 @@ Perguntas para o dono:
   profissional"; sem cancelar nem remarcar pelo cliente; sem aviso ao salão
   além do agendamento aparecer na agenda; sem pagamento de sinal (fase 8); sem
   logo, endereço nem endereço curto.
-- **Sem teste em uso.** Roteiro, com o módulo ligado no salão de teste: id
-  desconhecido e salão sem o módulo ("indisponível"); a lista de serviços e de
-  profissionais; um dia sem expediente (sem horário); um dia com expediente —
-  conferir que os horários respeitam o intervalo e os agendamentos que já
-  existem; hoje só com uma hora de antecedência; marcar com telefone novo
-  (nasce o cadastro) e com telefone de cliente que já existe (o nome não
-  muda); o horário some da lista depois de marcado; o agendamento aparece na
-  agenda com a observação; o quarto agendamento do mesmo telefone é recusado;
-  o botão "Link online" na agenda; cancelar os agendamentos de teste.
+- **Teste em uso (18/nov/2026)**, no preview da branch, no salão de teste:
+  - id desconhecido — "Agendamento online indisponível";
+  - a página do salão — 12 serviços, com duração e preço (valor ou faixa);
+  - serviço com um profissional só — a página não pergunta o profissional e
+    mostra "Dia · com <nome>"; o campo de dia vai de hoje a 30 dias;
+  - sexta, expediente das 10h às 18h, serviço de 1h, com um bloqueio de teste
+    em `schedule_overrides` das 12h às 13h — horários de 10:00 a 11:00 e de
+    13:00 a 17:00, de 15 em 15 minutos: nada encosta no bloqueio e o último
+    cabe no expediente;
+  - telefone inválido (dígitos repetidos) — recusa do servidor, com o aviso;
+  - marcar às 14:00 com telefone novo — "Horário marcado"; no banco, o
+    agendamento certo (14:00 de Brasília, pendente, com a observação) e o
+    cadastro novo, com o telefone no formato do WhatsApp;
+  - recarregar — 13:15 a 14:45 saíram da lista;
+  - marcar às 10:00 com o MESMO telefone em outro formato e outro nome — um
+    cadastro só, e o nome dele não mudou;
+  - na agenda do salão — os dois agendamentos, com a observação no detalhe, e
+    o botão "Link online"; os dois foram espelhados no Google;
+  - os dois cancelados pela tela.
+- **Achados do teste:**
+  - **o sinal antecipado do salão não é cobrado pela página.** O salão de
+    teste tem `advance_payment` ligado (a IA pede o PIX antes de marcar); a
+    página pública marca sem ele. Salão que exige sinal não deve ligar o
+    módulo até isso ser decidido (§11.4);
+  - serviço com preço simbólico (R$ 0,01, usado como "a combinar") aparece
+    com esse valor na página;
+  - o bloqueio de `schedule_overrides` tira o horário da página, mas não
+    aparece na agenda do salão (não há tela para ele);
+  - depois de um erro de nome ou de telefone, a página fazia o cliente
+    escolher o horário de novo — corrigido depois do teste (a correção não foi
+    testada em uso).
+- **Não testado:**
+  - **a página sem login de verdade** (o preview fica atrás do login da
+    Vercel) e no celular;
+  - **o teto de 3 agendamentos futuros por telefone** — só há a regra escrita,
+    sem teste em uso nem de unidade (a conta é no serviço);
+  - intervalo (almoço) cadastrado — o salão de teste não tem; há teste de
+    regra;
+  - serviço com mais de um profissional, com dias ou horários próprios, e dia
+    sem expediente;
+  - hoje com uma hora de antecedência (o teste foi à noite);
+  - dois pedidos para o mesmo horário ao mesmo tempo, e o campo-isca;
+  - salão com agenda oficial (Belasis) e o que ela recusa;
+  - se o link foi mesmo para a área de transferência.
+- **Ficou no salão de teste:** o cadastro "Cliente Teste Sete F" com dois
+  agendamentos cancelados. O bloqueio de teste foi apagado.
 
 ## 12. Pendências do dono
 
@@ -4043,7 +4084,7 @@ Perguntas para o dono:
 | Responder às perguntas da 7e em §11.4 (força da assinatura, envio pelo WhatsApp, validade do link, PDF, exclusão de contato) | Ajustes na 7e antes do piloto |
 | Marcar "Documentos" nos perfis de acesso de quem deve gerar e ver documentos | Funcionário com perfil usar os documentos |
 | Ter o texto dos termos do salão revisado por quem entende (advogado), antes de usar com clientes | Uso dos documentos no piloto |
-| Autorizar publicar a fatia 7f e ligar o módulo `online_booking` no salão de teste — ver §11.12 | Teste em uso da fatia 7f |
+| Abrir `/agendar/<id>` num celular sem login no painel, depois que a fase 7 estiver em produção, e marcar um horário | Confirmar a página pública de agendamento |
 | Responder às perguntas da 7f em §11.4 (entrar direto ou esperar aceite, confirmar o telefone, janela e teto, esconder serviços, cancelar pelo link) | Ligar o agendamento online num salão de verdade |
 | Decidir quando trocar o cálculo de horários da IA para o cálculo novo (regra 43) — pede teste com o worker e conversa de verdade | Um cálculo só no sistema inteiro |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
