@@ -83,9 +83,19 @@ export type AgentConfigSchema = z.infer<typeof agentConfigSchema>
 // Schema para criação/edição de agentes
 export const agentModelEnum = z.enum([AI_MODEL_CONSTANTS.DEFAULT_MODEL])
 
+/**
+ * Limite das instruções do agente (agents.system_prompt) no painel — o banco não limita.
+ * Era 10.000 até 19/nov/2026: o prompt da Judite passou disso (12.151 caracteres, com a
+ * tabela de combinações com o corte) e o formulário do agente não salvava mais nada.
+ */
+const AGENT_SYSTEM_PROMPT_MAX_LENGTH = 15000
+
 export const agentSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").max(255, "Nome muito longo"),
-  systemPrompt: z.string().min(1, "System prompt é obrigatório").max(10000, "System prompt muito longo"),
+  systemPrompt: z
+    .string()
+    .min(1, "System prompt é obrigatório")
+    .max(AGENT_SYSTEM_PROMPT_MAX_LENGTH, "System prompt muito longo (máximo de 15.000 caracteres)"),
   model: agentModelEnum,
   tone: z.enum(["formal", "informal"]),
   isActive: z.boolean(),
