@@ -4009,7 +4009,9 @@ Perguntas para o dono:
   alterados) e testes passando (web 1368, db 296, mcp-server 409).
 - **Sem migration.** Publicar não muda nada para nenhum salão: o módulo
   `online_booking` nasce desligado. **Está ligado só no salão de teste**
-  (UPDATE em `salons.settings`, pelo id, em 18/nov/2026) — e ficou ligado.
+  (UPDATE em `salons.settings`, pelo id, em 18/nov/2026). **Foi desligado em
+  19/nov/2026**, a pedido do dono, depois que a fase 7 entrou na `main`: hoje
+  nenhum salão tem o módulo.
 - **O que esta fatia NÃO mexeu, de propósito:** o cálculo de horários da IA
   (regra 43), o `createAppointmentService` (continua aceitando marcar dentro do
   intervalo quando chamado pela tela do salão ou pela IA) e a tela de criar
@@ -4847,10 +4849,13 @@ uma fase própria, não uma fatia dos relatórios.
   mescla do dono. A branch mescla sem conflito. Nenhuma tem migration.
 - **O que isso muda em produção:**
   - os módulos novos continuam desligados para todos os salões, menos o de
-    teste, que tem `online_booking` e `reports` ligados;
-  - **a página pública `/agendar/<id>` do salão de teste está no ar de
-    verdade**, sem o login da Vercel que protegia o preview. Qualquer pessoa
-    com o endereço marca horário lá;
+    teste, que tem `reports` ligado;
+  - **a página pública `/agendar/<id>` do salão de teste esteve no ar de
+    verdade** entre a mescla do PR #21 e 19/nov/2026, sem o login da Vercel que
+    protegia o preview. O módulo `online_booking` foi desligado nesse dia, a
+    pedido do dono: a página voltou a responder "Agendamento online
+    indisponível" e o botão "Link online" sumiu da agenda. Nenhum salão tem o
+    módulo ligado;
   - as páginas `/assinar/<token>` passam a funcionar sem login para qualquer
     salão que gerar um documento (a ficha do cliente é do produto base, e a
     permissão `customers.documents` já vale para dono e gerente);
