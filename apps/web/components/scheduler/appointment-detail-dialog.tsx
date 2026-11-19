@@ -17,6 +17,7 @@ import {
   rescheduleAppointment,
 } from "@/app/actions/appointments"
 import { getAppointmentLabels, setAppointmentLabel } from "@/app/actions/appointment-labels"
+import { AppointmentDepositRow } from "./appointment-deposit-row"
 import { formatBrazilTime } from "@/lib/utils/timezone.utils"
 import type { DailyAppointment } from "@/lib/types/appointments"
 import { appointmentStatusLabel, availableOutcomes } from "@/lib/utils/appointment-status"
@@ -291,6 +292,8 @@ export function AppointmentDetailDialog({
               </div>
             </div>
           )}
+          {/* Sinal (fase 8): o que foi pedido e se o salão já recebeu. */}
+          <AppointmentDepositRow salonId={salonId} appointmentId={appointment.id} />
           {/* Desfecho já registrado: mostra o fato, não oferece ação. */}
           {appointment.status === "completed" && (
             <DetailRow

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
-import { ArrowRight, Star } from "lucide-react"
+import { ArrowRight, Building2, Star } from "lucide-react"
 import { setReportFavorite, type ReportsHomeData } from "@/app/actions/reports"
 import type { ResolvedReport } from "@repo/db"
 
@@ -106,6 +106,15 @@ export function ReportsClient({ salonId, data }: { salonId: string; data: Report
           {available} de {byKey.size} relatórios disponíveis para você neste salão. Marque com a estrela os que mais
           usa.
         </p>
+        {data.ownedSalons > 0 && (
+          <Link
+            href={`/${salonId}/organization`}
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:underline"
+          >
+            <Building2 size={13} />
+            Organização: {data.ownedSalons === 1 ? "a sua unidade" : `as suas ${data.ownedSalons} unidades lado a lado`}
+          </Link>
+        )}
       </div>
 
       <section className="bg-card border border-border rounded-xl p-4" aria-labelledby="reports-favorites-title">

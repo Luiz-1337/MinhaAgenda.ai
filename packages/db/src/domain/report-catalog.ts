@@ -59,24 +59,24 @@ export const REPORT_CATALOG: readonly ReportDefinition[] = [
   { key: 'finance.cash_history', category: 'finance', name: 'Histórico de caixa', summary: 'Os caixas fechados, com abertura, movimentos e conferência.', target: { path: 'finance/cash', module: 'finance', permission: 'cash.access' } },
 
   // --- Agendamentos -------------------------------------------------------
-  { key: 'appointments.all', category: 'appointments', name: 'Todos os agendamentos', summary: 'Os agendamentos do período, por situação, profissional e serviço.', target: null, planned: 'fatia 9c' },
-  { key: 'appointments.cancelled', category: 'appointments', name: 'Agendamentos cancelados', summary: 'O que foi cancelado, quando, por quem e por quê.', target: null, planned: 'fatia 9c' },
-  { key: 'appointments.origin', category: 'appointments', name: 'Origem dos agendamentos', summary: 'De onde vieram: anúncio ou orgânico, IA, painel ou página online.', target: null, planned: 'fatia 9c' },
-  { key: 'appointments.creation', category: 'appointments', name: 'Criação de agendamento', summary: 'Quantos agendamentos foram criados por dia, e com que antecedência.', target: null, planned: 'fatia 9c' },
+  { key: 'appointments.all', category: 'appointments', name: 'Todos os agendamentos', summary: 'Os agendamentos do período, com a contagem por situação.', target: { path: 'reports/appointments?view=all', permission: 'schedule.view_all' } },
+  { key: 'appointments.cancelled', category: 'appointments', name: 'Agendamentos cancelados', summary: 'O que foi cancelado, quando, por quem e por quê.', target: { path: 'reports/appointments?view=cancelled', permission: 'schedule.view_all' } },
+  { key: 'appointments.origin', category: 'appointments', name: 'Origem dos agendamentos', summary: 'De onde vieram (anúncio, orgânico, Google Calendar) e quantos compareceram.', target: { path: 'reports/appointments?view=origin', permission: 'schedule.view_all' } },
+  { key: 'appointments.creation', category: 'appointments', name: 'Criação de agendamento', summary: 'Quantos agendamentos foram criados por dia, e com que antecedência.', target: { path: 'reports/appointments?view=creation', permission: 'schedule.view_all' } },
   { key: 'appointments.care_today', category: 'appointments', name: 'Cuidados para hoje', summary: 'As mensagens de cuidados previstas e enviadas.', target: careMessages },
 
   // --- Clientes -----------------------------------------------------------
   { key: 'customers.list', category: 'customers', name: 'Lista completa', summary: 'Todos os contatos do salão, com busca, etiquetas e exportação.', target: { path: 'contacts', permission: 'customers.access' } },
-  { key: 'customers.birthdays', category: 'customers', name: 'Aniversariantes', summary: 'Quem faz aniversário no período.', target: null, planned: 'fatia 9c' },
-  { key: 'customers.inactive', category: 'customers', name: 'Inativos', summary: 'Quem não volta há mais tempo do que o esperado.', target: null, planned: 'fatia 9c' },
+  { key: 'customers.birthdays', category: 'customers', name: 'Aniversariantes', summary: 'Quem faz aniversário no mês, com a idade que completa.', target: { path: 'reports/customers?view=birthdays', permission: 'customers.access' } },
+  { key: 'customers.inactive', category: 'customers', name: 'Inativos', summary: 'Quem já veio, não vem há um tempo e não tem horário marcado.', target: { path: 'reports/customers?view=inactive', permission: 'customers.access' } },
   { key: 'customers.debtors', category: 'customers', name: 'Pendentes e inadimplentes', summary: 'Clientes com valor em aberto (fiado).', target: finance('finance/summary') },
-  { key: 'customers.ranking', category: 'customers', name: 'Ranking de clientes', summary: 'Quem mais gastou e quem mais veio no período.', target: null, planned: 'fatia 9d' },
+  { key: 'customers.ranking', category: 'customers', name: 'Ranking de clientes', summary: 'Quem mais gastou no período, com comandas e ticket médio.', target: { path: 'reports/sales?view=customers', module: 'sales', permission: 'sales.view_all' } },
   { key: 'customers.return', category: 'customers', name: 'Retorno', summary: 'As mensagens de retorno por serviço e os envios.', target: careMessages },
   { key: 'customers.return_today', category: 'customers', name: 'Retornos para hoje', summary: 'Os envios de retorno previstos, na fila de mensagens.', target: careMessages },
 
   // --- Vendas -------------------------------------------------------------
   { key: 'sales.orders', category: 'sales', name: 'Comandas e pacotes', summary: 'As comandas do período, com situação, cliente e valor.', target: { path: 'sales', module: 'sales', permission: 'sales.access' } },
-  { key: 'sales.items', category: 'sales', name: 'Produtos e serviços vendidos', summary: 'O que foi vendido, item a item, com quantidade e valor.', target: null, planned: 'fatia 9d' },
+  { key: 'sales.items', category: 'sales', name: 'Produtos e serviços vendidos', summary: 'O que foi vendido, item a item, com quantidade e valor.', target: { path: 'reports/sales?view=items', module: 'sales', permission: 'sales.view_all' } },
   { key: 'sales.package_statement', category: 'sales', name: 'Extrato de pacotes', summary: 'Pacotes vendidos e sessões usadas no período.', target: packages('packages/reports') },
   { key: 'sales.subscriptions', category: 'sales', name: 'Vendas por assinatura', summary: 'As cobranças de assinatura faturadas, por plano.', target: packages('packages/reports') },
   { key: 'sales.cashback', category: 'sales', name: 'Histórico de cashback', summary: 'O que os clientes ganharam, usaram e perderam de cashback.', target: { path: 'cashback/history', module: 'cashback', permission: 'cashback.access' } },
@@ -86,7 +86,7 @@ export const REPORT_CATALOG: readonly ReportDefinition[] = [
   { key: 'inventory.current', category: 'inventory', name: 'Estoque atual', summary: 'O saldo de cada produto e o que está abaixo do mínimo.', target: inventory('inventory') },
   { key: 'inventory.movements', category: 'inventory', name: 'Movimentação de estoque', summary: 'Entradas, saídas e acertos por produto, no período.', target: inventory('inventory/reports') },
   { key: 'inventory.purchases', category: 'inventory', name: 'Compras', summary: 'As compras lançadas, por fornecedor.', target: inventory('inventory/purchases') },
-  { key: 'inventory.catalog', category: 'inventory', name: 'Lista de produtos e serviços', summary: 'O catálogo inteiro, com preço, custo e comissão.', target: null, planned: 'fatia 9d' },
+  { key: 'inventory.catalog', category: 'inventory', name: 'Lista de produtos e serviços', summary: 'O catálogo inteiro, com preço e custo.', target: { path: 'reports/sales?view=catalog', permission: 'products.access' } },
   { key: 'inventory.purchase_suggestion', category: 'inventory', name: 'Sugestão de compra', summary: 'O que comprar para voltar ao estoque mínimo.', target: inventory('inventory') },
   { key: 'inventory.consumed', category: 'inventory', name: 'Produtos consumidos', summary: 'O que os atendimentos consumiram de estoque, no período.', target: inventory('inventory/reports') },
 
@@ -94,14 +94,14 @@ export const REPORT_CATALOG: readonly ReportDefinition[] = [
   { key: 'tax.all', category: 'tax', name: 'Todas as notas fiscais', summary: 'As notas emitidas e recebidas.', target: null, planned: 'fase 10' },
 
   // --- Ranking ------------------------------------------------------------
-  { key: 'ranking.sales', category: 'ranking', name: 'Ranking de vendas', summary: 'Quem mais realizou serviços e quem mais vendeu produtos.', target: null, planned: 'fatia 9d' },
-  { key: 'ranking.referrals', category: 'ranking', name: 'Indicação de clientes', summary: 'Como os clientes conheceram o salão.', target: null, planned: 'fatia 9d' },
+  { key: 'ranking.sales', category: 'ranking', name: 'Ranking de vendas', summary: 'Quem mais realizou serviços e quem mais vendeu produtos.', target: { path: 'reports/sales?view=professionals', module: 'sales', permission: 'sales.view_all' } },
+  { key: 'ranking.referrals', category: 'ranking', name: 'Indicação de clientes', summary: 'Como os clientes cadastrados no período conheceram o salão.', target: { path: 'reports/sales?view=referrals', permission: 'customers.access' } },
 
   // --- Mensagens ----------------------------------------------------------
   { key: 'messages.sent', category: 'messages', name: 'Mensagens enviadas', summary: 'Os envios de cuidados, retorno e pedido de avaliação.', target: careMessages },
 
   // --- Profissionais ------------------------------------------------------
-  { key: 'professionals.panel', category: 'professionals', name: 'Painel de profissionais', summary: 'Clientes únicos, valor realizado, ticket médio, frequência e ocupação.', target: null, planned: 'fatia 9e' },
+  { key: 'professionals.panel', category: 'professionals', name: 'Painel de profissionais', summary: 'Clientes únicos, valor realizado, ticket médio, frequência e ocupação.', target: { path: 'reports/professionals', module: 'sales', permission: 'sales.view_all' } },
 ]
 
 const REPORT_KEYS: ReadonlySet<string> = new Set(REPORT_CATALOG.map((report) => report.key))

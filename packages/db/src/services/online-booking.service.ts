@@ -28,6 +28,8 @@ import {
 } from "../domain/booking-slots"
 import { parseSalonModules } from "../domain/permissions"
 import { getBlockingDuration, parseAllowedStartTimes, parseAllowedWeekdays, isWeekdayAllowed } from "../utils/service-schedule.utils"
+import { parseAdvancePayment, type AdvancePaymentConfig } from "../domain/appointment-deposits"
+import { createAppointmentDepositService } from "./appointment-deposits.service"
 import { getAgendaBusyIntervals } from "./agenda-sync.service"
 import { createAppointmentService, type ActionResult } from "./appointments"
 import { canonicalCustomerPhone, findCustomerByPhoneAnyFormat } from "./customer-phone.service"
@@ -203,6 +205,8 @@ export type OnlineBookingSalon = {
   services: OnlineBookingService[]
   firstDay: string
   lastDay: string
+  /** O sinal que o salão pede (valor e chave PIX). NULL = não pede. */
+  deposit: AdvancePaymentConfig | null
 }
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
@@ -222,14 +226,16 @@ function priceLabel(service: {
   return price > 0 ? money.format(price) : null
 }
 
-async function loadOnlineBookingSalon(salonId: unknown): Promise<{ id: string; name: string } | null> {
+async function loadOnlineBookingSalon(
+  salonId: unknown
+): Promise<{ id: string; name: string; deposit: AdvancePaymentConfig | null } | null> {
   if (!isUuid(salonId)) return null
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
     columns: { id: true, name: true, settings: true },
   })
   if (!salon || !parseSalonModules(salon.settings).includes("online_booking")) return null
-  return { id: salon.id, name: salon.name }
+  return { id: salon.id, name: salon.name, deposit: parseAdvancePayment(salon.settings) }
 }
 
 /**
@@ -287,7 +293,7 @@ export async function getOnlineBookingSalonService(salonId: unknown, now: Date):
     service.professionals.push({ id: row.professionalId, name: row.professionalName })
   }
 
-  return { salonName: salon.name, services: [...byService.values()], ...onlineBookingWindow(now) }
+  return { salonName: salon.name, services: [...byService.values()], ...onlineBookingWindow(now), deposit: salon.deposit }
 }
 
 /** Os horários livres que a página oferece. Vazio para qualquer entrada que não feche. */
@@ -337,7 +343,7 @@ export async function createOnlineBookingService(input: {
   name: unknown
   phone: unknown
   now: Date
-}): Promise<ActionResult<{ day: string; time: string }>> {
+}): Promise<ActionResult<{ day: string; time: string; deposit: AdvancePaymentConfig | null }>> {
   const unavailable = { success: false as const, error: "Agendamento online indisponível" }
   if (!isUuid(input.serviceId) || !isUuid(input.professionalId)) return unavailable
   const day = input.day
@@ -408,5 +414,18 @@ export async function createOnlineBookingService(input: {
     return { success: false, error: taken ? SLOT_TAKEN : "Não foi possível marcar este horário. Escolha outro ou fale com o salão" }
   }
 
-  return { success: true, data: { day, time } }
+  // Salão que pede sinal: o agendamento nasce com o sinal "aguardando". O cliente
+  // paga por PIX direto ao salão, que marca o recebimento no painel. Se o registro
+  // do sinal falhar, o horário continua marcado — o salão lança o sinal à mão.
+  if (salon.deposit) {
+    const deposit = await createAppointmentDepositService({
+      salonId: salon.id,
+      appointmentId: result.data.appointmentId,
+      amountCents: salon.deposit.amountCents,
+      source: "online",
+    })
+    if (!deposit.success) console.error("[online-booking] sinal não registrado:", deposit.error)
+  }
+
+  return { success: true, data: { day, time, deposit: salon.deposit } }
 }
