@@ -3,7 +3,8 @@
 import Stripe from 'stripe'
 import { createClient } from '@/lib/supabase/server'
 import { stripe, TIER_TO_PRICE, CREDIT_PACKS } from '@/lib/stripe'
-import { db, profiles, salons, eq, sql } from '@repo/db'
+import { db, profiles, salons, eq, and, isNull } from '@repo/db'
+import { decideCheckout, getSubscriptionPeriodEnd } from '@/lib/utils/stripe-billing.utils'
 
 /**
  * Verifica se o usuário autenticado é o dono do salão.
@@ -18,42 +19,106 @@ async function verifySalonOwner(salonId: string, userId: string): Promise<void> 
   if (salon.ownerId !== userId) throw new Error('Não autorizado')
 }
 
-export async function createCheckoutSession(salonId: string, tier: 'SOLO' | 'PRO') {
+async function requireOwner(salonId: string): Promise<string> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Não autenticado')
   await verifySalonOwner(salonId, user.id)
+  return user.id
+}
 
+function requireAppUrl(): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
+  return appUrl
+}
+
+/**
+ * Customer do Stripe do dono, criando se faltar.
+ *
+ * A chave de idempotência faz dois cliques seguidos devolverem o MESMO
+ * customer em vez de criar dois; o UPDATE só grava se o perfil ainda estiver
+ * sem customer, e o valor final é relido do banco.
+ */
+async function getOrCreateStripeCustomer(userId: string): Promise<string> {
   const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, user.id),
+    where: eq(profiles.id, userId),
     columns: { id: true, email: true, stripeCustomerId: true, fullName: true },
   })
   if (!profile) throw new Error('Perfil não encontrado')
+  if (profile.stripeCustomerId) return profile.stripeCustomerId
 
-  // Get or create Stripe customer
-  let customerId = profile.stripeCustomerId
-  if (!customerId) {
-    const customer = await stripe.customers.create({
+  const customer = await stripe.customers.create(
+    {
       email: profile.email,
       name: profile.fullName ?? undefined,
-      metadata: { profileId: profile.id, salonId },
-    })
-    customerId = customer.id
-    await db
-      .update(profiles)
-      .set({ stripeCustomerId: customerId, updatedAt: new Date() })
-      .where(eq(profiles.id, profile.id))
+      metadata: { profileId: profile.id },
+    },
+    { idempotencyKey: `customer-create:${profile.id}` },
+  )
+
+  await db
+    .update(profiles)
+    .set({ stripeCustomerId: customer.id, updatedAt: new Date() })
+    .where(and(eq(profiles.id, profile.id), isNull(profiles.stripeCustomerId)))
+
+  const saved = await db.query.profiles.findFirst({
+    where: eq(profiles.id, profile.id),
+    columns: { stripeCustomerId: true },
+  })
+  return saved?.stripeCustomerId ?? customer.id
+}
+
+/** Status da assinatura ligada ao salão no Stripe, ou null se não houver
+ *  (ou se ela não existir mais lá). */
+async function getLinkedSubscriptionStatus(
+  subscriptionId: string | null,
+): Promise<Stripe.Subscription.Status | null> {
+  if (!subscriptionId) return null
+  try {
+    const sub = await stripe.subscriptions.retrieve(subscriptionId)
+    return sub.status
+  } catch (err) {
+    if (err instanceof Stripe.errors.StripeInvalidRequestError && err.code === 'resource_missing') {
+      return null
+    }
+    throw err
   }
+}
+
+/**
+ * Assinar um plano. Se o salão já tem assinatura viva (em dia, em atraso ou
+ * pendente), devolve o Portal em vez de um Checkout novo: um segundo Checkout
+ * criaria uma segunda assinatura cobrando junto com a primeira.
+ */
+export async function createCheckoutSession(salonId: string, tier: 'SOLO' | 'PRO') {
+  const userId = await requireOwner(salonId)
 
   const priceId = TIER_TO_PRICE[tier]
   if (!priceId) throw new Error('Plano inválido')
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
+  const appUrl = requireAppUrl()
+
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { stripeSubscriptionId: true },
+  })
+  const existingStatus = await getLinkedSubscriptionStatus(salon?.stripeSubscriptionId ?? null)
+
+  const customerId = await getOrCreateStripeCustomer(userId)
+
+  if (decideCheckout(existingStatus) === 'portal') {
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${appUrl}/${salonId}/billing`,
+    })
+    return { url: portal.url }
+  }
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'subscription',
+    client_reference_id: salonId,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${appUrl}/${salonId}/billing?checkout=success`,
     cancel_url: `${appUrl}/${salonId}/billing?checkout=canceled`,
@@ -67,13 +132,10 @@ export async function createCheckoutSession(salonId: string, tier: 'SOLO' | 'PRO
 }
 
 export async function createPortalSession(salonId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Não autenticado')
-  await verifySalonOwner(salonId, user.id)
+  const userId = await requireOwner(salonId)
 
   const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, user.id),
+    where: eq(profiles.id, userId),
     columns: { stripeCustomerId: true },
   })
 
@@ -81,8 +143,7 @@ export async function createPortalSession(salonId: string) {
     throw new Error('Nenhuma assinatura encontrada')
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
+  const appUrl = requireAppUrl()
 
   const session = await stripe.billingPortal.sessions.create({
     customer: profile.stripeCustomerId,
@@ -93,10 +154,7 @@ export async function createPortalSession(salonId: string) {
 }
 
 export async function getSubscriptionDetails(salonId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Não autenticado')
-  await verifySalonOwner(salonId, user.id)
+  await requireOwner(salonId)
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
@@ -110,7 +168,7 @@ export async function getSubscriptionDetails(salonId: string) {
   })
 
   let subscription: {
-    status: string
+    status: Stripe.Subscription.Status
     currentPeriodEnd: number | null
     cancelAtPeriodEnd: boolean
   } | null = null
@@ -137,8 +195,8 @@ export async function getSubscriptionDetails(salonId: string) {
       const sub = await stripe.subscriptions.retrieve(salon.stripeSubscriptionId)
       subscription = {
         status: sub.status,
-        currentPeriodEnd: (sub as any).current_period_end ?? null,
-        cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? false,
+        currentPeriodEnd: getSubscriptionPeriodEnd(sub),
+        cancelAtPeriodEnd: sub.cancel_at_period_end || sub.cancel_at !== null,
       }
     } catch {
       // Subscription may have been deleted
@@ -153,17 +211,20 @@ export async function getSubscriptionDetails(salonId: string) {
         stripe.customers.retrieve(profile.stripeCustomerId),
       ])
 
-      invoices = inv.data.map((i) => ({
-        id: i.id,
-        date: i.created,
-        amount: i.amount_paid / 100,
-        status: i.status as string | null,
-        pdfUrl: i.invoice_pdf ?? null,
-      }))
+      invoices = inv.data.flatMap((i) =>
+        i.id
+          ? [{
+              id: i.id,
+              date: i.created,
+              amount: i.amount_paid / 100,
+              status: i.status,
+              pdfUrl: i.invoice_pdf ?? null,
+            }]
+          : [],
+      )
 
-      const defaultPmId =
-        ((customer as Stripe.Customer).invoice_settings?.default_payment_method as string | null) ??
-        null
+      const defaultPm = customer.deleted ? null : customer.invoice_settings?.default_payment_method ?? null
+      const defaultPmId = typeof defaultPm === 'string' ? defaultPm : defaultPm?.id ?? null
 
       paymentMethods = pms.data.map((pm) => ({
         id: pm.id,
@@ -189,38 +250,18 @@ export async function getSubscriptionDetails(salonId: string) {
 }
 
 export async function createCreditPackCheckoutSession(salonId: string, packId: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Não autenticado')
-  await verifySalonOwner(salonId, user.id)
+  const userId = await requireOwner(salonId)
 
   const pack = CREDIT_PACKS.find((p) => p.id === packId)
   if (!pack) throw new Error('Pacote inválido')
 
-  const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, user.id),
-    columns: { id: true, email: true, stripeCustomerId: true, fullName: true },
-  })
-  if (!profile) throw new Error('Perfil não encontrado')
-
-  // Get or create Stripe customer
-  let customerId = profile.stripeCustomerId
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: profile.email,
-      name: profile.fullName ?? undefined,
-      metadata: { profileId: profile.id, salonId },
-    })
-    customerId = customer.id
-    await db.update(profiles).set({ stripeCustomerId: customerId, updatedAt: new Date() }).where(eq(profiles.id, profile.id))
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is required')
+  const customerId = await getOrCreateStripeCustomer(userId)
+  const appUrl = requireAppUrl()
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: 'payment',
+    client_reference_id: salonId,
     line_items: [{ price: pack.priceId, quantity: 1 }],
     success_url: `${appUrl}/${salonId}/billing?credits=success`,
     cancel_url: `${appUrl}/${salonId}/billing?credits=canceled`,
@@ -231,10 +272,7 @@ export async function createCreditPackCheckoutSession(salonId: string, packId: s
 }
 
 export async function getSalonExtraCredits(salonId: string): Promise<number> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Não autenticado')
-  await verifySalonOwner(salonId, user.id)
+  await requireOwner(salonId)
 
   const salon = await db.query.salons.findFirst({
     where: eq(salons.id, salonId),
