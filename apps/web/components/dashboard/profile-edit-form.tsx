@@ -157,7 +157,7 @@ export const ProfileEditForm = forwardRef<ProfileEditFormRef, ProfileEditFormPro
             </div>
             <div>
               <h3 className="text-lg font-bold text-foreground">{profile.fullName || "Usuário"}</h3>
-              <p className="text-xs text-muted-foreground">{profile.systemRole === "admin" ? "Administrador da conta" : "Usuário"}</p>
+              <p className="text-xs text-muted-foreground">{profile.systemRole === "admin" ? "Administrador do MinhaAgenda" : "Usuário"}</p>
             </div>
           </div>
 
