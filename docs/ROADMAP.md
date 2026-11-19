@@ -89,8 +89,8 @@ Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.7.
 Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
 migration, publicada e testada em uso em 19/nov/2026 — ver §13.8.
-Fatia 9d (relatórios de vendas e rankings) feita na mesma branch, sem migration
-— **em commit local, sem publicar e sem teste em uso** — ver §13.9.
+Fatia 9d (relatórios de vendas e rankings) feita na mesma branch, sem migration,
+publicada e testada em uso em 19/nov/2026 — ver §13.9.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4111,7 +4111,6 @@ Perguntas para o dono:
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
-| Autorizar publicar a fatia 9d — ver §13.9 | Teste em uso da fatia 9d |
 | Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4132,7 +4131,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
-| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.9) |
+| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
@@ -4495,21 +4494,43 @@ Perguntas para o dono:
 
 ### 13.9 Fatia 9d — estado (19/nov/2026)
 
-- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
   alterados) e testes passando (web 1430).
 - **Sem migration.** Só leitura.
-- **As consultas não foram executadas contra o banco.** Os testes cobrem a
-  soma e a ordem (regra pura); o SQL só vai ser exercitado no teste em uso.
 - **Limites desta fatia:**
   - sem exportação (fatia 9f);
   - os três relatórios de venda leem até 5.000 itens de comanda por período;
     acima disso a tela avisa;
   - a lista de produtos e serviços não tem busca, filtro nem paginação;
   - indicação depende do que foi digitado no "como conheceu".
-- **Sem teste em uso.** Roteiro, no salão de teste: abrir os cinco pela
-  central; a lista de produtos e serviços contra o cadastro; faturar uma
-  comanda de teste com um serviço (com profissional) e um produto (sem
-  vendedor) e conferir vendidos, ranking de clientes e ranking de vendas
-  (linha "Sem profissional"); preencher "como conheceu" em dois clientes de
-  teste com grafias diferentes e conferir a indicação; limpar os dados.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  cada número conferido contra o banco:
+  - vendidos sem dados — os cinco cartões zerados e "Nada vendido";
+  - lista de produtos e serviços — os 12 serviços (duração, preço em valor ou
+    em faixa, custo fixo) e os 2 produtos (código, preço, custo de compra,
+    preço para profissional, "Controlado" ou "Sem controle");
+  - indicação — com "como conheceu" posto em três clientes de teste
+    ("Instagram", "instagram" e "Indicação"; por SQL, pelo id, e desfeito
+    depois): 8 cadastrados no período, 3 informaram (37,5%), "instagram" com 2
+    (66,7%) e "Indicação" com 1 (33,3%) — as duas grafias viraram uma linha;
+  - com a comanda de teste #34 faturada (serviço de R$ 170,00 com
+    profissional e produto de R$ 10,00 sem vendedor):
+    - vendidos — total R$ 180,00, serviços R$ 170,00 (94,4%), produtos
+      R$ 10,00 (5,6%);
+    - ranking de clientes — 1 cliente, 1 comanda, total e ticket médio de
+      R$ 180,00, última comanda em 19/11/2026;
+    - ranking de vendas — o profissional com 1 serviço e R$ 170,00, e a linha
+      "Sem profissional" com 1 produto e R$ 10,00, no fim.
+- **Achado do teste:** com duas grafias empatadas ("Instagram" e "instagram",
+  uma vez cada), o relatório de indicação mostra a que vem primeiro na ordem
+  alfabética — saiu a minúscula. É só o rótulo; a contagem está certa.
+- **Não testado em uso:** pacote e assinatura nos vendidos; mais de um cliente
+  e mais de um profissional (a ordem dos rankings só tem teste de regra); a
+  lista dos 100 primeiros; serviço "sob avaliação" e produto ou serviço
+  inativo na lista; usuário sem `sales.view_all`, e com `products.access`
+  sem `services.access`; salão sem o módulo `sales`; trocar de relatório
+  pelo seletor (o teste foi pela URL).
+- Dados de teste limpos: a comanda #34 reaberta e excluída pela tela (fica
+  como excluída, como as anteriores), e o "como conheceu" dos três clientes
+  desfeito.
