@@ -107,7 +107,7 @@ branch `claude/fase-9-relatorios` não tem commit fora da `main`) — ver §13.1
 Fatia 9h (análise com IA nas telas de relatório), pedida pelo dono em
 19/nov/2026, feita na branch `claude/relatorios-insights-ia` (sai da `main`),
 sem migration — publicada no preview e **testada em uso nas cinco telas** em
-19/nov/2026; fora da `main`, sem PR — ver §13.15.
+19/nov/2026; no **PR #30**, aberto em 19/nov/2026 e esperando a mescla — ver §13.15.
 Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
 de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
@@ -4175,7 +4175,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Caminho A feito, sem migration, publicado na branch e testado em uso com uma unidade só — **a comparação entre duas não foi vista** (§13.12 e §13.13) |
-| 9h | Análise com IA em cada tela de relatório: resumo, o que vai bem, pontos de atenção e o que fazer | Feita, sem migration, testada em uso no preview nas cinco telas (§13.15); fora da `main` |
+| 9h | Análise com IA em cada tela de relatório: resumo, o que vai bem, pontos de atenção e o que fazer | Feita, sem migration, testada em uso no preview nas cinco telas (§13.15); no PR #30 |
 
 "Todas as notas fiscais" é da fase 10.
 
@@ -4946,7 +4946,8 @@ uma fase própria, não uma fatia dos relatórios.
 
 - Na branch `claude/relatorios-insights-ia`, que sai da `main` (`84597e6`),
   numa pasta de trabalho separada (`B:/MinhaAgenda.ai-insights`), publicada no
-  preview da Vercel; **fora da `main`, sem PR aberto**. Typecheck (db, web e
+  preview da Vercel; **no PR #30** (`claude/relatorios-insights-ia` → `main`,
+  aberto em 19/nov/2026, mescla limpa), esperando a mescla. Typecheck (db, web e
   mcp-server), lint (nenhum erro nos arquivos alterados) e testes passando (web
   1542).
 - **Sem migration.**
