@@ -113,8 +113,8 @@ da `main` — ver §14.6. Fatia 8b (abater o sinal na comanda) feita na mesma
 branch — migration 066 aplicada, publicada no preview e **testada em uso** em
 19/nov/2026; também fora da `main` — ver §14.7. Fatia 8c (aviso de
 vencimento da assinatura no painel e página pública de planos) feita na mesma
-branch, sem migration — **em commit local, sem publicar e sem teste em uso** —
-ver §14.8. O aviso de vencimento por mensagem virou a fatia 8d, pendente.
+branch, sem migration — publicada no preview e **testada em uso** em
+19/nov/2026; também fora da `main` — ver §14.8. O aviso de vencimento por mensagem virou a fatia 8d, pendente.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4893,7 +4893,7 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 |---|---|---|
 | 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
 | 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
-| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita em código, sem migration — **sem publicar e sem teste em uso** (§14.8) |
+| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita, sem migration, testada em uso no preview (§14.8); fora da `main` |
 | 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Pendente |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
@@ -5138,7 +5138,8 @@ Perguntas para o dono:
 
 ### 14.8 Fatia 8c — estado (19/nov/2026)
 
-- Na branch `claude/fase-8-sinal`, **em commit local, sem publicar**. Sem
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Sem
   migration: a coluna `subscription_plans.is_visible` já existia desde a 053.
   Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
   e testes passando (web 1481).
@@ -5153,17 +5154,32 @@ Perguntas para o dono:
   `app/planos/[salonId]/page.tsx`; testes em `subscriptions-domain.test.ts`.
 - **A página pública não tem action**: é só leitura, não entra na guarda de
   `actions-authz.test.ts` e não recebe dado do visitante.
-- **As consultas não foram executadas contra o banco.**
 - **Limites desta fatia:**
   - os totais e o aviso contam só as assinaturas que a tela carrega (as mais
     recentes, como já era);
   - o botão de WhatsApp usa `salons.whatsapp`; salão sem esse número fica só
     com o texto;
   - sem aviso por mensagem (8d).
-- **Sem teste em uso.** Roteiro, no salão de teste: criar um plano visível e
-  um não visível; abrir `/planos/<id>` e ver só o visível, com valor e
-  periodicidade; "Link dos planos" copia o endereço; criar uma assinatura,
-  cobrar e faturar com data que deixe o vencimento a menos de 7 dias — a
-  faixa, o filtro "Vencendo" e "Vence em N dias" aparecem; uma assinatura
-  vencida mostra "Venceu há N dias"; salão sem o módulo: "Planos
-  indisponíveis"; limpar os dados.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - `/planos/<id>` sem plano visível: "Ainda não há planos para mostrar";
+    endereço desconhecido: "Planos indisponíveis";
+  - com um plano visível e um não visível, a página mostra só o visível, com
+    descrição, valor e periodicidade, o texto "Para assinar, fale com o salão"
+    e o botão do WhatsApp (o link leva o DDI 55);
+  - "Link dos planos" copia o endereço da página;
+  - assinatura trimestral cobrada com comanda de 22/ago: vencimento em 22/nov,
+    "Vence em 3 dias", contada em "Vencendo (1)" e na faixa do topo;
+  - assinatura mensal cobrada com comanda de 01/out: Expirada, "Venceu há 18
+    dias", contada na faixa como vencida;
+  - "Ver as que vencem" e "Ver as vencidas" filtram a lista;
+  - sem assinatura vencendo nem vencida, a faixa não aparece.
+  Os dados do teste foram apagados pela tela (comandas excluídas, assinaturas
+  e planos excluídos).
+- **Não testado em uso:** salão sem o módulo de pacotes abrindo a página de
+  planos (coberto só pela leitura do código); salão sem WhatsApp cadastrado;
+  "Vence hoje" e "Vence amanhã" (cobertos pelo teste da regra); o clique no
+  botão do WhatsApp; a página aberta sem login na produção (o preview pede o
+  login da Vercel).
+- **Achado:** na comanda, depois de fechar o diálogo de faturar e mudar a
+  data, o primeiro clique em "Faturar" salvou e não abriu o diálogo; o segundo
+  abriu. Aconteceu uma vez em duas. Não investiguei.
