@@ -89,6 +89,8 @@ Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.7.
 Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
 migration, publicada e testada em uso em 19/nov/2026 — ver §13.8.
+Fatia 9d (relatórios de vendas e rankings) feita na mesma branch, sem migration
+— **em commit local, sem publicar e sem teste em uso** — ver §13.9.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4109,6 +4111,8 @@ Perguntas para o dono:
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
+| Autorizar publicar a fatia 9d — ver §13.9 | Teste em uso da fatia 9d |
+| Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4128,7 +4132,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
-| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
+| 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.9) |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
@@ -4137,7 +4141,9 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 
 ### 13.2 O que o levantamento encontrou (18/nov/2026)
 
-- (Depois da fatia 9b, são 26 dos 38 com tela; depois da 9c, 32.)
+- (Depois da fatia 9b, são 26 dos 38 com tela; depois da 9c, 32; depois da
+  9d, 37 — só falta a nota fiscal, da fase 10. O painel de profissionais, que
+  não é um dos 38, fica para a 9e.)
 - **22 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
   a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
   compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
@@ -4253,6 +4259,33 @@ Fatia 9c — relatórios de agendamentos e de clientes:
     sai do banco — para quem tem `customers.view_phones`. Os dois pedem o
     módulo `reports`.
 
+Fatia 9d — relatórios de vendas e rankings:
+
+20. **Produtos e serviços vendidos**, por período, pelo dia da comanda, só de
+    comandas FATURADAS: uma linha por item (serviço, produto, pacote ou
+    assinatura), com quantidade, em quantas comandas apareceu, valor e parte do
+    total; e o total por tipo. O que mais rendeu vem primeiro. Item usado de um
+    pacote entra com valor zero.
+21. **Ranking de clientes**: quem mais gastou no período — comandas, total,
+    ticket médio (total ÷ comandas) e a última comanda. A lista mostra os 100
+    primeiros; os cartões somam todos. Conta o que foi FATURADO, pago ou não.
+22. **Ranking de vendas**, por profissional: serviços realizados (quantidade e
+    valor) e produtos vendidos (quantidade e valor). Serviço conta para quem
+    executou; produto, para quem vendeu; o auxiliar não entra. Produto sem
+    vendedor fica em "Sem profissional", no fim. Pacote e assinatura não entram.
+23. **Lista de produtos e serviços**: o catálogo como está hoje, ativos e
+    inativos. Serviço: duração, preço (valor, faixa ou "sob avaliação") e custo
+    fixo. Produto: código, preço, custo de compra, preço para profissional e se
+    o estoque é controlado. Não mostra saldo nem comissão por item.
+24. **Indicação de clientes**: o "como conheceu" (fatia 7a) dos clientes
+    CADASTRADOS no período. O campo é texto livre: o relatório junta o que só
+    difere por maiúscula, acento ou espaço, e mostra a grafia mais usada. A
+    parte é calculada sobre quem informou.
+25. **Quem vê**: vendidos e os dois rankings pedem o módulo `sales` e
+    `sales.view_all` (leem todas as comandas). A lista pede `products.access`,
+    e os serviços só entram para quem tem também `services.access`. Indicação
+    pede `customers.access`. Todos pedem o módulo `reports`.
+
 Perguntas para o dono:
 
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
@@ -4280,6 +4313,14 @@ Perguntas para o dono:
   de ativos e inativos, como na Belasis?
 - (9c) Dos aniversariantes e dos inativos, o dono quer sair direto para uma
   campanha no WhatsApp?
+- (9d) O ranking de clientes deve contar o que foi faturado (regra 21) ou só
+  o que foi pago?
+- (9d) No ranking de vendas, venda de pacote e de assinatura deve contar para
+  alguém? E o auxiliar?
+- (9d) "Como conheceu" deve virar uma lista de opções (em vez de texto livre),
+  para o relatório de indicação não depender de grafia?
+- (9d) A lista de produtos e serviços deve trazer a comissão de cada item e o
+  saldo de estoque?
 - (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
   ver? A auditoria não leu a saída de nenhum.
 - (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
@@ -4301,12 +4342,16 @@ Perguntas para o dono:
 - **Relatórios de clientes (9c)** (`/[salonId]/reports/customers?view=…`):
   aniversariantes (seletor de mês) e inativos (seletor de prazo), com o nome
   levando à ficha do cliente.
+- **Relatórios de vendas (9d)** (`/[salonId]/reports/sales?view=…`): vendidos,
+  ranking de clientes, ranking de vendas e indicação, com período; e a lista
+  de produtos e serviços, sem período.
 
 | Assunto | Onde está |
 |---|---|
 | Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
 | Relatórios financeiros (9b) | Sem migration; regra em `domain/finance-reports.ts` (`allocateByWeight`, `buildNetResult`, `planProjectionPeriod`, `buildRevenueProjection`, `buildAccountStatement`); I/O em `services/finance-reports.service.ts`; action em `actions/finance-reports.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/finance/`; os quatro destinos no catálogo (`domain/report-catalog.ts`); testes em `finance-reports-domain.test.ts` |
 | Relatórios de agendamentos e de clientes (9c) | Sem migration; regra em `domain/agenda-reports.ts` (`countByStatus`, `appointmentOrigin`, `buildOriginReport`, `buildCreationReport`, `buildBirthdayList`, `buildInactiveList`); I/O em `services/agenda-reports.service.ts`; actions em `actions/agenda-reports.ts` (na guarda de `actions-authz.test.ts`); telas em `app/[salonId]/reports/appointments/` e `reports/customers/`; os seis destinos no catálogo; testes em `agenda-reports-domain.test.ts` |
+| Relatórios de vendas e rankings (9d) | Sem migration; regra em `domain/sales-reports.ts` (`buildSoldItemsReport`, `buildCustomerRanking`, `buildProfessionalRanking`, `buildReferralReport`); I/O em `services/sales-reports.service.ts`; action em `actions/sales-reports.ts` (na guarda de `actions-authz.test.ts`; a permissão depende do relatório); tela em `app/[salonId]/reports/sales/`; os cinco destinos no catálogo; testes em `sales-reports-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4447,3 +4492,24 @@ Perguntas para o dono:
   pela URL).
 - Dados de teste: a data de nascimento do cliente de teste foi desfeita.
   Nenhum outro dado foi criado.
+
+### 13.9 Fatia 9d — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1430).
+- **Sem migration.** Só leitura.
+- **As consultas não foram executadas contra o banco.** Os testes cobrem a
+  soma e a ordem (regra pura); o SQL só vai ser exercitado no teste em uso.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f);
+  - os três relatórios de venda leem até 5.000 itens de comanda por período;
+    acima disso a tela avisa;
+  - a lista de produtos e serviços não tem busca, filtro nem paginação;
+  - indicação depende do que foi digitado no "como conheceu".
+- **Sem teste em uso.** Roteiro, no salão de teste: abrir os cinco pela
+  central; a lista de produtos e serviços contra o cadastro; faturar uma
+  comanda de teste com um serviço (com profissional) e um produto (sem
+  vendedor) e conferir vendidos, ranking de clientes e ranking de vendas
+  (linha "Sem profissional"); preencher "como conheceu" em dois clientes de
+  teste com grafias diferentes e conferir a indicação; limpar os dados.
