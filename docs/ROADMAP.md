@@ -106,8 +106,8 @@ mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g também já est�
 branch `claude/fase-9-relatorios` não tem commit fora da `main`) — ver §13.14.
 Fatia 9h (análise com IA nas telas de relatório), pedida pelo dono em
 19/nov/2026, feita na branch `claude/relatorios-insights-ia` (sai da `main`),
-sem migration — **em commit local, sem publicar e sem teste em uso; a chamada à
-OpenAI nunca rodou** — ver §13.15.
+sem migration — publicada no preview e **testada em uso nas cinco telas** em
+19/nov/2026; fora da `main`, sem PR — ver §13.15.
 Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
 de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
@@ -4175,7 +4175,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Caminho A feito, sem migration, publicado na branch e testado em uso com uma unidade só — **a comparação entre duas não foi vista** (§13.12 e §13.13) |
-| 9h | Análise com IA em cada tela de relatório: resumo, o que vai bem, pontos de atenção e o que fazer | Feita em código, sem migration — **sem publicar, sem teste em uso; a chamada à OpenAI nunca rodou** (§13.15) |
+| 9h | Análise com IA em cada tela de relatório: resumo, o que vai bem, pontos de atenção e o que fazer | Feita, sem migration, testada em uso no preview nas cinco telas (§13.15); fora da `main` |
 
 "Todas as notas fiscais" é da fase 10.
 
@@ -4410,7 +4410,8 @@ Fatia 9h — análise com IA nas telas de relatório (pedida pelo dono em
     cliente) nem nome de cliente. Lista longa vira resumo por coluna (total;
     soma, média, mínimo e máximo; os valores mais frequentes; dia da semana e
     hora) com uma amostra de até 10 linhas. Tudo cabe em 14 mil caracteres; se
-    não couber, pede um período menor. Dinheiro vai em reais.
+    não couber, pede um período menor. Dinheiro vai em reais e tempo em horas,
+    como as telas mostram.
 49. **O que volta**: um resumo de uma ou duas frases, "O que está indo bem",
     "Pontos de atenção" e "O que fazer" (com impacto alto, médio ou baixo), até
     5 itens por lista. O formato é pedido no modo estrito da OpenAI e conferido
@@ -4944,30 +4945,46 @@ uma fase própria, não uma fatia dos relatórios.
 ### 13.15 Fatia 9h — estado (19/nov/2026)
 
 - Na branch `claude/relatorios-insights-ia`, que sai da `main` (`84597e6`),
-  numa pasta de trabalho separada (`B:/MinhaAgenda.ai-insights`), **em commit
-  local, sem publicar**. Typecheck (db, web e mcp-server), lint (nenhum erro nos
-  arquivos alterados) e testes passando (web 1542).
+  numa pasta de trabalho separada (`B:/MinhaAgenda.ai-insights`), publicada no
+  preview da Vercel; **fora da `main`, sem PR aberto**. Typecheck (db, web e
+  mcp-server), lint (nenhum erro nos arquivos alterados) e testes passando (web
+  1542).
 - **Sem migration.**
-- **A chamada à OpenAI nunca rodou**: não há chave da OpenAI nesta máquina. O
-  formato estrito (`json_schema`), o raciocínio "low" com o `gpt-6-sol` e o
-  tempo de resposta só serão vistos no preview.
 - **Mudança fora da fatia**: `debitSalonCredits` ganhou o parâmetro opcional
   `ledgerModel` e passou a devolver os créditos debitados. O worker do WhatsApp
   chama do mesmo jeito e não usa o retorno.
-- **No dashboard**, o gráfico de créditos por modelo vai mostrar o consumo da
-  análise com o nome cru `gpt-6-sol:relatorios`.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - **Agendamentos** (01/01 a 19/11): a análise citou 10 agendamentos, 5
+    concluídos e 5 cancelados (50%) — os mesmos números dos cartões da tela —,
+    e nenhum nome de cliente, embora a tabela mostre os nomes;
+  - **Financeiro** (resultado líquido, 01/11 a 19/11, sem lançamentos) e
+    **Vendas** (01/01 a 19/11, tudo R$ 0,00): a IA disse que não havia dados
+    para concluir e sugeriu conferir os lançamentos, sem inventar número;
+  - **Clientes inativos**: falou dos 5 clientes da lista (240 a 300 dias sem
+    vir, 1 visita cada) sem citar nenhum nome — conferido contra os nomes da
+    tabela;
+  - **Painel de profissionais** (01/01 a 19/11): os números batiam com a tela,
+    mas vinham em minutos ("300 minutos em 66.720") enquanto a tela mostra
+    horas ("5h de 1112h"). **Corrigido**: minutos agora vão em horas.
+    Gerada de novo depois da correção: "5 horas agendadas em 3.880 horas
+    disponíveis", "Luiz tem 0 horas agendadas em 2.768" — como a tela;
+  - trocar o período recarrega a tela e o painel volta ao botão;
+  - cada análise levou de 8 a 18 segundos.
+- **Créditos**: as cinco primeiras análises somaram 2.961 créditos (de 468 a
+  892 cada) na linha `gpt-6-sol:relatorios` de `ai_usage_stats`. Os planos dão
+  de 1 a 10 milhões de créditos por mês.
+- **Não testado em uso:** salão sem crédito (a mensagem de crédito acabado);
+  tela com dados demais (a mensagem de período menor); quem vê o relatório mas
+  não tem a permissão da tela; análise com muitos dados reais — o salão de
+  teste tem poucos lançamentos.
+- **No dashboard**, o gráfico de créditos por modelo mostra o consumo da análise
+  com o nome cru `gpt-6-sol:relatorios`.
 - **Limites desta fatia:**
   - nada é guardado (regra 46);
   - sem comparação com o período anterior;
   - lista longa vai resumida, não inteira (regra 48);
   - na tela de clientes vão só contagens e dias, sem nomes;
   - a Organização e o Dashboard não têm análise.
-- **Sem teste em uso.** Roteiro, no preview e no salão de teste (que tem o
-  módulo de relatórios): abrir cada uma das cinco telas e gerar a análise;
-  conferir que os números citados batem com a tela; trocar o período e ver o
-  painel voltar ao botão; conferir no banco a linha `gpt-6-sol:relatorios` em
-  `ai_usage_stats` e que os créditos do salão baixaram; tela com período sem
-  dados (a IA deve dizer que são poucos).
 
 ## 14. Fase 8 — Pagamento, sem receber dos clientes
 
