@@ -88,7 +88,7 @@ publicada e testada em uso em 19/nov/2026 — ver §13.6.
 Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.7.
 Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
-migration — **em commit local, sem publicar e sem teste em uso** — ver §13.8.
+migration, publicada e testada em uso em 19/nov/2026 — ver §13.8.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4108,7 +4108,6 @@ Perguntas para o dono:
 | Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
-| Autorizar publicar a fatia 9c — ver §13.8 | Teste em uso da fatia 9c |
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4128,7 +4127,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 |---|---|---|
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
-| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.8) |
+| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
@@ -4411,13 +4410,10 @@ Perguntas para o dono:
 
 ### 13.8 Fatia 9c — estado (19/nov/2026)
 
-- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+- Na branch `claude/fase-9-relatorios`, publicada (preview da Vercel).
   Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
-  alterados) e testes passando (web 1417, com um arquivo de teste de outra
-  sessão no disco).
+  alterados) e testes passando.
 - **Sem migration.** Só leitura.
-- **As consultas não foram executadas contra o banco.** Os testes cobrem a
-  contagem (regra pura); o SQL só vai ser exercitado no teste em uso.
 - **Limites desta fatia:**
   - sem exportação (fatia 9f);
   - sem filtro por profissional, serviço ou situação;
@@ -4426,9 +4422,28 @@ Perguntas para o dono:
     clientes até 1.000; acima disso a tela avisa;
   - "atendimentos" do inativo conta agendamentos concluídos, não comandas;
   - sem botão para mandar mensagem aos aniversariantes ou aos inativos.
-- **Sem teste em uso.** Roteiro, no salão de teste: abrir os seis pela central;
-  todos os agendamentos com o período dos testes da fase 7 (há cancelados com
-  motivo "TESTE 7c" e "TESTE 7f"); cancelados com "por quem" e motivo; origem
-  somando o mesmo total; criação com a antecedência; aniversariantes depois de
-  pôr uma data de nascimento num cliente de teste (e tirar depois); inativos
-  com os prazos; conferir cada número contra o banco.
+- **Teste em uso (19/nov/2026)**, no preview da branch, no salão de teste, com
+  cada número conferido contra o banco (período de 01 a 19/nov/2026):
+  - todos os agendamentos — total 4, os 4 cancelados, e a lista com dia e hora
+    de Brasília, cliente, serviço, profissional e situação;
+  - cancelados — 4, sendo 2 sem motivo; "cancelado em", "por quem" e o motivo
+    de cada um;
+  - origem — "Não se sabe" 4 (100%), comparecimento 0%; as outras três linhas
+    zeradas, com "—";
+  - criação — 13 criados (2 em 15/nov e 11 em 18/nov), antecedência média de
+    5,2 dias, 8 na faixa de 1 a 2 dias e 5 em mais de 7 dias;
+  - aniversariantes — com uma data de nascimento posta num cliente de teste
+    (por SQL, pelo id, e tirada depois): aparece no mês certo, no dia 25, com
+    "36 anos" e o telefone; outro mês: "Nenhum cliente com aniversário";
+  - inativos — os 5 clientes com atendimento concluído, de 240 a 300 dias sem
+    vir, quem sumiu há menos tempo primeiro; com o prazo de 365 dias, nenhum;
+  - a central passou a "32 de 39 relatórios disponíveis", com 7 em "Em breve".
+- **Não testado em uso:** situações que o salão de teste não tem (pendente,
+  confirmado, concluído e falta no período; origem de anúncio, orgânica e do
+  Google); cliente inativo com horário marcado (some da lista) e com comanda
+  faturada mais recente que o último atendimento; usuário sem
+  `schedule.view_all`, e sem `customers.view_phones` (o telefone some); os
+  tetos de linhas; trocar de relatório e de filtro pelos seletores (o teste foi
+  pela URL).
+- Dados de teste: a data de nascimento do cliente de teste foi desfeita.
+  Nenhum outro dado foi criado.
