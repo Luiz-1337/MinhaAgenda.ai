@@ -3,7 +3,7 @@
 **Data:** 10 de agosto de 2026
 **Escopo:** configuração de planos (SOLO / PRO / ENTERPRISE), limites, créditos, preço, concessão de tier e enforcement de assinatura.
 **Estado:** decisões travadas com o dono em 10/ago. Execução por frentes, na ordem da seção 8.
-**Progresso:** Frente 0 concluída (10/ago). Frentes 1 a 6 pendentes. Nada commitado ainda.
+**Progresso:** Frente 0 concluída (10/ago). Ciclo de cobrança do Stripe corrigido em 19/nov/2026, na branch `claude/stripe-fix` (seção 10). Frentes 1 a 6 pendentes.
 
 ---
 
@@ -275,3 +275,62 @@ O primeiro termo compara `subscription_status` (cujo enum é `ACTIVE|PAID|PAST_D
 **Armadilha de execução:** os números `49` e `149` aparecem tanto como preço fantasma em `step-payment.tsx` quanto como preço legítimo de pacote de crédito em `lib/stripe.ts`. **Não fazer find-and-replace por número.**
 
 > Os itens de 9.1 e 9.2 e os quatro primeiros de 9.3 foram conferidos abrindo os arquivos. Os demais vêm do inventário com arquivo:linha e devem ser reconferidos na frente correspondente.
+
+---
+
+## 10. Ciclo de cobrança do Stripe — corrigido em 19/nov/2026
+
+Branch `claude/stripe-fix`. Sem migration. Produção, conferida por leitura no
+mesmo dia: 16 salões, **0 assinaturas Stripe e 0 linhas em `payments`** — o
+ciclo nunca fechou, então nada do que segue muda dado existente.
+
+### 10.1 O que estava quebrado e o que foi feito
+
+| # | Problema | Correção |
+|---|---|---|
+| 1 | A trava do Redis marcava o evento como processado **antes** de processar. Evento que falhava (500) voltava no reenvio e era descartado como "duplicado": cliente pagava e o salão não virava pago | Trava em dois estados: `processing` (5 min) enquanto roda, `done` (7 dias) só depois do sucesso. Falha solta a trava; entrega paralela recebe 409 para o Stripe reenviar |
+| 2 | O SDK `stripe@20.4.1` (API `2026-02-25.clover`) não tem `invoice.subscription` nem `subscription.current_period_end`; o código lia os dois com `as any`. A data de renovação no painel saía sempre vazia | `getInvoiceSubscriptionId` lê `invoice.parent.subscription_details` e, se o endpoint estiver numa versão antiga, o campo antigo. `getSubscriptionPeriodEnd` lê o fim do período nos itens. Sem `any` |
+| 3 | "Assinar" com assinatura viva (inclusive PAST_DUE, pela tela de assinatura expirada) criava uma **segunda assinatura**, cobrando junto da primeira | `decideCheckout`: assinatura viva → Portal (pagar fatura, trocar cartão, mudar de plano); só cancelada ou inexistente abre Checkout |
+| 4 | `checkout.session.completed` liberava plano e crédito sem olhar `payment_status` — com boleto, liberava antes de pagar | Só libera com `paid` ou `no_payment_required`. Novo `checkout.session.async_payment_succeeded` libera depois; `async_payment_failed` só registra |
+| 5 | Eventos fora de ordem: `payment_failed` atrasado rebaixava salão em dia; `invoice.paid` antes do `checkout.completed` perdia o registro do pagamento | Todo evento relê a assinatura no Stripe antes de gravar. A assinatura sem salão ligado é ligada pela `metadata.salonId` — mas nunca por cima de outra assinatura do salão (o cancelamento de uma antiga não derruba a nova) |
+| 6 | A carência de 3 dias do PAST_DUE recomeçava a cada tentativa de cobrança | `subscription_status_changed_at` só muda quando o status muda (CASE no UPDATE) |
+| 7 | Status `paused` ficava como pago; `customer.subscription.created` não era tratado | `paused` → CANCELED; `incomplete` não mexe no status; `created` entra no mesmo tratamento de `updated`/`deleted` |
+| 8 | Pacote de créditos: reenvio depois de a trava do Redis expirar creditava de novo | O registro em `payments` (`external_id` único) entra primeiro; o saldo só sobe se ele entrou agora |
+| 9 | Dois cliques criavam dois customers no Stripe | Chave de idempotência `customer-create:<profileId>` e UPDATE só se o perfil ainda estiver sem customer |
+| 10 | Sem botão para assinar o SOLO; quem ganhou PRO no cadastro só via o link do Enterprise; assinatura cancelada escondia os botões | Sem assinatura viva, a tela mostra SOLO e PRO (preço lido do catálogo `lib/plans.ts`) e o Enterprise por contato |
+
+Código: `lib/utils/stripe-billing.utils.ts` (regras puras),
+`lib/services/stripe-billing.service.ts` (eventos), `app/api/webhook/stripe/route.ts`
+(assinatura, trava e despacho), `app/actions/stripe.ts`,
+`components/billing/subscription-actions.tsx`. Testes: 34 novos em
+`__tests__/lib/utils/stripe-billing.test.ts`,
+`__tests__/lib/services/stripe-billing.service.test.ts` e
+`__tests__/lib/stripe-webhook-route.test.ts`.
+
+### 10.2 Depende do dashboard do Stripe (não verificado daqui)
+
+1. **Eventos do endpoint do webhook** precisam incluir, além dos que já
+   existiam (`checkout.session.completed`, `invoice.paid`,
+   `invoice.payment_failed`, `customer.subscription.updated`,
+   `customer.subscription.deleted`): `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed` e `customer.subscription.created`.
+2. **Portal do cliente** configurado para pagar fatura em aberto, trocar cartão
+   e (se quiser autoatendimento) trocar de plano — agora é para lá que vai quem
+   já tem assinatura.
+3. Conferir a versão da API do endpoint e se boleto está ligado.
+4. Teste de ponta a ponta em modo teste (cartão `4242…`, cartão recusado e
+   reenvio de evento pelo dashboard) — ainda não feito.
+
+### 10.3 Ficou de fora, de propósito
+
+- **Crédito avulso nunca é consumido** (`credits.service.ts` soma
+  `extra_credits` à franquia de todo mês): depende da decisão "pacote expira ou
+  é saldo que se gasta".
+- **Reembolso e disputa** (`charge.refunded`, `charge.dispute.created`) não
+  revertem nada — depende da mesma decisão.
+- **Tier no dono × status no salão** (PRO com 3 salões precisaria de 3
+  assinaturas; cancelar não rebaixa o tier): decisão de produto.
+- **ENTERPRISE e agente extra**: `STRIPE_PRICE_ENTERPRISE` e
+  `STRIPE_PRICE_EXTRA_AGENT` continuam fora de `lib/env.ts`.
+- **Frentes 1 a 6** deste documento (paywall no servidor, tier de graça no
+  cadastro, números em vários lugares) seguem pendentes.
