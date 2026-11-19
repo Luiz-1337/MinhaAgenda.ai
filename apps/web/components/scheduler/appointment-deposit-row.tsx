@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import { toast } from "sonner"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { HandCoins } from "lucide-react"
@@ -109,7 +110,15 @@ export function AppointmentDepositRow({ salonId, appointmentId }: { salonId: str
                 : ""}
               {deposit.status !== "pending" && deposit.settledByName ? ` · por ${deposit.settledByName}` : ""}
             </p>
-            {canManage && (
+            {deposit.appliedSale && (
+              <p className="text-xs text-muted-foreground">
+                Abatido na{" "}
+                <Link href={`/${salonId}/sales/${deposit.appliedSale.id}`} className="font-semibold text-accent hover:underline">
+                  comanda #{deposit.appliedSale.number}
+                </Link>
+              </p>
+            )}
+            {canManage && !deposit.appliedSale && (
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                 {deposit.status !== "received" && (
                   <button type="button" disabled={isPending} onClick={() => settle("receive", "Sinal recebido")} className={linkClass}>

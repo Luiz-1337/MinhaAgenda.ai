@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm"
 
-import { appointmentDeposits, appointments, db, profiles, salons } from "../index"
+import { appointmentDeposits, appointments, db, profiles, sales, salons } from "../index"
 import {
   parseAdvancePayment,
   planDepositAmount,
@@ -38,6 +38,8 @@ export type AppointmentDepositRow = {
   receivedAt: string | null
   /** Primeiro nome de quem marcou como recebido ou dispensado. */
   settledByName: string | null
+  /** A comanda em que o sinal foi abatido (fatia 8b). NULL = ainda não foi. */
+  appliedSale: { id: string; number: number } | null
 }
 
 /** O sinal de um agendamento. NULL = não há sinal. */
@@ -55,9 +57,12 @@ export async function getAppointmentDepositService(input: {
       receivedAt: appointmentDeposits.receivedAt,
       firstName: profiles.firstName,
       fullName: profiles.fullName,
+      saleId: sales.id,
+      saleNumber: sales.number,
     })
     .from(appointmentDeposits)
     .leftJoin(profiles, eq(profiles.id, appointmentDeposits.settledBy))
+    .leftJoin(sales, and(eq(sales.id, appointmentDeposits.saleId), eq(sales.salonId, input.salonId)))
     .where(
       and(eq(appointmentDeposits.salonId, input.salonId), eq(appointmentDeposits.appointmentId, input.appointmentId))
     )
@@ -72,6 +77,7 @@ export async function getAppointmentDepositService(input: {
     createdAt: row.createdAt.toISOString(),
     receivedAt: row.receivedAt?.toISOString() ?? null,
     settledByName: row.firstName || row.fullName?.split(" ")[0] || null,
+    appliedSale: row.saleId && row.saleNumber !== null ? { id: row.saleId, number: row.saleNumber } : null,
   }
 }
 
@@ -129,7 +135,11 @@ export async function settleAppointmentDepositService(input: {
   try {
     return await db.transaction(async (tx) => {
       const [deposit] = await tx
-        .select({ id: appointmentDeposits.id, status: appointmentDeposits.status })
+        .select({
+          id: appointmentDeposits.id,
+          status: appointmentDeposits.status,
+          saleId: appointmentDeposits.saleId,
+        })
         .from(appointmentDeposits)
         .where(
           and(
@@ -140,7 +150,7 @@ export async function settleAppointmentDepositService(input: {
         .for("update")
       if (!deposit) return { success: false as const, error: "Este agendamento não tem sinal" }
 
-      const plan = planDepositTransition(deposit.status as DepositStatus, input.action)
+      const plan = planDepositTransition(deposit.status as DepositStatus, input.action, deposit.saleId !== null)
       if (!plan.ok) return { success: false as const, error: plan.error }
 
       await tx

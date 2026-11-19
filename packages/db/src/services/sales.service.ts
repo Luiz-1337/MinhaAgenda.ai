@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core"
 
 import {
   db,
+  appointmentDeposits,
   appointments,
   customerPackageItems,
   customerPackages,
@@ -56,6 +57,7 @@ import {
 } from "./cashback.service"
 import { brazilToday, isCalendarDate } from "../domain/finance"
 import type { PlannedPayment } from "../domain/sales"
+import { planDepositCredit } from "../domain/appointment-deposits"
 import { applyCouponToSale, type CouponRule } from "../domain/promotions"
 import { loadSaleCoupon } from "./promotions.service"
 import { discardPendingSaleReview, requestSaleReview } from "./reviews.service"
@@ -549,6 +551,11 @@ export async function invoiceSaleService(input: {
    * agenda os cuidados de depois e o retorno. Quem decide é a action.
    */
   careMessages?: boolean
+  /**
+   * Abate o sinal RECEBIDO dos agendamentos da comanda, como um pagamento a mais
+   * nesta forma (fase 8, fatia 8b). Vazio = não abate, e o sinal continua livre.
+   */
+  depositPaymentMethodId?: string | null
 }): Promise<ActionResult<void>> {
   try {
     if (input.debtDueDate && !isCalendarDate(input.debtDueDate)) {
@@ -587,8 +594,36 @@ export async function invoiceSaleService(input: {
         }),
       })
 
-      const methodIds = unique(input.payments.map((p) => p.paymentMethodId))
       const appointmentIds = unique(items.map((i) => i.appointmentId))
+      const saleTotalCents = items.reduce((sum, item) => sum + Math.max(0, toCents(item.total) ?? 0), 0)
+
+      // O sinal recebido dos agendamentos da comanda vira um pagamento a mais
+      // (fase 8, fatia 8b). As linhas ficam travadas até o fim da transação:
+      // ninguém reabre o sinal nem o abate em outra comanda no meio do caminho.
+      const depositRows =
+        input.depositPaymentMethodId && appointmentIds.length
+          ? await tx
+              .select({ id: appointmentDeposits.id, amount: appointmentDeposits.amount })
+              .from(appointmentDeposits)
+              .where(
+                and(
+                  eq(appointmentDeposits.salonId, input.salonId),
+                  inArray(appointmentDeposits.appointmentId, appointmentIds),
+                  eq(appointmentDeposits.status, "received"),
+                  sql`${appointmentDeposits.saleId} IS NULL`
+                )
+              )
+              .for("update")
+          : []
+      const depositCredit = planDepositCredit({
+        deposits: depositRows.map((row) => ({ id: row.id, amountCents: toCents(row.amount) ?? 0 })),
+        totalCents: saleTotalCents,
+        paymentMethodId: input.depositPaymentMethodId,
+      })
+      if (!depositCredit.ok) fail(depositCredit.error)
+
+      const paymentDrafts = depositCredit.payment ? [depositCredit.payment, ...input.payments] : input.payments
+      const methodIds = unique(paymentDrafts.map((p) => p.paymentMethodId))
 
       const [methodRows, appointmentRows] = await Promise.all([
         methodIds.length
@@ -617,7 +652,6 @@ export async function invoiceSaleService(input: {
 
       // Cashback usado na comanda: confere saldo e mínimo com o cliente travado até
       // o fim da transação — dois faturamentos não gastam o mesmo crédito (fase 6).
-      const saleTotalCents = items.reduce((sum, item) => sum + Math.max(0, toCents(item.total) ?? 0), 0)
       const redeem = await planSaleCashbackRedeem(tx, {
         salonId: input.salonId,
         customerId: sale.customerId,
@@ -630,7 +664,7 @@ export async function invoiceSaleService(input: {
       const now = new Date()
       const plan = planInvoice({
         items,
-        payments: input.payments,
+        payments: paymentDrafts,
         methods: new Map(methodRows.map((m) => [m.id, m])),
         appointments: new Map(appointmentRows.map((a) => [a.id, { status: a.status, date: a.date }])),
         allowDebt: input.allowDebt,
@@ -662,6 +696,19 @@ export async function invoiceSaleService(input: {
           updatedAt: now,
         })
         .where(and(eq(sales.id, sale.id), eq(sales.salonId, input.salonId)))
+
+      // O sinal abatido fica preso a esta comanda, até ela ser reaberta.
+      if (depositCredit.depositIds.length > 0) {
+        await tx
+          .update(appointmentDeposits)
+          .set({ saleId: sale.id, appliedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(appointmentDeposits.salonId, input.salonId),
+              inArray(appointmentDeposits.id, depositCredit.depositIds)
+            )
+          )
+      }
 
       const completedAtById = new Map(appointmentRows.map((a) => [a.id, a.completedAt]))
 
@@ -883,6 +930,13 @@ export async function reopenSaleService(input: {
         .delete(salePayments)
         .where(and(eq(salePayments.saleId, sale.id), eq(salePayments.salonId, input.salonId)))
 
+      // O sinal abatido aqui volta a ficar livre: continua "recebido", e entra de
+      // novo quando a comanda for faturada outra vez (fase 8, fatia 8b).
+      await tx
+        .update(appointmentDeposits)
+        .set({ saleId: null, appliedAt: null, updatedAt: now })
+        .where(and(eq(appointmentDeposits.saleId, sale.id), eq(appointmentDeposits.salonId, input.salonId)))
+
       await tx
         .update(sales)
         // O débito some junto: comanda aberta não deve nada (CHECK no banco).
@@ -1072,6 +1126,12 @@ export type SaleDetail = {
   /** Quanto da comanda foi pago com cashback, e quanto ela gerou (fase 6). */
   cashbackRedeemed: string
   cashbackEarned: string
+  /**
+   * O sinal dos agendamentos da comanda (fase 8, fatia 8b): o recebido que ainda
+   * pode ser abatido, e o que já foi abatido NESTA comanda. "0.00" = nada.
+   */
+  depositAvailable: string
+  depositApplied: string
   /** O cupom aplicado e a regra dele HOJE, para a tela refazer a conta (fase 6). */
   coupon: {
     code: string
@@ -1204,6 +1264,27 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
     getSaleCashbackEarned(db, { salonId, saleId }),
   ])
 
+  const depositAppointmentIds = unique(items.map((item) => item.appointmentId))
+  const depositRows = depositAppointmentIds.length
+    ? await db
+        .select({ amount: appointmentDeposits.amount, saleId: appointmentDeposits.saleId })
+        .from(appointmentDeposits)
+        .where(
+          and(
+            eq(appointmentDeposits.salonId, salonId),
+            inArray(appointmentDeposits.appointmentId, depositAppointmentIds),
+            eq(appointmentDeposits.status, "received")
+          )
+        )
+    : []
+  let depositAvailableCents = 0
+  let depositAppliedCents = 0
+  for (const row of depositRows) {
+    const cents = toCents(row.amount) ?? 0
+    if (row.saleId === null) depositAvailableCents += cents
+    else if (row.saleId === saleId) depositAppliedCents += cents
+  }
+
   return {
     id: sale.id,
     number: sale.number,
@@ -1217,6 +1298,8 @@ export async function getSaleService(salonId: string, saleId: string): Promise<S
     debtDueDate: sale.debtDueDate,
     cashbackRedeemed: sale.cashbackRedeemed,
     cashbackEarned,
+    depositAvailable: centsToNumeric(depositAvailableCents),
+    depositApplied: centsToNumeric(depositAppliedCents),
     coupon:
       sale.couponCode && sale.promotionName && sale.promotionKind && sale.promotionValue && sale.promotionAppliesTo
         ? {

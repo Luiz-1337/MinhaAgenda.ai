@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   parseAdvancePayment,
   planDepositAmount,
+  planDepositCredit,
   planDepositTransition,
 } from "@repo/db/src/domain/appointment-deposits"
 
@@ -81,5 +82,73 @@ describe("planDepositTransition", () => {
     expect(planDepositTransition("received", "reopen")).toEqual({ ok: true, status: "pending" })
     expect(planDepositTransition("waived", "reopen")).toEqual({ ok: true, status: "pending" })
     expect(planDepositTransition("pending", "reopen")).toEqual({ ok: false, error: "Este sinal já está aguardando" })
+  })
+
+  it("sinal abatido numa comanda não muda: a comanda tem que ser reaberta antes", () => {
+    const blocked = {
+      ok: false,
+      error: "Este sinal já foi abatido numa comanda. Reabra a comanda antes de mexer nele",
+    }
+    expect(planDepositTransition("received", "reopen", true)).toEqual(blocked)
+    expect(planDepositTransition("received", "waive", true)).toEqual(blocked)
+    expect(planDepositTransition("received", "reopen", false)).toEqual({ ok: true, status: "pending" })
+  })
+})
+
+describe("planDepositCredit", () => {
+  const method = "11111111-1111-4111-8111-111111111111"
+
+  it("sem forma escolhida, nada é abatido", () => {
+    expect(
+      planDepositCredit({ deposits: [{ id: "a", amountCents: 7500 }], totalCents: 17000, paymentMethodId: null })
+    ).toEqual({ ok: true, depositIds: [], payment: null, amountCents: 0 })
+    expect(planDepositCredit({ deposits: [], totalCents: 17000, paymentMethodId: "" })).toEqual({
+      ok: true,
+      depositIds: [],
+      payment: null,
+      amountCents: 0,
+    })
+  })
+
+  it("o sinal vira um pagamento na forma escolhida, somando os agendamentos da comanda", () => {
+    expect(
+      planDepositCredit({ deposits: [{ id: "a", amountCents: 7500 }], totalCents: 17000, paymentMethodId: method })
+    ).toEqual({
+      ok: true,
+      depositIds: ["a"],
+      payment: { paymentMethodId: method, amount: 75 },
+      amountCents: 7500,
+    })
+    expect(
+      planDepositCredit({
+        deposits: [
+          { id: "a", amountCents: 7500 },
+          { id: "b", amountCents: 4990 },
+        ],
+        totalCents: 12490,
+        paymentMethodId: method,
+      })
+    ).toEqual({
+      ok: true,
+      depositIds: ["a", "b"],
+      payment: { paymentMethodId: method, amount: 124.9 },
+      amountCents: 12490,
+    })
+  })
+
+  it("forma escolhida sem sinal recebido é erro", () => {
+    expect(planDepositCredit({ deposits: [], totalCents: 17000, paymentMethodId: method })).toEqual({
+      ok: false,
+      error: "Esta comanda não tem sinal recebido para abater",
+    })
+  })
+
+  it("sinal maior que o total não é abatido: não há troco", () => {
+    expect(
+      planDepositCredit({ deposits: [{ id: "a", amountCents: 7500 }], totalCents: 5000, paymentMethodId: method })
+    ).toEqual({
+      ok: false,
+      error: "O sinal recebido (R$ 75,00) passa do total da comanda. Fature sem abater o sinal",
+    })
   })
 })

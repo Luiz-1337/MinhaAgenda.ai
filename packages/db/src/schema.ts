@@ -2389,12 +2389,16 @@ export const appointmentDeposits = pgTable(
     receivedAt: timestamp('received_at'),
     settledBy: uuid('settled_by').references(() => profiles.id, { onDelete: 'set null' }),
     createdBy: uuid('created_by').references(() => profiles.id, { onDelete: 'set null' }),
+    // A comanda em que o sinal foi abatido (fatia 8b). Só sinal recebido (CHECK).
+    saleId: uuid('sale_id').references(() => sales.id, { onDelete: 'set null' }),
+    appliedAt: timestamp('applied_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()
   },
   (table) => [
     uniqueIndex('appointment_deposits_appointment_unique').on(table.appointmentId),
-    index('appointment_deposits_salon_status_idx').on(table.salonId, table.status)
+    index('appointment_deposits_salon_status_idx').on(table.salonId, table.status),
+    index('appointment_deposits_sale_idx').on(table.saleId)
   ]
 )
 

@@ -109,7 +109,9 @@ de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fat
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
 `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — migration 065
 aplicada, publicada no preview e **testada em uso** em 19/nov/2026; ainda fora
-da `main` — ver §14.6.
+da `main` — ver §14.6. Fatia 8b (abater o sinal na comanda) feita na mesma
+branch — **em commit local, migration 066 NÃO aplicada, sem publicar e sem
+teste em uso** — ver §14.7.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4887,7 +4889,7 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 | Fatia | O que entra | Estado |
 |---|---|---|
 | 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
-| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Pendente |
+| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita em código — **migration 066 não aplicada, sem publicar e sem teste em uso** (§14.7) |
 | 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento (no painel e por mensagem) e página pública de planos | Pendente |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
@@ -4917,6 +4919,12 @@ pagamento, cobrança automática de assinatura, estorno.
   recebido — CHECK), `settled_by` e `created_by`.
 
 A configuração do sinal continua em `salons.settings.advance_payment`.
+
+**Migration 066 (fatia 8b)** — altera `appointment_deposits` (criada na 065,
+sem linhas em produção):
+
+- **`sale_id`** (a comanda em que o sinal foi abatido; SET NULL) e
+  **`applied_at`**. CHECK: só sinal `received` pode ter comanda.
 
 ### 14.4 Regras decididas
 
@@ -4949,8 +4957,41 @@ Fatia 8a — sinal do agendamento:
     lançar, marcar, dispensar, reabrir e tirar é de quem edita
     (`schedule.edit`). Sem módulo: a agenda é do produto base.
 
+Fatia 8b — sinal abatido na comanda:
+
+11. **O sinal recebido vira um pagamento da comanda.** Ao faturar a comanda de
+    um agendamento com sinal recebido, o diálogo mostra "Sinal recebido (valor)
+    — abater como" e a forma de pagamento. O servidor soma o sinal dos
+    agendamentos da comanda e grava UM pagamento a mais nessa forma. É um
+    pagamento comum: tem a taxa e o prazo da forma, gera a conta a receber no
+    financeiro e entra na conta da comissão, como qualquer outro.
+12. **Quem fatura escolhe a forma**, porque o sistema não sabe por onde o
+    dinheiro entrou. A tela já sugere a forma cujo nome tem "PIX"; se o salão
+    não tem, começa em "Não abater nesta comanda".
+13. **Não abater é permitido.** O sinal continua "recebido" e livre.
+14. **Tudo ou nada.** Sinal maior que o total da comanda não é abatido: não há
+    troco nem crédito. Fatura-se sem abater.
+15. **O valor vem do banco, não da tela.** A tela manda só a forma de pagamento.
+16. **Só sinal RECEBIDO entra.** O "aguardando" e o "dispensado" não aparecem no
+    faturamento.
+17. **Sinal abatido fica preso à comanda**: não dá para reabrir, dispensar nem
+    tirar. O detalhe do agendamento mostra "Abatido na comanda #N".
+18. **Reabrir a comanda solta o sinal**: os pagamentos somem (como já sumiam) e
+    o sinal volta a "recebido", livre para o próximo faturamento.
+19. **A data do pagamento é a do faturamento**, não a do dia em que o PIX
+    chegou. Entre o recebimento e o atendimento, o sinal não aparece no
+    financeiro.
+20. **Sem módulo próprio.** Com o financeiro desligado, o sinal vira pagamento
+    da comanda e nada mais.
+
 Perguntas para o dono:
 
+- (8b) O sinal deveria entrar no financeiro no dia em que foi recebido, e não
+  no dia do atendimento (regra 19)? Isso pede um lançamento próprio de
+  "adiantamento de cliente".
+- (8b) Sinal maior que a comanda (regra 14): vira crédito do cliente, ou
+  devolve a diferença?
+- (8b) O sinal deve pagar taxa da forma de pagamento como os outros (regra 11)?
 - (fase 8) "Sem a parte de receber dos clientes" é isso mesmo — o sistema só
   controla, e o dinheiro vai direto para o salão?
 - (8a) Agendamento online sem sinal pago deve cair sozinho depois de um prazo
@@ -4971,10 +5012,14 @@ Perguntas para o dono:
   marcar; e, na confirmação, o bloco com valor, chave PIX, "Copiar chave" e o
   nome do titular.
 - **Detalhe do agendamento (8a)**: a linha "Sinal", com as ações.
+- **Faturar comanda (8b)**: o campo "Sinal recebido — abater como"; no resumo
+  da comanda, "Sinal recebido, a abater no faturamento" (aberta) e "Sinal
+  abatido (está nos pagamentos)" (faturada).
 
 | Assunto | Onde está |
 |---|---|
 | Sinal do agendamento (8a) | Migration `065_appointment_deposits.sql`; tabela `appointmentDeposits`; regra em `domain/appointment-deposits.ts` (`parseAdvancePayment`, `planDepositAmount`, `planDepositTransition`); I/O em `services/appointment-deposits.service.ts`; o sinal na criação online em `services/online-booking.service.ts`; actions em `actions/appointment-deposits.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-booking.ts` (pública); telas em `components/scheduler/appointment-deposit-row.tsx` e `app/agendar/[salonId]/booking-form.tsx`; testes em `appointment-deposits-domain.test.ts` |
+| Sinal abatido na comanda (8b) | Migration `066_appointment_deposit_sale.sql`; regra em `domain/appointment-deposits.ts` (`planDepositCredit`, e o bloqueio em `planDepositTransition`); o abatimento em `invoiceSaleService` e a soltura em `reopenSaleService` (`services/sales.service.ts`); `depositAvailable` e `depositApplied` em `getSaleService`; `depositPaymentMethodId` em `actions/sales.ts`; telas em `sales/[saleId]/sale-editor.tsx` e `appointment-deposit-row.tsx` |
 
 ### 14.6 Fatia 8a — estado (19/nov/2026)
 
@@ -5010,3 +5055,28 @@ Perguntas para o dono:
   - a agenda não mostra o sinal no cartão do agendamento, só no detalhe; não há
     lista de "aguardando sinal";
   - um valor de sinal por salão.
+
+### 14.7 Fatia 8b — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
+  e testes passando (web 1477).
+- **Migration 066: NÃO aplicada.** Altera `appointment_deposits`, que não tem
+  linhas em produção: não há cópia a fazer. Aplicar ANTES de publicar: sem
+  ela, abrir comanda com agendamento e o detalhe de qualquer agendamento falham (as
+  consultas passam a ler `sale_id`).
+- **As consultas não foram executadas contra o banco.**
+- **Limites desta fatia:**
+  - a data do pagamento do sinal é a do faturamento (regra 19);
+  - sinal maior que o total não é abatido (regra 14);
+  - o pagamento do sinal não tem marca própria na lista de pagamentos da
+    comanda — o resumo mostra só o total abatido;
+  - sinal recebido de agendamento cancelado continua sem destino no sistema.
+- **Sem teste em uso.** Roteiro, com a 066 aplicada, no salão de teste (que
+  tem financeiro ligado e uma forma "Teste PIX"): lançar sinal num agendamento
+  já iniciado e marcar como recebido; criar a comanda dele — o resumo mostra o
+  sinal a abater; faturar — o diálogo já vem com o sinal em "Teste PIX" e o
+  restante na outra linha; conferir os dois pagamentos e o "Sinal abatido"; no
+  detalhe do agendamento, "Abatido na comanda #N" sem ações; no financeiro, a
+  conta a receber do sinal; reabrir a comanda — o sinal volta a livre; faturar
+  com "Não abater" — o sinal continua recebido; limpar os dados.
