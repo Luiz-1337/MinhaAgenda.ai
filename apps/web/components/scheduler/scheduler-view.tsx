@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import dynamic from "next/dynamic"
 import { Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Users, Plus, ClipboardCheck, Receipt, Tag, Link2 } from "lucide-react"
@@ -102,6 +102,14 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
 
   const appointments = appointmentsQuery.data?.appointments ?? []
   const professionals = appointmentsQuery.data?.professionals ?? []
+
+  // Seleciona o primeiro profissional ativo automaticamente se nenhum estiver
+  // selecionado (ajuste durante o render, sem effect). O SchedulerView é o dono
+  // da seleção e a repassa aos subcomponentes, que filtram por um ID específico.
+  if (!selectedProId) {
+    const firstActivePro = professionals.find((p) => p.isActive)
+    if (firstActivePro) setSelectedProId(firstActivePro.id)
+  }
   const loading = appointmentsQuery.isLoading
   const error = appointmentsQuery.error ? (appointmentsQuery.error as Error).message : null
 
@@ -144,53 +152,6 @@ export function SchedulerView({ salonId, initialDate }: SchedulerViewProps) {
     setViewType('daily')
     setCurrentDate(new Date(oldestPendingAt))
   }
-
-  // Seleciona o primeiro profissional automaticamente se nenhum estiver selecionado
-  useEffect(() => {
-    if (professionals.length > 0 && !selectedProId) {
-       // Filtra apenas ativos para seleção automática, embora a query já deva retornar ativos ou a UI filtre
-       const activePros = professionals.filter(p => p.isActive)
-       if (activePros.length > 0) {
-         setSelectedProId(activePros[0].id) // Seleciona o primeiro específico por padrão? Ou 'all'?
-         // O código original selecionava o primeiro.
-         // Mas o dropdown original tinha opção "Todos". Vamos manter consistência com o original.
-         // Se o design original tinha "Todos", vamos ver.
-         // Código original:
-         // setProfessionals([{ id: 'all', name: 'Todos os Profissionais' }, ...active])
-         // setSelectedPro(allProfessionals[0]) // que era 'all'
-
-         // Se eu quiser suportar "Todos", precisaria ajustar a lógica de filtragem nos subcomponentes ou filtrar aqui.
-         // Os subcomponentes originais recebiam `selectedProfessionalId` e filtravam por ele.
-         // Se eu passar 'all', eles precisam saber lidar.
-         // Mas olhando o código dos subcomponentes que acabei de escrever:
-         // `appointmentsByProfessional.get(selectedProfessionalId)` -> Isso implica que eles esperam um ID específico.
-         // Para suportar "Todos", eu teria que alterar os subcomponentes ou lidar com isso aqui.
-         // O código original dos subcomponentes (Daily/Weekly) também tinha lógica:
-         // const selectedProfessionalAppointments = ... appointmentsByProfessional.get(selectedProfessionalId)
-         // Parece que eles NÃO suportavam ver todos ao mesmo tempo na visualização detalhada (Daily/Weekly),
-         // pois filtravam por ID único.
-         // Vamos manter o comportamento de selecionar um específico por enquanto para garantir que funcione como antes na visualização,
-         // ou implementar a visualização de "Todos" se for desejado.
-         // O código original do SchedulerView tinha a opção 'all' no dropdown, mas não vi como isso era passado para os subcomponentes.
-         // Ah, o SchedulerView original NÃO passava selectedPro para os subcomponentes!
-         // Os subcomponentes tinham seu PRÓPRIO estado `selectedProfessionalId` e lógica de seleção interna!
-         // Então a seleção no `SchedulerView` (cabeçalho) era desconectada da seleção dentro do `DailyScheduler`?
-         // Espera, olhando o código original do `SchedulerView`:
-         // Ele tinha um dropdown de profissionais no Header.
-         // Mas ele passava APENAS `salonId` e `initialDate` para `DailyScheduler`.
-         // E `DailyScheduler` tinha seu PRÓPRIO fetch e seu PRÓPRIO estado `selectedProfessionalId`.
-         // Isso significa que o dropdown no Header do `SchedulerView` NÃO controlava os subcomponentes?
-         // Isso parece um bug ou inconsistência da versão anterior, ou eu perdi algo.
-         // O dropdown no SchedulerView original parecia ser apenas visual ou incompleto.
-
-         // NA MINHA REFATORAÇÃO:
-         // Eu tornei o `SchedulerView` o "dono" da verdade.
-         // Eu vou passar `selectedProfessionalId` para os subcomponentes.
-         // Assim o dropdown do Header vai controlar a view.
-         setSelectedProId(activePros[0].id)
-       }
-    }
-  }, [professionals, selectedProId])
 
   // Helpers para UI
   const selectedPro = useMemo(() => {

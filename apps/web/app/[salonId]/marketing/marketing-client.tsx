@@ -510,7 +510,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                                 <div className="flex-1">
                                   <div className="text-[11px] font-bold text-foreground">Permitir mencionar oferta sutil</div>
                                   <p className="text-[10px] text-muted-foreground leading-snug">
-                                    A IA pode dizer "tem horário aberto" ou "condição especial", mas nunca promete preços ou descontos específicos.
+                                    A IA pode dizer &quot;tem horário aberto&quot; ou &quot;condição especial&quot;, mas nunca promete preços ou descontos específicos.
                                   </p>
                                 </div>
                               </label>
@@ -539,7 +539,7 @@ export default function MarketingClient({ salonId }: { salonId: string }) {
                                   />
                                   <div className="flex-1">
                                     <div className="text-[11px] font-bold text-foreground">
-                                      Passar-se por humano (sem rodapé "responder PARAR")
+                                      Passar-se por humano (sem rodapé &quot;responder PARAR&quot;)
                                     </div>
                                     <p className="text-[10px] text-muted-foreground leading-snug">
                                       A IA não vai incluir aviso de descadastro. A mensagem fica idêntica à de uma recepcionista real digitando.

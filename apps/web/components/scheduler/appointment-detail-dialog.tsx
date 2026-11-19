@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react"
+import { useMemo, useState, useTransition, type ReactNode } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -96,14 +96,16 @@ export function AppointmentDetailDialog({
 
   // Cada abertura começa limpa: um preço digitado e não confirmado não pode
   // reaparecer no agendamento seguinte.
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (!open) {
       setPendingAction(null)
       setPriceInput("")
       setIsCourtesy(false)
       setReason("")
     }
-  }, [open])
+  }
 
   if (!appointment) return null
 

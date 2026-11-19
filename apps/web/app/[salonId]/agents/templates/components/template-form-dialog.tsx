@@ -1,6 +1,7 @@
 "use client"
 
 import { useTransition, useEffect, useState, useRef } from "react"
+import { useIsMounted } from "@/lib/hooks/use-is-mounted"
 import { createPortal } from "react-dom"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -39,14 +40,10 @@ interface TemplateFormDialogProps {
 
 function TemplateTypeTooltip() {
   const [isVisible, setIsVisible] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsMounted()
   const iconRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ top: 0, left: 0 })
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (isVisible && iconRef.current) {

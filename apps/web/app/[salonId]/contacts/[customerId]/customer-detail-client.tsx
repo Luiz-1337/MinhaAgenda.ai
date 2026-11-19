@@ -50,7 +50,8 @@ export default function CustomerDetailClient({ salonId, initialDetail }: Props) 
   })
 
   const m = detail.metrics
-  const now = Date.now()
+  // Referência fixa da montagem: o render precisa ser puro (Date.now() muda a cada render).
+  const [now] = useState(() => Date.now())
   const upcoming = detail.appointments
     .filter((a) => new Date(a.date).getTime() > now && a.status !== "cancelled")
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
