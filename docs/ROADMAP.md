@@ -85,6 +85,8 @@ Fase 9 (relatórios e multiunidade): detalhada em §13. Fatia 9a (central de
 relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
 `claude/fase-7-cliente-agenda`): migration 064 aplicada em 18/nov/2026,
 publicada e testada em uso em 19/nov/2026 — ver §13.6.
+Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration — **em
+commit local, sem publicar e sem teste em uso** — ver §13.7.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4103,6 +4105,8 @@ Perguntas para o dono:
 | Aplicar a migration 064 (ou autorizar a aplicação), publicar a fatia 9a e ligar o módulo `reports` no salão de teste — ver §13.6 | Teste em uso da fatia 9a |
 | Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
+| Autorizar publicar a fatia 9b — ver §13.7 | Teste em uso da fatia 9b |
+| Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4120,7 +4124,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | Fatia | O que entra | Estado |
 |---|---|---|
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
-| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Pendente |
+| 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.7) |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
@@ -4131,6 +4135,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 
 ### 13.2 O que o levantamento encontrou (18/nov/2026)
 
+- (Depois da fatia 9b, são 26 dos 38 com tela.)
 - **22 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
   a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
   compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
@@ -4178,6 +4183,43 @@ Fatia 9a — central de relatórios:
 6. **Não há permissão por categoria** (a Belasis tem "acessar por relatório"):
    quem decide o que cada um vê é a permissão de cada tela de destino.
 
+Fatia 9b — relatórios financeiros:
+
+7. **Resultado líquido de serviços e de produtos**, por período, pelo dia da
+   comanda, só de comandas FATURADAS. Uma linha por serviço (ou produto):
+   quantidade, receita, taxas, comissão, custo, resultado e margem. Quem mais
+   rendeu vem primeiro.
+   - **Receita**: o total do item, já com desconto e cupom.
+   - **Taxas**: a taxa das formas de pagamento da comanda, repartida entre
+     TODOS os itens dela (inclusive pacote e assinatura), na proporção do total
+     de cada um, sem perder centavo.
+   - **Comissão**: a que o item gerou (profissional e auxiliar).
+   - **Custo**: no serviço, o custo fixo cadastrado nele; no produto, o custo
+     de compra que ele tem HOJE × a quantidade. Produto sem custo entra com
+     custo zero e o relatório avisa.
+   - **Resultado** = receita − taxas − comissão − custo.
+8. **O que o resultado líquido NÃO desconta**: o produto consumido no
+   atendimento (consumo por serviço), despesas do salão (aluguel, salário) e o
+   cashback. Item "do pacote" entra com receita zero e a comissão que gerou.
+9. **Projeção de faturamento**, de hoje a 30 dias (até 120): por dia, quantos
+   agendamentos, o valor agendado, o que vence a receber e a pagar, e o
+   previsto (agendado + a receber − a pagar).
+   - **Agendado**: o preço de tabela dos agendamentos pendentes e confirmados
+     que ainda não viraram comanda faturada. Serviço com faixa entra pelo menor
+     valor; "sob avaliação" não soma (aparece como "sem preço").
+   - **A receber e a pagar**: os lançamentos em aberto, pelo vencimento, pelo
+     valor líquido. O que já venceu fica fora dos dias, num aviso à parte.
+   - Não conta desconto, falta, cancelamento nem o que ainda vai ser agendado.
+10. **Extrato de contas**: uma conta por vez (a primeira ativa, se nenhuma for
+    escolhida). Saldo anterior, as baixas do período pelo dia da baixa (a mais
+    antiga primeiro), entrada ou saída pelo valor líquido, saldo corrido e saldo
+    final. Transferências entram. O que está em aberto não aparece.
+11. **Quem vê**: são números do financeiro — pedem o módulo `finance` e
+    `finance.access`, além do módulo `reports`. `reports.access` sozinho abre
+    a central, não estes relatórios.
+12. **O relatório e os filtros vivem na URL**: dá para recarregar, mandar o
+    link e marcar como favorito na central.
+
 Perguntas para o dono:
 
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
@@ -4185,6 +4227,16 @@ Perguntas para o dono:
 - (9a) Os favoritos devem ser de cada pessoa (regra 4) ou do salão?
 - (9a) Faz falta a permissão por categoria de relatório, como na Belasis, ou a
   permissão de cada tela basta (regra 6)?
+- (9b) O custo do produto deve ser o do dia da venda, e não o de hoje
+  (regra 7)? Hoje o sistema não guarda o custo no item da comanda.
+- (9b) O resultado líquido de serviços deve descontar o produto consumido no
+  atendimento (regra 8)?
+- (9b) A taxa da forma de pagamento deve ser repartida entre os itens (regra
+  7), ou ficar fora do resultado por item?
+- (9b) Na projeção, serviço com faixa de preço deve entrar pelo menor valor,
+  pelo maior ou pela média (regra 9)?
+- (9b) A projeção deve descontar uma taxa de falta ou de cancelamento?
+- (9b) O extrato deve mostrar também o que está em aberto, como previsão?
 - (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
   ver? A auditoria não leu a saída de nenhum.
 - (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
@@ -4196,10 +4248,15 @@ Perguntas para o dono:
 - **Central de relatórios (9a)** (`/[salonId]/reports`, item "Relatórios" no
   menu): "N de M relatórios disponíveis"; o bloco "Favoritos"; e um bloco por
   categoria, com o nome e o resumo de cada relatório, a estrela e "Abrir".
+- **Relatórios financeiros (9b)** (`/[salonId]/reports/finance?view=…`): o
+  seletor de relatório, o período (na projeção, só o "até") e, no extrato, a
+  conta. Cada relatório tem os totais em cartões, a tabela e uma nota dizendo o
+  que entra e o que não entra na conta.
 
 | Assunto | Onde está |
 |---|---|
 | Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
+| Relatórios financeiros (9b) | Sem migration; regra em `domain/finance-reports.ts` (`allocateByWeight`, `buildNetResult`, `planProjectionPeriod`, `buildRevenueProjection`, `buildAccountStatement`); I/O em `services/finance-reports.service.ts`; action em `actions/finance-reports.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/finance/`; os quatro destinos no catálogo (`domain/report-catalog.ts`); testes em `finance-reports-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4248,3 +4305,30 @@ Perguntas para o dono:
   acesso (para ver relatórios sumirem por permissão), salão com módulo
   desligado, e o teto de 20 favoritos. Há teste de regra para os três
   primeiros.
+
+### 13.7 Fatia 9b — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1402, db 296, mcp-server 409).
+- **Sem migration.** Só leitura: os três relatórios consultam comandas,
+  comissões, agendamentos e lançamentos que já existem.
+- **As consultas não foram executadas contra o banco.** Os testes cobrem a
+  conta (regra pura); o SQL do serviço só vai ser exercitado no teste em uso.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f);
+  - o custo do produto é o de hoje, não o do dia da venda;
+  - o resultado líquido não desconta consumo de produto no atendimento,
+    despesas do salão nem cashback;
+  - o resultado líquido lê até 5.000 itens de comanda por período, e o extrato
+    até 5.000 baixas; acima disso a tela avisa e pede um período menor;
+  - a projeção não tem gráfico, e não separa por profissional;
+  - o extrato é de uma conta por vez.
+- **Sem teste em uso.** Roteiro, no salão de teste: abrir os quatro pela
+  central; resultado líquido sem dados (tudo zero); criar e faturar uma comanda
+  com um serviço e um produto, numa forma de pagamento com taxa, e conferir
+  receita, taxa repartida, comissão, custo e resultado nos dois relatórios;
+  produto sem custo (aviso); projeção com um agendamento futuro e um lançamento
+  a pagar; extrato da conta que recebeu a comanda, com saldo anterior e saldo
+  corrido batendo com o saldo da conta no financeiro; trocar de conta e de
+  período; favoritar um deles; limpar os dados.

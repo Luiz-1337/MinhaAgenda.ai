@@ -48,13 +48,13 @@ const careMessages: ReportTarget = { path: 'care-messages', module: 'care_messag
 export const REPORT_CATALOG: readonly ReportDefinition[] = [
   // --- Financeiro ---------------------------------------------------------
   { key: 'finance.results', category: 'finance', name: 'Resultados financeiros', summary: 'Receitas e despesas por categoria e recebimentos por forma de pagamento, no período.', target: finance('finance/summary') },
-  { key: 'finance.net_services', category: 'finance', name: 'Resultado líquido de serviços', summary: 'O que os serviços renderam, descontados comissão, taxas e custo.', target: null, planned: 'fatia 9b' },
-  { key: 'finance.net_products', category: 'finance', name: 'Resultado líquido de produtos', summary: 'O que os produtos renderam, descontados custo, comissão e taxas.', target: null, planned: 'fatia 9b' },
-  { key: 'finance.projection', category: 'finance', name: 'Projeção de faturamento', summary: 'O que está agendado e a receber nos próximos dias.', target: null, planned: 'fatia 9b' },
+  { key: 'finance.net_services', category: 'finance', name: 'Resultado líquido de serviços', summary: 'O que cada serviço rendeu, descontados taxas, comissão e custo.', target: finance('reports/finance?view=services') },
+  { key: 'finance.net_products', category: 'finance', name: 'Resultado líquido de produtos', summary: 'O que cada produto rendeu, descontados taxas, comissão e custo de compra.', target: finance('reports/finance?view=products') },
+  { key: 'finance.projection', category: 'finance', name: 'Projeção de faturamento', summary: 'O que está agendado, a receber e a pagar, dia a dia, de hoje em diante.', target: finance('reports/finance?view=projection') },
   { key: 'finance.cash_flow', category: 'finance', name: 'Fluxo de caixa', summary: 'O que foi recebido e pago em cada dia do mês, pelo dia da baixa.', target: finance('finance/summary') },
   { key: 'finance.receipts', category: 'finance', name: 'Recebimentos', summary: 'Os lançamentos a receber e recebidos, com filtro de período e situação.', target: finance('finance') },
   { key: 'finance.expenses', category: 'finance', name: 'Despesas', summary: 'Os lançamentos a pagar e pagos, com filtro de período e situação.', target: finance('finance') },
-  { key: 'finance.account_statement', category: 'finance', name: 'Extrato de contas', summary: 'O que entrou e saiu de cada conta, com o saldo.', target: null, planned: 'fatia 9b' },
+  { key: 'finance.account_statement', category: 'finance', name: 'Extrato de contas', summary: 'O que entrou e saiu de uma conta no período, com o saldo corrido.', target: finance('reports/finance?view=statement') },
   { key: 'finance.movements', category: 'finance', name: 'Extrato de movimentações', summary: 'Todos os lançamentos do financeiro, incluindo transferências.', target: finance('finance') },
   { key: 'finance.cash_history', category: 'finance', name: 'Histórico de caixa', summary: 'Os caixas fechados, com abertura, movimentos e conferência.', target: { path: 'finance/cash', module: 'finance', permission: 'cash.access' } },
 
