@@ -10,9 +10,11 @@
  * O que este módulo garante antes dos cenários, sempre no salão de teste:
  *  1. o agente ativo usa o prompt de `system-prompt.txt` (o mesmo texto que vai
  *     para produção) e se chama "Judite";
- *  2. o corte feminino custa R$ 450 e a descrição não fala em cabelo curto;
- *  3. existe um serviço "Hidratação" (com valor DE TESTE — o valor real ainda
- *     não foi informado pelo salão) para o cenário de dois serviços;
+ *  2. o corte feminino custa R$ 560 (o valor de produção desde 18/nov) e a
+ *     descrição não fala em cabelo curto;
+ *  3. existe um serviço "Hidratação" (com valor DE TESTE — o salão só passou o
+ *     valor dela junto com o corte, na tabela de combinações) para o cenário de
+ *     dois serviços;
  *  4. a integração `belasis` está ativa com um token de mentira, e profissional e
  *     serviços estão vinculados a ids da Belasis simulada.
  */
@@ -51,7 +53,8 @@ const PRODUCTION_SALON_IDS = new Set(["d4067a85-0c76-42d0-94c8-448f0ed21fcd"])
 export const HIDRATACAO_TEST_PRICE = 180
 const HIDRATACAO_TEST_DURATION = 60
 
-const CORTE_FEMININO_PRICE = "450.00"
+/** O mesmo de produção (`services`, Spettacolo Salone) desde 18/nov/2026. */
+const CORTE_FEMININO_PRICE = "560.00"
 const CORTE_FEMININO_DESCRIPTION =
   "Valor único, para qualquer cabelo. Inclui lavagem, finalização e visagismo. Retorno recomendado: 60 a 90 dias."
 
