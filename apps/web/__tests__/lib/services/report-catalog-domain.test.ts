@@ -90,7 +90,7 @@ describe("resolveReportCatalog", () => {
       "ranking.referrals",
     ])
     // O que ainda não existe continua aparecendo, como "em breve".
-    expect(reports.some((report) => report.key === "professionals.panel")).toBe(true)
+    expect(reports.some((report) => report.key === "tax.all")).toBe(true)
     expect(reports.some((report) => report.key === "finance.results")).toBe(false)
   })
 

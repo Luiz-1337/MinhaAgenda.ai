@@ -91,6 +91,8 @@ Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
 migration, publicada e testada em uso em 19/nov/2026 — ver §13.8.
 Fatia 9d (relatórios de vendas e rankings) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.9.
+Fatia 9e (painel de profissionais) feita na mesma branch, sem migration — **em
+commit local, sem publicar e sem teste em uso** — ver §13.10.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4112,6 +4114,8 @@ Perguntas para o dono:
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
 | Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
+| Autorizar publicar a fatia 9e — ver §13.10 | Teste em uso da fatia 9e |
+| Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4132,7 +4136,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
-| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
+| 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
 
@@ -4285,6 +4289,27 @@ Fatia 9d — relatórios de vendas e rankings:
     e os serviços só entram para quem tem também `services.access`. Indicação
     pede `customers.access`. Todos pedem o módulo `reports`.
 
+Fatia 9e — painel de profissionais:
+
+26. **Uma linha por profissional**, no período (sem datas, o mês até hoje):
+    clientes únicos, valor realizado, ticket médio, frequência, agendamentos e
+    ocupação. Entra todo profissional ativo, e o inativo que teve venda ou
+    agendamento no período. Quem mais realizou vem primeiro.
+27. **Valor realizado, clientes únicos, ticket e frequência saem das comandas
+    FATURADAS**, pelo dia da comanda: serviço conta para quem executou, produto
+    para quem vendeu; pacote, assinatura e o auxiliar não entram. Ticket médio
+    = valor ÷ comandas. Frequência = comandas ÷ clientes únicos.
+28. **Ocupação** = tempo dos agendamentos não cancelados (falta conta: o
+    horário ficou reservado) ÷ tempo de expediente cadastrado, sem os
+    intervalos, nos dias do período. Bloqueio de horário não é agendamento.
+    Sem expediente cadastrado, a ocupação fica em branco. **Folgas e bloqueios
+    não são descontados do expediente.**
+29. **"BAIXA OCUPAÇÃO"** aparece abaixo de 30%.
+30. **Os cartões são do salão**, não a soma das linhas: o cliente que passou
+    por dois profissionais conta uma vez, e a comanda também.
+31. **Quem vê**: pede os módulos `reports` e `sales`, `sales.view_all` E
+    `schedule.view_all` (mostra as vendas e a agenda de todos).
+
 Perguntas para o dono:
 
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
@@ -4320,6 +4345,12 @@ Perguntas para o dono:
   para o relatório de indicação não depender de grafia?
 - (9d) A lista de produtos e serviços deve trazer a comissão de cada item e o
   saldo de estoque?
+- (9e) O limite de "baixa ocupação" é 30% (regra 29). Qual o número certo?
+- (9e) A ocupação deve descontar folgas, feriados e bloqueios do expediente
+  (regra 28)? Hoje não há tela para cadastrar folga.
+- (9e) "Frequência" é comandas ÷ clientes únicos (regra 27). É isso que o dono
+  entende por frequência, ou é o intervalo médio entre as visitas?
+- (9e) O painel deve mostrar também a comissão e as faltas de cada um?
 - (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
   ver? A auditoria não leu a saída de nenhum.
 - (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
@@ -4344,6 +4375,10 @@ Perguntas para o dono:
 - **Relatórios de vendas (9d)** (`/[salonId]/reports/sales?view=…`): vendidos,
   ranking de clientes, ranking de vendas e indicação, com período; e a lista
   de produtos e serviços, sem período.
+- **Painel de profissionais (9e)** (`/[salonId]/reports/professionals`): o
+  período; quatro cartões do salão (clientes únicos, valor realizado, ticket
+  médio, ocupação); e a tabela por profissional, com a ocupação em porcentagem,
+  em horas ("12h de 40h") e o selo "BAIXA OCUPAÇÃO".
 
 | Assunto | Onde está |
 |---|---|
@@ -4351,6 +4386,7 @@ Perguntas para o dono:
 | Relatórios financeiros (9b) | Sem migration; regra em `domain/finance-reports.ts` (`allocateByWeight`, `buildNetResult`, `planProjectionPeriod`, `buildRevenueProjection`, `buildAccountStatement`); I/O em `services/finance-reports.service.ts`; action em `actions/finance-reports.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/finance/`; os quatro destinos no catálogo (`domain/report-catalog.ts`); testes em `finance-reports-domain.test.ts` |
 | Relatórios de agendamentos e de clientes (9c) | Sem migration; regra em `domain/agenda-reports.ts` (`countByStatus`, `appointmentOrigin`, `buildOriginReport`, `buildCreationReport`, `buildBirthdayList`, `buildInactiveList`); I/O em `services/agenda-reports.service.ts`; actions em `actions/agenda-reports.ts` (na guarda de `actions-authz.test.ts`); telas em `app/[salonId]/reports/appointments/` e `reports/customers/`; os seis destinos no catálogo; testes em `agenda-reports-domain.test.ts` |
 | Relatórios de vendas e rankings (9d) | Sem migration; regra em `domain/sales-reports.ts` (`buildSoldItemsReport`, `buildCustomerRanking`, `buildProfessionalRanking`, `buildReferralReport`); I/O em `services/sales-reports.service.ts`; action em `actions/sales-reports.ts` (na guarda de `actions-authz.test.ts`; a permissão depende do relatório); tela em `app/[salonId]/reports/sales/`; os cinco destinos no catálogo; testes em `sales-reports-domain.test.ts` |
+| Painel de profissionais (9e) | Sem migration; regra em `domain/professional-panel.ts` (`countWeekdays`, `weeklyWorkMinutes`, `buildProfessionalPanel`); I/O em `services/professional-panel.service.ts` (reusa `listSoldItemsService`); action em `actions/professional-panel.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/professionals/`; o destino no catálogo; testes em `professional-panel-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4534,3 +4570,26 @@ Perguntas para o dono:
 - Dados de teste limpos: a comanda #34 reaberta e excluída pela tela (fica
   como excluída, como as anteriores), e o "como conheceu" dos três clientes
   desfeito.
+
+### 13.10 Fatia 9e — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1439).
+- **Sem migration.** Só leitura.
+- **As consultas não foram executadas contra o banco.** Os testes cobrem a
+  conta (regra pura); o SQL só vai ser exercitado no teste em uso.
+- Com esta fatia, o catálogo da central tem tela para tudo menos a nota fiscal
+  (fase 10): 38 de 39.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f) e sem gráfico;
+  - a ocupação não desconta folga, feriado nem bloqueio, e usa o expediente
+    de HOJE para o período inteiro (não guarda histórico de expediente);
+  - plano SOLO: a agenda grava tudo no profissional do dono, então a ocupação
+    dos outros fica zerada;
+  - lê até 5.000 itens de comanda e 10.000 agendamentos por período.
+- **Sem teste em uso.** Roteiro, no salão de teste: abrir pela central; sem
+  dados, os dois profissionais com valor zero e a ocupação pelo expediente;
+  conferir o tempo de expediente do período contra o cadastro; faturar uma
+  comanda de teste e marcar um agendamento, e conferir valor, cliente único,
+  ticket, frequência e ocupação; limpar os dados.

@@ -101,7 +101,7 @@ export const REPORT_CATALOG: readonly ReportDefinition[] = [
   { key: 'messages.sent', category: 'messages', name: 'Mensagens enviadas', summary: 'Os envios de cuidados, retorno e pedido de avaliação.', target: careMessages },
 
   // --- Profissionais ------------------------------------------------------
-  { key: 'professionals.panel', category: 'professionals', name: 'Painel de profissionais', summary: 'Clientes únicos, valor realizado, ticket médio, frequência e ocupação.', target: null, planned: 'fatia 9e' },
+  { key: 'professionals.panel', category: 'professionals', name: 'Painel de profissionais', summary: 'Clientes únicos, valor realizado, ticket médio, frequência e ocupação.', target: { path: 'reports/professionals', module: 'sales', permission: 'sales.view_all' } },
 ]
 
 const REPORT_KEYS: ReadonlySet<string> = new Set(REPORT_CATALOG.map((report) => report.key))
