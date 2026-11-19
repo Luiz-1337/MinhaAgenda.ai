@@ -11,6 +11,7 @@ import {
   createCustomerSubscription,
   deleteCustomerSubscription,
   renewCustomerSubscription,
+  saveSubscriptionReminder,
   searchSubscriptionCustomers,
   setCustomerSubscriptionActive,
 } from "@/app/actions/subscriptions"
@@ -26,10 +27,15 @@ import type {
   SubscriptionCustomerOption,
 } from "@/lib/types/subscriptions"
 import type { CustomerSubscriptionStatus } from "@repo/db"
+import {
+  SUBSCRIPTION_DUE_SOON_DAYS,
+  subscriptionDueAlert,
+  subscriptionDueLabel,
+} from "@repo/db/src/domain/subscriptions"
 import { Modal, formatCalendarDate, iconButtonClass, inputClass, labelClass } from "../../inventory/inventory-ui"
 import { PackagesNav } from "../packages-ui"
 
-type Filter = "all" | CustomerSubscriptionStatus
+type Filter = "all" | "due_soon" | CustomerSubscriptionStatus
 
 const linkButtonClass = "text-xs font-bold text-accent hover:underline disabled:opacity-50 disabled:no-underline"
 
@@ -59,7 +65,12 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
   const [toDelete, setToDelete] = useState<CustomerSubscriptionDTO | null>(null)
 
   const visible = useMemo(
-    () => (filter === "all" ? data.subscriptions : data.subscriptions.filter((item) => item.status === filter)),
+    () =>
+      filter === "all"
+        ? data.subscriptions
+        : filter === "due_soon"
+          ? data.subscriptions.filter((item) => subscriptionDueAlert(item.dueInDays) === "due_soon")
+          : data.subscriptions.filter((item) => item.status === filter),
     [data.subscriptions, filter]
   )
 
@@ -67,6 +78,7 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
     { key: "all", label: "Todas" },
     { key: "pending", label: `Pendentes (${data.totals.pending})` },
     { key: "active", label: `Ativas (${data.totals.active})` },
+    { key: "due_soon", label: `Vencendo (${data.totals.dueSoon})` },
     { key: "expired", label: `Expiradas (${data.totals.expired})` },
     { key: "inactive", label: `Desativadas (${data.totals.inactive})` },
   ]
@@ -171,6 +183,41 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
         <Stat label="Desativadas" value={String(data.totals.inactive)} hint="Encerradas pelo salão" />
       </div>
 
+      {(data.totals.dueSoon > 0 || data.totals.expired > 0) && (
+        <div
+          role="status"
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground"
+        >
+          <p>
+            {[
+              data.totals.dueSoon > 0
+                ? `${data.totals.dueSoon} ${data.totals.dueSoon === 1 ? "assinatura vence" : "assinaturas vencem"} nos próximos ${SUBSCRIPTION_DUE_SOON_DAYS} dias`
+                : "",
+              data.totals.expired > 0
+                ? `${data.totals.expired} ${data.totals.expired === 1 ? "está vencida" : "estão vencidas"}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" e ")}
+            . A cobrança não é automática: use “Renovar”.
+          </p>
+          <div className="flex gap-3">
+            {data.totals.dueSoon > 0 && (
+              <button type="button" onClick={() => setFilter("due_soon")} className={linkButtonClass}>
+                Ver as que vencem
+              </button>
+            )}
+            {data.totals.expired > 0 && (
+              <button type="button" onClick={() => setFilter("expired")} className={linkButtonClass}>
+                Ver as vencidas
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ReminderCard salonId={salonId} reminder={data.reminder} canManage={data.can.manage} />
+
       <section className="bg-card border border-border rounded-md">
         <div className="p-3 border-b border-border bg-muted/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assinaturas</h3>
@@ -227,6 +274,17 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
                     </td>
                     <td className="p-3 tabular-nums text-muted-foreground">
                       {subscription.paidUntil ? formatCalendarDate(subscription.paidUntil) : "—"}
+                      {subscriptionDueAlert(subscription.dueInDays) && (
+                        <span
+                          className={`block text-[11px] font-semibold ${
+                            subscriptionDueAlert(subscription.dueInDays) === "overdue"
+                              ? "text-destructive"
+                              : "text-amber-700 dark:text-amber-400"
+                          }`}
+                        >
+                          {subscriptionDueLabel(subscription.dueInDays)}
+                        </span>
+                      )}
                       {subscription.lastSale && (
                         <Link
                           href={`/${salonId}/sales/${subscription.lastSale.saleId}`}
@@ -497,5 +555,142 @@ function CustomerPicker({
         </div>
       )}
     </div>
+  )
+}
+
+// ============================================================================
+// Aviso de vencimento por WhatsApp (fase 8, fatia 8d)
+// ============================================================================
+
+function ReminderCard({
+  salonId,
+  reminder,
+  canManage,
+}: {
+  salonId: string
+  reminder: CustomerSubscriptionsDTO["reminder"]
+  canManage: boolean
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [editing, setEditing] = useState(false)
+  const [isEnabled, setIsEnabled] = useState(reminder.isEnabled)
+  const [daysBefore, setDaysBefore] = useState(String(reminder.daysBefore))
+  const [message, setMessage] = useState(reminder.message ?? "")
+
+  function open() {
+    setIsEnabled(reminder.isEnabled)
+    setDaysBefore(String(reminder.daysBefore))
+    setMessage(reminder.message ?? "")
+    setEditing(true)
+  }
+
+  function submit() {
+    const days = Number(daysBefore)
+    if (!Number.isInteger(days) || days < reminder.limits.min || days > reminder.limits.max) {
+      toast.error(`Informe de ${reminder.limits.min} a ${reminder.limits.max} dias`)
+      return
+    }
+    startTransition(async () => {
+      const result = await saveSubscriptionReminder({ salonId, isEnabled, daysBefore: days, message })
+      if ("error" in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(isEnabled ? "Aviso de vencimento ligado" : "Aviso de vencimento desligado")
+      setEditing(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <section className="bg-card border border-border rounded-md p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Aviso de vencimento por WhatsApp
+        </h3>
+        <p className="mt-1 text-sm text-foreground">
+          {reminder.isEnabled
+            ? `Ligado: o cliente recebe uma mensagem ${reminder.daysBefore} ${
+                reminder.daysBefore === 1 ? "dia" : "dias"
+              } antes de a assinatura vencer.`
+            : "Desligado: nenhuma mensagem é enviada."}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Sai das 9h às 20h, uma vez por vencimento, e não vai para quem pediu para não receber mensagens. O que
+          saiu aparece em{" "}
+          <Link href={`/${salonId}/care-messages`} className="font-semibold text-accent hover:underline">
+            Cuidados e retorno
+          </Link>
+          .
+        </p>
+      </div>
+      {canManage && (
+        <Button variant="outline" onClick={open} disabled={isPending}>
+          Configurar
+        </Button>
+      )}
+
+      {editing && (
+        <Modal title="Aviso de vencimento por WhatsApp" onClose={() => setEditing(false)} disabled={isPending}>
+          <div className="p-4 flex flex-col gap-3">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={isEnabled}
+                disabled={isPending}
+                onChange={(event) => setIsEnabled(event.target.checked)}
+              />
+              Avisar o cliente antes de a assinatura vencer
+            </label>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reminder-days" className={labelClass}>
+                Dias antes do vencimento ({reminder.limits.min} a {reminder.limits.max})
+              </label>
+              <input
+                id="reminder-days"
+                type="number"
+                min={reminder.limits.min}
+                max={reminder.limits.max}
+                value={daysBefore}
+                disabled={isPending}
+                onChange={(event) => setDaysBefore(event.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reminder-message" className={labelClass}>
+                Mensagem (opcional)
+              </label>
+              <textarea
+                id="reminder-message"
+                rows={4}
+                maxLength={1000}
+                value={message}
+                disabled={isPending}
+                placeholder={reminder.defaultMessage}
+                onChange={(event) => setMessage(event.target.value)}
+                className={inputClass}
+              />
+              <p className="text-xs text-muted-foreground">
+                Em branco, sai o texto acima. Variáveis: {"{cliente}"}, {"{salao}"}, {"{item}"} (o plano) e{" "}
+                {"{vencimento}"} (dia e mês).
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              O aviso não cobra nada: a renovação continua sendo feita pelo salão, em “Renovar”.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-border">
+            <Button variant="ghost" onClick={() => setEditing(false)} disabled={isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={submit} disabled={isPending}>
+              Salvar
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </section>
   )
 }

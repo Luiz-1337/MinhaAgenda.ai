@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import {
   customerFirstName,
+  DEFAULT_SUBSCRIPTION_DUE_TEXT,
+  formatSubscriptionDueDate,
+  planSubscriptionReminder,
   decideCareDispatch,
   isPreCareDue,
   isWithinCareSendHours,
@@ -258,5 +261,100 @@ describe("toWhatsAppNumber", () => {
     expect(toWhatsAppNumber(null)).toBeNull()
     expect(toWhatsAppNumber("")).toBeNull()
     expect(toWhatsAppNumber("90000-0000")).toBeNull()
+  })
+})
+
+describe("aviso de vencimento da assinatura (fase 8, fatia 8d)", () => {
+  const now = new Date("2026-11-19T15:00:00Z")
+  const subscription = {
+    settingsEnabled: true,
+    deactivated: false,
+    paidUntil: "2026-11-22",
+    due: "2026-11-22",
+    today: "2026-11-19",
+  }
+  const ctx: CareDispatchContext = {
+    kind: "subscription_due",
+    scheduledFor: now,
+    now,
+    moduleEnabled: true,
+    customerHasPhone: true,
+    customerOptedOut: false,
+    rule: null,
+    saleStatus: null,
+    appointment: null,
+    review: null,
+    customerHasUpcomingAppointment: false,
+    subscription,
+  }
+
+  it("sai quando a assinatura ainda vence no dia anunciado", () => {
+    expect(decideCareDispatch(ctx)).toEqual({ action: "send" })
+    expect(decideCareDispatch({ ...ctx, subscription: { ...subscription, today: "2026-11-22" } })).toEqual({
+      action: "send",
+    })
+  })
+
+  it("não sai para quem pediu para não receber, sem telefone ou com o módulo desligado", () => {
+    expect(decideCareDispatch({ ...ctx, customerOptedOut: true }).action).toBe("skip")
+    expect(decideCareDispatch({ ...ctx, customerHasPhone: false }).action).toBe("skip")
+    expect(decideCareDispatch({ ...ctx, moduleEnabled: false }).action).toBe("skip")
+  })
+
+  it("não sai se o aviso foi desligado, a assinatura mudou ou o dia passou", () => {
+    expect(decideCareDispatch({ ...ctx, subscription: null })).toEqual({
+      action: "skip",
+      reason: "A assinatura foi excluída",
+    })
+    expect(decideCareDispatch({ ...ctx, subscription: { ...subscription, settingsEnabled: false } })).toEqual({
+      action: "skip",
+      reason: "O aviso de vencimento foi desativado",
+    })
+    expect(decideCareDispatch({ ...ctx, subscription: { ...subscription, deactivated: true } })).toEqual({
+      action: "skip",
+      reason: "A assinatura foi desativada",
+    })
+    expect(decideCareDispatch({ ...ctx, subscription: { ...subscription, paidUntil: "2026-12-22" } })).toEqual({
+      action: "skip",
+      reason: "O vencimento da assinatura mudou",
+    })
+    expect(decideCareDispatch({ ...ctx, subscription: { ...subscription, paidUntil: null } }).action).toBe("skip")
+    expect(decideCareDispatch({ ...ctx, subscription: { ...subscription, today: "2026-11-23" } })).toEqual({
+      action: "skip",
+      reason: "O vencimento já passou",
+    })
+  })
+
+  it("a configuração: de 1 a 15 dias, texto opcional, desligado se não vier ligado", () => {
+    expect(planSubscriptionReminder({ isEnabled: true, daysBefore: 3, message: "  Oi {cliente}  " })).toEqual({
+      ok: true,
+      settings: { isEnabled: true, daysBefore: 3, message: "Oi {cliente}" },
+    })
+    expect(planSubscriptionReminder({ isEnabled: "true", daysBefore: 15, message: "" })).toEqual({
+      ok: true,
+      settings: { isEnabled: false, daysBefore: 15, message: null },
+    })
+    expect(planSubscriptionReminder({ isEnabled: true, daysBefore: 0 })).toEqual({
+      ok: false,
+      error: "Informe de 1 a 15 dias",
+    })
+    expect(planSubscriptionReminder({ isEnabled: true, daysBefore: 16 }).ok).toBe(false)
+    expect(planSubscriptionReminder({ isEnabled: true, daysBefore: 2.5 }).ok).toBe(false)
+    expect(planSubscriptionReminder({ isEnabled: true, daysBefore: 3, message: "x".repeat(1001) })).toEqual({
+      ok: false,
+      error: "Mensagem muito longa",
+    })
+  })
+
+  it("o texto leva o plano e o vencimento", () => {
+    expect(formatSubscriptionDueDate("2026-11-22")).toBe("22/11")
+    expect(
+      renderCareMessage(DEFAULT_SUBSCRIPTION_DUE_TEXT, {
+        customerName: "Ana Teste",
+        salonName: "Salão Teste",
+        itemName: "Clube",
+        dueDate: "22/11",
+      })
+    ).toBe("Olá, Ana! Sua assinatura Clube no Salão Teste vence em 22/11. Fale com a gente para renovar.")
   })
 })

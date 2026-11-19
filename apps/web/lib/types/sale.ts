@@ -120,6 +120,10 @@ export interface SaleDetailDTO {
   cashbackRedeemed: string
   /** Quanto a comanda gerou de cashback para o cliente. */
   cashbackEarned: string
+  /** Sinal recebido dos agendamentos da comanda que ainda pode ser abatido (fase 8). */
+  depositAvailable: string
+  /** Sinal abatido nesta comanda, já dentro dos pagamentos. */
+  depositApplied: string
   /** O cupom aplicado na comanda (fase 6). */
   coupon: SaleCouponDTO | null
   invoicedAt: string | null
@@ -277,6 +281,8 @@ export interface InvoiceSaleInput {
   debtDueDate?: string | null
   /** Quanto do total pagar com o cashback do cliente, em reais (fase 6). */
   redeemCashback?: number
+  /** A forma de pagamento do sinal recebido a abater (fase 8). Vazio = não abate. */
+  depositPaymentMethodId?: string | null
 }
 
 /** Recebimento (todo ou parte) do valor em aberto de uma comanda faturada. */

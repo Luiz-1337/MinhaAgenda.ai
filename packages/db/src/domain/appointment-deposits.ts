@@ -6,7 +6,12 @@
  *
  * A configuração do sinal já existia (`salons.settings.advance_payment`, que a IA
  * do WhatsApp usa para pedir o PIX). Aqui ela é lida do mesmo lugar.
+ *
+ * Fatia 8b: o sinal RECEBIDO é abatido na comanda do atendimento, como um
+ * pagamento a mais (`planDepositCredit`). Abatido, ele fica preso à comanda.
  */
+
+import { centsToNumeric } from './sales'
 
 export const DEPOSIT_STATUSES = ['pending', 'received', 'waived'] as const
 
@@ -76,7 +81,15 @@ export type DepositTransition = { ok: true; status: DepositStatus } | { ok: fals
  *   - dispensar: só de "aguardando" (o recebido tem que ser reaberto antes);
  *   - reabrir: de "recebido" ou "dispensado" de volta para "aguardando".
  */
-export function planDepositTransition(current: DepositStatus, action: DepositAction): DepositTransition {
+export function planDepositTransition(
+  current: DepositStatus,
+  action: DepositAction,
+  /** O sinal já foi abatido numa comanda faturada (fatia 8b). */
+  applied = false
+): DepositTransition {
+  if (applied) {
+    return { ok: false, error: 'Este sinal já foi abatido numa comanda. Reabra a comanda antes de mexer nele' }
+  }
   if (action === 'receive') {
     if (current === 'received') return { ok: false, error: 'Este sinal já está marcado como recebido' }
     return { ok: true, status: 'received' }
@@ -90,4 +103,56 @@ export function planDepositTransition(current: DepositStatus, action: DepositAct
   }
   if (current === 'pending') return { ok: false, error: 'Este sinal já está aguardando' }
   return { ok: true, status: 'pending' }
+}
+
+export type DepositCreditPlan =
+  | {
+      ok: true
+      /** Os sinais abatidos nesta comanda. Vazio = nada a abater. */
+      depositIds: string[]
+      /** O pagamento que o abatimento vira. NULL = nada a abater. */
+      payment: { paymentMethodId: string; amount: number } | null
+      amountCents: number
+    }
+  | { ok: false; error: string }
+
+/**
+ * O abatimento do sinal no faturamento da comanda (fatia 8b).
+ *
+ * O sinal recebido entra como UM pagamento a mais, na forma que quem fatura
+ * escolheu (o dinheiro já chegou, por PIX). Sem forma escolhida, nada é abatido
+ * e o sinal continua livre. Abate-se tudo ou nada: sinal maior que o total da
+ * comanda é erro — sobraria troco, que não existe aqui.
+ */
+export function planDepositCredit(input: {
+  /** Sinais RECEBIDOS e ainda não abatidos dos agendamentos da comanda. */
+  deposits: readonly { id: string; amountCents: number }[]
+  totalCents: number
+  /** A forma de pagamento escolhida para o abatimento. Vazio = não abater. */
+  paymentMethodId: string | null | undefined
+}): DepositCreditPlan {
+  if (!input.paymentMethodId) return { ok: true, depositIds: [], payment: null, amountCents: 0 }
+
+  if (input.deposits.length === 0) {
+    return { ok: false, error: 'Esta comanda não tem sinal recebido para abater' }
+  }
+
+  const amountCents = input.deposits.reduce((sum, deposit) => sum + deposit.amountCents, 0)
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    return { ok: false, error: 'O sinal desta comanda tem valor inválido' }
+  }
+  if (amountCents > input.totalCents) {
+    const amount = centsToNumeric(amountCents).replace('.', ',')
+    return {
+      ok: false,
+      error: `O sinal recebido (R$ ${amount}) passa do total da comanda. Fature sem abater o sinal`,
+    }
+  }
+
+  return {
+    ok: true,
+    depositIds: input.deposits.map((deposit) => deposit.id),
+    payment: { paymentMethodId: input.paymentMethodId, amount: amountCents / 100 },
+    amountCents,
+  }
 }

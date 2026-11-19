@@ -102,13 +102,23 @@ caminho A ("a organização é o dono") em 19/nov/2026. Feita na mesma branch, s
 migration, publicada e testada em uso com UMA unidade — **a comparação entre
 duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 9
 estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
-mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g ainda não**: estão
-no PR #24, aberto e esperando a mescla — ver §13.14.
+mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g também já estão na `main`** (conferido em 19/nov/2026: a
+branch `claude/fase-9-relatorios` não tem commit fora da `main`) — ver §13.14.
 Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
 de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
-`claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — **em commit local,
-migration 065 NÃO aplicada, sem publicar e sem teste em uso** — ver §14.6.
+`claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — migration 065
+aplicada e **testada em uso** em 19/nov/2026; **já na `main`**, pelo PR #26 —
+ver §14.6. **As fatias 8b, 8c e 8d estão no PR #28, aberto em 19/nov/2026 e
+esperando a mescla** — ver §14.10. Fatia 8b (abater o sinal na comanda) feita na mesma
+branch — migration 066 aplicada, publicada no preview e **testada em uso** em
+19/nov/2026; também fora da `main` — ver §14.7. Fatia 8c (aviso de
+vencimento da assinatura no painel e página pública de planos) feita na mesma
+branch, sem migration — publicada no preview e **testada em uso** em
+19/nov/2026; também fora da `main` — ver §14.8. Fatia 8d (aviso de vencimento da assinatura por WhatsApp) feita na mesma
+branch — migration 067 aplicada, publicada no preview e com a configuração
+testada em uso em 19/nov/2026; **o envio de verdade NÃO foi testado** (só roda
+pelo cron de produção); também fora da `main` — ver §14.9.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4137,7 +4147,6 @@ Perguntas para o dono:
 | Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
 | Ver a tela Organização com um dono de mais de um salão (hoje só há um em produção, e não é a conta de teste) — ver §13.13 | Confirmar a comparação entre unidades |
 | Confirmar o que é a fase 8 "sem receber dos clientes" e responder às perguntas de §14.4 (prazo para o sinal, sinal da IA, valor por serviço, devolução) | As fatias 8b e 8c |
-| Aplicar a migration 065 (ou autorizar a aplicação) e publicar a fatia 8a — ver §14.6 | Teste em uso da fatia 8a |
 | Responder às perguntas da multiunidade em §13.12 (gerente que vê todas as unidades, dado compartilhado, despesa organizacional, cobrança) | Decidir se o caminho B (entidade "organização") é necessário |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
@@ -4851,6 +4860,9 @@ uma fase própria, não uma fatia dos relatórios.
   (commit `da0fc56`): levou a **fase 7 inteira** (fatias 7a a 7f, de que a
   branch da fase 9 sai) e as **fatias 9a e 9b**. As migrations 059 a 064 já
   estavam aplicadas em produção.
+- **Atualização (19/nov/2026, fim do dia): as fatias 9c a 9g já estão na
+  `main`** — a branch da fase 9 não tem mais commit fora dela. O item abaixo
+  é o registro de antes da mescla.
 - **Faltam na `main`: as fatias 9c, 9d, 9e, 9f e 9g.** Estão no **PR #24**
   (`claude/fase-9-relatorios` → `main`), aberto em 19/nov/2026, esperando a
   mescla do dono. A branch mescla sem conflito. Nenhuma tem migration.
@@ -4886,9 +4898,10 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 
 | Fatia | O que entra | Estado |
 |---|---|---|
-| 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita em código — **migration 065 não aplicada, sem publicar e sem teste em uso** (§14.6) |
-| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Pendente |
-| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento (no painel e por mensagem) e página pública de planos | Pendente |
+| 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
+| 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
+| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita, sem migration, testada em uso no preview (§14.8); fora da `main` |
+| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Feita, migration 067 aplicada, configuração testada em uso no preview; **envio não testado** (§14.9); fora da `main` |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
 cobrança por link ou PIX gerado pelo sistema, confirmação automática do
@@ -4917,6 +4930,23 @@ pagamento, cobrança automática de assinatura, estorno.
   recebido — CHECK), `settled_by` e `created_by`.
 
 A configuração do sinal continua em `salons.settings.advance_payment`.
+
+**Migration 067 (fatia 8d):**
+
+- **`subscription_reminder_settings`** — por salão: `is_enabled` (nasce
+  desligado), `days_before` (1 a 15, padrão 3) e `message` (NULL = texto
+  padrão).
+- **`care_message_dispatches`** (a fila da fase 6; estava vazia em produção
+  quando a 067 foi aplicada) — ganha `subscription_id` (CASCADE) e `subscription_due`, o tipo
+  `subscription_due` no CHECK de tipo, a assinatura como origem válida e o
+  índice único (assinatura, vencimento). Só alarga: toda linha que existe
+  continua válida.
+
+**Migration 066 (fatia 8b)** — altera `appointment_deposits` (criada na 065,
+sem linhas em produção):
+
+- **`sale_id`** (a comanda em que o sinal foi abatido; SET NULL) e
+  **`applied_at`**. CHECK: só sinal `received` pode ter comanda.
 
 ### 14.4 Regras decididas
 
@@ -4949,8 +4979,107 @@ Fatia 8a — sinal do agendamento:
     lançar, marcar, dispensar, reabrir e tirar é de quem edita
     (`schedule.edit`). Sem módulo: a agenda é do produto base.
 
+Fatia 8b — sinal abatido na comanda:
+
+11. **O sinal recebido vira um pagamento da comanda.** Ao faturar a comanda de
+    um agendamento com sinal recebido, o diálogo mostra "Sinal recebido (valor)
+    — abater como" e a forma de pagamento. O servidor soma o sinal dos
+    agendamentos da comanda e grava UM pagamento a mais nessa forma. É um
+    pagamento comum: tem a taxa e o prazo da forma, gera a conta a receber no
+    financeiro e entra na conta da comissão, como qualquer outro.
+12. **Quem fatura escolhe a forma**, porque o sistema não sabe por onde o
+    dinheiro entrou. A tela já sugere a forma cujo nome tem "PIX"; se o salão
+    não tem, começa em "Não abater nesta comanda".
+13. **Não abater é permitido.** O sinal continua "recebido" e livre.
+14. **Tudo ou nada.** Sinal maior que o total da comanda não é abatido: não há
+    troco nem crédito. Fatura-se sem abater.
+15. **O valor vem do banco, não da tela.** A tela manda só a forma de pagamento.
+16. **Só sinal RECEBIDO entra.** O "aguardando" e o "dispensado" não aparecem no
+    faturamento.
+17. **Sinal abatido fica preso à comanda**: não dá para reabrir, dispensar nem
+    tirar. O detalhe do agendamento mostra "Abatido na comanda #N".
+18. **Reabrir a comanda solta o sinal**: os pagamentos somem (como já sumiam) e
+    o sinal volta a "recebido", livre para o próximo faturamento.
+19. **A data do pagamento é a do faturamento**, não a do dia em que o PIX
+    chegou. Entre o recebimento e o atendimento, o sinal não aparece no
+    financeiro.
+20. **Sem módulo próprio.** Com o financeiro desligado, o sinal vira pagamento
+    da comanda e nada mais.
+
+Fatia 8c — assinatura sem cobrança automática:
+
+21. **Nada é cobrado sozinho.** A renovação continua sendo "Renovar", que abre a
+    comanda da cobrança (fase 5, regra 24). A 8c só avisa.
+22. **"Vencendo"** é a assinatura ATIVA que vence em até 7 dias, contando hoje.
+    **"Vencida"** é a que já passou do vencimento (a situação Expirada).
+    Pendente (nunca paga) e Desativada não têm aviso.
+23. **Na tela de Assinaturas**: uma faixa no topo com quantas vencem nos
+    próximos 7 dias e quantas estão vencidas, com atalho para cada lista; o
+    filtro "Vencendo (N)"; e, na coluna Vencimento, "Vence hoje", "Vence
+    amanhã", "Vence em N dias", "Venceu ontem" ou "Venceu há N dias".
+24. **O aviso é só na tela de Assinaturas.** Não há alerta no sino nem no
+    dashboard.
+25. **A página pública de planos** (`/planos/<id do salão>`, sem login) mostra
+    os planos ATIVOS e marcados como "Visível": nome, descrição, valor e
+    periodicidade, do mais barato para o mais caro.
+26. **A página não vende nem cobra.** Diz "Para assinar, fale com o salão" e,
+    quando o salão tem WhatsApp cadastrado, mostra o botão que abre a conversa.
+    Não cria assinatura nem recolhe dado do visitante.
+27. **A página existe para salão com o módulo de pacotes e assinaturas.** Sem o
+    módulo e para endereço desconhecido a resposta é a mesma ("Planos
+    indisponíveis"). Com o módulo e sem plano visível: "Ainda não há planos".
+28. **O link** sai do botão "Link dos planos", na tela de Planos de assinatura.
+29. **O aviso por mensagem ficou fora** (fatia 8d): mexe na fila de mensagens ao
+    cliente, que é do caminho do WhatsApp, e pede migration.
+
+Fatia 8d — aviso de vencimento por WhatsApp:
+
+30. **Nasce desligado.** O salão liga em Assinaturas → "Aviso de vencimento
+    por WhatsApp" → Configurar (quem tem `packages.manage`): ligado ou não,
+    quantos dias antes (1 a 15, padrão 3) e o texto.
+31. **O texto** é opcional; em branco sai o padrão: "Olá, {cliente}! Sua
+    assinatura {item} no {salao} vence em {vencimento}. Fale com a gente para
+    renovar." `{item}` é o nome do plano e `{vencimento}`, dia e mês.
+32. **Usa a fila das mensagens ao cliente** (fase 6): sai das 9h às 20h de
+    Brasília, pelo canal do salão, fica gravado na conversa e aparece em
+    Cuidados e retorno → envios, como "Vencimento de assinatura".
+33. **Quem entra na fila**: assinatura não desativada, com período pago, que
+    vence em até N dias (contando hoje), de salão com o aviso ligado e o módulo
+    de pacotes. **Um aviso por assinatura e por vencimento.**
+34. **Assinatura vencida não é avisada.** O aviso é de antes; depois do
+    vencimento, a cobrança é com o salão (a tela mostra — regra 23).
+35. **Na hora de enviar, confere de novo**: não sai se o cliente pediu para não
+    receber, não tem telefone válido, o módulo ou o aviso foi desligado, a
+    assinatura foi desativada ou excluída, o vencimento mudou (renovou, ou a
+    cobrança foi desfeita) ou o dia já passou.
+36. **Falha não é reenviada** (regra da fila): fica registrada com o motivo. No
+    WhatsApp oficial, fora das 24 horas da última mensagem do cliente, só sai
+    modelo aprovado pela Meta — e não há modelo para este aviso.
+37. **Não depende do módulo `care_messages`**: quem manda é o módulo de
+    pacotes e assinaturas. Mas a tela de envios é a de Cuidados e retorno; sem
+    esse módulo o salão não vê o histórico.
+38. **O aviso não cobra nem renova nada.**
+
 Perguntas para o dono:
 
+- (8d) O aviso deve sair também DEPOIS do vencimento (regra 34), uma vez?
+- (8d) Precisa de modelo aprovado na Meta para o aviso sair no WhatsApp
+  oficial fora das 24 horas (regra 36)?
+- (8d) Salão sem o módulo de mensagens deve ver os avisos enviados em outro
+  lugar (regra 37)?
+- (8c) 7 dias de antecedência para "vencendo" está bom (regra 22)? Deve ser
+  configurável por salão?
+- (8c) O aviso de vencimento deve aparecer também no dashboard ou no sino
+  (regra 24)?
+- (8c) A página de planos deve deixar o visitante pedir a assinatura (nome e
+  WhatsApp), criando uma assinatura pendente para o salão cobrar (regra 26)?
+- (8c) A página de planos deve mostrar também os pacotes à venda?
+- (8b) O sinal deveria entrar no financeiro no dia em que foi recebido, e não
+  no dia do atendimento (regra 19)? Isso pede um lançamento próprio de
+  "adiantamento de cliente".
+- (8b) Sinal maior que a comanda (regra 14): vira crédito do cliente, ou
+  devolve a diferença?
+- (8b) O sinal deve pagar taxa da forma de pagamento como os outros (regra 11)?
 - (fase 8) "Sem a parte de receber dos clientes" é isso mesmo — o sistema só
   controla, e o dinheiro vai direto para o salão?
 - (8a) Agendamento online sem sinal pago deve cair sozinho depois de um prazo
@@ -4971,24 +5100,49 @@ Perguntas para o dono:
   marcar; e, na confirmação, o bloco com valor, chave PIX, "Copiar chave" e o
   nome do titular.
 - **Detalhe do agendamento (8a)**: a linha "Sinal", com as ações.
+- **Assinaturas (8c)**: a faixa de aviso, o filtro "Vencendo" e o texto de
+  vencimento em cada linha.
+- **Assinaturas (8d)**: o cartão "Aviso de vencimento por WhatsApp", com
+  "Configurar".
+- **Planos de assinatura (8c)**: o botão "Link dos planos".
+- **Página pública de planos (8c)** (`/planos/[salonId]`): os planos visíveis e
+  o contato do salão.
+- **Faturar comanda (8b)**: o campo "Sinal recebido — abater como"; no resumo
+  da comanda, "Sinal recebido, a abater no faturamento" (aberta) e "Sinal
+  abatido (está nos pagamentos)" (faturada).
 
 | Assunto | Onde está |
 |---|---|
 | Sinal do agendamento (8a) | Migration `065_appointment_deposits.sql`; tabela `appointmentDeposits`; regra em `domain/appointment-deposits.ts` (`parseAdvancePayment`, `planDepositAmount`, `planDepositTransition`); I/O em `services/appointment-deposits.service.ts`; o sinal na criação online em `services/online-booking.service.ts`; actions em `actions/appointment-deposits.ts` (na guarda de `actions-authz.test.ts`) e `actions/public-booking.ts` (pública); telas em `components/scheduler/appointment-deposit-row.tsx` e `app/agendar/[salonId]/booking-form.tsx`; testes em `appointment-deposits-domain.test.ts` |
+| Sinal abatido na comanda (8b) | Migration `066_appointment_deposit_sale.sql`; regra em `domain/appointment-deposits.ts` (`planDepositCredit`, e o bloqueio em `planDepositTransition`); o abatimento em `invoiceSaleService` e a soltura em `reopenSaleService` (`services/sales.service.ts`); `depositAvailable` e `depositApplied` em `getSaleService`; `depositPaymentMethodId` em `actions/sales.ts`; telas em `sales/[saleId]/sale-editor.tsx` e `appointment-deposit-row.tsx` |
 
 ### 14.6 Fatia 8a — estado (19/nov/2026)
 
 - Na branch `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`, cujo PR
-  #24 ainda não foi mesclado), **em commit local, sem publicar**. Typecheck
-  (db, web e mcp-server), lint (nenhum erro novo nos arquivos alterados) e
-  testes passando (web 1472).
-- **Migration 065: NÃO aplicada.** Só cria uma tabela; não há cópia a fazer.
-  Aplicar ANTES de publicar: sem ela, a linha "Sinal" some do detalhe do
-  agendamento (a leitura falha e a tela esconde a linha), e o agendamento
-  online de salão com sinal é marcado sem registrar o sinal.
-- **O módulo `online_booking` está desligado em todos os salões.** Para testar
-  a página com sinal, é preciso religar no salão de teste.
-- **As consultas não foram executadas contra o banco.**
+  #24 ainda não foi mesclado), publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  novo nos arquivos alterados) e testes passando (web 1472).
+- **Migration 065: aplicada em produção em 19/nov/2026.** Só criou a tabela
+  `appointment_deposits`; não havia cópia a fazer.
+- **O módulo `online_booking` está desligado em todos os salões.** Foi religado
+  no salão de teste só durante o teste e desligado de novo. Motivo: a `main`
+  tem a página de agendamento da 7f, que marca sem pedir sinal; religar em
+  salão com sinal só depois que a 8a estiver na `main`.
+- **Testado em uso no preview (19/nov/2026), no salão de teste, que tem o sinal
+  configurado:**
+  - a página de agendamento avisa o valor do sinal antes de marcar;
+  - depois de marcar, mostra o valor, a chave PIX, "Copiar chave" e o titular;
+  - no banco, o agendamento nasceu com o sinal "aguardando", de origem online;
+  - no detalhe do agendamento, a linha "Sinal" e as ações: marcar como recebido
+    (mostra a data e quem marcou), voltar para aguardando, dispensar e tirar;
+  - "Lançar sinal" num agendamento sem sinal, com o valor configurado sugerido,
+    grava com origem "painel";
+  - cancelar o agendamento não apaga o sinal recebido (regra 8).
+  Os dados do teste foram apagados (o agendamento ficou cancelado).
+- **Não testado em uso:** o botão "Copiar chave" (só vi que aparece); salão sem
+  sinal configurado (a página não deve mostrar nada e o agendamento nasce sem
+  sinal — coberto só pelo teste da regra); usuário que vê a agenda mas não
+  edita (a linha sem as ações); excluir o agendamento apagando o sinal.
 - **Limites desta fatia:**
   - o sinal não é abatido na comanda nem lançado no financeiro (8b);
   - sem cancelamento automático por falta de sinal;
@@ -4996,11 +5150,157 @@ Perguntas para o dono:
   - a agenda não mostra o sinal no cartão do agendamento, só no detalhe; não há
     lista de "aguardando sinal";
   - um valor de sinal por salão.
-- **Sem teste em uso.** Roteiro, com a 065 aplicada e o módulo religado no
-  salão de teste (que tem o sinal configurado): a página avisa o valor antes
-  de marcar; depois de marcar, mostra a chave e o titular; no banco, o sinal
-  "aguardando" de origem online; no detalhe do agendamento, a linha "Sinal" e
-  as ações (receber, voltar para aguardando, dispensar, tirar); "Lançar sinal"
-  num agendamento sem sinal, com o valor sugerido; salão sem sinal ligado: a
-  página não mostra nada e o agendamento nasce sem sinal; limpar os dados e
-  desligar o módulo de novo.
+
+### 14.7 Fatia 8b — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  nos arquivos alterados) e testes passando (web 1477).
+- **Migration 066: aplicada em produção em 19/nov/2026.** A tabela não tinha
+  linhas; não houve cópia. A `main` não lê as colunas novas e segue igual.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - comanda aberta de um agendamento com sinal recebido mostra "Sinal
+    recebido, a abater no faturamento";
+  - o diálogo de faturar já vem com o sinal na forma "Teste PIX" e o restante
+    do total na outra linha; trocar para "Não abater" e voltar refaz o valor;
+  - faturar gravou dois pagamentos (o do sinal e o restante), cada um com a
+    taxa e o prazo da sua forma, e as duas contas no financeiro (a do sinal já
+    recebida, por ser PIX na hora);
+  - a comanda faturada mostra "Sinal abatido (está nos pagamentos)";
+  - o detalhe do agendamento mostra "Abatido na comanda #N", sem ações;
+  - reabrir a comanda apagou os pagamentos e soltou o sinal;
+  - faturar com "Não abater" deixou o sinal recebido e livre, e a comanda com
+    um pagamento só;
+  - faturar antes da hora do agendamento continua barrado, e o sinal não é
+    preso por isso.
+  Os dados do teste foram apagados (a comanda ficou excluída e o agendamento,
+  cancelado).
+- **Não testado em uso:** sinal maior que o total da comanda; comanda com dois
+  agendamentos com sinal; salão sem forma "PIX" (o campo começa em "Não
+  abater"); sinal abatido com cashback na mesma comanda; a comissão da comanda
+  com o sinal abatido; salão com o financeiro desligado.
+- **Achado:** a agenda não deixa criar agendamento em horário que já passou
+  ("A data e hora devem ser no futuro"), então não dá para lançar um
+  atendimento de encaixe depois que ele aconteceu. Não mexi.
+- **Limites desta fatia:**
+  - a data do pagamento do sinal é a do faturamento (regra 19);
+  - sinal maior que o total não é abatido (regra 14);
+  - o pagamento do sinal não tem marca própria na lista de pagamentos da
+    comanda — o resumo mostra só o total abatido;
+  - sinal recebido de agendamento cancelado continua sem destino no sistema.
+
+### 14.8 Fatia 8c — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Sem
+  migration: a coluna `subscription_plans.is_visible` já existia desde a 053.
+  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
+  e testes passando (web 1481).
+- **Onde está:** regra em `domain/subscriptions.ts`
+  (`subscriptionDueInDays`, `subscriptionDueAlert`, `subscriptionDueLabel`,
+  `SUBSCRIPTION_DUE_SOON_DAYS`); `dueInDays` em
+  `listCustomerSubscriptionsService` e `getPublicSubscriptionPlansService`
+  (`services/subscriptions.service.ts`); `totals.dueSoon` em
+  `actions/subscriptions.ts`; telas em
+  `packages/subscriptions/subscriptions-client.tsx`,
+  `packages/subscription-plans/subscription-plans-client.tsx` e
+  `app/planos/[salonId]/page.tsx`; testes em `subscriptions-domain.test.ts`.
+- **A página pública não tem action**: é só leitura, não entra na guarda de
+  `actions-authz.test.ts` e não recebe dado do visitante.
+- **Limites desta fatia:**
+  - os totais e o aviso contam só as assinaturas que a tela carrega (as mais
+    recentes, como já era);
+  - o botão de WhatsApp usa `salons.whatsapp`; salão sem esse número fica só
+    com o texto;
+  - sem aviso por mensagem (8d).
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - `/planos/<id>` sem plano visível: "Ainda não há planos para mostrar";
+    endereço desconhecido: "Planos indisponíveis";
+  - com um plano visível e um não visível, a página mostra só o visível, com
+    descrição, valor e periodicidade, o texto "Para assinar, fale com o salão"
+    e o botão do WhatsApp (o link leva o DDI 55);
+  - "Link dos planos" copia o endereço da página;
+  - assinatura trimestral cobrada com comanda de 22/ago: vencimento em 22/nov,
+    "Vence em 3 dias", contada em "Vencendo (1)" e na faixa do topo;
+  - assinatura mensal cobrada com comanda de 01/out: Expirada, "Venceu há 18
+    dias", contada na faixa como vencida;
+  - "Ver as que vencem" e "Ver as vencidas" filtram a lista;
+  - sem assinatura vencendo nem vencida, a faixa não aparece.
+  Os dados do teste foram apagados pela tela (comandas excluídas, assinaturas
+  e planos excluídos).
+- **Não testado em uso:** salão sem o módulo de pacotes abrindo a página de
+  planos (coberto só pela leitura do código); salão sem WhatsApp cadastrado;
+  "Vence hoje" e "Vence amanhã" (cobertos pelo teste da regra); o clique no
+  botão do WhatsApp; a página aberta sem login na produção (o preview pede o
+  login da Vercel).
+- **Achado:** na comanda, depois de fechar o diálogo de faturar e mudar a
+  data, o primeiro clique em "Faturar" salvou e não abriu o diálogo; o segundo
+  abriu. Aconteceu uma vez em duas. Não investiguei.
+
+### 14.9 Fatia 8d — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  nos arquivos alterados) e testes passando (web 1487).
+- **Migration 067: aplicada em produção em 19/nov/2026.** A fila
+  (`care_message_dispatches`) estava vazia — não houve cópia. Conferido por
+  leitura: os CHECKs alargados, o CHECK novo da assinatura, a tabela de
+  configuração com RLS e sem linhas (desligado em todos os salões). Nenhum
+  alerta de segurança novo.
+- **A `main` continua funcionando com a 067 aplicada**: o código antigo não lê
+  as colunas novas, e o que ele grava na fila passa nos CHECKs alargados.
+- **Onde está:** migration `067_subscription_reminders.sql`; tabela
+  `subscriptionReminderSettings` e as colunas novas de
+  `careMessageDispatches`; regra em `domain/care-messages.ts`
+  (`planSubscriptionReminder`, `formatSubscriptionDueDate`,
+  `DEFAULT_SUBSCRIPTION_DUE_TEXT` e o ramo `subscription_due` de
+  `decideCareDispatch`); I/O em `services/care-messages.service.ts`
+  (`getSubscriptionReminderSettingsService`,
+  `saveSubscriptionReminderSettingsService`,
+  `enqueueDueSubscriptionReminders` e a conferência em
+  `claimDueCareDispatches`); o envio em
+  `lib/services/care-messages/dispatcher.service.ts`; action
+  `saveSubscriptionReminder` em `actions/subscriptions.ts`; o cartão em
+  `packages/subscriptions/subscriptions-client.tsx`; testes em
+  `care-messages-domain.test.ts`.
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - o cartão nasce "Desligado: nenhuma mensagem é enviada";
+  - "Configurar" com 20 dias: "Informe de 1 a 15 dias";
+  - ligar com 5 dias e um texto próprio: gravou no banco como digitado, e o
+    cartão passou a "Ligado: … 5 dias antes";
+  - reabrir "Configurar" traz o que foi salvo;
+  - desligar volta o cartão a "Desligado";
+  - a tela de Cuidados e retorno continua abrindo.
+  A linha de configuração do teste foi apagada.
+- **Conferido por consulta de leitura:** a seleção da fila
+  (`enqueueDueSubscriptionReminders`, reescrita em SQL à mão) executa sem erro
+  no banco. Devolveu vazio — não havia assinatura no prazo.
+- **NÃO testado:** o envio. Nenhum aviso entrou na fila nem saiu pelo
+  WhatsApp: quem enfileira e envia é o cron, que só existe em produção, e a
+  produção está no código antigo. Também não foram exercitados com dados: a
+  seleção achando uma assinatura no prazo, o "um aviso por vencimento" e a
+  conferência na hora de enviar (cobertos só pelos testes da regra).
+  **Depois do merge:** ligar o aviso no salão de teste, deixar uma assinatura
+  de um cliente de teste vencendo no prazo e ver a linha em Cuidados e retorno.
+- **Limites desta fatia:**
+  - sem aviso depois do vencimento;
+  - um prazo e um texto por salão, não por plano;
+  - no WhatsApp oficial, fora das 24 horas o envio falha (regra 36);
+  - o histórico fica na tela de Cuidados e retorno (regra 37).
+
+### 14.10 O que está na `main` (19/nov/2026)
+
+Vale mais que os "fora da `main`" escritos em §14.6 a §14.9, que são de antes.
+
+- **Na `main`: a fatia 8a**, pelo PR #26 (mesclado em 19/nov/2026, até o commit
+  `5169439`). O agendamento online segue desligado em todos os salões.
+- **No PR #28** (`claude/fase-8-sinal` → `main`, aberto em 19/nov/2026, 7
+  commits, mescla limpa): **as fatias 8b, 8c e 8d**.
+- **As migrations 065, 066 e 067 já estão aplicadas em produção.** Não há
+  migration a rodar na mescla do PR #28.
+- **Com a 8a na `main` e a 066 aplicada**, a produção segue funcionando: o
+  código da 8a não lê `sale_id` nem `applied_at`.
+- **Depois da mescla do PR #28, falta testar em produção:** o envio do aviso de
+  vencimento por WhatsApp (§14.9) e as páginas públicas sem login
+  (`/planos/<id>` e `/agendar/<id>`), que no preview ficam atrás do login da
+  Vercel.

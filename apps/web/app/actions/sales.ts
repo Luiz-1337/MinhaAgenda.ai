@@ -163,6 +163,8 @@ function toDetailDTO(sale: SaleDetail): SaleDetailDTO {
     debtDueDate: sale.debtDueDate,
     cashbackRedeemed: sale.cashbackRedeemed,
     cashbackEarned: sale.cashbackEarned,
+    depositAvailable: sale.depositAvailable,
+    depositApplied: sale.depositApplied,
     coupon: sale.coupon,
     invoicedAt: sale.invoicedAt ? sale.invoicedAt.toISOString() : null,
     voidedAt: sale.voidedAt ? sale.voidedAt.toISOString() : null,
@@ -812,6 +814,8 @@ export async function invoiceSale(input: InvoiceSaleInput): Promise<ActionResult
     // Com cashback ligado, faturar gera o cashback dos itens e aceita usar o saldo (fase 6).
     recordCashback: await salonHasModule(parsed.data.salonId, "cashback"),
     redeemCashback: parsed.data.redeemCashback ?? 0,
+    // O sinal recebido entra como pagamento, se quem fatura escolheu a forma (fase 8).
+    depositPaymentMethodId: parsed.data.depositPaymentMethodId ?? null,
     // Com avaliações ligadas, faturar gera o pedido de avaliação do atendimento (fase 6).
     requestReview: await salonHasModule(parsed.data.salonId, "reviews"),
     // Com o módulo ligado, faturar agenda os cuidados de depois e o retorno (fase 6).

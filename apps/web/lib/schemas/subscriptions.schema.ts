@@ -36,3 +36,11 @@ export const customerSubscriptionRefSchema = z.object({
 export const setCustomerSubscriptionActiveSchema = customerSubscriptionRefSchema.extend({
   active: z.boolean(),
 })
+
+/** O aviso de vencimento por WhatsApp (fase 8, fatia 8d). */
+export const saveSubscriptionReminderSchema = z.object({
+  salonId: z.string().uuid(),
+  isEnabled: z.boolean(),
+  daysBefore: z.number().int(),
+  message: z.string().max(1000, "Mensagem muito longa").nullish(),
+})

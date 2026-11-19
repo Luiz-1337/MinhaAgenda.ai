@@ -14,10 +14,15 @@ import {
   deleteCustomerSubscriptionService,
   deleteSubscriptionPlanService,
   getSubscriptionForRenewalService,
+  getSubscriptionReminderSettingsService,
+  saveSubscriptionReminderSettingsService,
+  DEFAULT_SUBSCRIPTION_DUE_TEXT,
+  SUBSCRIPTION_REMINDER_DAYS,
   listCustomerSubscriptionsService,
   listSubscriptionPlansService,
   saveSubscriptionPlanService,
   setCustomerSubscriptionActiveService,
+  subscriptionDueAlert,
   type PermissionKey,
 } from "@repo/db"
 import { getSessionUserId } from "@/lib/supabase/auth"
@@ -28,6 +33,7 @@ import {
   createCustomerSubscriptionSchema,
   customerSubscriptionRefSchema,
   saveSubscriptionPlanSchema,
+  saveSubscriptionReminderSchema,
   setCustomerSubscriptionActiveSchema,
   subscriptionPlanRefSchema,
 } from "@/lib/schemas/subscriptions.schema"
@@ -35,6 +41,7 @@ import type { ActionResult } from "@/lib/types/common"
 import type {
   CustomerSubscriptionsDTO,
   SaveSubscriptionPlanInput,
+  SaveSubscriptionReminderInput,
   SubscriptionCustomerOption,
   SubscriptionPlansDTO,
 } from "@/lib/types/subscriptions"
@@ -144,15 +151,19 @@ export async function getCustomerSubscriptions(
   if (customerId !== undefined && !UUID.test(customerId)) return { error: "Cliente inválido" }
 
   try {
-    const [list, plans, permissions, salesEnabled] = await Promise.all([
+    const [list, plans, permissions, salesEnabled, reminder] = await Promise.all([
       listCustomerSubscriptionsService({ salonId, customerId, limit: SUBSCRIPTION_ROWS, now: new Date() }),
       listSubscriptionPlansService(salonId),
       getSalonPermissions(salonId, auth.userId),
       salonHasModule(salonId, "sales"),
+      getSubscriptionReminderSettingsService(salonId),
     ])
 
-    const totals = { pending: 0, active: 0, expired: 0, inactive: 0 }
-    for (const row of list.rows) totals[row.status] += 1
+    const totals = { pending: 0, active: 0, expired: 0, inactive: 0, dueSoon: 0 }
+    for (const row of list.rows) {
+      totals[row.status] += 1
+      if (subscriptionDueAlert(row.dueInDays) === "due_soon") totals.dueSoon += 1
+    }
 
     return {
       subscriptions: list.rows,
@@ -161,6 +172,11 @@ export async function getCustomerSubscriptions(
       plans: plans
         .filter((plan) => plan.isActive)
         .map((plan) => ({ id: plan.id, name: plan.name, price: plan.price, intervalMonths: plan.intervalMonths })),
+      reminder: {
+        ...reminder,
+        defaultMessage: DEFAULT_SUBSCRIPTION_DUE_TEXT,
+        limits: { min: SUBSCRIPTION_REMINDER_DAYS.min, max: SUBSCRIPTION_REMINDER_DAYS.max },
+      },
       can: {
         manage: permissions.has("packages.manage"),
         charge: salesEnabled && permissions.has("sales.create"),
@@ -170,6 +186,25 @@ export async function getCustomerSubscriptions(
     console.error("Erro ao carregar as assinaturas:", error)
     return { error: "Não foi possível carregar as assinaturas" }
   }
+}
+
+/**
+ * Liga, desliga e ajusta o aviso de vencimento por WhatsApp (fase 8, fatia 8d).
+ * Quem manda é a fila de mensagens ao cliente; aqui só se grava a configuração.
+ */
+export async function saveSubscriptionReminder(input: SaveSubscriptionReminderInput): Promise<ActionResult> {
+  const auth = await authorizeSalon(input?.salonId, "packages.manage")
+  if ("error" in auth) return auth
+
+  const parsed = saveSubscriptionReminderSchema.safeParse(input)
+  if (!parsed.success) return { error: formatZodError(parsed.error) }
+
+  const { salonId, ...draft } = parsed.data
+  const result = await saveSubscriptionReminderSettingsService({ salonId, draft })
+  if (!result.success) return { error: result.error }
+
+  revalidateSubscriptions(salonId)
+  return { success: true, data: undefined }
 }
 
 /** Busca de cliente para criar uma assinatura, por nome ou telefone. */

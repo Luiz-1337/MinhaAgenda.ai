@@ -270,3 +270,49 @@ export function subscriptionReopenBlocker(
   const first = renewedLater[0]
   return `A assinatura "${first.name}" já foi renovada depois, na comanda #${first.saleNumber}. Reabra aquela antes desta`
 }
+
+// ============================================================================
+// Aviso de vencimento (fase 8, fatia 8c)
+// ============================================================================
+
+/** Com quantos dias de antecedência a assinatura ativa aparece como "vencendo". */
+export const SUBSCRIPTION_DUE_SOON_DAYS = 7
+
+/**
+ * Quantos dias faltam para o vencimento: 0 = vence hoje, negativo = já venceu.
+ * NULL para quem não tem o que vencer: nunca paga, ou desativada.
+ */
+export function subscriptionDueInDays(input: {
+  status: CustomerSubscriptionStatus
+  paidUntil: string | null
+  today: string
+}): number | null {
+  if (input.status === 'pending' || input.status === 'inactive' || input.paidUntil === null) return null
+  const [untilYear, untilMonth, untilDay] = input.paidUntil.split('-').map(Number)
+  const [year, month, day] = input.today.split('-').map(Number)
+  const diff = Date.UTC(untilYear, untilMonth - 1, untilDay) - Date.UTC(year, month - 1, day)
+  return Math.round(diff / 86_400_000)
+}
+
+export type SubscriptionDueAlert = 'due_soon' | 'overdue'
+
+/**
+ * O aviso do painel: "vencendo" (ativa, vence em até SUBSCRIPTION_DUE_SOON_DAYS
+ * dias, contando hoje) ou "vencida". NULL = nada a avisar.
+ */
+export function subscriptionDueAlert(dueInDays: number | null): SubscriptionDueAlert | null {
+  if (dueInDays === null) return null
+  if (dueInDays < 0) return 'overdue'
+  return dueInDays <= SUBSCRIPTION_DUE_SOON_DAYS ? 'due_soon' : null
+}
+
+/** "Vence hoje", "Vence em 3 dias", "Venceu há 5 dias". Vazio = nada a avisar. */
+export function subscriptionDueLabel(dueInDays: number | null): string {
+  const alert = subscriptionDueAlert(dueInDays)
+  if (alert === null || dueInDays === null) return ''
+  if (dueInDays === 0) return 'Vence hoje'
+  if (dueInDays === 1) return 'Vence amanhã'
+  if (dueInDays > 1) return `Vence em ${dueInDays} dias`
+  if (dueInDays === -1) return 'Venceu ontem'
+  return `Venceu há ${-dueInDays} dias`
+}
