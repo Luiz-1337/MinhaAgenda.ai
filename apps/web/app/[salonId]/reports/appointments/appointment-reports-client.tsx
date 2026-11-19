@@ -14,6 +14,8 @@ import {
   type AppointmentReportView,
   type ReportAppointment,
 } from "@repo/db/src/domain/agenda-reports"
+import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { csvDate, csvFileName } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, labelClass } from "../../inventory/inventory-ui"
 
 const thClass = "px-3 py-2 text-[11px] uppercase font-semibold tracking-wider text-muted-foreground text-left"
@@ -100,6 +102,60 @@ export function AppointmentReportsClient({ salonId, data }: { salonId: string; d
 
   const percent = (value: number | null) => (value === null ? "—" : `${value.toLocaleString("pt-BR")}%`)
 
+  /** A planilha do relatório que está na tela (fatia 9f). */
+  function sheet(): CsvSheet {
+    const fileName = csvFileName(APPOINTMENT_REPORT_VIEW_LABELS[data.view], data.from, data.to)
+    if (data.view === "origin") {
+      return {
+        fileName,
+        headers: ["Origem", "Agendamentos", "Concluídos", "Faltas", "Cancelados", "Comparecimento (%)"],
+        rows: data.origins.map((row) => [
+          APPOINTMENT_ORIGIN_LABELS[row.origin],
+          row.total,
+          row.completed,
+          row.noShow,
+          row.cancelled,
+          row.completionPercent,
+        ]),
+      }
+    }
+    if (data.view === "creation") {
+      return {
+        fileName,
+        headers: ["Dia da criação", "Criados"],
+        rows: data.report.days.map((day) => [csvDate(day.day), day.created]),
+      }
+    }
+    if (data.view === "cancelled") {
+      return {
+        fileName,
+        headers: ["Dia", "Hora", "Cliente", "Serviço", "Profissional", "Cancelado em", "Por quem", "Motivo"],
+        rows: data.rows.map((row) => [
+          csvDate(row.day),
+          row.time,
+          row.customerName,
+          row.serviceName,
+          row.professionalName,
+          csvDate(row.cancelledDay),
+          row.cancelledByName,
+          row.cancelReason,
+        ]),
+      }
+    }
+    return {
+      fileName,
+      headers: ["Dia", "Hora", "Cliente", "Serviço", "Profissional", "Situação"],
+      rows: data.rows.map((row) => [
+        csvDate(row.day),
+        row.time,
+        row.customerName,
+        row.serviceName,
+        row.professionalName,
+        APPOINTMENT_STATUS_LABELS[row.status],
+      ]),
+    }
+  }
+
   return (
     <div className="flex flex-col h-full gap-6 overflow-y-auto custom-scrollbar pb-8">
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -170,6 +226,7 @@ export function AppointmentReportsClient({ salonId, data }: { salonId: string; d
           {data.view === "creation" ? "Criados de " : "Atendimentos de "}
           {formatCalendarDate(data.from)} a {formatCalendarDate(data.to)}
         </p>
+        <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
 
       {data.truncated && (

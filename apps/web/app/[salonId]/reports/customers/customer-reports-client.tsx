@@ -13,6 +13,8 @@ import {
   type CustomerReportView,
 } from "@repo/db/src/domain/agenda-reports"
 import { formatPhoneBR } from "@/lib/utils/phone.utils"
+import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { csvDate, csvFileName } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, labelClass } from "../../inventory/inventory-ui"
 
 const thClass = "px-3 py-2 text-[11px] uppercase font-semibold tracking-wider text-muted-foreground text-left"
@@ -46,6 +48,35 @@ export function CustomerReportsClient({ salonId, data }: { salonId: string; data
       {name}
     </Link>
   )
+
+  /** A planilha do relatório que está na tela (fatia 9f). O telefone só vai se a tela o mostra. */
+  function sheet(): CsvSheet {
+    const title = CUSTOMER_REPORT_VIEW_LABELS[data.view]
+    const phone = data.showPhones ? ["Telefone"] : []
+    if (data.view === "birthdays") {
+      return {
+        fileName: csvFileName(title, MONTH_LABELS[data.month - 1], data.year),
+        headers: ["Dia", "Cliente", "Faz (anos)", ...phone],
+        rows: data.rows.map((row) => [
+          `${String(row.day).padStart(2, "0")}/${String(data.month).padStart(2, "0")}`,
+          row.name,
+          row.turning,
+          ...(data.showPhones ? [formatPhoneBR(row.phone)] : []),
+        ]),
+      }
+    }
+    return {
+      fileName: csvFileName(title, `${data.days} dias`, data.today),
+      headers: ["Cliente", "Última vez", "Dias sem vir", "Atendimentos", ...phone],
+      rows: data.rows.map((row) => [
+        row.name,
+        csvDate(row.lastVisit),
+        row.daysAway,
+        row.visits,
+        ...(data.showPhones ? [formatPhoneBR(row.phone)] : []),
+      ]),
+    }
+  }
 
   return (
     <div className="flex flex-col h-full gap-6 overflow-y-auto custom-scrollbar pb-8">
@@ -125,6 +156,7 @@ export function CustomerReportsClient({ salonId, data }: { salonId: string; data
         <p className="text-xs text-muted-foreground sm:pb-2.5">
           {data.rows.length} {data.rows.length === 1 ? "cliente" : "clientes"}
         </p>
+        <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
 
       {data.truncated && (

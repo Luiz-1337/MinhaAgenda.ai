@@ -94,6 +94,8 @@ publicada e testada em uso em 19/nov/2026 — ver §13.9.
 Fatia 9e (painel de profissionais) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 (a ocupação; o valor realizado não
 foi visto com comanda) — ver §13.10.
+Fatia 9f (exportação em planilha) feita na mesma branch, sem migration — **em
+commit local, sem publicar e sem teste em uso** — ver §13.11.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4116,6 +4118,8 @@ Perguntas para o dono:
 | Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
 | Responder às perguntas da 9d em §13.4 (faturado ou pago no ranking, pacote no ranking de vendas, "como conheceu" em lista) | Ajustes na 9d antes do piloto |
 | Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
+| Autorizar publicar a fatia 9f — ver §13.11 | Teste em uso da fatia 9f |
+| Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4137,7 +4141,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita, sem migration, publicada na branch e testada em uso (§13.8) |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
-| 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
+| 9f | Exportação (planilha) nos relatórios, num formato só | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.11) |
 | 9g | Organização: membros com papel e unidades (multiunidade) | Pendente — precisa de levantamento próprio |
 
 "Todas as notas fiscais" é da fase 10.
@@ -4310,6 +4314,28 @@ Fatia 9e — painel de profissionais:
 31. **Quem vê**: pede os módulos `reports` e `sales`, `sales.view_all` E
     `schedule.view_all` (mostra as vendas e a agenda de todos).
 
+Fatia 9f — exportação em planilha:
+
+32. **"Exportar" em todos os relatórios da fase 9** (financeiros, agendamentos,
+    clientes, vendas e rankings, painel de profissionais): baixa em CSV **o que
+    a tela está mostrando** — as mesmas linhas, com o mesmo relatório e os
+    mesmos filtros. Os cartões de totais não vão no arquivo.
+33. **Um formato só, para abrir direto no Excel em português**: separador
+    ponto e vírgula, UTF-8 com marca BOM (acentos certos), número com vírgula
+    decimal e sem ponto de milhar (a planilha soma), dinheiro em reais, data
+    como DD/MM/AAAA. O nome do arquivo leva o relatório e o período.
+34. **Texto que começa com `=`, `+`, `-` ou `@` ganha um apóstrofo na
+    frente**: Excel e Sheets leem isso como fórmula, e nome de cliente, motivo
+    de cancelamento e "como conheceu" são digitados por gente de fora.
+35. **A planilha é montada no navegador**, com o que o servidor já entregou
+    para a tela. Não há action nova: a permissão é a de abrir o relatório. O
+    telefone só vai no arquivo se a tela o mostra.
+36. **O teto de linhas é o da tela** (regra de cada relatório): se a tela avisa
+    que o período foi cortado, a planilha sai cortada igual.
+37. **Fora desta fatia**: os relatórios das fases 2 a 6 (resumo do financeiro,
+    estoque, pacotes, cashback, avaliações) continuam sem exportar; a lista de
+    contatos já exportava, no formato antigo (vírgula, sem BOM).
+
 Perguntas para o dono:
 
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
@@ -4351,6 +4377,14 @@ Perguntas para o dono:
 - (9e) "Frequência" é comandas ÷ clientes únicos (regra 27). É isso que o dono
   entende por frequência, ou é o intervalo médio entre as visitas?
 - (9e) O painel deve mostrar também a comissão e as faltas de cada um?
+- (9f) CSV basta, ou é preciso PDF e impressão? E arquivo `.xlsx` de verdade?
+- (9f) A exportação deve chegar também aos relatórios das fases anteriores
+  (financeiro, estoque, pacotes, cashback, avaliações)?
+- (9f) Exportar deve pedir uma permissão própria? Hoje quem abre o relatório
+  exporta (regra 35) — e a planilha leva nome de cliente e, se a pessoa pode
+  ver, telefone.
+- (9f) A exportação de contatos deve passar para o mesmo formato (ponto e
+  vírgula, com BOM)?
 - (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
   ver? A auditoria não leu a saída de nenhum.
 - (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
@@ -4379,6 +4413,8 @@ Perguntas para o dono:
   período; quatro cartões do salão (clientes únicos, valor realizado, ticket
   médio, ocupação); e a tabela por profissional, com a ocupação em porcentagem,
   em horas ("12h de 40h") e o selo "BAIXA OCUPAÇÃO".
+- **Exportar (9f)**: botão no fim da barra de filtros de cada relatório da
+  fase 9; avisa quantas linhas saíram, ou que não há linhas.
 
 | Assunto | Onde está |
 |---|---|
@@ -4387,6 +4423,7 @@ Perguntas para o dono:
 | Relatórios de agendamentos e de clientes (9c) | Sem migration; regra em `domain/agenda-reports.ts` (`countByStatus`, `appointmentOrigin`, `buildOriginReport`, `buildCreationReport`, `buildBirthdayList`, `buildInactiveList`); I/O em `services/agenda-reports.service.ts`; actions em `actions/agenda-reports.ts` (na guarda de `actions-authz.test.ts`); telas em `app/[salonId]/reports/appointments/` e `reports/customers/`; os seis destinos no catálogo; testes em `agenda-reports-domain.test.ts` |
 | Relatórios de vendas e rankings (9d) | Sem migration; regra em `domain/sales-reports.ts` (`buildSoldItemsReport`, `buildCustomerRanking`, `buildProfessionalRanking`, `buildReferralReport`); I/O em `services/sales-reports.service.ts`; action em `actions/sales-reports.ts` (na guarda de `actions-authz.test.ts`; a permissão depende do relatório); tela em `app/[salonId]/reports/sales/`; os cinco destinos no catálogo; testes em `sales-reports-domain.test.ts` |
 | Painel de profissionais (9e) | Sem migration; regra em `domain/professional-panel.ts` (`countWeekdays`, `weeklyWorkMinutes`, `buildProfessionalPanel`); I/O em `services/professional-panel.service.ts` (reusa `listSoldItemsService`); action em `actions/professional-panel.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/professionals/`; o destino no catálogo; testes em `professional-panel-domain.test.ts` |
+| Exportação em planilha (9f) | Sem migration e sem action nova; o formato em `apps/web/lib/utils/csv.utils.ts` (`toCsv`, `csvMoney`, `csvDate`, `csvFileName`); o botão em `components/reports/export-csv-button.tsx`; a função `sheet()` de cada tela em `app/[salonId]/reports/*/…-client.tsx`; testes em `__tests__/lib/utils/csv.utils.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4608,3 +4645,23 @@ Perguntas para o dono:
   - usuário sem `sales.view_all` ou sem `schedule.view_all`; os tetos de
     linhas.
 - Nenhum dado de teste foi criado.
+
+### 13.11 Fatia 9f — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro nem aviso nos arquivos
+  alterados) e testes passando (web 1447).
+- **Sem migration e sem consulta nova.** O que muda é só no navegador.
+- **O arquivo não foi aberto em Excel nem em Sheets.** Os testes conferem o
+  texto do CSV (separador, vírgula decimal, aspas, BOM, apóstrofo); se a
+  planilha abre como esperado só se vê abrindo.
+- **Limites desta fatia:** só CSV (sem PDF, sem `.xlsx`, sem impressão); só
+  os relatórios da fase 9; os totais dos cartões não vão no arquivo; o
+  relatório de criação exporta os dias, não as faixas de antecedência; a lista
+  de produtos e serviços sai numa planilha só, com o preço do serviço em texto
+  quando é faixa ou "sob avaliação".
+- **Sem teste em uso.** Roteiro, no salão de teste: clicar em "Exportar" em
+  cada um dos relatórios; relatório sem linhas avisa "Não há linhas para
+  exportar"; conferir o nome do arquivo; abrir pelo menos um no Excel e
+  conferir acentos, colunas, valores como número e datas; conferir que uma
+  célula começando com "=" abre como texto.

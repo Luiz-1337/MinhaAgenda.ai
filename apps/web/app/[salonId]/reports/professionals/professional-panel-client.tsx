@@ -7,6 +7,8 @@ import { ArrowLeft, BarChart3 } from "lucide-react"
 import { formatBRL } from "@/lib/utils/money.utils"
 import type { ProfessionalPanelData } from "@/app/actions/professional-panel"
 import { LOW_OCCUPANCY_PERCENT } from "@repo/db/src/domain/professional-panel"
+import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { csvFileName, csvMoney } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, labelClass } from "../../inventory/inventory-ui"
 
 const money = (cents: number | null) => (cents === null ? "—" : formatBRL(cents / 100))
@@ -48,6 +50,39 @@ export function ProfessionalPanelClient({ salonId, data }: { salonId: string; da
   }
 
   const { rows, totals } = data
+
+  /** A planilha do painel que está na tela (fatia 9f). Horas em número decimal. */
+  function sheet(): CsvSheet {
+    return {
+      fileName: csvFileName("Painel de profissionais", data.from, data.to),
+      headers: [
+        "Profissional",
+        "Ativo",
+        "Clientes únicos",
+        "Comandas",
+        "Valor realizado",
+        "Ticket médio",
+        "Frequência",
+        "Agendamentos",
+        "Horas marcadas",
+        "Horas de expediente",
+        "Ocupação (%)",
+      ],
+      rows: data.rows.map((row) => [
+        row.name,
+        row.isActive,
+        row.uniqueCustomers,
+        row.sales,
+        csvMoney(row.revenueCents),
+        csvMoney(row.averageTicketCents),
+        row.frequency,
+        row.appointments,
+        row.bookedMinutes / 60,
+        row.availableMinutes / 60,
+        row.occupancyPercent,
+      ]),
+    }
+  }
 
   return (
     <div className="flex flex-col h-full gap-6 overflow-y-auto custom-scrollbar pb-8">
@@ -98,6 +133,7 @@ export function ProfessionalPanelClient({ salonId, data }: { salonId: string; da
         <p className="text-xs text-muted-foreground sm:pb-2.5">
           {formatCalendarDate(data.from)} a {formatCalendarDate(data.to)}
         </p>
+        <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
 
       {data.truncated && (

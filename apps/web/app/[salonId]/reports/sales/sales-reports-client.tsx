@@ -14,6 +14,8 @@ import {
   type SalesReportView,
 } from "@repo/db/src/domain/sales-reports"
 import type { CatalogService } from "@repo/db"
+import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { csvDate, csvFileName, csvMoney } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, formatQuantity, labelClass } from "../../inventory/inventory-ui"
 
 const money = (cents: number) => formatBRL(cents / 100)
@@ -82,6 +84,83 @@ export function SalesReportsClient({ salonId, data }: { salonId: string; data: S
       params.set("to", next.to ?? data.to)
     }
     startTransition(() => router.push(`${pathname}?${params.toString()}`))
+  }
+
+  /** A planilha do relatório que está na tela (fatia 9f). */
+  function sheet(): CsvSheet {
+    const title = SALES_REPORT_VIEW_LABELS[data.view]
+    if (data.view === "catalog") {
+      return {
+        fileName: csvFileName(title),
+        headers: ["Tipo", "Nome", "Código", "Preço", "Custo", "Ativo"],
+        rows: [
+          ...(data.services ?? []).map((service) => [
+            "Serviço",
+            service.name,
+            null,
+            servicePrice(service),
+            Number(service.additionalCost),
+            service.isActive,
+          ]),
+          ...(data.products ?? []).map((product) => [
+            "Produto",
+            product.name,
+            product.sku,
+            Number(product.price),
+            product.costPrice === null ? null : Number(product.costPrice),
+            product.isActive,
+          ]),
+        ],
+      }
+    }
+    const fileName = csvFileName(title, data.from, data.to)
+    if (data.view === "customers") {
+      return {
+        fileName,
+        headers: ["Posição", "Cliente", "Comandas", "Total", "Ticket médio", "Última comanda"],
+        rows: data.report.rows.map((row, index) => [
+          index + 1,
+          row.name,
+          row.sales,
+          csvMoney(row.totalCents),
+          csvMoney(row.averageCents),
+          csvDate(row.lastDay),
+        ]),
+      }
+    }
+    if (data.view === "professionals") {
+      return {
+        fileName,
+        headers: ["Profissional", "Serviços", "Valor em serviços", "Produtos", "Valor em produtos", "Total"],
+        rows: data.rows.map((row) => [
+          row.name,
+          row.serviceQuantity,
+          csvMoney(row.serviceCents),
+          row.productQuantity,
+          csvMoney(row.productCents),
+          csvMoney(row.totalCents),
+        ]),
+      }
+    }
+    if (data.view === "referrals") {
+      return {
+        fileName,
+        headers: ["Como conheceu", "Clientes", "Parte de quem informou (%)"],
+        rows: data.report.rows.map((row) => [row.source, row.customers, row.sharePercent]),
+      }
+    }
+    return {
+      fileName,
+      headers: ["Item", "Tipo", "Quantidade", "Comandas", "Valor", "Parte do total (%)"],
+      rows: data.report.rows.map((row) => [
+        row.name,
+        SOLD_ITEM_KIND_LABELS[row.kind],
+        row.quantity,
+        row.sales,
+        csvMoney(row.revenueCents),
+        row.sharePercent,
+      ]),
+    }
   }
 
   return (
@@ -155,6 +234,7 @@ export function SalesReportsClient({ salonId, data }: { salonId: string; data: S
             </p>
           </>
         )}
+        <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
 
       {"truncated" in data && data.truncated && (
