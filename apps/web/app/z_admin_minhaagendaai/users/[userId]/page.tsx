@@ -65,7 +65,7 @@ export default async function UserDetailsPage({
                             initialEnabled={salon.aiRetentionEnabled ?? false}
                         />
                     )}
-                    <PaymentHistory payments={(user.payments as any[]) || []} />
+                    <PaymentHistory payments={user.payments ?? []} />
                 </div>
             </div>
         </div>

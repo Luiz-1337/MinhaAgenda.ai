@@ -36,7 +36,9 @@ const createUserSchema = z.object({
     plan: z.enum(["SOLO", "PRO", "ENTERPRISE"]).default("SOLO"),
 })
 
-type CreateUserFormValues = z.infer<typeof createUserSchema>
+/** Entrada do form (role/plan opcionais por causa do `.default`) e saída já validada. */
+type CreateUserFormInput = z.input<typeof createUserSchema>
+type CreateUserFormValues = z.output<typeof createUserSchema>
 
 export function UserCreateDialog() {
     const [open, setOpen] = useState(false)
@@ -48,8 +50,8 @@ export function UserCreateDialog() {
         reset,
         setValue,
         formState: { errors },
-    } = useForm<CreateUserFormValues>({
-        resolver: zodResolver(createUserSchema) as any,
+    } = useForm<CreateUserFormInput, unknown, CreateUserFormValues>({
+        resolver: zodResolver(createUserSchema),
         defaultValues: {
             role: "user",
             plan: "SOLO",

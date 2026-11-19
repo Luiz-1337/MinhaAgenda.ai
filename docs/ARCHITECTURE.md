@@ -113,6 +113,18 @@ Dentro de `packages/mcp-server` e `packages/db` vale Clean Architecture:
   drag & drop remaneja horários.
 - Mutações = **Server Actions** em `app/actions/*` (ver CONVENTIONS §5).
 
+### 5.3 Admin do produto
+- **Não há middleware/proxy em `apps/web`**: cada action e cada rota é o único
+  ponto de controle. O guard do admin vive em `lib/services/admin-auth.service.ts`.
+- Server Actions em `app/actions/admin/*` → `requireAdmin()` (sessão + `system_role = 'admin'`).
+- Rotas em `app/api/admin/**` → `requireAdminRequest(headers)`: aceita a sessão
+  de admin (telas do painel) **ou** o header `x-admin-key` = `ADMIN_API_KEY`
+  (curl/scripts), comparado em tempo constante.
+- Toda ação que muda estado grava em `admin_audit_logs` via `logAdminAction`
+  (chamadas por chave ficam com `admin_id` nulo e `admin_email = 'api-key (x-admin-key)'`).
+- `__tests__/lib/admin-routes-authz.test.ts` falha se uma rota ou action nova do
+  admin esquecer o guard.
+
 ## 6. Dívidas arquiteturais conhecidas (não são "como deveria ser")
 - **Drift de Zod:** `mcp-server` em **4.x**, `web`/`db` em **3.x**. Como o
   mcp-server importa `@repo/db` (zod 3), tipos cruzam a fronteira v3↔v4 — fonte

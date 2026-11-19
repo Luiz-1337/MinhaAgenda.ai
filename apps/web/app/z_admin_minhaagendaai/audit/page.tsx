@@ -28,6 +28,10 @@ const ACTION_LABELS: Record<string, string> = {
     "credits.grant": "Concedeu créditos",
     "credits.reset_usage": "Zerou consumo",
     "salon.ai_retention": "Retenção IA",
+    "queue.clear": "Limpou a fila",
+    "lid_mapping.set": "Mapeou LID",
+    "lid_mapping.remove": "Removeu LID",
+    "whatsapp.test_send": "Envio de teste WhatsApp",
 }
 
 function actionLabel(action: string) {

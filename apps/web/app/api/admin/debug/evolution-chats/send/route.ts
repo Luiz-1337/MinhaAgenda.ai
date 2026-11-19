@@ -6,10 +6,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendTestMessage } from '@/lib/services/evolution/evolution-instance.service';
 import { logger } from '@/lib/infra/logger';
+import { requireAdminRequest } from '@/lib/services/admin-auth.service';
+import { logAdminAction } from '@/lib/services/admin-audit.service';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireAdminRequest(request.headers);
+  if ('response' in auth) return auth.response;
+
   let body: { instanceName?: string; remoteJid?: string; text?: string };
   try {
     body = await request.json();
@@ -29,6 +34,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const textTrimmed = String(text).trim();
+
+  await logAdminAction({
+    admin: auth.admin,
+    action: 'whatsapp.test_send',
+    details: { instanceName, remoteJid, length: textTrimmed.length },
+  });
 
   // Fire-and-forget: Evolution API em grupos pode demorar >60s ou travar. Respondemos logo e enviamos em background.
   sendTestMessage(instanceName, remoteJid, textTrimmed)

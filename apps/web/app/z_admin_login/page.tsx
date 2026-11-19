@@ -53,8 +53,8 @@ export default function AdminLoginPage() {
             toast.success("Login realizado com sucesso!")
             router.push("/z_admin_minhaagendaai")
             router.refresh()
-        } catch (error: any) {
-            toast.error(error.message || "Erro ao realizar login")
+        } catch (error) {
+            toast.error(error instanceof Error && error.message ? error.message : "Erro ao realizar login")
         } finally {
             setIsLoading(false)
         }

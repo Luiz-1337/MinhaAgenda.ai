@@ -7,11 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setManualLidMapping, removeLidMapping, resolveLidToPhone } from '@/lib/infra/redis';
 import { logger } from '@/lib/infra/logger';
-import { requireAdminAuth } from '@/lib/services/admin-auth.service';
+import { requireAdminRequest } from '@/lib/services/admin-auth.service';
+import { logAdminAction } from '@/lib/services/admin-audit.service';
 
 export async function POST(request: NextRequest) {
-    const authError = requireAdminAuth(request.headers);
-    if (authError) return authError;
+    const auth = await requireAdminRequest(request.headers);
+    if ('response' in auth) return auth.response;
 
     try {
         const body = await request.json();
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
         await setManualLidMapping(lid, phone, instanceName);
 
         logger.info({ lid, phone, instanceName }, 'Manual LID mapping set via API');
+        await logAdminAction({ admin: auth.admin, action: 'lid_mapping.set', details: { lid, phone, instanceName } });
 
         return NextResponse.json({
             success: true,
@@ -42,8 +44,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-    const authError = requireAdminAuth(request.headers);
-    if (authError) return authError;
+    const auth = await requireAdminRequest(request.headers);
+    if ('response' in auth) return auth.response;
 
     try {
         const { searchParams } = new URL(request.url);
@@ -75,8 +77,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-    const authError = requireAdminAuth(request.headers);
-    if (authError) return authError;
+    const auth = await requireAdminRequest(request.headers);
+    if ('response' in auth) return auth.response;
 
     try {
         const body = await request.json();
@@ -92,6 +94,7 @@ export async function DELETE(request: NextRequest) {
         await removeLidMapping(lid, instanceName);
 
         logger.info({ lid, instanceName }, 'LID mapping removed via API');
+        await logAdminAction({ admin: auth.admin, action: 'lid_mapping.remove', details: { lid, instanceName } });
 
         return NextResponse.json({
             success: true,
