@@ -97,8 +97,9 @@ foi visto com comanda) — ver §13.10.
 Fatia 9f (exportação em planilha) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — **o arquivo não foi aberto em Excel
 nem em Sheets** — ver §13.11.
-Fatia 9g (organização multiunidade): **só o levantamento foi feito**
-(19/nov/2026), sem código — ver §13.12. Falta o dono escolher o desenho.
+Fatia 9g (organização multiunidade): levantamento em §13.12; o dono escolheu o
+caminho A ("a organização é o dono") em 19/nov/2026. Feita na mesma branch, sem
+migration — **em commit local, sem publicar e sem teste em uso** — ver §13.13.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4123,7 +4124,8 @@ Perguntas para o dono:
 | Responder às perguntas da 9e em §13.4 (limite de baixa ocupação, folgas na ocupação, o que é frequência) | Ajustes na 9e antes do piloto |
 | Abrir no Excel um CSV exportado dos relatórios e conferir acentos, colunas, valores como número e datas — ver §13.11 | Confirmar o formato da exportação |
 | Responder às perguntas da 9f em §13.4 (PDF, exportar os relatórios antigos, permissão para exportar) | Ajustes na 9f antes do piloto |
-| Escolher o desenho da multiunidade (A, B ou esperar) e responder às perguntas de §13.12 | A fatia 9g |
+| Autorizar publicar a fatia 9g — ver §13.13 | Teste em uso da fatia 9g |
+| Responder às perguntas da multiunidade em §13.12 (gerente que vê todas as unidades, dado compartilhado, despesa organizacional, cobrança) | Decidir se o caminho B (entidade "organização") é necessário |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4146,7 +4148,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Feita, sem migration, publicada na branch e testada em uso (§13.9) |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Feita, sem migration, publicada na branch e testada em uso — a ocupação; o valor realizado não foi visto com comanda (§13.10) |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Feita, sem migration, publicada na branch e testada em uso; **o arquivo não foi aberto em Excel nem em Sheets** (§13.11) |
-| 9g | Organização: membros com papel e unidades (multiunidade) | Levantamento feito, **sem código** — falta o dono escolher o desenho (§13.12) |
+| 9g | Organização: membros com papel e unidades (multiunidade) | Caminho A feito em código, sem migration — **sem publicar e sem teste em uso** (§13.12 e §13.13) |
 
 "Todas as notas fiscais" é da fase 10.
 
@@ -4340,6 +4342,28 @@ Fatia 9f — exportação em planilha:
     estoque, pacotes, cashback, avaliações) continuam sem exportar; a lista de
     contatos já exportava, no formato antigo (vírgula, sem BOM).
 
+Fatia 9g — organização (caminho A):
+
+38. **A organização é o dono.** As unidades são os salões de que a pessoa
+    logada é DONA (`salons.owner_id`). Gerente e profissional não veem a tela,
+    tenham a permissão que tiverem. Não há entidade nova no banco.
+39. **Unidades lado a lado**, no período: faturamento, parte do total, comandas,
+    ticket médio, clientes que compraram e agendamentos; e, de hoje, clientes
+    cadastrados e profissionais ativos. A que mais faturou vem primeiro, e a
+    última linha soma a organização.
+40. **A soma é simples.** Cada unidade tem o seu cadastro: a mesma pessoa
+    cliente (ou profissional) de duas unidades conta duas vezes.
+41. **Equipe numa lista só**, uma linha por PESSOA: cadastros com o mesmo login,
+    a mesma chave de pessoa (a da agenda) ou o mesmo e-mail são a mesma pessoa.
+    Mostra em que unidades ela está, com o papel em cada uma. Quem está em mais
+    unidades vem primeiro.
+42. **Só leitura.** Para incluir alguém numa unidade ou ver o detalhe, o nome
+    da unidade leva para o salão dela. Nada é compartilhado entre unidades.
+43. **A lista de salões nunca vem do navegador**: o servidor lê os salões do
+    usuário da sessão. É o único serviço que lê mais de um salão de uma vez.
+44. **Quem vê**: o dono, abrindo a tela de um salão DELE que tenha o módulo
+    `reports`. Quem é dono de uma unidade só também abre (com um aviso).
+
 Perguntas para o dono:
 
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
@@ -4419,6 +4443,9 @@ Perguntas para o dono:
   em horas ("12h de 40h") e o selo "BAIXA OCUPAÇÃO".
 - **Exportar (9f)**: botão no fim da barra de filtros de cada relatório da
   fase 9; avisa quantas linhas saíram, ou que não há linhas.
+- **Organização (9g)** (`/[salonId]/organization`, atalho no topo da central
+  de relatórios, só para o dono): o período; a tabela de unidades com a linha
+  de soma; a tabela da equipe; e "Exportar" (as unidades).
 
 | Assunto | Onde está |
 |---|---|
@@ -4428,6 +4455,7 @@ Perguntas para o dono:
 | Relatórios de vendas e rankings (9d) | Sem migration; regra em `domain/sales-reports.ts` (`buildSoldItemsReport`, `buildCustomerRanking`, `buildProfessionalRanking`, `buildReferralReport`); I/O em `services/sales-reports.service.ts`; action em `actions/sales-reports.ts` (na guarda de `actions-authz.test.ts`; a permissão depende do relatório); tela em `app/[salonId]/reports/sales/`; os cinco destinos no catálogo; testes em `sales-reports-domain.test.ts` |
 | Painel de profissionais (9e) | Sem migration; regra em `domain/professional-panel.ts` (`countWeekdays`, `weeklyWorkMinutes`, `buildProfessionalPanel`); I/O em `services/professional-panel.service.ts` (reusa `listSoldItemsService`); action em `actions/professional-panel.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/professionals/`; o destino no catálogo; testes em `professional-panel-domain.test.ts` |
 | Exportação em planilha (9f) | Sem migration e sem action nova; o formato em `apps/web/lib/utils/csv.utils.ts` (`toCsv`, `csvMoney`, `csvDate`, `csvFileName`); o botão em `components/reports/export-csv-button.tsx`; a função `sheet()` de cada tela em `app/[salonId]/reports/*/…-client.tsx`; testes em `__tests__/lib/utils/csv.utils.test.ts` |
+| Organização (9g, caminho A) | Sem migration; regra em `domain/organization.ts` (`buildOrganizationUnits`, `groupOrganizationMembers`); I/O em `services/organization.service.ts` (o único que lê mais de um salão; a lista sai de `salons.owner_id`); action em `actions/organization.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/organization/`; o atalho em `reports/reports-client.tsx` (`ownedSalons` em `actions/reports.ts`); testes em `organization-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4767,3 +4795,26 @@ uma fase própria, não uma fatia dos relatórios.
   é de nenhuma unidade (marca, contador), ou um gasto rateado entre elas?
 - O plano deve ser cobrado por organização ou por unidade? Hoje é por dono, e
   PRO e ENTERPRISE não têm o limite de "até 3 salões" que as telas prometem.
+
+### 13.13 Fatia 9g — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1457).
+- **Sem migration.** Só leitura.
+- **As consultas não foram executadas contra o banco**, e esta é a primeira
+  tela que lê mais de um salão: o teste em uso tem que conferir, antes de
+  tudo, que só entram os salões do dono.
+- **Limites desta fatia (o que o caminho A não faz):**
+  - só o dono vê; não há administrador da organização que não seja o dono;
+  - não inclui, move nem remove ninguém: a equipe é só leitura;
+  - nada compartilhado entre unidades (cliente, catálogo, estoque, pacote);
+  - sem "receita/despesa organizacional";
+  - sem filtro de unidade nos outros relatórios: cada relatório continua sendo
+    de um salão;
+  - o atalho fica na central de relatórios, não no menu.
+- **Sem teste em uso.** Roteiro: no salão de teste (dono de uma unidade só), o
+  atalho na central e a tela com o aviso de unidade única, os números batendo
+  com os relatórios do salão, e a equipe; conferir no banco que a lista de
+  salões da tela é exatamente a do dono; se possível, ver a tela com o único
+  dono de produção que tem dois salões (não é o usuário de teste).

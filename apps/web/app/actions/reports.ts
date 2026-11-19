@@ -2,6 +2,7 @@
 
 import { z } from "zod"
 import {
+  listOwnedSalonsService,
   listReportFavoritesService,
   resolveReportCatalog,
   setReportFavoriteService,
@@ -52,6 +53,8 @@ export type ReportsHomeData = {
   categories: ResolvedReportCategory[]
   /** As chaves marcadas com estrela por quem está logado, na ordem em que marcou. */
   favorites: string[]
+  /** Quantos salões são de quem está logado, se este for um deles. 0 = não é o dono daqui. */
+  ownedSalons: number
 }
 
 /** O catálogo como quem está logado o vê neste salão, e os favoritos dele. */
@@ -60,12 +63,17 @@ export async function getReportsHome(salonId: string): Promise<ReportsHomeData |
   if ("error" in auth) return auth
 
   try {
-    const [modules, permissions, favorites] = await Promise.all([
+    const [modules, permissions, favorites, owned] = await Promise.all([
       getSalonModules(salonId),
       getSalonPermissions(salonId, auth.userId),
       listReportFavoritesService({ salonId, userId: auth.userId }),
+      listOwnedSalonsService(auth.userId),
     ])
-    return { categories: resolveReportCatalog({ modules, permissions: [...permissions] }), favorites }
+    return {
+      categories: resolveReportCatalog({ modules, permissions: [...permissions] }),
+      favorites,
+      ownedSalons: owned.some((salon) => salon.id === salonId) ? owned.length : 0,
+    }
   } catch (error) {
     console.error("Erro ao carregar a central de relatórios:", error)
     return { error: "Não foi possível carregar os relatórios" }
