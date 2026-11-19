@@ -15,6 +15,7 @@ import {
 } from "@repo/db/src/domain/sales-reports"
 import type { CatalogService } from "@repo/db"
 import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { ReportInsightsPanel } from "@/components/reports/report-insights-panel"
 import { csvDate, csvFileName, csvMoney } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, formatQuantity, labelClass } from "../../inventory/inventory-ui"
 
@@ -236,6 +237,8 @@ export function SalesReportsClient({ salonId, data }: { salonId: string; data: S
         )}
         <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
+
+      <ReportInsightsPanel salonId={salonId} screen="sales" />
 
       {"truncated" in data && data.truncated && (
         <p role="status" className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 text-xs text-foreground">

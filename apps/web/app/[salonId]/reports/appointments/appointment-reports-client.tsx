@@ -15,6 +15,7 @@ import {
   type ReportAppointment,
 } from "@repo/db/src/domain/agenda-reports"
 import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { ReportInsightsPanel } from "@/components/reports/report-insights-panel"
 import { csvDate, csvFileName } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, labelClass } from "../../inventory/inventory-ui"
 
@@ -228,6 +229,8 @@ export function AppointmentReportsClient({ salonId, data }: { salonId: string; d
         </p>
         <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
+
+      <ReportInsightsPanel salonId={salonId} screen="appointments" />
 
       {data.truncated && (
         <p role="status" className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 text-xs text-foreground">

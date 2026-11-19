@@ -12,6 +12,7 @@ import {
   type FinanceReportView,
 } from "@repo/db/src/domain/finance-reports"
 import { ExportCsvButton, type CsvSheet } from "@/components/reports/export-csv-button"
+import { ReportInsightsPanel } from "@/components/reports/report-insights-panel"
 import { csvDate, csvFileName, csvMoney } from "@/lib/utils/csv.utils"
 import { controlClass, formatCalendarDate, formatQuantity, labelClass } from "../../inventory/inventory-ui"
 
@@ -426,6 +427,8 @@ export function FinanceReportsClient({ salonId, data }: { salonId: string; data:
         </p>
         <ExportCsvButton sheet={sheet} disabled={isPending} />
       </div>
+
+      <ReportInsightsPanel salonId={salonId} screen="finance" />
 
       {data.view === "projection" ? (
         <Projection data={data} />
