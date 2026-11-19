@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
+import { SIDEBAR_COLLAPSED_COOKIE, parseCollapsedGroups } from "@/lib/utils/sidebar.utils"
 import { getSessionClaims } from "@/lib/supabase/auth"
 import { getUserSalons } from "@/app/actions/salon"
 import { SalonProvider } from "@/contexts/salon-context"
@@ -43,6 +45,8 @@ export default async function SalonLayout({
   const metadata = (claims.user_metadata ?? {}) as { full_name?: string }
   const userName = metadata.full_name || claims.email?.split("@")[0] || ""
 
+  const collapsedGroups = parseCollapsedGroups((await cookies()).get(SIDEBAR_COLLAPSED_COOKIE)?.value)
+
   return (
     <SalonProvider initialSalons={salons}>
       <RouteGuard />
@@ -55,7 +59,7 @@ export default async function SalonLayout({
               <Logo size="sm" textClassName="text-sidebar-foreground" />
             </div>
             <div className="flex-1 flex flex-col overflow-hidden">
-              <SidebarNav />
+              <SidebarNav initialCollapsed={collapsedGroups} />
             </div>
           </div>
         </aside>
@@ -65,7 +69,7 @@ export default async function SalonLayout({
           {/* Header */}
           <header className="h-11 flex-shrink-0 flex items-center justify-between px-4 md:px-8 bg-sidebar text-sidebar-foreground border-b border-sidebar-border relative z-10 transition-colors duration-150">
             <div className="flex items-center gap-4">
-              <MobileSidebar />
+              <MobileSidebar initialCollapsed={collapsedGroups} />
               <SalonSelector />
             </div>
 
