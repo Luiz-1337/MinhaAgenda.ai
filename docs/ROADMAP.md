@@ -102,8 +102,8 @@ caminho A ("a organização é o dono") em 19/nov/2026. Feita na mesma branch, s
 migration, publicada e testada em uso com UMA unidade — **a comparação entre
 duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 9
 estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
-mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g ainda não**: vão
-num PR novo da mesma branch — ver §13.14.
+mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g ainda não**: estão
+no PR #24, aberto e esperando a mescla — ver §13.14.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4842,8 +4842,9 @@ uma fase própria, não uma fatia dos relatórios.
   (commit `da0fc56`): levou a **fase 7 inteira** (fatias 7a a 7f, de que a
   branch da fase 9 sai) e as **fatias 9a e 9b**. As migrations 059 a 064 já
   estavam aplicadas em produção.
-- **Faltam na `main`: as fatias 9c, 9d, 9e, 9f e 9g** (11 commits). A branch
-  mescla sem conflito. Nenhuma tem migration.
+- **Faltam na `main`: as fatias 9c, 9d, 9e, 9f e 9g.** Estão no **PR #24**
+  (`claude/fase-9-relatorios` → `main`), aberto em 19/nov/2026, esperando a
+  mescla do dono. A branch mescla sem conflito. Nenhuma tem migration.
 - **O que isso muda em produção:**
   - os módulos novos continuam desligados para todos os salões, menos o de
     teste, que tem `online_booking` e `reports` ligados;
