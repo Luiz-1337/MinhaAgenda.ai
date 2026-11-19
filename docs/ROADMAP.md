@@ -4035,13 +4035,10 @@ Perguntas para o dono:
   - o bloqueio de `schedule_overrides` tira o horário da página, mas não
     aparece na agenda do salão (não há tela para ele);
   - depois de um erro de nome ou de telefone, a página fazia o cliente
-    escolher o horário de novo — corrigido depois do teste (a correção não foi
-    testada em uso).
+    escolher o horário de novo — corrigido depois do teste.
 - **Não testado:**
   - **a página sem login de verdade** (o preview fica atrás do login da
     Vercel) e no celular;
-  - **o teto de 3 agendamentos futuros por telefone** — só há a regra escrita,
-    sem teste em uso nem de unidade (a conta é no serviço);
   - intervalo (almoço) cadastrado — o salão de teste não tem; há teste de
     regra;
   - serviço com mais de um profissional, com dias ou horários próprios, e dia
@@ -4050,8 +4047,20 @@ Perguntas para o dono:
   - dois pedidos para o mesmo horário ao mesmo tempo, e o campo-isca;
   - salão com agenda oficial (Belasis) e o que ela recusa;
   - se o link foi mesmo para a área de transferência.
-- **Ficou no salão de teste:** o cadastro "Cliente Teste Sete F" com dois
-  agendamentos cancelados. O bloqueio de teste foi apagado.
+- **Teto de 3 agendamentos por telefone — coberto depois (18/nov/2026):** a
+  comparação saiu do serviço para `onlineBookingLimitError`
+  (`domain/booking-slots.ts`), com teste da fronteira (2 passa, 3 recusa,
+  contagem inválida recusa). Em uso, no preview: com dois agendamentos futuros
+  do cliente de teste (inseridos por SQL, pelo id), o terceiro entrou pela
+  página e o quarto foi recusado com "Este telefone já tem 3 horários
+  marcados. Fale com o salão para marcar mais"; no banco ficaram exatamente
+  três. No mesmo teste, a correção do formulário foi conferida: depois de um
+  erro de telefone, o horário escolhido e os campos continuaram.
+- **Achado:** `/schedule?date=` não leva a agenda para a semana pedida; ela
+  abre na semana de hoje.
+- **Ficou no salão de teste:** o cadastro "Cliente Teste Sete F" com três
+  agendamentos cancelados. O bloqueio de teste e os dois agendamentos
+  inseridos por SQL foram apagados.
 
 ## 12. Pendências do dono
 
