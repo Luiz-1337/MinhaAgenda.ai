@@ -1897,7 +1897,7 @@ export const subscriptionPlans = pgTable(
     intervalMonths: integer('interval_months').default(1).notNull(),
     // Inativo não aceita assinatura nova.
     isActive: boolean('is_active').default(true).notNull(),
-    // Aparece na página pública de planos (fase 8). Hoje só é guardado.
+    // Aparece na página pública de planos, /planos/[salonId] (fase 8, fatia 8c).
     isVisible: boolean('is_visible').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull()

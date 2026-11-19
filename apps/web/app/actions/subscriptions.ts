@@ -18,6 +18,7 @@ import {
   listSubscriptionPlansService,
   saveSubscriptionPlanService,
   setCustomerSubscriptionActiveService,
+  subscriptionDueAlert,
   type PermissionKey,
 } from "@repo/db"
 import { getSessionUserId } from "@/lib/supabase/auth"
@@ -151,8 +152,11 @@ export async function getCustomerSubscriptions(
       salonHasModule(salonId, "sales"),
     ])
 
-    const totals = { pending: 0, active: 0, expired: 0, inactive: 0 }
-    for (const row of list.rows) totals[row.status] += 1
+    const totals = { pending: 0, active: 0, expired: 0, inactive: 0, dueSoon: 0 }
+    for (const row of list.rows) {
+      totals[row.status] += 1
+      if (subscriptionDueAlert(row.dueInDays) === "due_soon") totals.dueSoon += 1
+    }
 
     return {
       subscriptions: list.rows,

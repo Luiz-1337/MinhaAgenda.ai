@@ -111,7 +111,10 @@ de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fat
 aplicada, publicada no preview e **testada em uso** em 19/nov/2026; ainda fora
 da `main` — ver §14.6. Fatia 8b (abater o sinal na comanda) feita na mesma
 branch — migration 066 aplicada, publicada no preview e **testada em uso** em
-19/nov/2026; também fora da `main` — ver §14.7.
+19/nov/2026; também fora da `main` — ver §14.7. Fatia 8c (aviso de
+vencimento da assinatura no painel e página pública de planos) feita na mesma
+branch, sem migration — **em commit local, sem publicar e sem teste em uso** —
+ver §14.8. O aviso de vencimento por mensagem virou a fatia 8d, pendente.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4890,7 +4893,8 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 |---|---|---|
 | 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
 | 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
-| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento (no painel e por mensagem) e página pública de planos | Pendente |
+| 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita em código, sem migration — **sem publicar e sem teste em uso** (§14.8) |
+| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Pendente |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
 cobrança por link ou PIX gerado pelo sistema, confirmação automática do
@@ -4984,8 +4988,41 @@ Fatia 8b — sinal abatido na comanda:
 20. **Sem módulo próprio.** Com o financeiro desligado, o sinal vira pagamento
     da comanda e nada mais.
 
+Fatia 8c — assinatura sem cobrança automática:
+
+21. **Nada é cobrado sozinho.** A renovação continua sendo "Renovar", que abre a
+    comanda da cobrança (fase 5, regra 24). A 8c só avisa.
+22. **"Vencendo"** é a assinatura ATIVA que vence em até 7 dias, contando hoje.
+    **"Vencida"** é a que já passou do vencimento (a situação Expirada).
+    Pendente (nunca paga) e Desativada não têm aviso.
+23. **Na tela de Assinaturas**: uma faixa no topo com quantas vencem nos
+    próximos 7 dias e quantas estão vencidas, com atalho para cada lista; o
+    filtro "Vencendo (N)"; e, na coluna Vencimento, "Vence hoje", "Vence
+    amanhã", "Vence em N dias", "Venceu ontem" ou "Venceu há N dias".
+24. **O aviso é só na tela de Assinaturas.** Não há alerta no sino nem no
+    dashboard.
+25. **A página pública de planos** (`/planos/<id do salão>`, sem login) mostra
+    os planos ATIVOS e marcados como "Visível": nome, descrição, valor e
+    periodicidade, do mais barato para o mais caro.
+26. **A página não vende nem cobra.** Diz "Para assinar, fale com o salão" e,
+    quando o salão tem WhatsApp cadastrado, mostra o botão que abre a conversa.
+    Não cria assinatura nem recolhe dado do visitante.
+27. **A página existe para salão com o módulo de pacotes e assinaturas.** Sem o
+    módulo e para endereço desconhecido a resposta é a mesma ("Planos
+    indisponíveis"). Com o módulo e sem plano visível: "Ainda não há planos".
+28. **O link** sai do botão "Link dos planos", na tela de Planos de assinatura.
+29. **O aviso por mensagem ficou fora** (fatia 8d): mexe na fila de mensagens ao
+    cliente, que é do caminho do WhatsApp, e pede migration.
+
 Perguntas para o dono:
 
+- (8c) 7 dias de antecedência para "vencendo" está bom (regra 22)? Deve ser
+  configurável por salão?
+- (8c) O aviso de vencimento deve aparecer também no dashboard ou no sino
+  (regra 24)?
+- (8c) A página de planos deve deixar o visitante pedir a assinatura (nome e
+  WhatsApp), criando uma assinatura pendente para o salão cobrar (regra 26)?
+- (8c) A página de planos deve mostrar também os pacotes à venda?
 - (8b) O sinal deveria entrar no financeiro no dia em que foi recebido, e não
   no dia do atendimento (regra 19)? Isso pede um lançamento próprio de
   "adiantamento de cliente".
@@ -5012,6 +5049,11 @@ Perguntas para o dono:
   marcar; e, na confirmação, o bloco com valor, chave PIX, "Copiar chave" e o
   nome do titular.
 - **Detalhe do agendamento (8a)**: a linha "Sinal", com as ações.
+- **Assinaturas (8c)**: a faixa de aviso, o filtro "Vencendo" e o texto de
+  vencimento em cada linha.
+- **Planos de assinatura (8c)**: o botão "Link dos planos".
+- **Página pública de planos (8c)** (`/planos/[salonId]`): os planos visíveis e
+  o contato do salão.
 - **Faturar comanda (8b)**: o campo "Sinal recebido — abater como"; no resumo
   da comanda, "Sinal recebido, a abater no faturamento" (aberta) e "Sinal
   abatido (está nos pagamentos)" (faturada).
@@ -5093,3 +5135,35 @@ Perguntas para o dono:
   - o pagamento do sinal não tem marca própria na lista de pagamentos da
     comanda — o resumo mostra só o total abatido;
   - sinal recebido de agendamento cancelado continua sem destino no sistema.
+
+### 14.8 Fatia 8c — estado (19/nov/2026)
+
+- Na branch `claude/fase-8-sinal`, **em commit local, sem publicar**. Sem
+  migration: a coluna `subscription_plans.is_visible` já existia desde a 053.
+  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
+  e testes passando (web 1481).
+- **Onde está:** regra em `domain/subscriptions.ts`
+  (`subscriptionDueInDays`, `subscriptionDueAlert`, `subscriptionDueLabel`,
+  `SUBSCRIPTION_DUE_SOON_DAYS`); `dueInDays` em
+  `listCustomerSubscriptionsService` e `getPublicSubscriptionPlansService`
+  (`services/subscriptions.service.ts`); `totals.dueSoon` em
+  `actions/subscriptions.ts`; telas em
+  `packages/subscriptions/subscriptions-client.tsx`,
+  `packages/subscription-plans/subscription-plans-client.tsx` e
+  `app/planos/[salonId]/page.tsx`; testes em `subscriptions-domain.test.ts`.
+- **A página pública não tem action**: é só leitura, não entra na guarda de
+  `actions-authz.test.ts` e não recebe dado do visitante.
+- **As consultas não foram executadas contra o banco.**
+- **Limites desta fatia:**
+  - os totais e o aviso contam só as assinaturas que a tela carrega (as mais
+    recentes, como já era);
+  - o botão de WhatsApp usa `salons.whatsapp`; salão sem esse número fica só
+    com o texto;
+  - sem aviso por mensagem (8d).
+- **Sem teste em uso.** Roteiro, no salão de teste: criar um plano visível e
+  um não visível; abrir `/planos/<id>` e ver só o visível, com valor e
+  periodicidade; "Link dos planos" copia o endereço; criar uma assinatura,
+  cobrar e faturar com data que deixe o vencimento a menos de 7 dias — a
+  faixa, o filtro "Vencendo" e "Vence em N dias" aparecem; uma assinatura
+  vencida mostra "Venceu há N dias"; salão sem o módulo: "Planos
+  indisponíveis"; limpar os dados.

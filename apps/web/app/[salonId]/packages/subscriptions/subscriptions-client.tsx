@@ -26,10 +26,15 @@ import type {
   SubscriptionCustomerOption,
 } from "@/lib/types/subscriptions"
 import type { CustomerSubscriptionStatus } from "@repo/db"
+import {
+  SUBSCRIPTION_DUE_SOON_DAYS,
+  subscriptionDueAlert,
+  subscriptionDueLabel,
+} from "@repo/db/src/domain/subscriptions"
 import { Modal, formatCalendarDate, iconButtonClass, inputClass, labelClass } from "../../inventory/inventory-ui"
 import { PackagesNav } from "../packages-ui"
 
-type Filter = "all" | CustomerSubscriptionStatus
+type Filter = "all" | "due_soon" | CustomerSubscriptionStatus
 
 const linkButtonClass = "text-xs font-bold text-accent hover:underline disabled:opacity-50 disabled:no-underline"
 
@@ -59,7 +64,12 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
   const [toDelete, setToDelete] = useState<CustomerSubscriptionDTO | null>(null)
 
   const visible = useMemo(
-    () => (filter === "all" ? data.subscriptions : data.subscriptions.filter((item) => item.status === filter)),
+    () =>
+      filter === "all"
+        ? data.subscriptions
+        : filter === "due_soon"
+          ? data.subscriptions.filter((item) => subscriptionDueAlert(item.dueInDays) === "due_soon")
+          : data.subscriptions.filter((item) => item.status === filter),
     [data.subscriptions, filter]
   )
 
@@ -67,6 +77,7 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
     { key: "all", label: "Todas" },
     { key: "pending", label: `Pendentes (${data.totals.pending})` },
     { key: "active", label: `Ativas (${data.totals.active})` },
+    { key: "due_soon", label: `Vencendo (${data.totals.dueSoon})` },
     { key: "expired", label: `Expiradas (${data.totals.expired})` },
     { key: "inactive", label: `Desativadas (${data.totals.inactive})` },
   ]
@@ -171,6 +182,39 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
         <Stat label="Desativadas" value={String(data.totals.inactive)} hint="Encerradas pelo salão" />
       </div>
 
+      {(data.totals.dueSoon > 0 || data.totals.expired > 0) && (
+        <div
+          role="status"
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground"
+        >
+          <p>
+            {[
+              data.totals.dueSoon > 0
+                ? `${data.totals.dueSoon} ${data.totals.dueSoon === 1 ? "assinatura vence" : "assinaturas vencem"} nos próximos ${SUBSCRIPTION_DUE_SOON_DAYS} dias`
+                : "",
+              data.totals.expired > 0
+                ? `${data.totals.expired} ${data.totals.expired === 1 ? "está vencida" : "estão vencidas"}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" e ")}
+            . A cobrança não é automática: use “Renovar”.
+          </p>
+          <div className="flex gap-3">
+            {data.totals.dueSoon > 0 && (
+              <button type="button" onClick={() => setFilter("due_soon")} className={linkButtonClass}>
+                Ver as que vencem
+              </button>
+            )}
+            {data.totals.expired > 0 && (
+              <button type="button" onClick={() => setFilter("expired")} className={linkButtonClass}>
+                Ver as vencidas
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <section className="bg-card border border-border rounded-md">
         <div className="p-3 border-b border-border bg-muted/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assinaturas</h3>
@@ -227,6 +271,17 @@ export function SubscriptionsClient({ salonId, data }: { salonId: string; data: 
                     </td>
                     <td className="p-3 tabular-nums text-muted-foreground">
                       {subscription.paidUntil ? formatCalendarDate(subscription.paidUntil) : "—"}
+                      {subscriptionDueAlert(subscription.dueInDays) && (
+                        <span
+                          className={`block text-[11px] font-semibold ${
+                            subscriptionDueAlert(subscription.dueInDays) === "overdue"
+                              ? "text-destructive"
+                              : "text-amber-700 dark:text-amber-400"
+                          }`}
+                        >
+                          {subscriptionDueLabel(subscription.dueInDays)}
+                        </span>
+                      )}
                       {subscription.lastSale && (
                         <Link
                           href={`/${salonId}/sales/${subscription.lastSale.saleId}`}

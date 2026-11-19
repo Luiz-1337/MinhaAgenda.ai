@@ -32,7 +32,10 @@ export type CustomerSubscriptionDTO = CustomerSubscriptionRow
 export interface CustomerSubscriptionsDTO {
   subscriptions: CustomerSubscriptionDTO[]
   truncated: boolean
-  totals: Record<CustomerSubscriptionStatus, number>
+  totals: Record<CustomerSubscriptionStatus, number> & {
+    /** Ativas que vencem nos próximos dias (fase 8, fatia 8c). */
+    dueSoon: number
+  }
   /** Planos ativos, para criar uma assinatura. */
   plans: { id: string; name: string; price: string; intervalMonths: number }[]
   can: {

@@ -7,15 +7,19 @@ import {
   customers,
   saleItems,
   sales,
+  salons,
   subscriptionPlans,
 } from "../index"
 import { brazilToday } from "../domain/finance"
+import { parseSalonModules } from "../domain/permissions"
+import { toWhatsAppNumber } from "../domain/care-messages"
 import {
   customerSubscriptionDeleteBlocker,
   customerSubscriptionStatus,
   planCustomerSubscription,
   planSubscriptionPeriods,
   planSubscriptionPlan,
+  subscriptionDueInDays,
   subscriptionPlanDeleteBlocker,
   type CustomerSubscriptionStatus,
   type SubscriptionForRenewal,
@@ -296,6 +300,11 @@ export type CustomerSubscriptionRow = {
   /** Comanda aberta com a cobrança desta assinatura, esperando faturar. */
   openSale: { saleId: string; number: number } | null
   status: CustomerSubscriptionStatus
+  /**
+   * Dias até o vencimento (fase 8, fatia 8c): 0 = hoje, negativo = já venceu.
+   * NULL = nunca foi paga ou está desativada.
+   */
+  dueInDays: number | null
 }
 
 /**
@@ -344,17 +353,16 @@ export async function listCustomerSubscriptionsService(input: {
   return {
     rows: visible.map(({ deactivatedAt, ...row }) => {
       const last = periods.get(row.id)
+      const paidUntil = last?.paidUntil ?? null
+      const status = customerSubscriptionStatus({ deactivated: deactivatedAt !== null, paidUntil, today })
       return {
         ...row,
-        paidUntil: last?.paidUntil ?? null,
+        paidUntil,
         periods: last?.periods ?? 0,
         lastSale: last ? { saleId: last.saleId, number: last.saleNumber } : null,
         openSale: openSales.get(row.id) ?? null,
-        status: customerSubscriptionStatus({
-          deactivated: deactivatedAt !== null,
-          paidUntil: last?.paidUntil ?? null,
-          today,
-        }),
+        status,
+        dueInDays: subscriptionDueInDays({ status, paidUntil, today }),
       }
     }),
     truncated: rows.length > input.limit,
@@ -730,4 +738,62 @@ export async function revertSaleSubscriptions(tx: Tx, input: { salonId: string; 
     .where(
       and(eq(customerSubscriptionPeriods.saleId, input.saleId), eq(customerSubscriptionPeriods.salonId, input.salonId))
     )
+}
+
+// ============================================================================
+// Página pública de planos (fase 8, fatia 8c)
+// ============================================================================
+
+export type PublicSubscriptionPlan = {
+  id: string
+  name: string
+  description: string | null
+  price: string
+  intervalMonths: number
+}
+
+export type PublicSubscriptionPlans = {
+  salonName: string
+  /** O WhatsApp do salão, só dígitos, para o botão de contato. NULL = não tem. */
+  salonWhatsapp: string | null
+  plans: PublicSubscriptionPlan[]
+}
+
+/**
+ * O que a página pública de planos mostra. NULL = salão desconhecido OU sem o
+ * módulo de pacotes e assinaturas (mesma resposta para os dois, de propósito).
+ *
+ * Só entram planos ATIVOS e marcados como visíveis. A página não vende nem
+ * cobra: mostra os planos e manda falar com o salão.
+ */
+export async function getPublicSubscriptionPlansService(salonId: unknown): Promise<PublicSubscriptionPlans | null> {
+  if (typeof salonId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(salonId)) {
+    return null
+  }
+  const salon = await db.query.salons.findFirst({
+    where: eq(salons.id, salonId),
+    columns: { id: true, name: true, whatsapp: true, settings: true },
+  })
+  if (!salon || !parseSalonModules(salon.settings).includes("packages")) return null
+
+  const plans = await db
+    .select({
+      id: subscriptionPlans.id,
+      name: subscriptionPlans.name,
+      description: subscriptionPlans.description,
+      price: subscriptionPlans.price,
+      intervalMonths: subscriptionPlans.intervalMonths,
+    })
+    .from(subscriptionPlans)
+    .where(
+      and(
+        eq(subscriptionPlans.salonId, salon.id),
+        eq(subscriptionPlans.isActive, true),
+        eq(subscriptionPlans.isVisible, true)
+      )
+    )
+    .orderBy(asc(subscriptionPlans.price), asc(subscriptionPlans.name))
+
+  const whatsapp = toWhatsAppNumber(salon.whatsapp)
+  return { salonName: salon.name, salonWhatsapp: whatsapp ? whatsapp.slice(1) : null, plans }
 }
