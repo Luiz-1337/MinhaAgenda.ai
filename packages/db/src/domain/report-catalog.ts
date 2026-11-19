@@ -59,16 +59,16 @@ export const REPORT_CATALOG: readonly ReportDefinition[] = [
   { key: 'finance.cash_history', category: 'finance', name: 'Histórico de caixa', summary: 'Os caixas fechados, com abertura, movimentos e conferência.', target: { path: 'finance/cash', module: 'finance', permission: 'cash.access' } },
 
   // --- Agendamentos -------------------------------------------------------
-  { key: 'appointments.all', category: 'appointments', name: 'Todos os agendamentos', summary: 'Os agendamentos do período, por situação, profissional e serviço.', target: null, planned: 'fatia 9c' },
-  { key: 'appointments.cancelled', category: 'appointments', name: 'Agendamentos cancelados', summary: 'O que foi cancelado, quando, por quem e por quê.', target: null, planned: 'fatia 9c' },
-  { key: 'appointments.origin', category: 'appointments', name: 'Origem dos agendamentos', summary: 'De onde vieram: anúncio ou orgânico, IA, painel ou página online.', target: null, planned: 'fatia 9c' },
-  { key: 'appointments.creation', category: 'appointments', name: 'Criação de agendamento', summary: 'Quantos agendamentos foram criados por dia, e com que antecedência.', target: null, planned: 'fatia 9c' },
+  { key: 'appointments.all', category: 'appointments', name: 'Todos os agendamentos', summary: 'Os agendamentos do período, com a contagem por situação.', target: { path: 'reports/appointments?view=all', permission: 'schedule.view_all' } },
+  { key: 'appointments.cancelled', category: 'appointments', name: 'Agendamentos cancelados', summary: 'O que foi cancelado, quando, por quem e por quê.', target: { path: 'reports/appointments?view=cancelled', permission: 'schedule.view_all' } },
+  { key: 'appointments.origin', category: 'appointments', name: 'Origem dos agendamentos', summary: 'De onde vieram (anúncio, orgânico, Google Calendar) e quantos compareceram.', target: { path: 'reports/appointments?view=origin', permission: 'schedule.view_all' } },
+  { key: 'appointments.creation', category: 'appointments', name: 'Criação de agendamento', summary: 'Quantos agendamentos foram criados por dia, e com que antecedência.', target: { path: 'reports/appointments?view=creation', permission: 'schedule.view_all' } },
   { key: 'appointments.care_today', category: 'appointments', name: 'Cuidados para hoje', summary: 'As mensagens de cuidados previstas e enviadas.', target: careMessages },
 
   // --- Clientes -----------------------------------------------------------
   { key: 'customers.list', category: 'customers', name: 'Lista completa', summary: 'Todos os contatos do salão, com busca, etiquetas e exportação.', target: { path: 'contacts', permission: 'customers.access' } },
-  { key: 'customers.birthdays', category: 'customers', name: 'Aniversariantes', summary: 'Quem faz aniversário no período.', target: null, planned: 'fatia 9c' },
-  { key: 'customers.inactive', category: 'customers', name: 'Inativos', summary: 'Quem não volta há mais tempo do que o esperado.', target: null, planned: 'fatia 9c' },
+  { key: 'customers.birthdays', category: 'customers', name: 'Aniversariantes', summary: 'Quem faz aniversário no mês, com a idade que completa.', target: { path: 'reports/customers?view=birthdays', permission: 'customers.access' } },
+  { key: 'customers.inactive', category: 'customers', name: 'Inativos', summary: 'Quem já veio, não vem há um tempo e não tem horário marcado.', target: { path: 'reports/customers?view=inactive', permission: 'customers.access' } },
   { key: 'customers.debtors', category: 'customers', name: 'Pendentes e inadimplentes', summary: 'Clientes com valor em aberto (fiado).', target: finance('finance/summary') },
   { key: 'customers.ranking', category: 'customers', name: 'Ranking de clientes', summary: 'Quem mais gastou e quem mais veio no período.', target: null, planned: 'fatia 9d' },
   { key: 'customers.return', category: 'customers', name: 'Retorno', summary: 'As mensagens de retorno por serviço e os envios.', target: careMessages },

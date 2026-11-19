@@ -87,6 +87,8 @@ relatórios com favoritos) feita na branch `claude/fase-9-relatorios` (sai de
 publicada e testada em uso em 19/nov/2026 — ver §13.6.
 Fatia 9b (relatórios financeiros) feita na mesma branch, sem migration,
 publicada e testada em uso em 19/nov/2026 — ver §13.7.
+Fatia 9c (relatórios de agendamentos e de clientes) feita na mesma branch, sem
+migration — **em commit local, sem publicar e sem teste em uso** — ver §13.8.
 Fases 8 e 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4106,6 +4108,8 @@ Perguntas para o dono:
 | Responder às perguntas da fase 9 em §13.4 (colunas e filtros de cada relatório, exportação, favoritos, permissão por categoria) | As fatias 9b a 9e |
 | Marcar "Relatórios — Acessar" nos perfis de acesso de quem deve ver a central | Funcionário com perfil usar a central |
 | Responder às perguntas da 9b em §13.4 (custo do dia ou de hoje, consumo no resultado, taxa por item, faixa de preço na projeção) | Ajustes na 9b antes do piloto |
+| Autorizar publicar a fatia 9c — ver §13.8 | Teste em uso da fatia 9c |
+| Responder às perguntas da 9c em §13.4 (guardar quem marcou, filtros, prazo de inatividade) | Ajustes na 9c antes do piloto |
 | Decidir o que fazer com os achados do levantamento da fase 7 (§11.2): folgas que ninguém lê, agendamento dentro do intervalo, dois cálculos de horários | Antes do agendamento online (7f) |
 | Corrigir os dois problemas do plano SOLO (§6.8) | Salões SOLO com mais de um profissional |
 
@@ -4124,7 +4128,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 |---|---|---|
 | 9a | Central de relatórios: o catálogo dos 38, apontando para a tela que já responde a cada um; "em breve" para o que falta; favoritos por pessoa | Feita — migration 064 aplicada, publicada na branch e testada em uso (§13.6) |
 | 9b | Financeiro que falta: resultado líquido de serviços e de produtos, projeção de faturamento, extrato de contas | Feita, sem migration, publicada na branch e testada em uso (§13.7) |
-| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Pendente |
+| 9c | Agendamentos (todos, cancelados, origem, criação) e clientes (aniversariantes, inativos) | Feita em código, sem migration — **sem publicar e sem teste em uso** (§13.8) |
 | 9d | Vendas e ranking: produtos e serviços vendidos, lista de produtos e serviços, ranking de clientes, ranking de vendas, indicação de clientes | Pendente |
 | 9e | Painel de profissionais: clientes únicos, valor realizado, ticket médio, frequência, ocupação | Pendente |
 | 9f | Exportação (planilha) nos relatórios, num formato só | Pendente |
@@ -4134,7 +4138,7 @@ A fase vem antes da 8 (pagamento online) na ordem do dono (§1).
 
 ### 13.2 O que o levantamento encontrou (18/nov/2026)
 
-- (Depois da fatia 9b, são 26 dos 38 com tela.)
+- (Depois da fatia 9b, são 26 dos 38 com tela; depois da 9c, 32.)
 - **22 dos 38 sub-relatórios já têm uma tela que responde**, feita nas fases 2
   a 6: financeiro (resumo, lançamentos, caixa), estoque (saldo, relatórios,
   compras), pacotes (relatórios), cashback (histórico), avaliações, cuidados e
@@ -4219,6 +4223,37 @@ Fatia 9b — relatórios financeiros:
 12. **O relatório e os filtros vivem na URL**: dá para recarregar, mandar o
     link e marcar como favorito na central.
 
+Fatia 9c — relatórios de agendamentos e de clientes:
+
+13. **Todos os agendamentos**, por período, pelo dia do atendimento, de todos
+    os profissionais: a contagem por situação (pendente, confirmado, concluído,
+    falta, cancelado) e a lista com dia e hora, cliente, serviço, profissional e
+    situação. Bloqueios de horário não entram.
+14. **Agendamentos cancelados**, pelo dia em que o atendimento ia acontecer: a
+    lista com quando foi cancelado, por quem e o motivo, e quantos ficaram sem
+    motivo. "Por quem" só existe quando o cancelamento veio de alguém logado no
+    painel.
+15. **Origem dos agendamentos**: quatro linhas — anúncio, orgânico, "veio do
+    Google Calendar" e "não se sabe" — com total, parte do total, concluídos,
+    faltas, cancelados e comparecimento (concluídos ÷ os que já tiveram
+    desfecho). A origem é a que o cliente tinha quando o agendamento foi criado.
+    **O sistema não guarda quem marcou** (IA, painel ou página online): isso
+    pediria uma coluna nova em `appointments`.
+16. **Criação de agendamento**, pelo dia em que foi CRIADO: quantos por dia, a
+    antecedência média e quatro faixas (no mesmo dia, 1 a 2 dias, 3 a 7, mais
+    de 7). Conta todos, qualquer que seja a situação hoje.
+17. **Aniversariantes**: por mês (sem mês, o de hoje), pelo dia, com a idade que
+    a pessoa completa no ano. Só entra quem tem a data de nascimento na ficha
+    (fatia 7a).
+18. **Inativos**: quem já veio (atendimento concluído ou comanda faturada), não
+    vem há N dias ou mais (30, 60, 90, 180 ou 365; padrão 60) e não tem horário
+    marcado. Quem sumiu há menos tempo vem primeiro. Não usa o ciclo médio de
+    cada serviço.
+19. **Quem vê**: agendamentos pedem `schedule.view_all` (mostram a agenda de
+    todos); clientes pedem `customers.access`, e o telefone só aparece — e só
+    sai do banco — para quem tem `customers.view_phones`. Os dois pedem o
+    módulo `reports`.
+
 Perguntas para o dono:
 
 - (9a) A central deve mostrar o que ainda não existe ("Em breve"), ou só o que
@@ -4236,6 +4271,16 @@ Perguntas para o dono:
   pelo maior ou pela média (regra 9)?
 - (9b) A projeção deve descontar uma taxa de falta ou de cancelamento?
 - (9b) O extrato deve mostrar também o que está em aberto, como previsão?
+- (9c) Vale guardar QUEM marcou o agendamento (IA, painel, página online)? Sem
+  isso, "origem" só sabe anúncio × orgânico (regra 15). Pede migration.
+- (9c) Os relatórios de agendamentos precisam de filtro por profissional, por
+  serviço e por situação?
+- (9c) "Inativo" deve seguir um prazo fixo (regra 18) ou o tempo de retorno de
+  cada serviço?
+- (9c) Aniversariantes: por mês basta, ou é preciso um período livre e o filtro
+  de ativos e inativos, como na Belasis?
+- (9c) Dos aniversariantes e dos inativos, o dono quer sair direto para uma
+  campanha no WhatsApp?
 - (9b–9e) Para cada relatório que falta: que colunas e que totais o dono espera
   ver? A auditoria não leu a saída de nenhum.
 - (9f) Exportar em planilha (CSV) basta, ou é preciso PDF?
@@ -4251,11 +4296,18 @@ Perguntas para o dono:
   seletor de relatório, o período (na projeção, só o "até") e, no extrato, a
   conta. Cada relatório tem os totais em cartões, a tabela e uma nota dizendo o
   que entra e o que não entra na conta.
+- **Relatórios de agendamentos (9c)** (`/[salonId]/reports/appointments?view=…`):
+  seletor de relatório e período; cartões com as contagens; e a tabela de cada
+  um (lista, cancelados, origem, criação).
+- **Relatórios de clientes (9c)** (`/[salonId]/reports/customers?view=…`):
+  aniversariantes (seletor de mês) e inativos (seletor de prazo), com o nome
+  levando à ficha do cliente.
 
 | Assunto | Onde está |
 |---|---|
 | Central de relatórios (9a) | Migration `064_report_favorites.sql`; tabela `reportFavorites`; catálogo e regra em `domain/report-catalog.ts` (`REPORT_CATALOG`, `resolveReportCatalog`, `sanitizeReportFavorites`); I/O em `services/report-favorites.service.ts`; actions em `actions/reports.ts` (na guarda de `actions-authz.test.ts`); módulo `reports` em `domain/permissions.ts`; tela em `app/[salonId]/reports/`; item do menu em `components/dashboard/sidebar.tsx`; testes em `report-catalog-domain.test.ts` |
 | Relatórios financeiros (9b) | Sem migration; regra em `domain/finance-reports.ts` (`allocateByWeight`, `buildNetResult`, `planProjectionPeriod`, `buildRevenueProjection`, `buildAccountStatement`); I/O em `services/finance-reports.service.ts`; action em `actions/finance-reports.ts` (na guarda de `actions-authz.test.ts`); tela em `app/[salonId]/reports/finance/`; os quatro destinos no catálogo (`domain/report-catalog.ts`); testes em `finance-reports-domain.test.ts` |
+| Relatórios de agendamentos e de clientes (9c) | Sem migration; regra em `domain/agenda-reports.ts` (`countByStatus`, `appointmentOrigin`, `buildOriginReport`, `buildCreationReport`, `buildBirthdayList`, `buildInactiveList`); I/O em `services/agenda-reports.service.ts`; actions em `actions/agenda-reports.ts` (na guarda de `actions-authz.test.ts`); telas em `app/[salonId]/reports/appointments/` e `reports/customers/`; os seis destinos no catálogo; testes em `agenda-reports-domain.test.ts` |
 
 ### 13.6 Fatia 9a — estado (19/nov/2026)
 
@@ -4356,3 +4408,27 @@ Perguntas para o dono:
 - Dados de teste limpos pela tela: a baixa foi desfeita ao reabrir a comanda
   #33, que foi excluída (fica como excluída, como as anteriores). Sem
   lançamentos, pagamentos nem movimento de estoque.
+
+### 13.8 Fatia 9c — estado (19/nov/2026)
+
+- Na branch `claude/fase-9-relatorios`, **em commit local, sem publicar**.
+  Typecheck (db, web e mcp-server), lint (nenhum erro novo nos arquivos
+  alterados) e testes passando (web 1417, com um arquivo de teste de outra
+  sessão no disco).
+- **Sem migration.** Só leitura.
+- **As consultas não foram executadas contra o banco.** Os testes cobrem a
+  contagem (regra pura); o SQL só vai ser exercitado no teste em uso.
+- **Limites desta fatia:**
+  - sem exportação (fatia 9f);
+  - sem filtro por profissional, serviço ou situação;
+  - "origem" não sabe quem marcou (regra 15);
+  - o relatório de agendamentos lê até 3.000 linhas por período, e as listas de
+    clientes até 1.000; acima disso a tela avisa;
+  - "atendimentos" do inativo conta agendamentos concluídos, não comandas;
+  - sem botão para mandar mensagem aos aniversariantes ou aos inativos.
+- **Sem teste em uso.** Roteiro, no salão de teste: abrir os seis pela central;
+  todos os agendamentos com o período dos testes da fase 7 (há cancelados com
+  motivo "TESTE 7c" e "TESTE 7f"); cancelados com "por quem" e motivo; origem
+  somando o mesmo total; criação com a antecedência; aniversariantes depois de
+  pôr uma data de nascimento num cliente de teste (e tirar depois); inativos
+  com os prazos; conferir cada número contra o banco.
