@@ -40,9 +40,39 @@ export interface JuditeScenario {
 /** A frase de transferência — o que ela respondia para o que agora sabe responder. */
 const TRANSFERENCIA = /Vou avisar o Fabiano|Fabiano j[aá] foi avisado/i
 const NOME_ANTIGO = /Juditi/i
+
+/** "1.050" ou "1050" — com ponto de milhar opcional. */
+const comMilhar = (n: number) => {
+  const digits = String(n)
+  return digits.length > 3 ? `${digits.slice(0, -3)}\\.?${digits.slice(-3)}` : digits
+}
+
+/** O valor citado como preço ("R$ 1.050", "R$1050", "R$ 1.050,00"), não um pedaço de outro número. Para o que NÃO pode aparecer. */
+function reais(n: number): RegExp {
+  return new RegExp(`R\\$\\s?${comMilhar(n)}(?!\\d)`)
+}
+
+/** O número, com ou sem "R$" ("fica 730", "R$ 1.050"), não um pedaço de outro número. Para o que TEM de aparecer. */
+function valor(n: number): RegExp {
+  return new RegExp(`(?<![\\d.,])${comMilhar(n)}(?!\\d)`)
+}
+
+/**
+ * Corte feminino: R$ 560 desde 18/nov (valor único). Até 18/nov era R$ 450 —
+ * e, antes de 13/nov, "R$ 560 para cabelo curto".
+ */
+const CORTE_FEMININO = 560
+const CORTE_PRECO_ANTIGO = reais(450)
 /** Preço do corte por tamanho de cabelo, ou "confirma na avaliação". */
-const CORTE_POR_TAMANHO = [/R\$\s?560/, /cabelo (curto|m[eé]dio|longo)/i, /(curto|m[eé]dio) ou longo/i, /confirma.{0,40}avalia[cç][aã]o/i]
+const CORTE_POR_TAMANHO = [/cabelo (curto|m[eé]dio|longo)/i, /(curto|m[eé]dio) ou longo/i, /confirma.{0,40}avalia[cç][aã]o/i]
 const CORTE_MASCULINO = /masculino/i
+
+/** Todos os valores da tabela de combinações com o corte que o Fabiano mandou em 18/nov. */
+const VALORES_DE_COMBINACAO = [530, 590, 700, 730, 770, 810, 850, 870, 910, 980, 1020, 1050, 1330, 1370, 1650]
+/** Qualquer valor da tabela de combinações, menos os `permitidos`. */
+const combinacoesExceto = (...permitidos: number[]) =>
+  VALORES_DE_COMBINACAO.filter((valor) => !permitidos.includes(valor)).map(reais)
+const QUALQUER_COMBINACAO = combinacoesExceto()
 const PEDE_O_NOME = /nome completo|sobrenome|seu nome|nome e sobrenome/i
 const DIZ_QUE_NAO_ACHOU = [/n[ãa]o encontrei/i, /nenhum agendamento/i, /n[ãa]o (h[aá]|tem|possui) agendamento/i]
 
@@ -131,6 +161,15 @@ const semTransferencia = (_result: unknown, steps: ResponsesRunnerStep[]) =>
 
 /** Quantos valores em reais a resposta cita. */
 const countPrices = (text: string) => (text.match(/R\$/g) ?? []).length
+
+/** Responde sozinha e cita no máximo `max` valores: só o que a cliente perguntou. */
+const soOQueFoiPerguntado =
+  (max: number) =>
+  (result: { text: string }, steps: ResponsesRunnerStep[]): string | null =>
+    semTransferencia(result, steps) ??
+    (countPrices(result.text) > max
+      ? `citou ${countPrices(result.text)} valores de uma vez; a pergunta pedia no máximo ${max}`
+      : null)
 
 // ----------------------------------------------------------------------------
 // Cenários
@@ -369,10 +408,10 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
     item: "3, 4 e 9",
     name: "preco_do_corte",
     description:
-      'Conversa de 07/nov ("Qual valor corte"): R$ 450, sem tamanho de cabelo, sem "confirma na avaliação" e sem citar o corte masculino',
+      'Conversa de 07/nov ("Qual valor corte"): R$ 560 (valor de 18/nov), sem tamanho de cabelo, sem "confirma na avaliação", sem o corte masculino e sem oferecer combinação',
     build: (ctx) => ({
       name: "preco_do_corte",
-      description: "Corte feminino: valor único de R$ 450",
+      description: `Corte feminino: valor único de R$ ${CORTE_FEMININO}`,
       context: { customerName: "Gi", ...leadDeAnuncio },
       prepare: () => void resetFakeBelasis(ctx),
       turns: [
@@ -383,14 +422,23 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
         {
           user: "Qual valor corte",
           expect: {
-            text: { mustMatchAll: [/450/], mustNotMatch: [...CORTE_POR_TAMANHO, CORTE_MASCULINO, /R\$\s?200/] },
+            text: {
+              mustMatchAll: [valor(CORTE_FEMININO)],
+              mustNotMatch: [...CORTE_POR_TAMANHO, CORTE_PRECO_ANTIGO, CORTE_MASCULINO, /R\$\s?200/, ...QUALQUER_COMBINACAO],
+            },
             custom: semTransferencia,
           },
         },
         {
-          // A outra fala real que recebeu "R$ 560 para cabelo curto…" (07/nov).
+          // A outra fala real que recebeu "R$ 560 para cabelo curto…" (07/nov): o
+          // valor voltou a ser R$ 560 em 18/nov, mas único, sem tamanho de cabelo.
           user: "Me passa o valor por favor",
-          expect: { text: { mustMatchAll: [/450/], mustNotMatch: [...CORTE_POR_TAMANHO, CORTE_MASCULINO] } },
+          expect: {
+            text: {
+              mustMatchAll: [valor(CORTE_FEMININO)],
+              mustNotMatch: [...CORTE_POR_TAMANHO, CORTE_PRECO_ANTIGO, CORTE_MASCULINO, ...QUALQUER_COMBINACAO],
+            },
+          },
         },
       ],
     }),
@@ -483,10 +531,20 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
           user: "Quais são os preços dos serviços de cabelo?",
           expect: {
             text: {
-              mustMatchAll: [/450/, /\?/],
+              mustMatchAll: [valor(CORTE_FEMININO), /\?/],
               // Antes: nove valores numa mensagem só, com lavagem (R$ 30) e
-              // finalização (R$ 80/140) parecendo cobrança extra do corte.
-              mustNotMatch: [...CORTE_POR_TAMANHO, CORTE_MASCULINO, /R\$\s?30\b/, /R\$\s?80\b/, /R\$\s?140\b/, /R\$\s?200\b/],
+              // finalização (R$ 80/140) parecendo cobrança extra do corte. E a
+              // tabela de combinações (18/nov) também não vai junto.
+              mustNotMatch: [
+                ...CORTE_POR_TAMANHO,
+                CORTE_PRECO_ANTIGO,
+                CORTE_MASCULINO,
+                /R\$\s?30\b/,
+                /R\$\s?80\b/,
+                /R\$\s?140\b/,
+                /R\$\s?200\b/,
+                ...QUALQUER_COMBINACAO,
+              ],
             },
             custom: (result) =>
               countPrices(result.text) > 2 ? `listou ${countPrices(result.text)} valores de uma vez (a tabela inteira)` : null,
@@ -494,10 +552,14 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
         },
         {
           // Pergunta de continuação (não é de uma conversa real): o alinhamento é
-          // serviço avulso, "a partir de", e não entra em pacote.
+          // serviço avulso, "a partir de", e não entra em pacote. Ela perguntou do
+          // alinhamento, não do alinhamento com o corte: sem valor de combinação.
           user: "E o alinhamento?",
           expect: {
-            text: { mustMatchAll: [/600/, /a partir de/i], mustNotMatch: [/faz parte d[eo] pacote/i, /incluso no corte/i] },
+            text: {
+              mustMatchAll: [/600/, /a partir de/i],
+              mustNotMatch: [/faz parte d[eo] pacote/i, /incluso no corte/i, ...QUALQUER_COMBINACAO],
+            },
           },
         },
       ],
@@ -508,12 +570,12 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
     item: "10",
     name: "corte_e_hidratacao",
     description:
-      'Mensagem de 09/nov ("Corte e hidratação"): dois serviços, o preço de cada um, um agendamento para cada no mesmo cadastro, sem passar para o Fabiano',
+      'Mensagem de 09/nov ("Corte e hidratação"): o valor da combinação (R$ 730, tabela de 18/nov), um agendamento para cada serviço no mesmo cadastro, sem passar para o Fabiano',
     build: (ctx) => {
       let fake: FakeBelasis
       return {
         name: "corte_e_hidratacao",
-        description: "Mais de um serviço: preços separados e um agendamento por serviço",
+        description: "Mais de um serviço: o valor da combinação e um agendamento por serviço",
         context: { customerName: "Cliente", ...leadDeAnuncio },
         prepare: () => {
           fake = resetFakeBelasis(ctx)
@@ -521,10 +583,15 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
         turns: [
           { user: "Quero agendar um horário!", expect: {} },
           {
+            // Até 18/nov: o valor de cada um. Agora a combinação está na tabela e
+            // vale só ela — nem o corte sozinho nem a hidratação DE TESTE do getServices.
             user: "Corte e hidratação",
             expect: {
-              text: { mustMatchAll: [/450/, new RegExp(String(HIDRATACAO_TEST_PRICE))], mustNotMatch: [TRANSFERENCIA] },
-              custom: semTransferencia,
+              text: {
+                mustMatchAll: [valor(730)],
+                mustNotMatch: [TRANSFERENCIA, reais(CORTE_FEMININO), CORTE_PRECO_ANTIGO, reais(HIDRATACAO_TEST_PRICE)],
+              },
+              custom: soOQueFoiPerguntado(1),
             },
           },
           // Daqui em diante a conversa real parou (foi passada ao Fabiano). As
@@ -568,7 +635,7 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
         prepare: () => void resetFakeBelasis(ctx),
         turns: [
           { user: "Gostaria de agendar um horário!", expect: {} },
-          { user: "Qual valor corte", expect: { text: { mustMatchAll: [/450/] } } },
+          { user: "Qual valor corte", expect: { text: { mustMatchAll: [valor(CORTE_FEMININO)] } } },
           {
             user: "Mas ele não pode abaixar o preço p mim",
             expect: {
@@ -595,6 +662,109 @@ export const JUDITE_SCENARIOS: JuditeScenario[] = [
         { user: "Tem estacionamento próximo ao salão ?", expect: { text: { mustNotMatch: [/@fabianoeber/i] } } },
         { user: "Muito obrigada!", expect: { text: { mustMatchAll: [/@fabianoeber/i, /Instagram/i] } } },
         { user: "Boa semana", expect: { text: { mustNotMatch: [/@fabianoeber/i] } } },
+      ],
+    }),
+  },
+
+  // --------------------------------------------------------------------------
+  // Tabela de combinações com o corte (mandada pelo Fabiano em 18/nov), com o
+  // pedido dele: "a Judite só vai mandar o que foi perguntado e não a lista toda".
+  // As falas são de teste: a tabela é nova, ainda não há conversa real com ela.
+  // --------------------------------------------------------------------------
+
+  {
+    item: "combinações (18/nov)",
+    name: "combinacao_so_o_que_perguntou",
+    description:
+      '"Quanto fica corte e coloração?": só o valor dessa combinação (R$ 770), sem o de cada serviço e sem outras linhas; com escova e cabelo longo, só R$ 910',
+    build: (ctx) => ({
+      name: "combinacao_so_o_que_perguntou",
+      description: "Combinação com o corte: só o valor perguntado",
+      context: { customerName: "Cliente", ...leadDeAnuncio },
+      prepare: () => void resetFakeBelasis(ctx),
+      turns: [
+        {
+          user: "Quanto fica corte e coloração?",
+          expect: {
+            text: {
+              mustMatchAll: [valor(770)],
+              // R$ 320 é a coloração sozinha, do getServices.
+              mustNotMatch: [reais(CORTE_FEMININO), CORTE_PRECO_ANTIGO, reais(320), ...combinacoesExceto(770)],
+            },
+            custom: soOQueFoiPerguntado(1),
+          },
+        },
+        {
+          user: "E se eu fizer escova também? Meu cabelo é longo",
+          expect: {
+            // R$ 850 é a mesma combinação para cabelo curto.
+            text: { mustMatchAll: [valor(910)], mustNotMatch: [reais(850)] },
+            custom: soOQueFoiPerguntado(2),
+          },
+        },
+      ],
+    }),
+  },
+
+  {
+    item: "combinações (18/nov)",
+    name: "combinacao_sem_mandar_a_tabela",
+    description:
+      'Pedido da "tabela dos combos": não manda a lista nem pedaços dela; pergunta o que ela quer fazer junto com o corte e então passa só aquele valor',
+    build: (ctx) => ({
+      name: "combinacao_sem_mandar_a_tabela",
+      description: "Combinações com o corte: nunca a lista inteira",
+      context: { customerName: "Cliente", ...leadDeAnuncio },
+      prepare: () => void resetFakeBelasis(ctx),
+      turns: [
+        {
+          user: "Vocês têm combo de corte com outros serviços? Me manda a tabela com os valores",
+          expect: {
+            text: { mustMatchAll: [/\?/], mustNotMatch: QUALQUER_COMBINACAO },
+            custom: soOQueFoiPerguntado(1),
+          },
+        },
+        {
+          user: "Corte e hidratação",
+          expect: {
+            text: {
+              mustMatchAll: [valor(730)],
+              mustNotMatch: [reais(CORTE_FEMININO), reais(HIDRATACAO_TEST_PRICE), ...combinacoesExceto(730)],
+            },
+            custom: soOQueFoiPerguntado(1),
+          },
+        },
+      ],
+    }),
+  },
+
+  {
+    item: "combinações (18/nov)",
+    name: "combinacao_sem_valor_inventado",
+    description:
+      'Serviço que só tem valor junto com o corte ("só a progressiva") e a combinação que veio sem valor (corte + alinhamento contorno): não calcula valor; o Fabiano fala com ela',
+    build: (ctx) => ({
+      name: "combinacao_sem_valor_inventado",
+      description: "Combinações com o corte: nada de valor deduzido da tabela",
+      context: { customerName: "Cliente", ...leadDeAnuncio },
+      prepare: () => void resetFakeBelasis(ctx),
+      turns: [
+        {
+          user: "Quanto custa só a progressiva, sem cortar?",
+          expect: {
+            // R$ 250 e R$ 600 seriam a progressiva "tirada" da tabela (contorno e
+            // global menos o corte). E ela não perguntou de combinação.
+            text: { mustNotMatch: [reais(250), reais(600), ...QUALQUER_COMBINACAO] },
+            custom: (_result, steps) =>
+              movedToAttention(steps) ? null : 'não mandou a conversa para "Atenção" (o valor é com o Fabiano)',
+          },
+        },
+        {
+          // O Fabiano mandou esta linha sem valor (18/nov). Quando ele mandar,
+          // troque por mustMatchAll: [valor(<valor>)].
+          user: "E corte com alinhamento só no contorno, quanto fica?",
+          expect: { text: { mustNotMatch: [reais(700), reais(980), reais(1020)] } },
+        },
       ],
     }),
   },

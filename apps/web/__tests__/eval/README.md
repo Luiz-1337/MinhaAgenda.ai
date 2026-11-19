@@ -91,18 +91,23 @@ Em falha, o console mostra qual turno falhou, a resposta gerada, as tools chamad
 ## Suíte da Judite (`judite/`)
 
 Os ajustes pedidos pelo salão do Fabiano Eber, cada um testado com a **mensagem
-real** que gerou o problema (nov/2026). Roda o bot de verdade num salão de teste,
-com a **Belasis simulada** (`judite/fake-belasis.ts`) — nada vai para a agenda real.
+real** que gerou o problema (nov/2026) — ou, na tabela de combinações com o corte
+(18/nov), que ainda não tinha conversa real, com falas de teste. Roda o bot de
+verdade num salão de teste, com a **Belasis simulada** (`judite/fake-belasis.ts`)
+— nada vai para a agenda real.
 
-- Prompt em teste: `judite/system-prompt.txt` (o mesmo texto que vai para
-  `agents.system_prompt` em produção). O atual está em `system-prompt.anterior.txt`.
+- Prompt em teste: `judite/system-prompt.txt`, o texto que vai para
+  `agents.system_prompt` em produção. Cada versão aplicada tem o seu script em
+  `scripts/data-fixes/` (com o md5 do texto e o caminho de volta): confira o md5
+  no banco antes de assumir que produção está igual ao arquivo — o dono também
+  edita o prompt pelo painel. `system-prompt.anterior.txt` é o de antes de 13/nov.
 - Precisa de um salão de teste com a configuração do salão da Judite (agente
   ativo, o profissional, os serviços, o expediente) e **"teste" no nome**. A
   suíte se recusa a rodar no salão real.
 - `JUDITE_EVAL_SALON_ID=<uuid>` no `.env`. Sem ela, a suíte se pula.
 
 ```bash
-pnpm --filter web eval -- judite                       # os 11 cenários
+pnpm --filter web eval -- judite                       # os 14 cenários
 pnpm --filter web eval -- judite -t pedido_de_desconto  # um só
 ```
 
