@@ -102,14 +102,15 @@ caminho A ("a organização é o dono") em 19/nov/2026. Feita na mesma branch, s
 migration, publicada e testada em uso com UMA unidade — **a comparação entre
 duas unidades não foi vista** — ver §13.13. Com ela, as sete fatias da fase 9
 estão escritas. **Na `main` estão a fase 7 e as fatias 9a e 9b**, pelo PR #21,
-mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g ainda não**: estão
-no PR #24, aberto e esperando a mescla — ver §13.14.
+mesclado em 19/nov/2026 (commit `da0fc56`). **As fatias 9c a 9g também já estão na `main`** (conferido em 19/nov/2026: a
+branch `claude/fase-9-relatorios` não tem commit fora da `main`) — ver §13.14.
 Fase 8 (pagamento): o dono decidiu, em 19/nov/2026, fazer a fase **sem a parte
 de receber dos clientes** (sem provedor de pagamento) — detalhada em §14. Fatia
 8a (sinal do agendamento por PIX direto ao salão) feita na branch
 `claude/fase-8-sinal` (sai de `claude/fase-9-relatorios`) — migration 065
-aplicada, publicada no preview e **testada em uso** em 19/nov/2026; ainda fora
-da `main` — ver §14.6. Fatia 8b (abater o sinal na comanda) feita na mesma
+aplicada e **testada em uso** em 19/nov/2026; **já na `main`**, pelo PR #26 —
+ver §14.6. **As fatias 8b, 8c e 8d estão no PR #28, aberto em 19/nov/2026 e
+esperando a mescla** — ver §14.10. Fatia 8b (abater o sinal na comanda) feita na mesma
 branch — migration 066 aplicada, publicada no preview e **testada em uso** em
 19/nov/2026; também fora da `main` — ver §14.7. Fatia 8c (aviso de
 vencimento da assinatura no painel e página pública de planos) feita na mesma
@@ -4859,6 +4860,9 @@ uma fase própria, não uma fatia dos relatórios.
   (commit `da0fc56`): levou a **fase 7 inteira** (fatias 7a a 7f, de que a
   branch da fase 9 sai) e as **fatias 9a e 9b**. As migrations 059 a 064 já
   estavam aplicadas em produção.
+- **Atualização (19/nov/2026, fim do dia): as fatias 9c a 9g já estão na
+  `main`** — a branch da fase 9 não tem mais commit fora dela. O item abaixo
+  é o registro de antes da mescla.
 - **Faltam na `main`: as fatias 9c, 9d, 9e, 9f e 9g.** Estão no **PR #24**
   (`claude/fase-9-relatorios` → `main`), aberto em 19/nov/2026, esperando a
   mescla do dono. A branch mescla sem conflito. Nenhuma tem migration.
@@ -5283,3 +5287,20 @@ Perguntas para o dono:
   - um prazo e um texto por salão, não por plano;
   - no WhatsApp oficial, fora das 24 horas o envio falha (regra 36);
   - o histórico fica na tela de Cuidados e retorno (regra 37).
+
+### 14.10 O que está na `main` (19/nov/2026)
+
+Vale mais que os "fora da `main`" escritos em §14.6 a §14.9, que são de antes.
+
+- **Na `main`: a fatia 8a**, pelo PR #26 (mesclado em 19/nov/2026, até o commit
+  `5169439`). O agendamento online segue desligado em todos os salões.
+- **No PR #28** (`claude/fase-8-sinal` → `main`, aberto em 19/nov/2026, 7
+  commits, mescla limpa): **as fatias 8b, 8c e 8d**.
+- **As migrations 065, 066 e 067 já estão aplicadas em produção.** Não há
+  migration a rodar na mescla do PR #28.
+- **Com a 8a na `main` e a 066 aplicada**, a produção segue funcionando: o
+  código da 8a não lê `sale_id` nem `applied_at`.
+- **Depois da mescla do PR #28, falta testar em produção:** o envio do aviso de
+  vencimento por WhatsApp (§14.9) e as páginas públicas sem login
+  (`/planos/<id>` e `/agendar/<id>`), que no preview ficam atrás do login da
+  Vercel.
