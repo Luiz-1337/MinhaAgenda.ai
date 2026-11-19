@@ -115,8 +115,9 @@ branch — migration 066 aplicada, publicada no preview e **testada em uso** em
 vencimento da assinatura no painel e página pública de planos) feita na mesma
 branch, sem migration — publicada no preview e **testada em uso** em
 19/nov/2026; também fora da `main` — ver §14.8. Fatia 8d (aviso de vencimento da assinatura por WhatsApp) feita na mesma
-branch — **em commit local, migration 067 NÃO aplicada, sem publicar e sem
-teste em uso** — ver §14.9.
+branch — migration 067 aplicada, publicada no preview e com a configuração
+testada em uso em 19/nov/2026; **o envio de verdade NÃO foi testado** (só roda
+pelo cron de produção); também fora da `main` — ver §14.9.
 Fase 10: planejamento.
 
 > A auditoria cobre telas e campos (~83%), mas pouco de validações e fluxos (~30%,
@@ -4896,7 +4897,7 @@ hoje pelo WhatsApp — e deixa de fora o que só existe com provedor.
 | 8a | Sinal do agendamento por PIX direto ao salão: a página de agendamento online mostra o valor e a chave; o agendamento nasce "aguardando sinal"; o salão marca que recebeu | Feita, migration 065 aplicada, testada em uso no preview (§14.6); fora da `main` |
 | 8b | Abater o sinal recebido na comanda do atendimento, com o lançamento no financeiro | Feita, migration 066 aplicada, testada em uso no preview (§14.7); fora da `main` |
 | 8c | Assinatura de cliente sem cobrança automática: aviso de vencimento no painel e página pública de planos | Feita, sem migration, testada em uso no preview (§14.8); fora da `main` |
-| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Feita em código — **migration 067 não aplicada, sem publicar e sem teste em uso** (§14.9) |
+| 8d | Aviso de vencimento da assinatura por mensagem (WhatsApp), pela fila de mensagens ao cliente | Feita, migration 067 aplicada, configuração testada em uso no preview; **envio não testado** (§14.9); fora da `main` |
 
 **Fora da fase, por depender de provedor:** conta de pagamentos por salão,
 cobrança por link ou PIX gerado pelo sistema, confirmação automática do
@@ -4931,8 +4932,8 @@ A configuração do sinal continua em `salons.settings.advance_payment`.
 - **`subscription_reminder_settings`** — por salão: `is_enabled` (nasce
   desligado), `days_before` (1 a 15, padrão 3) e `message` (NULL = texto
   padrão).
-- **`care_message_dispatches`** (a fila da fase 6, que TEM linhas em
-  produção) — ganha `subscription_id` (CASCADE) e `subscription_due`, o tipo
+- **`care_message_dispatches`** (a fila da fase 6; estava vazia em produção
+  quando a 067 foi aplicada) — ganha `subscription_id` (CASCADE) e `subscription_due`, o tipo
   `subscription_due` no CHECK de tipo, a assinatura como origem válida e o
   índice único (assinatura, vencimento). Só alarga: toda linha que existe
   continua válida.
@@ -5234,13 +5235,14 @@ Perguntas para o dono:
 
 ### 14.9 Fatia 8d — estado (19/nov/2026)
 
-- Na branch `claude/fase-8-sinal`, **em commit local, sem publicar**.
-  Typecheck (db, web e mcp-server), lint (nenhum erro nos arquivos alterados)
-  e testes passando (web 1487).
-- **Migration 067: NÃO aplicada.** Altera `care_message_dispatches`, que tem
-  linhas em produção: **copiar a tabela para `backups` antes**. Aplicar ANTES
-  de publicar: sem ela a tela de Assinaturas falha (lê a configuração nova) e,
-  em produção, a fila de mensagens inteira falharia ao ler as colunas novas.
+- Na branch `claude/fase-8-sinal`, publicada no preview da Vercel; **fora da
+  `main`, sem PR aberto**. Typecheck (db, web e mcp-server), lint (nenhum erro
+  nos arquivos alterados) e testes passando (web 1487).
+- **Migration 067: aplicada em produção em 19/nov/2026.** A fila
+  (`care_message_dispatches`) estava vazia — não houve cópia. Conferido por
+  leitura: os CHECKs alargados, o CHECK novo da assinatura, a tabela de
+  configuração com RLS e sem linhas (desligado em todos os salões). Nenhum
+  alerta de segurança novo.
 - **A `main` continua funcionando com a 067 aplicada**: o código antigo não lê
   as colunas novas, e o que ele grava na fila passa nos CHECKs alargados.
 - **Onde está:** migration `067_subscription_reminders.sql`; tabela
@@ -5257,16 +5259,27 @@ Perguntas para o dono:
   `saveSubscriptionReminder` em `actions/subscriptions.ts`; o cartão em
   `packages/subscriptions/subscriptions-client.tsx`; testes em
   `care-messages-domain.test.ts`.
-- **As consultas não foram executadas contra o banco.**
+- **Testado em uso no preview (19/nov/2026), no salão de teste:**
+  - o cartão nasce "Desligado: nenhuma mensagem é enviada";
+  - "Configurar" com 20 dias: "Informe de 1 a 15 dias";
+  - ligar com 5 dias e um texto próprio: gravou no banco como digitado, e o
+    cartão passou a "Ligado: … 5 dias antes";
+  - reabrir "Configurar" traz o que foi salvo;
+  - desligar volta o cartão a "Desligado";
+  - a tela de Cuidados e retorno continua abrindo.
+  A linha de configuração do teste foi apagada.
+- **Conferido por consulta de leitura:** a seleção da fila
+  (`enqueueDueSubscriptionReminders`, reescrita em SQL à mão) executa sem erro
+  no banco. Devolveu vazio — não havia assinatura no prazo.
+- **NÃO testado:** o envio. Nenhum aviso entrou na fila nem saiu pelo
+  WhatsApp: quem enfileira e envia é o cron, que só existe em produção, e a
+  produção está no código antigo. Também não foram exercitados com dados: a
+  seleção achando uma assinatura no prazo, o "um aviso por vencimento" e a
+  conferência na hora de enviar (cobertos só pelos testes da regra).
+  **Depois do merge:** ligar o aviso no salão de teste, deixar uma assinatura
+  de um cliente de teste vencendo no prazo e ver a linha em Cuidados e retorno.
 - **Limites desta fatia:**
   - sem aviso depois do vencimento;
   - um prazo e um texto por salão, não por plano;
   - no WhatsApp oficial, fora das 24 horas o envio falha (regra 36);
   - o histórico fica na tela de Cuidados e retorno (regra 37).
-- **Sem teste em uso.** O que dá para testar no preview: o cartão e o
-  "Configurar" (ligar, dias, texto, validação) e, por consulta de leitura, que
-  a seleção da fila acha a assinatura que vence no prazo. **O envio de verdade
-  só roda pelo cron, que existe só em produção** — o preview não tem cron, e a
-  rota pede o segredo do cron. Fica para depois do merge: ligar o aviso no
-  salão de teste, deixar uma assinatura de um cliente de teste vencendo no
-  prazo e ver a linha em Cuidados e retorno.
