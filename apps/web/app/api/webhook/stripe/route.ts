@@ -4,6 +4,10 @@ import { db, profiles, salons, payments, eq, sql } from '@repo/db'
 import { getRedisClient } from '@/lib/infra/redis'
 import type Stripe from 'stripe'
 
+// `invoice.subscription` saiu do tipo nas versões novas da API (foi para
+// `parent.subscription_details`), mas o webhook ainda lê o campo legado.
+type InvoiceWithSubscription = Stripe.Invoice & { subscription?: string | null }
+
 const PROCESSED_EVENT_TTL = 60 * 60 * 24 // 24 horas em segundos
 
 /** Verifica e marca um evento como processado (idempotência). Retorna true se já foi processado. */
@@ -116,7 +120,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
-  const subscriptionId = (invoice as any).subscription as string
+  const subscriptionId = (invoice as InvoiceWithSubscription).subscription
   if (!subscriptionId) return
 
   const salon = await db.query.salons.findFirst({
@@ -152,7 +156,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  const subscriptionId = (invoice as any).subscription as string
+  const subscriptionId = (invoice as InvoiceWithSubscription).subscription
   if (!subscriptionId) return
 
   await db

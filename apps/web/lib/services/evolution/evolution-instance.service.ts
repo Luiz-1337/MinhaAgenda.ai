@@ -167,6 +167,9 @@ export function getExpectedWebhookConfig(): { url: string; events: string[] } {
   return { url: baseUrl ? `${baseUrl}/api/webhook/whatsapp` : '', events: [...WEBHOOK_EVENTS] };
 }
 
+/** Formato tolerante do GET /webhook/find (campos podem faltar ou vir com outro tipo). */
+type WebhookFindPayload = { url?: unknown; events?: unknown; enabled?: boolean };
+
 /**
  * Lê a config de webhook atual de uma instância na Evolution (GET /webhook/find).
  * Tolerante a formatos ({ webhook: {...} } ou objeto direto). Retorna null em erro.
@@ -176,8 +179,8 @@ export async function getInstanceWebhook(
 ): Promise<{ url: string | null; events: string[]; enabled: boolean } | null> {
   const client = getEvolutionClient();
   try {
-    const res = await client.get<any>(`/webhook/find/${instanceName}`);
-    const w = (res && typeof res === 'object' && 'webhook' in res ? (res as any).webhook : res) ?? {};
+    const res = await client.get<(WebhookFindPayload & { webhook?: WebhookFindPayload }) | null>(`/webhook/find/${instanceName}`);
+    const w: WebhookFindPayload = (res && typeof res === 'object' && 'webhook' in res ? res.webhook : res) ?? {};
     return {
       url: typeof w.url === 'string' ? w.url : null,
       events: Array.isArray(w.events) ? w.events : [],
@@ -652,6 +655,21 @@ function extractPhoneFromOwner(owner: unknown): string | null {
   return match ? `+${match[1]}` : null;
 }
 
+/** Item de /instance/fetchInstances (v2): os dados podem vir aninhados em `instance`. */
+type FetchedInstanceItem = {
+  instance?: FetchedInstanceItem;
+  instanceName?: string;
+  name?: string;
+  number?: unknown;
+  owner?: unknown;
+  ownerJid?: unknown;
+  id?: unknown;
+  wuid?: unknown;
+  phone?: unknown;
+  phoneNumber?: unknown;
+  profilePictureUrl?: unknown;
+} | null | undefined;
+
 /**
  * Busca o número de telefone conectado à instância (Evolution API)
  * Tenta fetchInstances e /instances; aceita owner ou profilePictureUrl
@@ -668,8 +686,8 @@ export async function getConnectedPhoneNumber(
     );
 
     // Normalize response: can be array, object with "instance", or object with "response" array
-    const raw = (response as any)?.response ?? response;
-    const items = Array.isArray(raw) ? raw : [raw];
+    const raw = (response as { response?: unknown } | null)?.response ?? response;
+    const items: FetchedInstanceItem[] = Array.isArray(raw) ? raw : [raw];
 
     logger.debug({
       instanceName,
@@ -679,7 +697,7 @@ export async function getConnectedPhoneNumber(
     }, 'getConnectedPhoneNumber: raw response info');
 
     const found = items.find(
-      (i: any) =>
+      (i) =>
         i?.instance?.instanceName === instanceName ||
         i?.instanceName === instanceName ||
         i?.name === instanceName
@@ -688,7 +706,7 @@ export async function getConnectedPhoneNumber(
     if (!found) {
       logger.warn({
         instanceName,
-        itemNames: items.map((i: any) => i?.instance?.instanceName ?? i?.instanceName ?? i?.name ?? 'unknown'),
+        itemNames: items.map((i) => i?.instance?.instanceName ?? i?.instanceName ?? i?.name ?? 'unknown'),
       }, 'getConnectedPhoneNumber: instance not found in response items');
       return null;
     }
@@ -941,7 +959,7 @@ export async function getInstanceMessages(
     const normalizedJid = remoteJid.includes('@') ? remoteJid : `${remoteJid}@s.whatsapp.net`;
     return list
       .filter((msg) => {
-        const jid = msg?.key?.remoteJid ?? (msg as any).remoteJid;
+        const jid = msg?.key?.remoteJid ?? msg.remoteJid;
         return jid === remoteJid || jid === normalizedJid;
       })
       .sort((a, b) => (a.messageTimestamp ?? 0) - (b.messageTimestamp ?? 0));

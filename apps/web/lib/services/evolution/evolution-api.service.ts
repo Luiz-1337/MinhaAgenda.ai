@@ -142,7 +142,7 @@ export class EvolutionAPIClient {
 
         // Try to parse error body
         if (!response.ok) {
-          let errorBody: any;
+          let errorBody: { message?: string; code?: string };
           try {
             errorBody = await response.json();
           } catch {

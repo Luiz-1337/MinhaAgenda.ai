@@ -117,7 +117,7 @@ interface SendMessageResponse {
     remoteJid: string;
     fromMe: boolean;
   };
-  message?: any;
+  message?: Record<string, unknown>;
   messageTimestamp?: number;
 }
 
@@ -381,7 +381,7 @@ export function formatPhoneToE164(phone: string | null | undefined): string | nu
   if (!phone) return null;
 
   // Remove spaces, dashes, parentheses, and whatsapp: prefix
-  let cleaned = phone
+  const cleaned = phone
     .trim()
     .replace(/^whatsapp:/i, '')
     .replace(/\s/g, '')
@@ -407,7 +407,7 @@ export function formatPhoneToE164(phone: string | null | undefined): string | nu
 
   // If no +, add +55 (Brazil code)
   // Remove leading zeros if any (e.g., 011 -> 11)
-  let normalizedDigits = digits.replace(/^0+/, '');
+  const normalizedDigits = digits.replace(/^0+/, '');
 
   // Validate Brazilian format: should have 10 or 11 digits (DDD + number)
   // DDD has 2 digits, number has 8 or 9 digits

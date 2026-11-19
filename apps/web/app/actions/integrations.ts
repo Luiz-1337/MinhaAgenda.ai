@@ -308,10 +308,10 @@ export async function syncTrinksData(
       success: true,
       data,
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Erro ao sincronizar ${dataType} da Trinks:`, error)
     return {
-      error: error.message || `Falha ao sincronizar ${dataType} da Trinks`,
+      error: (error instanceof Error && error.message) || `Falha ao sincronizar ${dataType} da Trinks`,
     }
   }
 }

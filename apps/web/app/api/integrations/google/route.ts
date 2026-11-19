@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       hasIntegration: true,
       email: integration.email,
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro ao buscar integração Google:', error)
     return NextResponse.json(
       { error: 'Erro ao buscar integração' },

@@ -34,7 +34,25 @@ import {
   extractAdReferral,
   leadSourceFromReferral,
 } from '@/lib/services/messaging/cloud/content';
-import type { AdReferral } from '@/lib/services/messaging/cloud/content';
+import type { AdReferral, CloudInboundMessage } from '@/lib/services/messaging/cloud/content';
+
+// Payload do webhook da Cloud API, no que a gente consome. A Meta sempre manda
+// `id` e `from` na mensagem e `id`/`status` no status.
+type CloudWebhookMessage = CloudInboundMessage & { id: string; from: string };
+type CloudStatus = { id: string; status: string; errors?: Array<{ code?: number; title?: string }> };
+type CloudEcho = CloudInboundMessage & { to?: string | number };
+type CloudChangeValue = {
+  metadata?: { phone_number_id?: string; display_phone_number?: string };
+  contacts?: Array<{ profile?: { name?: string } }>;
+  messages?: CloudWebhookMessage[];
+  statuses?: CloudStatus[];
+  message_echoes?: CloudEcho[];
+  [key: string]: unknown;
+};
+type CloudWebhookBody = {
+  object?: string;
+  entry?: Array<{ changes?: Array<{ field?: string; value?: CloudChangeValue }> }>;
+};
 
 export const maxDuration = 10;
 
@@ -92,7 +110,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Parsear JSON.
-    let body: any;
+    let body: CloudWebhookBody;
     try {
       body = JSON.parse(raw);
     } catch {
@@ -107,7 +125,7 @@ export async function POST(req: NextRequest) {
     // 4. Percorrer entries/changes.
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
-        const value = change?.value ?? {};
+        const value: CloudChangeValue = change?.value ?? {};
         const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
 
         // O número legível do salão vem no metadata de TODO payload — mensagem,
@@ -353,8 +371,8 @@ async function resolveCloudTenant(
 }
 
 async function handleInboundMessage(
-  msg: any,
-  value: any,
+  msg: CloudWebhookMessage,
+  value: CloudChangeValue,
   phoneNumberId: string | undefined,
   reqLogger: ContextLogger,
 ) {
@@ -552,7 +570,7 @@ const DELIVERY_TERMINAL = ['failed', 'undelivered'];
  * Status de entrega (sent/delivered/read/failed). Sem escada de reenvio: a Cloud
  * API não tem o status:0 silencioso da Evolution — falha vem com código claro.
  */
-async function handleStatus(st: any, reqLogger: ContextLogger) {
+async function handleStatus(st: CloudStatus, reqLogger: ContextLogger) {
   const wamid: string = st.id;
   const status: string = st.status;
 
@@ -609,7 +627,7 @@ async function handleStatus(st: any, reqLogger: ContextLogger) {
  * a IA pelo botão "Passar para a IA" do chat (auto-retomada por janela é
  * follow-up — exigiria nova coluna).
  */
-async function handleEcho(echo: any, phoneNumberId: string | undefined, reqLogger: ContextLogger) {
+async function handleEcho(echo: CloudEcho, phoneNumberId: string | undefined, reqLogger: ContextLogger) {
   const echoId: string | undefined = echo?.id;
   // Destinatário do eco = o cliente. Normaliza p/ dígitos (igual ao inbound, que
   // grava o chat sob msg.from em E.164 só-dígitos) — senão findOrCreateChat, que

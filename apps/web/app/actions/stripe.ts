@@ -137,8 +137,10 @@ export async function getSubscriptionDetails(salonId: string) {
       const sub = await stripe.subscriptions.retrieve(salon.stripeSubscriptionId)
       subscription = {
         status: sub.status,
-        currentPeriodEnd: (sub as any).current_period_end ?? null,
-        cancelAtPeriodEnd: (sub as any).cancel_at_period_end ?? false,
+        // current_period_end saiu do tipo Subscription nas versões novas da API (foi
+        // para o item), mas ainda pode vir no payload; lê sem perder o fallback.
+        currentPeriodEnd: (sub as Stripe.Subscription & { current_period_end?: number }).current_period_end ?? null,
+        cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
       }
     } catch {
       // Subscription may have been deleted

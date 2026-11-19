@@ -45,7 +45,7 @@ export async function findUnansweredChats(opts?: {
     LIMIT ${limit}
   `);
 
-  const rows = (Array.isArray(result) ? result : (result as any)?.rows ?? []) as Array<{
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] })?.rows ?? []) as Array<{
     chat_id: string;
     salon_id: string;
     client_phone: string;

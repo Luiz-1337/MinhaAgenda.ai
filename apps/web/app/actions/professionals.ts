@@ -60,7 +60,7 @@ export async function getProfessionals(salonId: string): Promise<ProfessionalRow
     return { error: result.error.message }
   }
 
-  const rawList = (result.data || []) as any[]
+  const rawList = (result.data || []) as Array<Omit<ProfessionalRow, "role"> & { role: string }>
   const proList = rawList.map(p => ({
     ...p,
     role: (p.role === 'OWNER' || p.role === 'MANAGER') ? 'MANAGER' : 'STAFF'

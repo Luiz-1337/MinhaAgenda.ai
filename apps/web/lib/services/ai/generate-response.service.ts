@@ -495,12 +495,12 @@ export async function generateAIResponse(
       console.log("\n🔧 ========== TOOL EXECUTION ==========");
       console.log("Total steps:", steps.length);
 
-      steps.forEach((step: any, stepIndex: number) => {
+      steps.forEach((step, stepIndex) => {
         console.log(`\n--- Step ${stepIndex + 1} ---`);
 
         if (step.toolCalls && step.toolCalls.length > 0) {
           console.log("🛠️  Tool Calls:");
-          step.toolCalls.forEach((call: any, callIndex: number) => {
+          step.toolCalls.forEach((call, callIndex) => {
             console.log(`  [${callIndex + 1}] ${call.toolName}`);
             console.log("  📥 Arguments:", JSON.stringify(call.input, null, 2));
           });
@@ -508,18 +508,18 @@ export async function generateAIResponse(
 
         if (step.toolResults && step.toolResults.length > 0) {
           console.log("📤 Tool Results:");
-          step.toolResults.forEach((result: any, resultIndex: number) => {
+          step.toolResults.forEach((result: ToolResultLike, resultIndex) => {
             console.log(`  [${resultIndex + 1}] ${result.toolName}`);
             console.log("  📋 Full result object:", JSON.stringify(result, null, 2).substring(0, 500));
 
-            // Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão
-            const toolOutput = result.result ?? result.output ?? result;
+            const toolOutput = toolOutputOf(result);
+            const presenterError = asPresenterError(toolOutput);
 
             if (result.error || result.isError) {
               console.log("  ❌ ERROR:", result.error || result.result);
-            } else if (toolOutput && typeof toolOutput === "object" && "error" in toolOutput && toolOutput.error === true) {
+            } else if (presenterError) {
               // Nosso ErrorPresenter retorna { error: true, code, message, details }
-              console.log("  ❌ TOOL ERROR:", toolOutput.message || toolOutput.details);
+              console.log("  ❌ TOOL ERROR:", presenterError.message || presenterError.details);
             } else {
               const resultStr = JSON.stringify(toolOutput, null, 2);
               const preview = resultStr ? resultStr.substring(0, 300) : "(empty result)";
@@ -896,6 +896,33 @@ export function handleToolErrors(steps: unknown[], contextLogger: Pick<Logger, "
   return "Desculpe, encontrei uma dificuldade técnica. Posso ajudar com outra coisa?";
 }
 
+/** Resultado de tool como o runner/SDK pode entregar (`result` ou `output`). */
+type ToolResultLike = {
+  toolName?: string;
+  result?: unknown;
+  output?: unknown;
+  isError?: boolean;
+  error?: unknown;
+};
+
+/** Campos que lemos da saída de uma tool (ErrorPresenter: { error: true, code, message, details }). */
+type ToolOutputLike = { error?: unknown; code?: unknown; message?: unknown; details?: unknown };
+
+/** Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão. */
+function toolOutputOf(result: ToolResultLike): unknown {
+  return result.result ?? result.output ?? result;
+}
+
+function asOutputFields(toolOutput: unknown): ToolOutputLike | null {
+  return typeof toolOutput === "object" && toolOutput !== null ? (toolOutput as ToolOutputLike) : null;
+}
+
+/** A saída no formato do ErrorPresenter (`error === true`), ou null. */
+function asPresenterError(toolOutput: unknown): ToolOutputLike | null {
+  const fields = asOutputFields(toolOutput);
+  return fields?.error === true ? fields : null;
+}
+
 /**
  * Extrai erros dos steps de execução
  */
@@ -904,12 +931,13 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
 
   if (!Array.isArray(steps)) return errors;
 
-  steps.forEach((step: any) => {
+  (steps as Array<{ toolResults?: ToolResultLike[] } | null | undefined>).forEach((step) => {
     if (!step?.toolResults) return;
 
-    step.toolResults.forEach((result: any) => {
-      // Vercel AI SDK pode usar 'result' ou 'output' dependendo da versão
-      const toolOutput = result.result ?? result.output ?? result;
+    step.toolResults.forEach((result) => {
+      const toolOutput = toolOutputOf(result);
+      const outputFields = asOutputFields(toolOutput);
+      const presenterError = asPresenterError(toolOutput);
 
       // Verifica diferentes formatos de erro:
       // 1. result.error - erro direto do SDK
@@ -919,20 +947,24 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
       const hasError =
         result.error ||
         result.isError ||
-        (toolOutput && typeof toolOutput === "object" && toolOutput.error === true) ||
+        presenterError ||
         (typeof toolOutput === "string" && toolOutput.toLowerCase().includes("error"));
 
       if (hasError) {
         // Extrai mensagem de erro de diferentes fontes
-        let errorMessage: string;
+        let errorMessage: unknown;
+        const sdkErrorMessage =
+          typeof result.error === "object" && result.error !== null
+            ? (result.error as { message?: unknown }).message
+            : undefined;
 
-        if (result.error?.message) {
-          errorMessage = result.error.message;
+        if (sdkErrorMessage) {
+          errorMessage = sdkErrorMessage;
         } else if (typeof result.error === "string") {
           errorMessage = result.error;
-        } else if (toolOutput && typeof toolOutput === "object" && toolOutput.error === true) {
+        } else if (presenterError) {
           // Formato do ErrorPresenter: { error: true, code, message, details }
-          errorMessage = toolOutput.message || toolOutput.details || "Tool error";
+          errorMessage = presenterError.message || presenterError.details || "Tool error";
         } else if (typeof toolOutput === "string") {
           errorMessage = toolOutput;
         } else {
@@ -942,8 +974,8 @@ function extractToolErrors(steps: unknown[]): Array<{ toolName: string; error: s
         errors.push({
           toolName: result.toolName || "Unknown",
           error: String(errorMessage).substring(0, 200),
-          code: toolOutput && typeof toolOutput === "object" && typeof toolOutput.code === "string"
-            ? toolOutput.code
+          code: outputFields && typeof outputFields.code === "string"
+            ? outputFields.code
             : undefined,
         });
       }
@@ -982,7 +1014,7 @@ function buildToolSummary(steps: ResponsesRunnerStep[]): string {
 
       let resultSummary: string;
       if (result?.isError || result?.error) {
-        resultSummary = "ERRO: " + (typeof result.error === "string" ? result.error : (result.error as any)?.message || "erro desconhecido");
+        resultSummary = "ERRO: " + (typeof result.error === "string" ? result.error : result.error?.message || "erro desconhecido");
       } else {
         resultSummary = summarizeToolResult(toolName, result?.result);
       }
@@ -995,6 +1027,13 @@ function buildToolSummary(steps: ResponsesRunnerStep[]): string {
     ? `\n\n${TOOL_CONTEXT_START}\n${summaryLines.join("\n")}\n${TOOL_CONTEXT_END}`
     : "";
 }
+
+// Formas que as tools devolvem (JSON da tool; campos podem faltar).
+type ServiceSummary = { name?: string; id?: string; priceFormatted?: string; price?: string | number; duration?: number };
+type ProfessionalSummary = { name?: string; id?: string };
+type AvailabilityOption = { professional?: string; isSpecialist?: boolean; slots?: string[] };
+type SlotSummary = string | { time?: string; available?: boolean };
+type AppointmentSummary = { service?: string; id?: string; startsAt?: string; professional?: string };
 
 /**
  * Cria resumo compacto do resultado de uma tool (max ~300 chars por tool).
@@ -1013,7 +1052,7 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getServices" && Array.isArray(data.services)) {
       return data.services
         .slice(0, 10)
-        .map((s: any) => `${s.name}(id:${s.id},${s.priceFormatted ?? `R$${s.price}`},${s.duration}min)`)
+        .map((s: ServiceSummary) => `${s.name}(id:${s.id},${s.priceFormatted ?? `R$${s.price}`},${s.duration}min)`)
         .join(", ");
     }
 
@@ -1021,7 +1060,7 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getProfessionals" && Array.isArray(data.professionals)) {
       return data.professionals
         .slice(0, 10)
-        .map((p: any) => `${p.name}(id:${p.id})`)
+        .map((p: ProfessionalSummary) => `${p.name}(id:${p.id})`)
         .join(", ");
     }
 
@@ -1030,14 +1069,16 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
       if (Array.isArray(data.options)) {
         const byPro = data.options
           .slice(0, 5)
-          .map((o: any) => `${o.professional}${o.isSpecialist ? "*" : ""}: ${(o.slots || []).slice(0, 6).join(",")}`)
+          .map((o: AvailabilityOption) => `${o.professional}${o.isSpecialist ? "*" : ""}: ${(o.slots || []).slice(0, 6).join(",")}`)
           .join(" | ");
         const earliest = data.earliest ? ` (mais cedo: ${data.earliest.professional} ${data.earliest.time})` : "";
         return `horarios por profissional: ${byPro}${earliest}`;
       }
       if (data.slots) {
         const available = Array.isArray(data.slots)
-          ? data.slots.filter((s: any) => s.available !== false).map((s: any) => s.time || s).join(",")
+          ? data.slots
+              .filter((s: SlotSummary) => typeof s === "string" || s.available !== false)
+              .map((s: SlotSummary) => (typeof s === "string" ? s : s.time || s)).join(",")
           : JSON.stringify(data.slots).substring(0, 200);
         return `horarios: ${available}`;
       }
@@ -1049,7 +1090,7 @@ export function summarizeToolResult(toolName: string, result: unknown): string {
     if (toolName === "getMyFutureAppointments" && Array.isArray(data.appointments)) {
       const list = data.appointments
         .slice(0, 5)
-        .map((a: any) => `${a.service}(id:${a.id},${a.startsAt},${a.professional})`)
+        .map((a: AppointmentSummary) => `${a.service}(id:${a.id},${a.startsAt},${a.professional})`)
         .join(", ");
       if (typeof data.agendaDoSalao !== "string") return list;
 
