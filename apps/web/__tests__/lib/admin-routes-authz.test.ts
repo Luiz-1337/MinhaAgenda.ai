@@ -104,3 +104,40 @@ describe("isValidSecret", () => {
     expect(isValidSecret("", "")).toBe(false)
   })
 })
+
+/**
+ * GUARDA DE REGRESSÃO — escalada a super-admin pelo onboarding (19/11/2026).
+ *
+ * `createSalonWithOwner` (lib/services/salon.service.ts) gravava
+ * `systemRole: "admin"` em todo dono que criava salão por /onboarding. Como
+ * qualquer pessoa pode se cadastrar e cair em /onboarding sem salão, qualquer
+ * pessoa virava super-admin do produto. Ser dono vem de `salons.owner_id`.
+ *
+ * O código do app nunca grava o literal `"admin"` em `systemRole`: o único
+ * caminho é o próprio admin escolhendo o papel (`systemRole: role` em
+ * `app/actions/admin/users.ts`, atrás de `requireAdmin`). Tipos como
+ * `systemRole: "admin" | "user"` não contam.
+ */
+describe("nenhum código do app promove a super-admin por conta própria", () => {
+  const SCAN_DIRS = ["app", "lib", "workers", "components"]
+  const PROMOTE = /systemRole\s*:\s*["']admin["'](?!\s*\|)|system_role\s*[:=]\s*["']admin["']/
+
+  const files = SCAN_DIRS.flatMap((d) =>
+    listFiles(join(WEB_ROOT, d), (n) => /\.(ts|tsx)$/.test(n) && !n.endsWith(".d.ts"))
+  )
+
+  it("varre os fontes do app", () => {
+    expect(files.length).toBeGreaterThan(50)
+  })
+
+  /** Tira comentários, que citam `system_role = 'admin'` para explicar a regra. */
+  const stripComments = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1")
+
+  it("nenhum arquivo grava systemRole = 'admin' literal", () => {
+    const offenders = files
+      .filter((f) => PROMOTE.test(stripComments(readFileSync(f, "utf8"))))
+      .map((f) => relative(WEB_ROOT, f).replace(/\\/g, "/"))
+    expect(offenders).toEqual([])
+  })
+})
